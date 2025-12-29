@@ -1,6 +1,6 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[codz]
+*.py[cod]
 *$py.class
 
 # C extensions
@@ -205,3 +205,70 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Node.js / React / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Frontend build outputs
+frontend/build/
+frontend/dist/
+build/
+dist/
+.next/
+out/
+
+# Frontend dev
+.vite/
+.parcel-cache/
+.cache/
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# PostgreSQL
+*.db
+*.sqlite
+*.sqlite3
+data/
+postgres_data/
+pgdata/
+
+# Tree-sitter build artifacts
+*.so
+*.dylib
+*.dll
+
+# Local config overrides
+config.local.yaml
+.env.local
+.env.*.local
+
+# Repository clones (if stored locally)
+repos/
+repositories/
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Testing
+coverage/
+.coverage
+.pytest_cache/
+htmlcov/
