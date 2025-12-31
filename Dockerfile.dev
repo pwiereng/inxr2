@@ -1,0 +1,76 @@
+# Development Dockerfile for INXR2
+# This image includes Python, Node.js, PostgreSQL client, and all development tools
+
+FROM python:3.11-slim
+
+# Prevent Python from writing pyc files and buffering stdout/stderr
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    # Build essentials
+    build-essential \
+    gcc \
+    g++ \
+    make \
+    # Git
+    git \
+    # PostgreSQL client
+    postgresql-client \
+    # Node.js (install from NodeSource)
+    curl \
+    gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    # Tree-sitter build dependencies
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify installations
+RUN python --version && \
+    node --version && \
+    npm --version && \
+    git --version
+
+# Create non-root user for development
+ARG USERNAME=devuser
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    && apt-get update \
+    && apt-get install -y sudo \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /workspace
+
+# Switch to non-root user
+USER $USERNAME
+
+# Ensure cache directories exist with proper permissions
+RUN mkdir -p /home/devuser/.cache /home/devuser/.cargo/bin
+
+# Install uv (modern, fast Python package installer)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create virtual environment in home directory
+RUN python -m venv /home/devuser/.venv
+
+# Add venv and uv to PATH
+ENV PATH="/home/devuser/.venv/bin:/home/devuser/.cargo/bin:/home/devuser/.local/bin:${PATH}"
+
+# Expose ports
+# 8000 - FastAPI backend
+# 5173 - Vite frontend dev server
+# 5432 - PostgreSQL (will be in separate container)
+EXPOSE 8000 5173
+
+# Default command (can be overridden by docker-compose)
+CMD ["/bin/bash"]
