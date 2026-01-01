@@ -66,11 +66,18 @@ RUN python -m venv /home/devuser/.venv
 # Add venv and uv to PATH
 ENV PATH="/home/devuser/.venv/bin:/home/devuser/.cargo/bin:/home/devuser/.local/bin:${PATH}"
 
+# Copy and set up entrypoint script
+COPY --chown=devuser:devuser scripts/docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Expose ports
 # 8000 - FastAPI backend
 # 5173 - Vite frontend dev server
 # 5432 - PostgreSQL (will be in separate container)
 EXPOSE 8000 5173
+
+# Set entrypoint to handle dependency installation
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # Default command (can be overridden by docker-compose)
 CMD ["/bin/bash"]
