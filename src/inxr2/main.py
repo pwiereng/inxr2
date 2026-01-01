@@ -1,16 +1,22 @@
 """
 FastAPI application entry point for INXR2.
 
+TODO: Migrate to infrastructure/fastapi/app.py
+This file is kept for backward compatibility during Phase 1.2.
+
 This module provides the main FastAPI application with REST API endpoints.
 """
 
-import os
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+# TODO: Replace with infrastructure.fastapi.app.create_app() after migration
+# from .infrastructure.fastapi.app import create_app
+# app = create_app()
 
 # Create FastAPI app instance
 app = FastAPI(
@@ -70,10 +76,10 @@ async def hello(name: str = "World") -> dict[str, str]:
 
 
 # Serve frontend index.html for all non-API routes (SPA support)
-@app.get("/{full_path:path}")
-async def serve_frontend(full_path: str) -> FileResponse:
+@app.get("/{full_path:path}", response_model=None)
+async def serve_frontend(full_path: str) -> FileResponse | dict[str, str]:
     """Serve the frontend application for all non-API routes."""
-    if FRONTEND_DIST.exists():
+    if FRONTEND_DIST and FRONTEND_DIST.exists():
         index_file = FRONTEND_DIST / "index.html"
         if index_file.exists():
             return FileResponse(str(index_file))

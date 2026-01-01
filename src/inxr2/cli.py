@@ -1,6 +1,7 @@
 """
 CLI entry point for INXR2.
 
+TODO: Migrate CLI commands to adapters/cli/ in Phase 1.2+
 This module provides the command-line interface for the INXR2 application.
 """
 
@@ -16,7 +17,12 @@ def main() -> None:
 
 @main.command()
 def index() -> None:
-    """Index repositories from configuration."""
+    """
+    Index repositories from configuration.
+
+    TODO: Implement in adapters/cli/commands/index_command.py
+    TODO: Use IndexRepositoryUseCase from application layer
+    """
     click.echo("Indexing not yet implemented.")
 
 
@@ -42,7 +48,12 @@ def serve(host: str, port: int, reload: bool) -> None:
 
 @main.command()
 def status() -> None:
-    """Show indexing status."""
+    """
+    Show indexing status.
+
+    TODO: Implement in adapters/cli/commands/status_command.py
+    TODO: Use repository status queries
+    """
     click.echo("Status not yet implemented.")
 
 
