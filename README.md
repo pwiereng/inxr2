@@ -55,36 +55,53 @@ For detailed architecture and design decisions, see [DESIGN.md](DESIGN.md).
 
 ## Quick Start
 
-### Using Docker
+### Development Setup (Recommended)
+
+The fastest way to get started is using the Docker development environment:
 
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd inxr2
-
-# Create configuration file
-cat > config.yaml <<EOF
-repositories:
-  team_repos:
-    - name: "my-repo"
-      url: "https://github.com/myorg/my-repo"
-      branches:
-        - main
-EOF
-
-# Run with Docker Compose
-docker-compose up -d
-
-# Index repositories
-docker exec inxr2 inxr2 index --config /app/config.yaml
-
-# Access the web UI
-open http://localhost:8000
 ```
 
-### Local Development
+**Option 1: Using VS Code/Cursor (Recommended)**
+1. Open the project in VS Code or Cursor
+2. Install the "Dev Containers" extension
+3. Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
+4. Select "Dev Containers: Reopen in Container"
+5. Wait for the container to build (~5 minutes first time)
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed setup instructions.
+**Option 2: Using Docker Compose Directly**
+```bash
+# Start the development environment
+docker-compose -f docker-compose.dev.yml up -d
+
+# Open a shell in the container
+docker exec -it inxr2-dev bash
+
+# Or use the helper scripts
+./scripts/dev-start.sh   # Start containers
+./scripts/dev-shell.sh   # Open shell
+./scripts/dev-stop.sh    # Stop containers
+```
+
+The dev container automatically installs all dependencies and includes:
+- Python 3.11 with virtual environment
+- Node.js 18 for the frontend
+- PostgreSQL database
+- All development tools (pytest, black, mypy, etc.)
+
+**Services Available:**
+- Backend API: `http://localhost:8000` (once started)
+- Frontend: `http://localhost:5173` (once started)
+- PostgreSQL: `localhost:5432`
+
+For more details, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+### Production Deployment
+
+See [Deployment](#deployment) section below for production setup instructions.
 
 ## Documentation
 
@@ -96,32 +113,70 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed setup instructions.
 
 ### Prerequisites
 
-- Python 3.11+
-- Node.js 18+
-- PostgreSQL 14+
-- Docker (for containerized deployment)
+- **Docker Desktop** - Required for dev containers
+- **VS Code or Cursor** - Recommended (with Dev Containers extension)
+- **Git** - For version control
 
-### Setup
+No need to install Python, Node.js, or PostgreSQL locally - the dev container includes everything!
+
+### Quick Commands
+
+Once inside the dev container:
 
 ```bash
-# Backend setup
-python -m venv venv
-source venv/bin/activate
-pip install -e ".[dev]"
+# Run Python tests
+pytest --cov=src
 
-# Frontend setup
-cd frontend
-npm install
+# Run frontend tests
+cd frontend && npm test
+
+# Format code
+black .                    # Python
+cd frontend && npm run format  # TypeScript
+
+# Lint code
+ruff check .               # Python
+cd frontend && npm run lint    # TypeScript
+
+# Type check
+mypy .                     # Python
+cd frontend && npm run type-check  # TypeScript
 
 # Install pre-commit hooks
 pre-commit install
-
-# Run tests
-pytest --cov=src
-npm test
 ```
 
-For more details, see [DEVELOPMENT.md](DEVELOPMENT.md).
+### Helper Scripts
+
+```bash
+./scripts/dev-start.sh      # Start dev environment
+./scripts/dev-stop.sh       # Stop dev environment
+./scripts/dev-shell.sh      # Open shell in container
+./scripts/dev-logs.sh       # View container logs
+./scripts/dev-reset-db.sh   # Reset database (WARNING: deletes data)
+```
+
+For detailed development workflows and troubleshooting, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+### Troubleshooting
+
+**Container won't start?**
+```bash
+docker ps  # Check if Docker is running
+docker-compose -f docker-compose.dev.yml build --no-cache  # Rebuild
+```
+
+**Packages not installed?**
+The dev container automatically installs packages on startup. If you see import errors, restart the container:
+```bash
+docker-compose -f docker-compose.dev.yml restart dev
+```
+
+**Database connection issues?**
+```bash
+docker-compose -f docker-compose.dev.yml ps  # Check postgres is healthy
+./scripts/dev-reset-db.sh  # Reset database if needed
+```
 
 ## Deployment
 

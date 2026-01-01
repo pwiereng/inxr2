@@ -29,8 +29,10 @@ This is the easiest way to get started:
    - Python 3.11 with all dev tools
    - Node.js 18 with npm
    - PostgreSQL database (running in separate container)
-   - All dependencies pre-installed
+   - All dependencies auto-installed on startup
    - VS Code extensions configured
+
+   **Note**: Dependencies are automatically installed when the container starts. If you use docker-compose directly (not via VS Code/Cursor), the entrypoint script ensures packages are always installed.
 
 ### Alternative: Manual Docker Compose
 
