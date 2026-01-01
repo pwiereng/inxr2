@@ -21,9 +21,23 @@ def index() -> None:
 
 
 @main.command()
-def serve() -> None:
-    """Start the web server."""
-    click.echo("Server not yet implemented.")
+@click.option("--host", default="0.0.0.0", help="Host to bind to")
+@click.option("--port", default=8000, help="Port to bind to")
+@click.option("--reload", is_flag=True, help="Enable auto-reload")
+def serve(host: str, port: int, reload: bool) -> None:
+    """Start the FastAPI web server."""
+    import uvicorn
+
+    click.echo(f"Starting INXR2 API server on {host}:{port}")
+    if reload:
+        click.echo("Auto-reload enabled")
+
+    uvicorn.run(
+        "inxr2.main:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
 
 
 @main.command()
