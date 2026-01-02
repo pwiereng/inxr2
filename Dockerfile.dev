@@ -21,7 +21,9 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     # Node.js (install from NodeSource)
     curl \
+    ca-certificates \
     gnupg \
+    && update-ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     # Tree-sitter build dependencies
@@ -51,14 +53,22 @@ RUN groupadd --gid $USER_GID $USERNAME \
 # Set working directory
 WORKDIR /workspace
 
+# Install uv (modern, fast Python package installer) with checksum verification
+# Version pinned to 0.9.21 for supply-chain security
+ENV UV_VERSION=0.9.21
+ENV UV_CHECKSUM=0a1ab27383c28ef1c041f85cbbc609d8e3752dfb4b238d2ad97b208a52232baf
+RUN curl -LsSf https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz && \
+    echo "${UV_CHECKSUM}  /tmp/uv.tar.gz" | sha256sum -c - && \
+    mkdir -p /usr/local/cargo/bin && \
+    tar -xzf /tmp/uv.tar.gz -C /usr/local/cargo/bin && \
+    rm /tmp/uv.tar.gz
+
 # Switch to non-root user
 USER $USERNAME
 
-# Ensure cache directories exist with proper permissions
-RUN mkdir -p /home/devuser/.cache /home/devuser/.cargo/bin
-
-# Install uv (modern, fast Python package installer)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Ensure cache directories exist with proper permissions and copy uv to user's bin
+RUN mkdir -p /home/devuser/.cache /home/devuser/.cargo/bin && \
+    cp /usr/local/cargo/bin/uv* /home/devuser/.cargo/bin/
 
 # Create virtual environment in home directory
 RUN python -m venv /home/devuser/.venv
