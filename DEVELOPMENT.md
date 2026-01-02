@@ -2,14 +2,130 @@
 
 Quick reference for common development tasks and checklist.
 
-## Quick Start
+## Docker Development Environment (Recommended)
+
+### Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) installed and running
+- [VS Code](https://code.visualstudio.com/) or [Cursor](https://cursor.sh/) with the Dev Containers extension
+
+### Quick Start with Dev Container (Recommended for Cursor/VS Code)
+
+This is the easiest way to get started:
+
+1. **Open in Cursor/VS Code**:
+   ```bash
+   git clone <repo-url>
+   cd inxr2
+   code .  # or: cursor .
+   ```
+
+2. **Reopen in Container**:
+   - Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
+   - Select: `Dev Containers: Reopen in Container`
+   - Wait for the container to build (first time only, ~5 minutes)
+
+3. **You're ready!** The container includes:
+   - Python 3.11 with all dev tools
+   - Node.js 18 with npm
+   - PostgreSQL database (running in separate container)
+   - All dependencies auto-installed on startup
+   - VS Code extensions configured
+
+   **Note**: Dependencies are automatically installed when the container starts. If you use docker-compose directly (not via VS Code/Cursor), the entrypoint script ensures packages are always installed.
+
+### Alternative: Manual Docker Compose
+
+If you prefer to run Docker manually without the dev container:
+
+```bash
+# Start the development environment
+./scripts/dev-start.sh
+
+# View logs
+./scripts/dev-logs.sh
+
+# Open a shell in the container
+./scripts/dev-shell.sh
+
+# Stop the environment
+./scripts/dev-stop.sh
+
+# Reset the database (WARNING: deletes all data)
+./scripts/dev-reset-db.sh
+```
+
+### Services and Ports
+
+When running, the following services are available:
+
+- **PostgreSQL**: `localhost:5432`
+  - Database: `inxr2_dev`
+  - User: `inxr2_user`
+  - Password: `inxr2_dev_password`
+- **Backend (FastAPI)**: `localhost:8000` (when started)
+- **Frontend (Vite)**: `localhost:5173` (when started)
+
+### Running Tests in Docker
+
+```bash
+# From inside the dev container (or use ./scripts/dev-shell.sh)
+pytest --cov=src          # Run Python tests
+npm test                  # Run TypeScript tests (in frontend/)
+pytest --watch            # Watch mode for Python
+npm test -- --watch      # Watch mode for TypeScript
+```
+
+### Troubleshooting Docker
+
+**Container won't start?**
+```bash
+# Check if Docker is running
+docker ps
+
+# Rebuild the container
+docker-compose -f docker-compose.dev.yml build --no-cache
+./scripts/dev-start.sh
+```
+
+**Database connection issues?**
+```bash
+# Check database is healthy
+docker-compose -f docker-compose.dev.yml ps
+
+# Reset the database
+./scripts/dev-reset-db.sh
+```
+
+**Permission issues?**
+The dev container runs as a non-root user (`devuser`). If you encounter permission issues, ensure your files are owned by UID 1000.
+
+---
+
+## Local Development (Without Docker)
+
+If you prefer to develop without Docker:
+
+### Quick Start
 
 ```bash
 # Setup
 git clone <repo-url>
 cd inxr2
+
+# Install PostgreSQL locally (required)
+# macOS: brew install postgresql
+# Ubuntu: sudo apt-get install postgresql
+
+# Install Python dependencies
 pip install -e ".[dev]"
+
+# Install Node.js dependencies
+cd frontend
 npm install
+cd ..
+
+# Setup pre-commit hooks
 pre-commit install
 
 # Development

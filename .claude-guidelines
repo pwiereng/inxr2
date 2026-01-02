@@ -1,0 +1,201 @@
+# Critical Development Guidelines for INXR2
+
+**These are MANDATORY rules that Claude (and all developers) MUST follow.**
+
+## 1. Docker-Only Development
+
+### Rule
+ALL development work MUST be done within Docker containers. NO EXCEPTIONS.
+
+### Commands
+- ❌ NEVER: `npm install`, `pip install`, `uv pip install` on host
+- ✅ ALWAYS: Run in container via `docker exec inxr2-dev bash -c "..."`
+
+### Package Management
+```bash
+# Python packages
+docker exec inxr2-dev bash -c "cd /workspace && uv pip install <package>"
+
+# Node packages
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm install <package>"
+```
+
+### Why
+- Ensures consistent environment across all machines
+- Avoids Mac/Linux binary incompatibilities
+- Python uses `uv` with virtual environment at `/home/devuser/.venv`
+- Node uses named volume for node_modules
+
+## 2. Testing Requirements
+
+### Rule
+ALL code changes MUST include tests. Tests MUST pass before committing.
+
+### Before EVERY Commit
+```bash
+./scripts/run-all-tests.sh
+```
+
+This script checks:
+- ✅ All backend tests (21+) with coverage (80%+ required)
+- ✅ All frontend tests (17+) with coverage (60%+ required)
+- ✅ Python code quality (black, isort, ruff, mypy)
+- ✅ TypeScript code quality (eslint, prettier, tsc)
+- ✅ Security audit (npm audit - zero vulnerabilities required)
+
+### Dependency Injection Over Mocking
+
+**CRITICAL PRINCIPLE:**
+- ✅ USE: Dependency injection with real/lightweight implementations
+- ❌ AVOID: Mocking libraries (jest.fn(), unittest.mock)
+
+**Example:**
+```python
+# ✅ GOOD - Dependency injection
+def test_search_symbols():
+    fake_repo = InMemorySymbolRepository([symbol1, symbol2])
+    use_case = SearchSymbolsUseCase(repository=fake_repo)
+    result = use_case.execute(SearchRequest(query="test"))
+    assert len(result.symbols) == 2
+
+# ❌ BAD - Mocking
+def test_search_symbols():
+    mock_repo = Mock()
+    mock_repo.search.return_value = [symbol1, symbol2]
+    # ...
+```
+
+## 3. Code Quality & Linting
+
+### Rule
+ALL code must pass linting and type checking BEFORE committing.
+
+### Python Tools (in container)
+```bash
+docker exec inxr2-dev bash -c "cd /workspace && black ."
+docker exec inxr2-dev bash -c "cd /workspace && isort ."
+docker exec inxr2-dev bash -c "cd /workspace && ruff check ."
+docker exec inxr2-dev bash -c "cd /workspace && mypy src/inxr2"
+```
+
+### TypeScript Tools (in container)
+```bash
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm run format"
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm run lint"
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm run type-check"
+```
+
+### Configuration
+- **Python**: Black (line-length: 88), isort (profile: "black"), Ruff, mypy (strict)
+- **TypeScript**: ESLint 9 flat config, Prettier, strict mode
+
+## 4. Package Quality Requirements
+
+### Before Adding ANY Package
+
+Check these requirements:
+
+1. **Not Deprecated**
+   - Check GitHub last commit date (< 6 months preferred)
+   - Check npm/PyPI download trends
+   - Look for deprecation warnings
+
+2. **No Vulnerabilities**
+   - Run `npm audit` (must show zero vulnerabilities)
+   - Check security advisories
+   - Use latest stable versions
+
+3. **Well-Supported**
+   - Active maintenance (recent commits)
+   - Good documentation
+   - Strong community (stars, downloads, resolved issues)
+   - Compatible with Python 3.11+ and React 18+
+
+4. **Version Pinning**
+   - Use caret (`^`) for minor updates in package.json
+   - Pin major versions in pyproject.toml
+   - Document specific version choices
+
+## 5. Clean Rebuild Process
+
+### When to Use
+- After major changes
+- When containers are broken
+- When testing clean slate
+
+### Command
+```bash
+./scripts/clean-rebuild.sh
+```
+
+This will:
+1. Remove all Docker containers, volumes, and images
+2. Rebuild everything from scratch with --no-cache
+3. Optionally run all automated tests
+
+### Other Useful Scripts
+```bash
+./scripts/clean.sh          # Just clean
+./scripts/build.sh          # Just build (with --no-cache option)
+./scripts/run-all-tests.sh  # Just run tests
+./scripts/dev-shell.sh      # Open interactive shell in container
+```
+
+## 6. Pre-Commit Checklist
+
+Before EVERY commit, verify:
+
+- [ ] `./scripts/run-all-tests.sh` passes with ZERO errors
+- [ ] All tests pass (21+ backend, 17+ frontend)
+- [ ] Code is formatted (Black, Prettier)
+- [ ] No linting errors (Ruff, ESLint)
+- [ ] Type checks pass (mypy, tsc)
+- [ ] New code has tests
+- [ ] Coverage hasn't decreased
+- [ ] No security vulnerabilities
+- [ ] All changes made in Docker (not on host)
+
+## Quick Reference
+
+### Common Tasks
+```bash
+# Run all tests (MANDATORY before commit)
+./scripts/run-all-tests.sh
+
+# Clean rebuild everything
+./scripts/clean-rebuild.sh
+
+# Open shell in container
+./scripts/dev-shell.sh
+
+# Install Python package
+docker exec inxr2-dev bash -c "cd /workspace && uv pip install <package>"
+
+# Install Node package
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm install <package>"
+
+# Run backend tests
+docker exec inxr2-dev bash -c "cd /workspace && pytest --cov=src"
+
+# Run frontend tests
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm test -- --coverage"
+```
+
+## For Claude Code Assistant
+
+When working on this codebase:
+
+1. **ALWAYS** check these guidelines first
+2. **NEVER** suggest running npm/pip on host machine
+3. **ALWAYS** include tests with code changes
+4. **ALWAYS** use dependency injection over mocking
+5. **ALWAYS** run ./scripts/run-all-tests.sh before marking work complete
+6. **ALWAYS** check for deprecated/vulnerable packages
+7. **ALWAYS** format and lint code
+
+## References
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Complete contributing guidelines
+- [DESIGN.md](DESIGN.md) - Architecture and design decisions
+- [scripts/README.md](scripts/README.md) - Documentation for all scripts
+- [DEVELOPMENT.md](DEVELOPMENT.md) - Development environment setup

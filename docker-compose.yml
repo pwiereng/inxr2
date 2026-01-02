@@ -1,0 +1,62 @@
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: inxr2-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: inxr2
+      POSTGRES_USER: inxr2_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_production_password}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inxr2_user -d inxr2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - inxr2-network
+
+  # INXR2 Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inxr2-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      # Database connection
+      DATABASE_URL: postgresql://inxr2_user:${POSTGRES_PASSWORD:-changeme_production_password}@postgres:5432/inxr2
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: inxr2
+      POSTGRES_USER: inxr2_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_production_password}
+      # Application settings
+      ENVIRONMENT: production
+      DEBUG: "false"
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - inxr2-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  inxr2-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

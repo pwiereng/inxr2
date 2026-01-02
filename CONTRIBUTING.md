@@ -4,6 +4,7 @@ This document outlines the coding standards, development practices, and guidelin
 
 ## Table of Contents
 
+- [⚠️ CRITICAL: Docker-Only Development](#️-critical-docker-only-development)
 - [Development Philosophy](#development-philosophy)
 - [Code Style](#code-style)
 - [Testing Requirements](#testing-requirements)
@@ -11,6 +12,77 @@ This document outlines the coding standards, development practices, and guidelin
 - [Python Backend Standards](#python-backend-standards)
 - [TypeScript Frontend Standards](#typescript-frontend-standards)
 - [Git Commit Guidelines](#git-commit-guidelines)
+
+## ⚠️ CRITICAL: Docker-Only Development
+
+**ALL development work MUST be done within Docker containers. This is non-negotiable.**
+
+### Docker Development Rules
+
+1. **Package Management in Docker ONLY**
+   - ❌ NEVER run `pip install`, `uv pip install`, or `npm install` on your host machine
+   - ✅ ALWAYS install packages inside the Docker container
+   - Python packages: `docker exec inxr2-dev bash -c "cd /workspace && uv pip install <package>"`
+   - Node packages: `docker exec inxr2-dev bash -c "cd /workspace/frontend && npm install <package>"`
+
+2. **Use Virtual Environments (Python)**
+   - Python packages MUST use `uv` with the virtual environment at `/home/devuser/.venv`
+   - The `VIRTUAL_ENV` environment variable is set automatically in the container
+   - Never use `pip` directly - always use `uv pip` for consistency
+
+3. **Volume Permissions**
+   - `node_modules` uses a named Docker volume to avoid Mac/Linux binary incompatibility
+   - Changes to package files must be made in the container or via docker exec
+   - If you encounter permission errors, check `scripts/docker-entrypoint.sh`
+
+4. **Running Commands**
+   ```bash
+   # Correct - inside container
+   docker exec inxr2-dev bash -c "cd /workspace && pytest"
+   docker exec inxr2-dev bash -c "cd /workspace/frontend && npm test"
+
+   # Or use the provided scripts
+   ./scripts/run-all-tests.sh
+   ./scripts/dev-shell.sh  # Opens interactive shell in container
+   ```
+
+5. **Clean Rebuild Workflow**
+   ```bash
+   # When things are broken or after major changes
+   ./scripts/clean-rebuild.sh
+
+   # This will:
+   # - Remove all Docker containers, volumes, and images
+   # - Rebuild everything from scratch
+   # - Optionally run all automated tests
+   ```
+
+### Package Quality Requirements
+
+**CRITICAL: All packages must meet these criteria:**
+
+1. **No Deprecated Packages**
+   - Before adding a package, check if it's actively maintained
+   - Check GitHub last commit date (< 6 months old preferred)
+   - Check npm/PyPI download trends
+   - Check for deprecation warnings
+
+2. **No Vulnerable Packages**
+   - Run `npm audit` for Node packages (zero vulnerabilities required)
+   - Check Python package security advisories
+   - Use latest stable versions when possible
+
+3. **Well-Supported Packages**
+   - Prefer packages with:
+     - Active maintenance (recent commits)
+     - Good documentation
+     - Strong community (stars, downloads, issues resolved)
+     - Compatible with our stack (Python 3.11+, React 18+)
+
+4. **Version Pinning**
+   - Use caret (`^`) for minor version updates in package.json
+   - Pin major versions in pyproject.toml
+   - Document why specific versions are chosen if pinned exactly
 
 ## Development Philosophy
 
@@ -37,50 +109,91 @@ This document outlines the coding standards, development practices, and guidelin
 
 ### Formatting and Linting
 
-All code must pass formatting and linting checks before being committed.
+**⚠️ CRITICAL: All code must pass formatting and linting checks BEFORE committing.**
 
 **Python:**
-- **Black** for code formatting (line length: 100)
-- **isort** for import sorting
-- **Ruff** or **Pylint** for linting
-- **mypy** for type checking
+- **Black** for code formatting (line length: 88)
+- **isort** for import sorting (profile: black)
+- **Ruff** for linting
+- **mypy** for type checking (strict mode)
 
 **TypeScript:**
 - **Prettier** for code formatting
-- **ESLint** for linting
+- **ESLint** for linting (ESLint 9 flat config)
 - **TypeScript strict mode** enabled
 
 ### Running Formatters
 
-```bash
-# Python
-black .
-isort .
-ruff check .
-mypy .
+**All formatters MUST run in Docker containers:**
 
-# TypeScript
-npm run format    # Prettier
-npm run lint      # ESLint
-npm run type-check  # TypeScript compiler
+```bash
+# Python (run in container)
+docker exec inxr2-dev bash -c "cd /workspace && black ."
+docker exec inxr2-dev bash -c "cd /workspace && isort ."
+docker exec inxr2-dev bash -c "cd /workspace && ruff check ."
+docker exec inxr2-dev bash -c "cd /workspace && mypy src/inxr2"
+
+# TypeScript (run in container)
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm run format"
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm run lint"
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm run type-check"
+
+# Check everything with one command (RECOMMENDED)
+./scripts/run-all-tests.sh
 ```
+
+**The test script will fail if any formatting or linting issues exist.**
 
 ## Testing Requirements
 
+**CRITICAL: All code changes MUST include tests. No exceptions.**
+
 ### Test Coverage
 
-- **Minimum coverage**: 80% overall
+- **Minimum coverage**: 80% overall (enforced in CI)
 - **Target coverage**: 90%+
-- All new features must include tests
+- All new features must include tests BEFORE code review
 - All bug fixes must include regression tests
+- Coverage must not decrease with any PR
 
 ### Test Philosophy
 
-**Avoid Mocking - Use Real Dependencies:**
-- Prefer dependency injection and real implementations over mocks
-- Use in-memory databases (e.g., SQLite in-memory) instead of mocking database calls
+**⚠️ CRITICAL: Dependency Injection Over Mocking**
+
+This is a core principle of our testing approach:
+
+- ✅ **USE**: Dependency injection with real or lightweight implementations
+- ❌ **AVOID**: Mocking libraries (jest.fn(), unittest.mock, etc.) wherever possible
+
+**Why Dependency Injection:**
+- Tests real behavior, not mocked behavior
+- Catches integration issues early
+- Makes tests more maintainable
+- Forces better architecture (loose coupling)
+
+**Implementation Guidelines:**
+- Inject dependencies through constructors/parameters
+- Use in-memory databases (SQLite) instead of mocking DB calls
 - Create lightweight test fixtures and factories
-- Only mock external services that can't be controlled (third-party APIs, network calls)
+- Inject fake/stub implementations that follow the same interface
+- Only mock external services you can't control (third-party APIs, network calls)
+
+**Example:**
+```python
+# ✅ GOOD - Dependency injection
+def test_search_symbols():
+    fake_repo = InMemorySymbolRepository([symbol1, symbol2])
+    use_case = SearchSymbolsUseCase(repository=fake_repo)
+    result = use_case.execute(SearchRequest(query="test"))
+    assert len(result.symbols) == 2
+
+# ❌ BAD - Mocking
+def test_search_symbols():
+    mock_repo = Mock()
+    mock_repo.search.return_value = [symbol1, symbol2]
+    use_case = SearchSymbolsUseCase(repository=mock_repo)
+    # ...
+```
 
 **Test Structure:**
 - Use Arrange-Act-Assert pattern
@@ -90,20 +203,26 @@ npm run type-check  # TypeScript compiler
 
 ### Running Tests
 
-**CRITICAL: Always run tests before and after making changes**
+**⚠️ CRITICAL: ALWAYS run tests before and after making changes**
+
+**All tests must run in Docker containers:**
 
 ```bash
-# Python backend tests
-pytest                          # Run all tests
-pytest --cov=src --cov-report=html  # With coverage report
-pytest -v                       # Verbose output
-pytest tests/unit              # Only unit tests
-pytest tests/integration       # Only integration tests
+# Use the comprehensive test script (RECOMMENDED)
+./scripts/run-all-tests.sh    # Runs ALL tests, linting, and security checks
 
-# TypeScript frontend tests
-npm test                       # Run all tests
-npm test -- --coverage        # With coverage
-npm test -- --watch           # Watch mode during development
+# Or run tests individually in container
+docker exec inxr2-dev bash -c "cd /workspace && pytest --cov=src"
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm test -- --coverage"
+
+# Backend tests (Python)
+docker exec inxr2-dev bash -c "cd /workspace && pytest"
+docker exec inxr2-dev bash -c "cd /workspace && pytest -v"
+docker exec inxr2-dev bash -c "cd /workspace && pytest tests/unit"
+
+# Frontend tests (TypeScript)
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm test"
+docker exec inxr2-dev bash -c "cd /workspace/frontend && npm test -- --watch"
 ```
 
 ### Test Organization
@@ -157,24 +276,42 @@ tests/
 
 ### Before Committing
 
+**⚠️ MANDATORY: Run this command BEFORE every commit:**
+
+```bash
+./scripts/run-all-tests.sh
+```
+
+**This script is REQUIRED and checks:**
+- ✅ All backend tests with coverage
+- ✅ All frontend tests with coverage
+- ✅ Python code quality (black, isort, ruff, mypy)
+- ✅ TypeScript code quality (eslint, prettier, tsc)
+- ✅ Security audit (npm audit)
+
+**If this script fails, DO NOT commit. Fix the issues first.**
+
 **Pre-commit Checklist:**
-- [ ] All tests pass
+- [ ] `./scripts/run-all-tests.sh` passes with zero errors
+- [ ] All tests pass (21+ backend, 17+ frontend)
 - [ ] Code is formatted (Black, Prettier)
-- [ ] No linting errors
-- [ ] Type checks pass (mypy, tsc)
-- [ ] New code has tests
+- [ ] No linting errors (Ruff, ESLint)
+- [ ] Type checks pass (mypy, tsc --noEmit)
+- [ ] New code has tests with good coverage
 - [ ] Test coverage hasn't decreased
+- [ ] No security vulnerabilities (npm audit clean)
+- [ ] All changes run in Docker (not on host machine)
 
 ### Automated Checks
 
 Use pre-commit hooks to automate these checks:
 
 ```bash
-# Install pre-commit hooks
-pre-commit install
+# Install pre-commit hooks (run in container)
+docker exec inxr2-dev bash -c "cd /workspace && pre-commit install"
 
 # Run manually
-pre-commit run --all-files
+docker exec inxr2-dev bash -c "cd /workspace && pre-commit run --all-files"
 ```
 
 ## Python Backend Standards
