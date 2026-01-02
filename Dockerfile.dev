@@ -58,7 +58,9 @@ USER $USERNAME
 RUN mkdir -p /home/devuser/.cache /home/devuser/.cargo/bin
 
 # Install uv (modern, fast Python package installer)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Using official uv Docker image with SHA256 pinning for security and reproducibility
+# https://docs.astral.sh/uv/guides/integration/docker/
+COPY --from=ghcr.io/astral-sh/uv@sha256:15f68a476b768083505fe1dbfcc998344d0135f0ca1b8465c4760b323904f05a /uv /home/devuser/.cargo/bin/uv
 
 # Create virtual environment in home directory
 RUN python -m venv /home/devuser/.venv
