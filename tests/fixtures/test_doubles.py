@@ -32,10 +32,12 @@ fake_repo.add_test_symbol(Symbol(...))
 
 from pathlib import Path
 
-from inxr2.domain.entities import Symbol, File
-from inxr2.application.ports.repositories import SymbolRepositoryPort, FileRepositoryPort
-from inxr2.application.ports.services import ParserServicePort, GitServicePort
-
+from inxr2.application.ports.repositories import (
+    FileRepositoryPort,
+    SymbolRepositoryPort,
+)
+from inxr2.application.ports.services import GitServicePort, ParserServicePort
+from inxr2.domain.entities import File, Symbol
 
 # ============================================================================
 # Repository Test Doubles
@@ -214,7 +216,7 @@ def create_populated_symbol_repository() -> InMemorySymbolRepository:
     Useful for tests that need realistic symbol data without
     setting it up manually each time.
     """
-    from inxr2.domain.value_objects import SymbolLocation, SymbolKind
+    from inxr2.domain.value_objects import SymbolKind, SymbolLocation
 
     repo = InMemorySymbolRepository()
 

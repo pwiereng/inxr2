@@ -1,5 +1,8 @@
 # Cross-Reference Code Browser - Design Document
 
+> **⚠️ CRITICAL:** Before making any code changes, read [.claude-guidelines](.claude-guidelines) and [CONTRIBUTING.md](CONTRIBUTING.md).
+> All development MUST follow Docker-only workflow, testing requirements, and code quality standards.
+
 ## 1. Goals & Vision
 
 Build a cross-reference code browser similar to LXR, but designed for teams working with git repositories. The tool enables developers to browse, search, and understand code across multiple repositories with temporal navigation capabilities.

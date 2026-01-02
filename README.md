@@ -99,6 +99,42 @@ The dev container automatically installs all dependencies and includes:
 
 For more details, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
+## ⚠️ CRITICAL: Development Guidelines
+
+**BEFORE making any changes, READ and FOLLOW these mandatory guidelines:**
+
+### 1. Docker-Only Development
+- ❌ **NEVER** run `npm install`, `pip install`, or `uv pip install` on your host machine
+- ✅ **ALWAYS** run package management and development commands in Docker containers
+- All work must be done inside the Docker development container
+
+### 2. Testing Requirements
+- ✅ **MANDATORY**: Run `./scripts/run-all-tests.sh` before EVERY commit
+- All code changes MUST include tests (no exceptions)
+- Use dependency injection, NOT mocking (see CONTRIBUTING.md)
+- Minimum 80% test coverage (enforced)
+
+### 3. Code Quality
+- All code must pass linting (Black, isort, Ruff, ESLint)
+- All code must pass type checking (mypy, tsc)
+- Run formatters BEFORE committing
+- Zero tolerance for linting errors
+
+### 4. Package Management
+- Only use well-supported, actively maintained packages
+- No deprecated or vulnerable packages allowed
+- Run `npm audit` regularly (zero vulnerabilities required)
+- Python: Use `uv` with virtual environment
+- Node: Check for deprecation warnings
+
+### 5. Before Every Commit
+```bash
+# This MUST pass before you commit
+./scripts/run-all-tests.sh
+```
+
+**👉 See [CONTRIBUTING.md](CONTRIBUTING.md) for complete guidelines - READ IT!**
+
 ### Production Deployment
 
 See [Deployment](#deployment) section below for production setup instructions.

@@ -1,10 +1,6 @@
 """Tests for domain exceptions."""
 
-from inxr2.domain.exceptions import (
-    DomainException,
-    RepositoryNotFound,
-    SymbolNotFound,
-)
+from inxr2.domain.exceptions import DomainException, RepositoryNotFound, SymbolNotFound
 
 
 class TestDomainException:

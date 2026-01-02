@@ -1,12 +1,13 @@
 """Tests for domain entities."""
 
+from dataclasses import FrozenInstanceError
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from inxr2.domain.entities import Repository, Commit, File, Symbol, Reference
-from inxr2.domain.value_objects import SymbolLocation, CommitHash, SymbolKind
+from inxr2.domain.entities import Commit, File, Reference, Repository, Symbol
+from inxr2.domain.value_objects import CommitHash, SymbolKind, SymbolLocation
 
 
 class TestRepository:
@@ -32,7 +33,7 @@ class TestRepository:
             id="repo-1", name="test-repo", url="https://github.com/test/repo.git"
         )
 
-        with pytest.raises(Exception):  # FrozenInstanceError
+        with pytest.raises(FrozenInstanceError):
             repo.name = "new-name"  # type: ignore
 
 

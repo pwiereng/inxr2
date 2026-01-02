@@ -63,8 +63,9 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 # Create virtual environment in home directory
 RUN python -m venv /home/devuser/.venv
 
-# Add venv and uv to PATH
-ENV PATH="/home/devuser/.venv/bin:/home/devuser/.cargo/bin:/home/devuser/.local/bin:${PATH}"
+# Add venv and uv to PATH, and set VIRTUAL_ENV
+ENV VIRTUAL_ENV="/home/devuser/.venv" \
+    PATH="/home/devuser/.venv/bin:/home/devuser/.cargo/bin:/home/devuser/.local/bin:${PATH}"
 
 # Copy and set up entrypoint script
 COPY --chown=devuser:devuser scripts/docker-entrypoint.sh /usr/local/bin/

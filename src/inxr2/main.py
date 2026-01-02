@@ -50,7 +50,9 @@ for location in FRONTEND_DIST_LOCATIONS:
         break
 
 if FRONTEND_DIST and (FRONTEND_DIST / "assets").exists():
-    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="assets")
+    app.mount(
+        "/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="assets"
+    )
 
 
 @app.get("/api")

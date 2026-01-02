@@ -96,6 +96,11 @@ extend-exclude = '''
 )/
 '''
 
+# isort configuration
+[tool.isort]
+profile = "black"
+line_length = 88
+
 # Ruff configuration
 [tool.ruff]
 line-length = 88

@@ -1,8 +1,10 @@
 """Tests for domain value objects."""
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 
-from inxr2.domain.value_objects import SymbolLocation, CommitHash, SymbolKind
+from inxr2.domain.value_objects import CommitHash, SymbolKind, SymbolLocation
 
 
 class TestSymbolLocation:
@@ -30,7 +32,7 @@ class TestSymbolLocation:
         """Test that location is frozen (immutable)."""
         loc = SymbolLocation(line=10, column=5)
 
-        with pytest.raises(Exception):  # FrozenInstanceError
+        with pytest.raises(FrozenInstanceError):
             loc.line = 20  # type: ignore
 
 

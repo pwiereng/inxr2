@@ -2,15 +2,13 @@
 
 import pytest
 
-from inxr2.domain.entities import Symbol
-from inxr2.domain.value_objects import SymbolLocation, SymbolKind
-from inxr2.application.use_cases.search_symbols import (
-    SearchSymbolsUseCase,
-    SearchSymbolsRequest,
-    SearchSymbolsResponse,
-)
 from inxr2.application.ports.repositories import SymbolRepositoryPort
-
+from inxr2.application.use_cases.search_symbols import (
+    SearchSymbolsRequest,
+    SearchSymbolsUseCase,
+)
+from inxr2.domain.entities import Symbol
+from inxr2.domain.value_objects import SymbolKind, SymbolLocation
 
 # ============================================================================
 # Fake Repository (Test Double) - Implements Port Interface
@@ -143,9 +141,7 @@ class TestSearchSymbolsUseCase:
         assert all("calculate" in s.name.lower() for s in response.symbols)
 
     @pytest.mark.asyncio
-    async def test_search_respects_limit(
-        self, use_case: SearchSymbolsUseCase
-    ) -> None:
+    async def test_search_respects_limit(self, use_case: SearchSymbolsUseCase) -> None:
         """Test that search respects the limit parameter."""
         # Arrange
         request = SearchSymbolsRequest(query="calculate", limit=1)
@@ -158,9 +154,7 @@ class TestSearchSymbolsUseCase:
         assert response.total_count == 2  # Total found, but limited to 1
 
     @pytest.mark.asyncio
-    async def test_search_with_no_matches(
-        self, use_case: SearchSymbolsUseCase
-    ) -> None:
+    async def test_search_with_no_matches(self, use_case: SearchSymbolsUseCase) -> None:
         """Test search when no symbols match."""
         # Arrange
         request = SearchSymbolsRequest(query="nonexistent")
