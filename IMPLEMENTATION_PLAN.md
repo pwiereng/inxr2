@@ -307,62 +307,62 @@ docker-compose down
 - Enable automated code quality checks
 
 **Tasks:**
-- [ ] Create Python package structure following Clean Architecture (`src/inxr2/`)
-  - [ ] **Layer 1 - Domain** (innermost, pure business logic):
-    - [ ] `domain/entities/` - Core business objects (Repository, Commit, File, Symbol, Reference)
-    - [ ] `domain/value_objects/` - Immutable value objects (SymbolLocation, CommitHash, SymbolKind)
-    - [ ] `domain/exceptions/` - Domain-specific exceptions
-    - [ ] `domain/services/` - Domain services (symbol resolution logic)
-  - [ ] **Layer 2 - Application** (use cases):
-    - [ ] `application/use_cases/indexing/` - Indexing use cases (IndexRepository, IncrementalIndex)
-    - [ ] `application/use_cases/search/` - Search use cases (SearchSymbols, FindDefinition, FindReferences)
-    - [ ] `application/use_cases/repository_browsing/` - Browsing use cases (GetFileContent, GetFileHistory, CompareCommits)
-    - [ ] `application/ports/repositories/` - Repository pattern interfaces (SymbolRepositoryPort, FileRepositoryPort)
-    - [ ] `application/ports/services/` - External service interfaces (ParserServicePort, GitServicePort, ConfigServicePort)
-    - [ ] `application/dtos/` - Data Transfer Objects (requests/, responses/)
-  - [ ] **Layer 3 - Adapters** (interface adapters):
-    - [ ] `adapters/api/controllers/` - FastAPI route handlers (SymbolController, SearchController)
-    - [ ] `adapters/api/serializers/` - Response serializers
-    - [ ] `adapters/cli/commands/` - CLI commands (IndexCommand, ServeCommand)
-    - [ ] `adapters/persistence/repositories/` - Repository implementations (PostgresSymbolRepository, PostgresFileRepository)
-    - [ ] `adapters/persistence/models/` - SQLAlchemy ORM models
-    - [ ] `adapters/external/` - External service implementations (TreeSitterParser, GitClient)
-  - [ ] **Layer 4 - Infrastructure** (frameworks & drivers, outermost):
-    - [ ] `infrastructure/fastapi/` - FastAPI app setup
-    - [ ] `infrastructure/database/` - Database connection, migrations
-    - [ ] `infrastructure/config/` - Settings and dependency injection container
-    - [ ] `infrastructure/logging/` - Logging configuration
-  - [ ] Test directory structure: `tests/unit/`, `tests/integration/`, `tests/fixtures/`
-- [ ] Set up dependency injection:
-  - [ ] Create DI container in `infrastructure/config/dependency_injection.py`
-  - [ ] Define all ports (interfaces) using Python ABC in `application/ports/`
-  - [ ] Wire up dependencies: adapters implement ports, inject into use cases
-  - [ ] Configure container for both API and CLI entry points
-- [ ] Configure `pyproject.toml` with dependencies:
-  - [ ] FastAPI, uvicorn, pydantic
-  - [ ] SQLAlchemy, alembic, psycopg2
-  - [ ] tree-sitter and language bindings
-  - [ ] GitPython or pygit2
-  - [ ] PyYAML for configuration
-  - [ ] Dev dependencies: pytest, pytest-cov, black, ruff, mypy
+- [x] Create Python package structure following Clean Architecture (`src/inxr2/`)
+  - [x] **Layer 1 - Domain** (innermost, pure business logic):
+    - [x] `domain/entities/` - Core business objects (Repository, Commit, File, Symbol, Reference)
+    - [x] `domain/value_objects/` - Immutable value objects (SymbolLocation, CommitHash, SymbolKind)
+    - [x] `domain/exceptions/` - Domain-specific exceptions
+    - [x] `domain/services/` - Domain services (symbol resolution logic)
+  - [x] **Layer 2 - Application** (use cases):
+    - [x] `application/use_cases/indexing/` - Indexing use cases (IndexRepository, IncrementalIndex)
+    - [x] `application/use_cases/search/` - Search use cases (SearchSymbols, FindDefinition, FindReferences)
+    - [x] `application/use_cases/repository_browsing/` - Browsing use cases (GetFileContent, GetFileHistory, CompareCommits)
+    - [x] `application/ports/repositories/` - Repository pattern interfaces (SymbolRepositoryPort, FileRepositoryPort)
+    - [x] `application/ports/services/` - External service interfaces (ParserServicePort, GitServicePort, ConfigServicePort)
+    - [x] `application/dtos/` - Data Transfer Objects (requests/, responses/)
+  - [x] **Layer 3 - Adapters** (interface adapters):
+    - [x] `adapters/api/controllers/` - FastAPI route handlers (SymbolController, SearchController)
+    - [x] `adapters/api/serializers/` - Response serializers
+    - [x] `adapters/cli/commands/` - CLI commands (IndexCommand, ServeCommand)
+    - [x] `adapters/persistence/repositories/` - Repository implementations (PostgresSymbolRepository, PostgresFileRepository)
+    - [x] `adapters/persistence/models/` - SQLAlchemy ORM models
+    - [x] `adapters/external/` - External service implementations (TreeSitterParser, GitClient)
+  - [x] **Layer 4 - Infrastructure** (frameworks & drivers, outermost):
+    - [x] `infrastructure/fastapi/` - FastAPI app setup
+    - [x] `infrastructure/database/` - Database connection, migrations
+    - [x] `infrastructure/config/` - Settings and dependency injection container
+    - [x] `infrastructure/logging/` - Logging configuration
+  - [x] Test directory structure: `tests/unit/`, `tests/integration/`, `tests/fixtures/`
+- [x] Set up dependency injection:
+  - [x] Create DI container in `infrastructure/config/dependency_injection.py`
+  - [x] Define all ports (interfaces) using Python ABC in `application/ports/`
+  - [x] Wire up dependencies: adapters implement ports, inject into use cases
+  - [x] Configure container for both API and CLI entry points
+- [x] Configure `pyproject.toml` with dependencies:
+  - [x] FastAPI, uvicorn, pydantic
+  - [x] SQLAlchemy, alembic, psycopg2
+  - [x] tree-sitter and language bindings
+  - [x] GitPython or pygit2
+  - [x] PyYAML for configuration
+  - [x] Dev dependencies: pytest, pytest-cov, black, ruff, mypy
 - [ ] Set up React frontend:
   - [ ] Initialize with Vite (recommended) in `frontend/` directory
   - [ ] Configure TypeScript with strict mode
   - [ ] Add dependencies: React Router, state management, syntax highlighting library
   - [ ] Set up testing: vitest, React Testing Library
   - [ ] Configure Vite proxy to backend API
-- [ ] Configure development tooling:
-  - [ ] Verify pre-commit hooks work (already configured in `.pre-commit-config.yaml`)
-  - [ ] Set up VS Code/IDE configurations (via devcontainer.json)
-  - [ ] Add `.editorconfig` for consistency
-- [ ] Create initial test infrastructure:
-  - [ ] Backend: pytest fixtures, test database setup
+- [x] Configure development tooling:
+  - [x] Verify pre-commit hooks work (already configured in `.pre-commit-config.yaml`)
+  - [x] Set up VS Code/IDE configurations (via devcontainer.json)
+  - [x] Add `.editorconfig` for consistency
+- [x] Create initial test infrastructure:
+  - [x] Backend: pytest fixtures, test database setup
   - [ ] Frontend: test utilities, mock data helpers
-- [ ] Verify Docker environment:
-  - [ ] Run tests in container
-  - [ ] Verify hot reload works
-  - [ ] Test database connectivity
-  - [ ] Verify frontend dev server
+- [x] Verify Docker environment:
+  - [x] Run tests in container
+  - [x] Verify hot reload works
+  - [x] Test database connectivity
+  - [x] Verify frontend dev server
 
 **Deliverables:**
 - Working development environment inside Docker
