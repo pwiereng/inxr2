@@ -37,32 +37,112 @@ class FakeSymbolRepository(SymbolRepositoryPort):
 
     def __init__(self) -> None:
         """Initialize with empty in-memory storage."""
-        self._symbols: dict[str, Symbol] = {}
+        self._symbols: dict[int, Symbol] = {}
+        self._next_id = 1
 
     async def save(self, symbol: Symbol) -> Symbol:
         """Save symbol to in-memory storage."""
-        self._symbols[symbol.id] = symbol
-        return symbol
+        if symbol.id is None:
+            # Assign new ID
+            new_symbol = Symbol(
+                id=self._next_id,
+                file_id=symbol.file_id,
+                repository_id=symbol.repository_id,
+                commit_id=symbol.commit_id,
+                name=symbol.name,
+                kind=symbol.kind,
+                start_line=symbol.start_line,
+                start_column=symbol.start_column,
+                end_line=symbol.end_line,
+                end_column=symbol.end_column,
+                qualified_name=symbol.qualified_name,
+                parent_symbol_id=symbol.parent_symbol_id,
+                scope=symbol.scope,
+                signature=symbol.signature,
+                docstring=symbol.docstring,
+                metadata=symbol.metadata,
+            )
+            self._symbols[self._next_id] = new_symbol
+            self._next_id += 1
+            return new_symbol
+        else:
+            self._symbols[symbol.id] = symbol
+            return symbol
 
-    async def find_by_id(self, symbol_id: str) -> Symbol | None:
+    async def save_many(self, symbols: list[Symbol]) -> list[Symbol]:
+        """Bulk save symbols."""
+        return [await self.save(symbol) for symbol in symbols]
+
+    async def find_by_id(self, symbol_id: int) -> Symbol | None:
         """Find symbol by ID from in-memory storage."""
         return self._symbols.get(symbol_id)
 
-    async def find_by_name(
-        self, name: str, repository_id: str | None = None
+    async def search_by_name(
+        self,
+        name: str,
+        repository_id: int | None = None,
+        kind: str | None = None,
+        limit: int = 50,
     ) -> list[Symbol]:
-        """Find symbols by name from in-memory storage."""
+        """Search symbols by name from in-memory storage."""
         results = [
             symbol
             for symbol in self._symbols.values()
             if name.lower() in symbol.name.lower()
-            and (repository_id is None or symbol.file_id.startswith(repository_id))
+            and (repository_id is None or symbol.repository_id == repository_id)
+            and (kind is None or symbol.kind.value == kind)
         ]
-        return results
+        return results[:limit]
+
+    async def find_by_qualified_name(
+        self, repository_id: int, qualified_name: str
+    ) -> list[Symbol]:
+        """Find symbols by qualified name."""
+        return [
+            symbol
+            for symbol in self._symbols.values()
+            if symbol.repository_id == repository_id
+            and symbol.qualified_name == qualified_name
+        ]
+
+    async def list_by_file(self, file_id: int) -> list[Symbol]:
+        """List all symbols in a file."""
+        return [
+            symbol
+            for symbol in self._symbols.values()
+            if symbol.file_id == file_id
+        ]
+
+    async def delete_by_file(self, file_id: int) -> int:
+        """Delete all symbols for a file."""
+        to_delete = [
+            sid for sid, symbol in self._symbols.items()
+            if symbol.file_id == file_id
+        ]
+        for sid in to_delete:
+            del self._symbols[sid]
+        return len(to_delete)
 
     def add_test_symbol(self, symbol: Symbol) -> None:
         """Helper method to add test data."""
-        self._symbols[symbol.id] = symbol
+        if symbol.id is not None:
+            self._symbols[symbol.id] = symbol
+        else:
+            # Assign ID if not provided
+            symbol_with_id = Symbol(
+                id=self._next_id,
+                file_id=symbol.file_id,
+                repository_id=symbol.repository_id,
+                commit_id=symbol.commit_id,
+                name=symbol.name,
+                kind=symbol.kind,
+                start_line=symbol.start_line,
+                start_column=symbol.start_column,
+                end_line=symbol.end_line,
+                end_column=symbol.end_column,
+            )
+            self._symbols[self._next_id] = symbol_with_id
+            self._next_id += 1
 
 
 # ============================================================================
@@ -90,29 +170,44 @@ class TestSearchSymbolsUseCase:
         # Add test symbols
         repo.add_test_symbol(
             Symbol(
-                id="sym-1",
+                id=1,
+                file_id=1,
+                repository_id=1,
+                commit_id=1,
                 name="calculate_total",
                 kind=SymbolKind.FUNCTION,
-                location=SymbolLocation(line=10, column=0),
-                file_id="file-1",
+                start_line=10,
+                start_column=0,
+                end_line=15,
+                end_column=0,
             )
         )
         repo.add_test_symbol(
             Symbol(
-                id="sym-2",
+                id=2,
+                file_id=1,
+                repository_id=1,
+                commit_id=1,
                 name="Calculator",
                 kind=SymbolKind.CLASS,
-                location=SymbolLocation(line=20, column=0),
-                file_id="file-1",
+                start_line=20,
+                start_column=0,
+                end_line=30,
+                end_column=0,
             )
         )
         repo.add_test_symbol(
             Symbol(
-                id="sym-3",
+                id=3,
+                file_id=2,
+                repository_id=1,
+                commit_id=1,
                 name="calculate_tax",
                 kind=SymbolKind.FUNCTION,
-                location=SymbolLocation(line=30, column=0),
-                file_id="file-2",
+                start_line=30,
+                start_column=0,
+                end_line=35,
+                end_column=0,
             )
         )
 

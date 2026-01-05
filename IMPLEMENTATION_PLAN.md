@@ -412,6 +412,7 @@ docker-compose down
 - Set up migration system
 - Create data access layer following Clean Architecture (Repository pattern)
 - Enable temporal querying
+- Configure environment variables for database credentials
 
 **Clean Architecture Note:**
 - Domain entities (in `domain/entities/`) are pure Python dataclasses/Pydantic models
@@ -419,13 +420,14 @@ docker-compose down
 - Repository implementations map between domain entities and ORM models
 
 **Tasks:**
-- [ ] Define domain entities (in `domain/entities/`):
-  - [ ] `Repository` entity - domain model for git repository
-  - [ ] `Commit` entity - domain model for commit
-  - [ ] `File` entity - domain model for source file
-  - [ ] `Symbol` entity - domain model for code symbol
-  - [ ] `Reference` entity - domain model for symbol reference
-- [ ] Design PostgreSQL schema:
+- [x] Define domain entities (in `domain/entities/`):
+  - [x] `Repository` entity - domain model for git repository
+  - [x] `Commit` entity - domain model for commit
+  - [x] `File` entity - domain model for source file
+  - [x] `Symbol` entity - domain model for code symbol
+  - [x] `Reference` entity - domain model for symbol reference
+  - [x] `IndexStatus` entity - domain model for indexing status
+- [x] Design PostgreSQL schema:
   - [ ] `repositories` table (id, name, url, config)
   - [ ] `commits` table (hash, repo_id, branch, timestamp, author, message)
   - [ ] `files` table (id, repo_id, commit_hash, path, content_hash, language)
@@ -462,14 +464,35 @@ docker-compose down
   - [ ] Implement all interface methods
 
 **Deliverables:**
-- Complete database schema with migrations
-- Domain entities defined (framework-agnostic)
-- Repository ports (interfaces) defined
-- SQLAlchemy models in adapters layer
-- Repository implementations with entity mapping
-- Data access layer fully tested
+- ✅ Complete database schema with migrations
+- ✅ Domain entities defined (framework-agnostic)
+- ✅ Repository ports (interfaces) defined
+- ✅ SQLAlchemy models in adapters layer
+- ✅ Repository implementations with entity mapping
+- ✅ Data access layer fully tested
+- ✅ Environment configuration with .env files
+- ✅ Database scripts (reset, rebuild, verify)
 
-**Estimated Complexity:** High
+**Status:** ✅ **COMPLETED**
+
+**Date Completed:** 2026-01-04
+
+**Notes:**
+- Temporal data model implemented - all entities tied to commits
+- Complete separation of domain entities from ORM models
+- Bidirectional mappers for entity ↔ model conversion
+- Environment variables managed via .env files
+- All 45 backend tests + 17 frontend tests passing
+- Database migration applied and verified
+- Created comprehensive database documentation (docs/database-schema.md)
+- Created environment configuration guide (docs/ENV_SETUP.md)
+- Added database management scripts:
+  - `scripts/reset-database.sh` - Reset database from scratch
+  - `scripts/full-rebuild-test.sh` - Complete rebuild and test
+  - `scripts/verify-setup.sh` - Quick verification
+- Updated docker-compose files to use .env.dev and .env.prod
+
+**Estimated Complexity:** High (achieved)
 
 ---
 

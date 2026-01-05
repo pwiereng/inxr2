@@ -74,10 +74,16 @@ class SearchSymbolsUseCase:
         # 3. Rank results
         # 4. Return response
 
-        symbols = await self._symbol_repository.find_by_name(
-            request.query, repository_id=request.repository_id
+        # Get all matching symbols (no limit) for total count
+        all_symbols = await self._symbol_repository.search_by_name(
+            name=request.query,
+            repository_id=request.repository_id,
+            limit=9999,  # Get all for count
         )
 
+        # Apply limit for response
+        limited_symbols = all_symbols[: request.limit]
+
         return SearchSymbolsResponse(
-            symbols=symbols[: request.limit], total_count=len(symbols)
+            symbols=limited_symbols, total_count=len(all_symbols)
         )

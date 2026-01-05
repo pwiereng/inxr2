@@ -11,22 +11,45 @@ class Commit:
     """
     A git commit snapshot.
 
-    Attributes:
-        hash: Commit hash (SHA-1)
-        repository_id: ID of repository this commit belongs to
-        branch: Branch name
-        timestamp: Commit timestamp
-        author: Author name
-        message: Commit message
-        parent_hashes: Parent commit hashes for graph traversal
+    Domain entity (framework-agnostic). Separate from SQLAlchemy ORM model.
 
-    TODO: Add methods for commit comparison
+    Attributes:
+        commit_hash: Full 40-character SHA-1 hash
+        repository_id: ID of repository this commit belongs to
+        author_name: Name of commit author
+        author_email: Email of commit author
+        committer_name: Name of committer (may differ from author)
+        committer_email: Email of committer
+        author_date: When code was authored
+        commit_date: When commit was created
+        message: Commit message
+        id: Database ID (None for new entities)
+        short_hash: 7-character short hash for display
+        parent_hashes: List of parent commit hashes (for merge commits)
+        branch: Branch name (None for detached commits)
+        indexed_at: When this commit was indexed
     """
 
-    hash: CommitHash
-    repository_id: str
-    branch: str
-    timestamp: datetime
-    author: str
+    commit_hash: CommitHash
+    repository_id: int
+    author_name: str
+    author_email: str
+    committer_name: str
+    committer_email: str
+    author_date: datetime
+    commit_date: datetime
     message: str
-    parent_hashes: list[CommitHash] | None = None
+    id: int | None = None
+    short_hash: str | None = None
+    parent_hashes: list[str] | None = None
+    branch: str | None = None
+    indexed_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        """Validate commit entity."""
+        if not self.author_name:
+            raise ValueError("Author name cannot be empty")
+        if not self.author_email:
+            raise ValueError("Author email cannot be empty")
+        if not self.message:
+            raise ValueError("Commit message cannot be empty")

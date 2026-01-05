@@ -63,6 +63,10 @@ The fastest way to get started is using the Docker development environment:
 # Clone the repository
 git clone <repository-url>
 cd inxr2
+
+# The project includes a .env.dev file with development defaults
+# No additional configuration needed for development!
+# For production, see "Production Deployment" section below
 ```
 
 **Option 1: Using VS Code/Cursor (Recommended)**
@@ -137,7 +141,24 @@ For more details, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ### Production Deployment
 
-See [Deployment](#deployment) section below for production setup instructions.
+**IMPORTANT: Configure environment variables before deployment!**
+
+```bash
+# 1. Create production environment file
+cp .env.prod.example .env.prod
+
+# 2. Edit .env.prod and set secure values
+# CRITICAL: Change POSTGRES_PASSWORD to a strong password!
+# CRITICAL: Generate a random SECRET_KEY!
+# Update ALLOWED_HOSTS and CORS_ORIGINS for your domain
+nano .env.prod
+
+# 3. Build and start
+docker-compose build
+docker-compose up -d
+```
+
+See [Deployment](#deployment) section below for complete production setup instructions.
 
 ## Documentation
 
@@ -216,15 +237,53 @@ docker-compose -f docker-compose.dev.yml ps  # Check postgres is healthy
 
 ## Deployment
 
-INXR2 is designed to run in a self-contained Docker container:
+### Environment Configuration
+
+**CRITICAL: Set up environment variables before deploying to production!**
+
+1. **Create production environment file:**
+   ```bash
+   cp .env.prod.example .env.prod
+   ```
+
+2. **Edit `.env.prod` and set secure values:**
+   - `POSTGRES_PASSWORD`: Strong password (generate with `openssl rand -base64 32`)
+   - `SECRET_KEY`: Random secret key (generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`)
+   - `ALLOWED_HOSTS`: Your domain(s)
+   - `CORS_ORIGINS`: Your frontend URL(s)
+
+3. **Never commit `.env.prod` to version control!** (already in `.gitignore`)
+
+### Docker Compose Deployment (Recommended)
+
+```bash
+# 1. Configure environment (see above)
+cp .env.prod.example .env.prod
+nano .env.prod  # Edit with secure values
+
+# 2. Build and start
+docker-compose build
+docker-compose up -d
+
+# 3. View logs
+docker-compose logs -f
+
+# 4. Stop
+docker-compose down
+```
+
+### Standalone Docker Deployment
+
+INXR2 can also run as a single Docker container:
 
 ```bash
 # Build the image
 docker build -t inxr2 .
 
-# Run the container
+# Run with environment file
 docker run -d \
   -p 8000:8000 \
+  --env-file .env.prod \
   -v $(pwd)/config.yaml:/app/config.yaml \
   -v inxr2-data:/var/lib/postgresql/data \
   --name inxr2 \
@@ -240,6 +299,28 @@ The container includes:
 See [DESIGN.md - Section 9](DESIGN.md#9-deployment) for detailed deployment options.
 
 ## Configuration
+
+### Environment Variables
+
+Environment variables are managed through `.env` files:
+
+- **`.env.dev`**: Development environment (committed to repo)
+- **`.env.prod`**: Production environment (NOT committed - create from `.env.prod.example`)
+- **`.env.example`**: Template showing all available variables
+
+**Key Variables:**
+- `POSTGRES_PASSWORD`: Database password (CHANGE in production!)
+- `DATABASE_URL`: Full database connection string
+- `ENVIRONMENT`: development, staging, or production
+- `DEBUG`: Enable debug mode (false in production)
+- `LOG_LEVEL`: Logging verbosity (DEBUG, INFO, WARNING, ERROR)
+- `SECRET_KEY`: Secret key for security features (production only)
+- `ALLOWED_HOSTS`: Comma-separated list of allowed domains
+- `CORS_ORIGINS`: Comma-separated list of allowed CORS origins
+
+See `.env.example` for complete list of variables.
+
+### Application Configuration
 
 Example `config.yaml`:
 

@@ -136,6 +136,9 @@ celerybeat.pid
 
 # Environments
 .env
+.env.prod
+.env.local
+.env.*.local
 .envrc
 .venv
 env/
@@ -248,8 +251,6 @@ pgdata/
 
 # Local config overrides
 config.local.yaml
-.env.local
-.env.*.local
 
 # Repository clones (if stored locally)
 repos/
