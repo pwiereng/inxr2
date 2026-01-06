@@ -103,6 +103,11 @@ class FileRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def list_by_repository(self, repository_id: int) -> list[File]:
+        """List all files for a repository (latest version)."""
+        pass
+
+    @abstractmethod
     async def find_by_content_hash(self, content_hash: str) -> list[File]:
         """Find files with matching content hash (deduplication)."""
         pass

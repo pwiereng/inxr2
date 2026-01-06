@@ -34,9 +34,20 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # TODO: Register routers
-    # app.include_router(symbol_router, prefix="/api/symbols")
-    # app.include_router(search_router, prefix="/api/search")
+    # Initialize database
+    from ..database import init_database
+    init_database()
+
+    # Register routers
+    from ...adapters.api.routes import indexing, repositories
+    app.include_router(repositories.router, prefix="/api")
+    app.include_router(indexing.router, prefix="/api")
+
+    # Health check endpoint
+    @app.get("/api/health")
+    async def health():
+        """Health check endpoint."""
+        return {"status": "healthy"}
 
     # TODO: Add error handlers
 

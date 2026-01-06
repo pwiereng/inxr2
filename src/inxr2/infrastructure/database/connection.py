@@ -125,3 +125,7 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     db = get_database_connection()
     async with db.session() as session:
         yield session
+
+
+# Alias for consistency with route imports
+get_db_session = get_async_session
