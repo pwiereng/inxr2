@@ -1,5 +1,16 @@
 # Vertical Slice: Basic File Indexing and Display
 
+**Status:** ✅ COMPLETED (2026-01-05)
+
+**Completion Summary:**
+- All planned features implemented
+- Backend indexing with language detection (60+ languages)
+- Frontend UI for browsing repositories and files
+- Full test coverage: 85% (47 new tests, 92 total)
+- See git commit 1c77bed for details
+
+---
+
 ## Goal
 Get a basic end-to-end flow working: index files from a directory → store in database → display in UI.
 

@@ -335,7 +335,7 @@ tests/                         # Backend tests
 ## Important Files
 
 - **DESIGN.md** - Complete design document with architecture decisions
-- **IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.3)
+- **IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.4)
 - **CONTRIBUTING.md** - Coding standards, testing philosophy, git workflow
 - **docs/database-schema.md** - Complete database schema with design rationale
 
@@ -516,7 +516,17 @@ Recent achievements:
 - Database migration applied to PostgreSQL
 - Live integration test verified CRUD operations
 
-**Next Phase:** 1.4 Git Integration - Implement git operations and repository management
+**Phase 1.4: Vertical Slice - Basic File Indexing** - ✅ COMPLETED (2026-01-05)
+
+Recent achievements:
+- Backend file indexing use case (IndexLocalDirectoryUseCase)
+- Language detector service (60+ languages)
+- API routes (repositories, files, indexing)
+- Frontend repositories and files pages
+- Comprehensive test suite (47 new tests)
+- Test coverage: 85% (92 tests passing)
+
+**Next Phase:** 1.5 Configuration System - Parse YAML config and implement CLI framework
 
 See `IMPLEMENTATION_PLAN.md` for complete roadmap.
 

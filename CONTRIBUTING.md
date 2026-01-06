@@ -152,6 +152,7 @@ docker exec inxr2-dev bash -c "cd /workspace/frontend && npm run type-check"
 
 - **Minimum coverage**: 80% overall (enforced in CI)
 - **Target coverage**: 90%+
+- **Current coverage**: 85% with 92 tests (as of Phase 1.4 completion)
 - All new features must include tests BEFORE code review
 - All bug fixes must include regression tests
 - Coverage must not decrease with any PR

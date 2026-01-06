@@ -10,12 +10,12 @@ INXR2 is a modern code browser similar to LXR but designed specifically for git-
 
 **Architecture**: Clean Architecture (Hexagonal/Ports & Adapters)
 
-**Current Status**: Phase 1 (Infrastructure) in progress
-- ✅ Docker development environment complete
-- ✅ Dev containers configured and working
-- ✅ Hello world apps deployed (FastAPI + React)
-- ✅ Production Docker build and deployment verified
-- 🔄 Database schema design in progress
+**Current Status**: Phase 1.4 Complete (Vertical Slice)
+- ✅ Phase 1.1: Project Setup (COMPLETED)
+- ✅ Phase 1.2: React Frontend and Development Infrastructure (COMPLETED)
+- ✅ Phase 1.3: Database Foundation and Environment Configuration (COMPLETED 2026-01-04)
+- ✅ Phase 1.4: Vertical Slice - Basic File Indexing (COMPLETED 2026-01-05)
+- ⏭️  Next: Phase 1.5 Configuration System
 
 ---
 
@@ -526,7 +526,64 @@ docker-compose down
 
 ---
 
-### 1.4 Configuration System
+### 1.4 Vertical Slice - Basic File Indexing
+
+**Status:** ✅ COMPLETED (2026-01-05)
+
+**Objective:** Implement minimal end-to-end feature demonstrating complete stack from database to UI.
+
+**What Was Completed:**
+
+**Backend:**
+- IndexLocalDirectoryUseCase with full file indexing logic
+- LanguageDetector service (60+ language support)
+- API routes:
+  - POST /api/index/local (trigger indexing)
+  - GET /api/repositories (list all repositories)
+  - GET /api/repositories/{id} (get repository details)
+  - GET /api/repositories/{id}/files (list repository files)
+- Repository adapters (PostgresRepositoryAdapter, PostgresCommitRepository, PostgresFileRepository)
+
+**Frontend:**
+- Repositories listing page (Material-UI)
+- Files listing page with search and filtering
+- Updated Home page with navigation
+
+**Testing:**
+- 47 new tests added
+- Test coverage: 85% (up from 58%)
+- Total: 92 tests passing
+- Unit tests: LanguageDetector, Repository use cases, IndexLocalDirectory
+- Integration tests: Repository adapters, API endpoints
+- Custom StringArray type for PostgreSQL/SQLite compatibility
+
+**Development Dependencies:**
+- Added httpx for async API testing
+
+**Key Files:**
+- `src/inxr2/application/use_cases/indexing/index_local_directory.py`
+- `src/inxr2/domain/services/language_detector.py`
+- `src/inxr2/adapters/api/routes/indexing.py`
+- `src/inxr2/adapters/api/routes/repositories.py`
+- `frontend/src/pages/Repositories.tsx`
+- `frontend/src/pages/Files.tsx`
+- `tests/unit/application/test_index_local_directory.py` (9 tests)
+- `tests/unit/domain/test_language_detector.py` (14 tests)
+- `tests/integration/adapters/test_repository_adapters.py` (14 tests)
+- `tests/integration/api/test_api_endpoints.py` (4 tests)
+
+**Limitations (By Design - MVP):**
+- No Git integration (dummy commits with timestamp hashes)
+- No Tree-sitter parsing (no symbol extraction)
+- No authentication/authorization
+- No path validation in API
+- Serial file processing (not async)
+
+**Estimated Complexity:** Medium (achieved)
+
+---
+
+### 1.5 Configuration System
 
 **Objectives:**
 - Parse YAML configuration files
