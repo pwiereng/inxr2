@@ -8,7 +8,7 @@ from inxr2.application.use_cases.search_symbols import (
     SearchSymbolsUseCase,
 )
 from inxr2.domain.entities import Symbol
-from inxr2.domain.value_objects import SymbolKind, SymbolLocation
+from inxr2.domain.value_objects import SymbolKind
 
 # ============================================================================
 # Fake Repository (Test Double) - Implements Port Interface
@@ -108,16 +108,13 @@ class FakeSymbolRepository(SymbolRepositoryPort):
     async def list_by_file(self, file_id: int) -> list[Symbol]:
         """List all symbols in a file."""
         return [
-            symbol
-            for symbol in self._symbols.values()
-            if symbol.file_id == file_id
+            symbol for symbol in self._symbols.values() if symbol.file_id == file_id
         ]
 
     async def delete_by_file(self, file_id: int) -> int:
         """Delete all symbols for a file."""
         to_delete = [
-            sid for sid, symbol in self._symbols.items()
-            if symbol.file_id == file_id
+            sid for sid, symbol in self._symbols.items() if symbol.file_id == file_id
         ]
         for sid in to_delete:
             del self._symbols[sid]

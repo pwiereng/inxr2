@@ -1,41 +1,18 @@
 """
 FastAPI application entry point for INXR2.
 
-TODO: Migrate to infrastructure/fastapi/app.py
-This file is kept for backward compatibility during Phase 1.2.
-
 This module provides the main FastAPI application with REST API endpoints.
 """
 
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-# TODO: Replace with infrastructure.fastapi.app.create_app() after migration
-# from .infrastructure.fastapi.app import create_app
-# app = create_app()
+from .infrastructure.fastapi.app import create_app
 
-# Create FastAPI app instance
-app = FastAPI(
-    title="INXR2",
-    description="Cross-reference code browser for git repositories",
-    version="0.1.0",
-)
-
-# Configure CORS to allow frontend to call API
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:8000",  # Production
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Create app using factory function
+app = create_app()
 
 # Serve static frontend files if they exist (production mode)
 # Try multiple locations for frontend dist
@@ -53,28 +30,6 @@ if FRONTEND_DIST and (FRONTEND_DIST / "assets").exists():
     app.mount(
         "/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="assets"
     )
-
-
-@app.get("/api")
-async def api_root() -> dict[str, str]:
-    """API root endpoint - returns welcome message."""
-    return {
-        "message": "Welcome to INXR2 API",
-        "version": "0.1.0",
-        "docs": "/docs",
-    }
-
-
-@app.get("/api/health")
-async def health() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "healthy", "service": "inxr2-api"}
-
-
-@app.get("/api/hello")
-async def hello(name: str = "World") -> dict[str, str]:
-    """Hello world endpoint with optional name parameter."""
-    return {"message": f"Hello, {name}!", "from": "INXR2 Backend"}
 
 
 # Serve frontend index.html for all non-API routes (SPA support)

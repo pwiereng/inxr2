@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import CHAR, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import CHAR, JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
@@ -25,15 +25,27 @@ class IndexStatusModel(Base, TimestampMixin):
 
     # Indexing state
     last_indexed_commit: Mapped[str | None] = mapped_column(CHAR(40), nullable=True)
-    last_indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
-    indexing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
-    indexing_status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending", index=True)
+    last_indexed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    indexing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    indexing_status: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="pending", index=True
+    )
 
     # Statistics
-    total_commits_indexed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_commits_indexed: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
     total_files_indexed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    total_symbols_indexed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    total_references_indexed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_symbols_indexed: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    total_references_indexed: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
 
     # Error tracking
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -44,7 +56,9 @@ class IndexStatusModel(Base, TimestampMixin):
     extra_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     # Relationships
-    repository: Mapped["RepositoryModel"] = relationship("RepositoryModel", back_populates="index_statuses")
+    repository: Mapped["RepositoryModel"] = relationship(
+        "RepositoryModel", back_populates="index_statuses"
+    )
 
     def __repr__(self) -> str:
         return f"<IndexStatusModel(id={self.id}, repo_id={self.repository_id}, branch='{self.branch}', status='{self.indexing_status}')>"

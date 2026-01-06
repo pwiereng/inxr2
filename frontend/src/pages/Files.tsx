@@ -1,5 +1,28 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import {
+  Container,
+  Typography,
+  Box,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  Chip,
+  CircularProgress,
+  Alert,
+  Button,
+} from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 
 interface File {
   id: number;
@@ -48,22 +71,17 @@ export default function Files() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const getLanguageBadgeColor = (language: string | null): string => {
-    if (!language) return 'bg-gray-100 text-gray-800';
-
-    const colors: Record<string, string> = {
-      python: 'bg-blue-100 text-blue-800',
-      javascript: 'bg-yellow-100 text-yellow-800',
-      typescript: 'bg-blue-100 text-blue-800',
-      java: 'bg-red-100 text-red-800',
-      go: 'bg-cyan-100 text-cyan-800',
-      rust: 'bg-orange-100 text-orange-800',
-      c: 'bg-gray-100 text-gray-800',
-      cpp: 'bg-purple-100 text-purple-800',
-      markdown: 'bg-green-100 text-green-800',
+  const getLanguageColor = (language: string | null): 'primary' | 'secondary' | 'default' => {
+    if (!language) return 'default';
+    const colors: Record<string, 'primary' | 'secondary'> = {
+      python: 'primary',
+      javascript: 'secondary',
+      typescript: 'primary',
+      java: 'secondary',
+      go: 'primary',
+      rust: 'secondary',
     };
-
-    return colors[language.toLowerCase()] || 'bg-gray-100 text-gray-800';
+    return colors[language.toLowerCase()] || 'default';
   };
 
   // Get unique languages for filter
@@ -83,157 +101,135 @@ export default function Files() {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <p className="text-gray-600">Loading files...</p>
-      </div>
+      <Container maxWidth="lg" sx={{ mt: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
+          <CircularProgress />
+        </Box>
+      </Container>
     );
   }
 
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          Error: {error}
-        </div>
-      </div>
+      <Container maxWidth="lg" sx={{ mt: 4 }}>
+        <Alert severity="error">Error: {error}</Alert>
+      </Container>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <Link
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Box sx={{ mb: 4 }}>
+        <Button
+          component={Link}
           to="/repositories"
-          className="text-blue-600 hover:text-blue-800 mb-4 inline-flex items-center gap-2"
+          startIcon={<ArrowBackIcon />}
+          sx={{ mb: 2 }}
         >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
           Back to Repositories
-        </Link>
-        <h1 className="text-3xl font-bold text-gray-900">Files</h1>
-        <p className="text-gray-600 mt-2">
+        </Button>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Files
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
           {filteredFiles.length} {filteredFiles.length === 1 ? 'file' : 'files'}
           {searchTerm && ` matching "${searchTerm}"`}
-        </p>
-      </div>
+        </Typography>
+      </Box>
 
       {/* Filters */}
-      <div className="mb-6 flex gap-4">
-        <div className="flex-1">
-          <input
-            type="text"
-            placeholder="Search files..."
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <TextField
+            label="Search files"
+            variant="outlined"
+            size="small"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            sx={{ flex: 1, minWidth: 200 }}
           />
-        </div>
-        <div>
-          <select
-            value={filterLanguage}
-            onChange={(e) => setFilterLanguage(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All Languages</option>
-            {languages.map((lang) => (
-              <option key={lang} value={lang || ''}>
-                {lang || 'Unknown'}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Language</InputLabel>
+            <Select
+              value={filterLanguage}
+              label="Language"
+              onChange={(e) => setFilterLanguage(e.target.value)}
+            >
+              <MenuItem value="">All Languages</MenuItem>
+              {languages.map((lang) => (
+                <MenuItem key={lang} value={lang || ''}>
+                  {lang || 'Unknown'}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
+      </Paper>
 
       {/* Files Table */}
       {filteredFiles.length === 0 ? (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-          <p className="text-gray-600">
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="body1" color="text.secondary">
             {searchTerm || filterLanguage
               ? 'No files match your filters'
               : 'No files found'}
-          </p>
-        </div>
+          </Typography>
+        </Paper>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Path
-                </th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Language
-                </th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Size
-                </th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Lines
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Path</TableCell>
+                <TableCell>Language</TableCell>
+                <TableCell align="right">Size</TableCell>
+                <TableCell align="right">Lines</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {filteredFiles.map((file) => (
-                <tr
+                <TableRow
                   key={file.id}
-                  className="hover:bg-gray-50 transition-colors"
+                  hover
+                  sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
                 >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <svg
-                        className="w-4 h-4 text-gray-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                        />
-                      </svg>
-                      <span className="text-sm text-gray-900 font-mono">
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <InsertDriveFileIcon fontSize="small" color="action" />
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
                         {file.path}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
                     {file.language ? (
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getLanguageBadgeColor(
-                          file.language
-                        )}`}
-                      >
-                        {file.language}
-                      </span>
+                      <Chip
+                        label={file.language}
+                        size="small"
+                        color={getLanguageColor(file.language)}
+                      />
                     ) : (
-                      <span className="text-sm text-gray-400">-</span>
+                      <Typography variant="body2" color="text.secondary">
+                        -
+                      </Typography>
                     )}
-                  </td>
-                  <td className="px-6 py-4 text-right text-sm text-gray-600">
-                    {formatFileSize(file.size_bytes)}
-                  </td>
-                  <td className="px-6 py-4 text-right text-sm text-gray-600">
-                    {file.line_count ? file.line_count.toLocaleString() : '-'}
-                  </td>
-                </tr>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2">
+                      {formatFileSize(file.size_bytes)}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2">
+                      {file.line_count ? file.line_count.toLocaleString() : '-'}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
-    </div>
+    </Container>
   );
 }

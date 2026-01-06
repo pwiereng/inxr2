@@ -36,16 +36,18 @@ def create_app() -> FastAPI:
 
     # Initialize database
     from ..database import init_database
+
     init_database()
 
     # Register routers
     from ...adapters.api.routes import indexing, repositories
+
     app.include_router(repositories.router, prefix="/api")
     app.include_router(indexing.router, prefix="/api")
 
     # Health check endpoint
     @app.get("/api/health")
-    async def health():
+    async def health() -> dict[str, str]:
         """Health check endpoint."""
         return {"status": "healthy"}
 

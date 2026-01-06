@@ -108,6 +108,7 @@ class IndexLocalDirectoryUseCase:
             default_branch="local",
         )
         saved_repo = await self._repository_repo.save(repository)
+        assert saved_repo.id is not None, "Repository ID must be set after save"
 
         # 2. Create dummy commit (for local indexing)
         commit_hash = self._generate_local_commit_hash(request.path)
@@ -124,6 +125,7 @@ class IndexLocalDirectoryUseCase:
             branch="local",
         )
         saved_commit = await self._commit_repo.save(commit)
+        assert saved_commit.id is not None, "Commit ID must be set after save"
 
         # 3. Walk directory and index files
         total_files = 0
@@ -190,9 +192,7 @@ class IndexLocalDirectoryUseCase:
         for root, dirs, filenames in os.walk(path):
             # Filter out directories to skip
             dirs[:] = [
-                d
-                for d in dirs
-                if not d.startswith(".") and d not in self.SKIP_DIRS
+                d for d in dirs if not d.startswith(".") and d not in self.SKIP_DIRS
             ]
 
             for filename in filenames:
@@ -244,7 +244,7 @@ class IndexLocalDirectoryUseCase:
             Number of lines or None if can't be read
         """
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(file_path, encoding="utf-8", errors="ignore") as f:
                 return sum(1 for _ in f)
         except Exception:
             return None

@@ -62,12 +62,20 @@ class IndexStatus:
                 f"Must be one of: {', '.join(self.VALID_STATUSES)}"
             )
         if self.total_commits_indexed < 0:
-            raise ValueError(f"Total commits cannot be negative: {self.total_commits_indexed}")
+            raise ValueError(
+                f"Total commits cannot be negative: {self.total_commits_indexed}"
+            )
         if self.total_files_indexed < 0:
-            raise ValueError(f"Total files cannot be negative: {self.total_files_indexed}")
+            raise ValueError(
+                f"Total files cannot be negative: {self.total_files_indexed}"
+            )
         if self.total_symbols_indexed < 0:
-            raise ValueError(f"Total symbols cannot be negative: {self.total_symbols_indexed}")
+            raise ValueError(
+                f"Total symbols cannot be negative: {self.total_symbols_indexed}"
+            )
         if self.total_references_indexed < 0:
-            raise ValueError(f"Total references cannot be negative: {self.total_references_indexed}")
+            raise ValueError(
+                f"Total references cannot be negative: {self.total_references_indexed}"
+            )
         if self.error_count < 0:
             raise ValueError(f"Error count cannot be negative: {self.error_count}")

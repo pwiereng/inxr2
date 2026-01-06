@@ -1,5 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  Container,
+  Typography,
+  Box,
+  Paper,
+  Card,
+  CardContent,
+  CardActionArea,
+  CircularProgress,
+  Alert,
+  Chip,
+} from '@mui/material';
+import FolderIcon from '@mui/icons-material/Folder';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
 interface Repository {
   id: number;
@@ -36,114 +51,85 @@ export default function Repositories() {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <p className="text-gray-600">Loading repositories...</p>
-      </div>
+      <Container maxWidth="lg" sx={{ mt: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
+          <CircularProgress />
+        </Box>
+      </Container>
     );
   }
 
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          Error: {error}
-        </div>
-      </div>
+      <Container maxWidth="lg" sx={{ mt: 4 }}>
+        <Alert severity="error">Error: {error}</Alert>
+      </Container>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Repositories</h1>
-        <p className="text-gray-600 mt-2">
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Repositories
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
           Browse indexed code repositories
-        </p>
-      </div>
+        </Typography>
+      </Box>
 
       {repositories.length === 0 ? (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-          <p className="text-gray-600 mb-4">No repositories indexed yet.</p>
-          <p className="text-sm text-gray-500">
-            Use the API to index a local directory:
-          </p>
-          <pre className="mt-4 bg-gray-800 text-gray-100 p-4 rounded text-left text-sm overflow-x-auto">
-{`curl -X POST http://localhost:8000/api/index/local \\
-  -H "Content-Type: application/json" \\
-  -d '{"path": "/workspace", "name": "inxr2"}'`}
-          </pre>
-        </div>
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="body1" gutterBottom>
+            No repositories indexed yet.
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Use the API to index a local directory
+          </Typography>
+        </Paper>
       ) : (
-        <div className="grid gap-4">
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {repositories.map((repo) => (
-            <Link
-              key={repo.id}
-              to={`/repositories/${repo.id}/files`}
-              className="block bg-white border border-gray-200 rounded-lg p-6 hover:border-blue-500 hover:shadow-md transition-all"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                    {repo.name}
-                  </h2>
-                  {repo.description && (
-                    <p className="text-gray-600 mb-3">{repo.description}</p>
-                  )}
-                  <div className="flex items-center gap-4 text-sm text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+            <Card key={repo.id} elevation={1}>
+              <CardActionArea component={Link} to={`/repositories/${repo.id}/files`}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <FolderIcon color="primary" />
+                        <Typography variant="h6" component="h2">
+                          {repo.name}
+                        </Typography>
+                      </Box>
+                      {repo.description && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          {repo.description}
+                        </Typography>
+                      )}
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <Chip
+                          size="small"
+                          label={repo.url}
+                          variant="outlined"
                         />
-                      </svg>
-                      {repo.url}
-                    </span>
-                    {repo.created_at && (
-                      <span className="flex items-center gap-1">
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                        {repo.created_at && (
+                          <Chip
+                            size="small"
+                            icon={<AccessTimeIcon />}
+                            label={`Indexed ${new Date(repo.created_at).toLocaleDateString()}`}
+                            variant="outlined"
                           />
-                        </svg>
-                        Indexed {new Date(repo.created_at).toLocaleDateString()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <svg
-                  className="w-6 h-6 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </div>
-            </Link>
+                        )}
+                      </Box>
+                    </Box>
+                    <ChevronRightIcon color="action" />
+                  </Box>
+                </CardContent>
+              </CardActionArea>
+            </Card>
           ))}
-        </div>
+        </Box>
       )}
-    </div>
+    </Container>
   );
 }

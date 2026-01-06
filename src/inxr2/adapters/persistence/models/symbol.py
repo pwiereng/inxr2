@@ -56,14 +56,26 @@ class SymbolModel(Base):
     # Full-text search (stored as TEXT for SQLite compatibility, TSVECTOR in PostgreSQL via migration)
     name_tsvector: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, server_default="now()")
+    indexed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, server_default="now()"
+    )
 
     # Relationships
     file: Mapped["FileModel"] = relationship("FileModel", back_populates="symbols")
-    repository: Mapped["RepositoryModel"] = relationship("RepositoryModel", back_populates="symbols")
-    commit: Mapped["CommitModel"] = relationship("CommitModel", back_populates="symbols")
-    parent_symbol: Mapped["SymbolModel | None"] = relationship("SymbolModel", remote_side=[id], backref="child_symbols")
-    references: Mapped[list["ReferenceModel"]] = relationship("ReferenceModel", back_populates="target_symbol", foreign_keys="ReferenceModel.target_symbol_id")
+    repository: Mapped["RepositoryModel"] = relationship(
+        "RepositoryModel", back_populates="symbols"
+    )
+    commit: Mapped["CommitModel"] = relationship(
+        "CommitModel", back_populates="symbols"
+    )
+    parent_symbol: Mapped["SymbolModel | None"] = relationship(
+        "SymbolModel", remote_side=[id], backref="child_symbols"
+    )
+    references: Mapped[list["ReferenceModel"]] = relationship(
+        "ReferenceModel",
+        back_populates="target_symbol",
+        foreign_keys="ReferenceModel.target_symbol_id",
+    )
 
     def __repr__(self) -> str:
         return f"<SymbolModel(id={self.id}, name='{self.name}', kind='{self.kind}')>"

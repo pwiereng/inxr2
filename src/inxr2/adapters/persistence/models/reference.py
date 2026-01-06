@@ -51,17 +51,31 @@ class ReferenceModel(Base):
     is_write: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Resolution metadata
-    resolution_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    resolution_confidence: Mapped[float] = mapped_column(
+        Float, nullable=False, default=1.0
+    )
     extra_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
-    indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, server_default="now()")
+    indexed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, server_default="now()"
+    )
 
     # Relationships
-    repository: Mapped["RepositoryModel"] = relationship("RepositoryModel", back_populates="references", foreign_keys=[repository_id])
-    commit: Mapped["CommitModel"] = relationship("CommitModel", back_populates="references")
-    source_file: Mapped["FileModel"] = relationship("FileModel", back_populates="references")
-    target_symbol: Mapped["SymbolModel | None"] = relationship("SymbolModel", back_populates="references", foreign_keys=[target_symbol_id])
-    target_repository: Mapped["RepositoryModel | None"] = relationship("RepositoryModel", foreign_keys=[target_repository_id])
+    repository: Mapped["RepositoryModel"] = relationship(
+        "RepositoryModel", back_populates="references", foreign_keys=[repository_id]
+    )
+    commit: Mapped["CommitModel"] = relationship(
+        "CommitModel", back_populates="references"
+    )
+    source_file: Mapped["FileModel"] = relationship(
+        "FileModel", back_populates="references"
+    )
+    target_symbol: Mapped["SymbolModel | None"] = relationship(
+        "SymbolModel", back_populates="references", foreign_keys=[target_symbol_id]
+    )
+    target_repository: Mapped["RepositoryModel | None"] = relationship(
+        "RepositoryModel", foreign_keys=[target_repository_id]
+    )
 
     def __repr__(self) -> str:
         return f"<ReferenceModel(id={self.id}, text='{self.reference_text}', type='{self.reference_type}')>"

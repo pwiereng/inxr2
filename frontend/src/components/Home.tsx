@@ -1,5 +1,7 @@
-import { Container, Typography, Box, Paper } from '@mui/material'
+import { Container, Typography, Box, Paper, Button } from '@mui/material'
 import CodeIcon from '@mui/icons-material/Code'
+import FolderIcon from '@mui/icons-material/Folder'
+import { Link } from 'react-router-dom'
 
 /**
  * Home page component
@@ -52,6 +54,18 @@ export function Home() {
           Phase 5 will implement the full UI with repository browser, code viewer, and search.
         </Typography>
       </Paper>
+
+      <Box sx={{ mt: 4, textAlign: 'center' }}>
+        <Button
+          component={Link}
+          to="/repositories"
+          variant="contained"
+          size="large"
+          startIcon={<FolderIcon />}
+        >
+          Browse Repositories
+        </Button>
+      </Box>
     </Container>
   )
 }

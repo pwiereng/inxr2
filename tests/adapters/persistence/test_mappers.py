@@ -2,15 +2,13 @@
 
 from datetime import datetime
 
-import pytest
-
 from inxr2.adapters.persistence.mappers import (
     CommitMapper,
     FileMapper,
     RepositoryMapper,
     SymbolMapper,
 )
-from inxr2.domain.value_objects import CommitHash, SymbolKind
+from inxr2.domain.value_objects import SymbolKind
 
 from .factories import CommitFactory, FileFactory, RepositoryFactory, SymbolFactory
 

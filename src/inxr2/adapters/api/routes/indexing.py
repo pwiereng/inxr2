@@ -42,7 +42,7 @@ class IndexLocalResponse(BaseModel):
 async def index_local_directory(
     request: IndexLocalRequest,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> IndexLocalResponse:
     """
     Index a local directory.
 
@@ -68,7 +68,7 @@ async def index_local_directory(
             )
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}") from e
 
     return IndexLocalResponse(
         repository_id=response.repository_id,

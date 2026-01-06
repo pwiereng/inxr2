@@ -58,9 +58,7 @@ class CommitRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    async def find_by_hash(
-        self, repository_id: int, commit_hash: str
-    ) -> Commit | None:
+    async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
         """Find commit by repository and hash."""
         pass
 

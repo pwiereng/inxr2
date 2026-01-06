@@ -34,13 +34,21 @@ class FileModel(Base):
     encoding: Mapped[str] = mapped_column(String(50), nullable=False, default="utf-8")
     is_binary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, server_default="now()")
+    indexed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, server_default="now()"
+    )
 
     # Relationships
-    repository: Mapped["RepositoryModel"] = relationship("RepositoryModel", back_populates="files")
+    repository: Mapped["RepositoryModel"] = relationship(
+        "RepositoryModel", back_populates="files"
+    )
     commit: Mapped["CommitModel"] = relationship("CommitModel", back_populates="files")
-    symbols: Mapped[list["SymbolModel"]] = relationship("SymbolModel", back_populates="file", cascade="all, delete-orphan")
-    references: Mapped[list["ReferenceModel"]] = relationship("ReferenceModel", back_populates="source_file", cascade="all, delete-orphan")
+    symbols: Mapped[list["SymbolModel"]] = relationship(
+        "SymbolModel", back_populates="file", cascade="all, delete-orphan"
+    )
+    references: Mapped[list["ReferenceModel"]] = relationship(
+        "ReferenceModel", back_populates="source_file", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<FileModel(id={self.id}, path='{self.path}')>"

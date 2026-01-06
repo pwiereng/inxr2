@@ -2,12 +2,15 @@
 
 from dataclasses import FrozenInstanceError
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
 from inxr2.domain.entities import Commit, File, Reference, Repository, Symbol
-from inxr2.domain.value_objects import CommitHash, ReferenceType, SymbolKind, SymbolLocation
+from inxr2.domain.value_objects import (
+    CommitHash,
+    ReferenceType,
+    SymbolKind,
+)
 
 
 class TestRepository:
@@ -30,9 +33,7 @@ class TestRepository:
     def test_repository_is_immutable(self) -> None:
         """Test that repository is frozen (immutable)."""
         repo = Repository(
-            name="test-repo",
-            url="https://github.com/test/repo.git",
-            id=1
+            name="test-repo", url="https://github.com/test/repo.git", id=1
         )
 
         with pytest.raises(FrozenInstanceError):

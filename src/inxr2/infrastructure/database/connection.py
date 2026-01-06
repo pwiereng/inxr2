@@ -4,8 +4,8 @@ Provides async SQLAlchemy engine and session management for PostgreSQL.
 """
 
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -22,7 +22,8 @@ class DatabaseConnection:
                          Defaults to DATABASE_URL environment variable.
         """
         self.database_url = database_url or os.getenv(
-            "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/inxr2_dev"
+            "DATABASE_URL",
+            "postgresql+asyncpg://postgres:postgres@localhost:5432/inxr2_dev",
         )
 
         # Convert postgres:// to postgresql+asyncpg:// if needed
@@ -106,9 +107,7 @@ def get_database_connection() -> DatabaseConnection:
         DatabaseConnection instance
     """
     if _db_connection is None:
-        raise RuntimeError(
-            "Database not initialized. Call init_database() first."
-        )
+        raise RuntimeError("Database not initialized. Call init_database() first.")
     return _db_connection
 
 

@@ -36,6 +36,25 @@ class PostgresCommitRepository(CommitRepositoryPort):
 
         return self.mapper.to_domain(model)
 
+    async def save_many(self, commits: list[Commit]) -> list[Commit]:
+        """Bulk save commits for performance."""
+        saved_commits = []
+        for commit in commits:
+            model = self.mapper.to_model(commit)
+            if commit.id is None:
+                self.session.add(model)
+            else:
+                model = await self.session.merge(model)
+            saved_commits.append(model)
+
+        await self.session.flush()
+
+        # Refresh all models to get generated IDs
+        for model in saved_commits:
+            await self.session.refresh(model)
+
+        return [self.mapper.to_domain(model) for model in saved_commits]
+
     async def find_by_id(self, commit_id: int) -> Commit | None:
         """Find commit by ID."""
         result = await self.session.execute(
@@ -44,9 +63,7 @@ class PostgresCommitRepository(CommitRepositoryPort):
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
 
-    async def find_by_hash(
-        self, repository_id: int, commit_hash: str
-    ) -> Commit | None:
+    async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
         """Find commit by repository and hash."""
         result = await self.session.execute(
             select(CommitModel).where(
