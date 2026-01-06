@@ -4,6 +4,8 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { AppProvider, useApp } from '@/contexts/AppContext'
 import { Home } from '@/components/Home'
 import { NotFound } from '@/components/NotFound'
+import Repositories from '@/pages/Repositories'
+import Files from '@/pages/Files'
 
 /**
  * App content with routing
@@ -23,6 +25,8 @@ function AppContent() {
       <CssBaseline />
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/repositories" element={<Repositories />} />
+        <Route path="/repositories/:repositoryId/files" element={<Files />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </ThemeProvider>
