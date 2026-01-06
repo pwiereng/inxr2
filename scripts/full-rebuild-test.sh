@@ -136,6 +136,37 @@ docker exec inxr2-dev bash -c "source /home/devuser/.venv/bin/activate && cd /wo
 check_status "Backend tests passed"
 
 step "🧪 Step 10/10: Running frontend tests"
+
+echo ""
+echo "   Checking if frontend dependencies are installed..."
+# Wait for npm packages to be installed - check for actual vitest binary
+timeout=120
+counter=0
+until docker exec inxr2-dev bash -c "test -f /workspace/frontend/node_modules/.bin/vitest" > /dev/null 2>&1; do
+    if [ $counter -ge $timeout ]; then
+        echo -e "${YELLOW}⚠️  Frontend dependencies not ready, installing now...${NC}"
+        docker exec inxr2-dev bash -c "cd /workspace/frontend && npm install"
+        # Wait for install to complete
+        sleep 10
+        break
+    fi
+    if [ $((counter % 10)) -eq 0 ]; then
+        echo "   Waiting for frontend dependencies... ($counter/$timeout seconds)"
+    fi
+    sleep 2
+    ((counter+=2))
+done
+
+# Verify vitest binary exists
+if docker exec inxr2-dev bash -c "test -f /workspace/frontend/node_modules/.bin/vitest" > /dev/null 2>&1; then
+    echo "   ✅ Frontend dependencies ready"
+else
+    echo -e "${YELLOW}⚠️  Vitest binary not found, forcing npm install...${NC}"
+    docker exec inxr2-dev bash -c "cd /workspace/frontend && npm install"
+    check_status "Frontend dependencies installed"
+fi
+
+echo ""
 echo "   Running vitest..."
 docker exec inxr2-dev bash -c "cd /workspace/frontend && npm test -- --run"
 check_status "Frontend tests passed"

@@ -428,40 +428,70 @@ docker-compose down
   - [x] `Reference` entity - domain model for symbol reference
   - [x] `IndexStatus` entity - domain model for indexing status
 - [x] Design PostgreSQL schema:
-  - [ ] `repositories` table (id, name, url, config)
-  - [ ] `commits` table (hash, repo_id, branch, timestamp, author, message)
-  - [ ] `files` table (id, repo_id, commit_hash, path, content_hash, language)
-  - [ ] `symbols` table (id, name, kind, file_id, line, column, scope, metadata JSONB)
-  - [ ] `references` table (id, source_file_id, source_line, source_column, target_symbol_id, ref_type)
-  - [ ] `index_status` table (repo_id, branch, last_indexed_commit, last_update_time)
-- [ ] Create indexes:
-  - [ ] B-tree on symbol names, file paths
-  - [ ] GIN for full-text search on file contents
-  - [ ] Composite indexes for common queries
-  - [ ] Partial indexes for latest commits
-- [ ] Set up Alembic (in `infrastructure/database/migrations/`):
-  - [ ] Initialize alembic configuration
-  - [ ] Create initial migration
-  - [ ] Add migration scripts for schema creation
-- [ ] Implement database infrastructure (in `infrastructure/database/`):
-  - [ ] Database connection management
-  - [ ] Session factory with connection pooling
-  - [ ] Base configuration
-- [ ] Create SQLAlchemy ORM models (in `adapters/persistence/models/`):
-  - [ ] `RepositoryModel`, `CommitModel`, `FileModel`, `SymbolModel`, `ReferenceModel`
-  - [ ] Define relationships between models
-  - [ ] **Note**: These are separate from domain entities
-- [ ] Define repository ports/interfaces (in `application/ports/repositories/`):
-  - [ ] `SymbolRepositoryPort` (ABC interface)
-  - [ ] `FileRepositoryPort` (ABC interface)
-  - [ ] `CommitRepositoryPort` (ABC interface)
-  - [ ] Define methods: CRUD operations, temporal queries
-- [ ] Implement repository adapters (in `adapters/persistence/repositories/`):
-  - [ ] `PostgresSymbolRepository` implements `SymbolRepositoryPort`
-  - [ ] `PostgresFileRepository` implements `FileRepositoryPort`
-  - [ ] `PostgresCommitRepository` implements `CommitRepositoryPort`
-  - [ ] Map between ORM models and domain entities
-  - [ ] Implement all interface methods
+  - [x] `repositories` table (id, name, url, config, timestamps)
+  - [x] `commits` table (hash, repo_id, branch, author info, timestamps, parent_hashes)
+  - [x] `files` table (id, repo_id, commit_id, path, content_hash, language, metadata)
+  - [x] `symbols` table (id, name, kind, file_id, location, scope, metadata JSONB, tsvector)
+  - [x] `references` table (id, source_file_id, location, target_symbol_id, ref_type, metadata)
+  - [x] `index_status` table (repo_id, branch, last_indexed_commit, status, statistics)
+- [x] Create indexes:
+  - [x] B-tree on symbol names, file paths, commit hashes
+  - [x] GIN for full-text search on symbol names (tsvector)
+  - [x] Composite indexes for common queries (repo_id + name + kind)
+  - [x] Foreign key indexes for relationships
+- [x] Set up Alembic (in `infrastructure/database/migrations/`):
+  - [x] Initialize alembic configuration with environment variables
+  - [x] Create initial migration (edc605da5d0a)
+  - [x] Configure autogenerate with black formatting
+- [x] Implement database infrastructure (in `infrastructure/database/`):
+  - [x] DatabaseConnection class with async engine
+  - [x] Session factory with connection pooling (configurable via env vars)
+  - [x] FastAPI dependency injection support
+- [x] Create SQLAlchemy ORM models (in `adapters/persistence/models/`):
+  - [x] `RepositoryModel`, `CommitModel`, `FileModel`, `SymbolModel`, `ReferenceModel`, `IndexStatusModel`
+  - [x] Define relationships with proper foreign keys
+  - [x] Handle field name conflicts (metadata → extra_metadata)
+  - [x] SQLite compatibility (JSON instead of ARRAY, Text instead of TSVECTOR)
+- [x] Create mappers (in `adapters/persistence/mappers.py`):
+  - [x] Bidirectional conversion between domain entities and ORM models
+  - [x] 6 mapper classes: RepositoryMapper, CommitMapper, FileMapper, SymbolMapper, ReferenceMapper, IndexStatusMapper
+  - [x] Handle field name mapping and type conversions
+- [x] Define repository ports/interfaces (in `application/ports/repositories.py`):
+  - [x] `RepositoryPort` - Repository CRUD operations
+  - [x] `CommitRepositoryPort` - Commit operations and queries
+  - [x] `FileRepositoryPort` - File operations and temporal queries
+  - [x] `SymbolRepositoryPort` - Symbol CRUD, search, and queries
+  - [x] `ReferenceRepositoryPort` - Reference operations
+  - [x] `IndexStatusRepositoryPort` - Indexing status tracking
+  - [x] Define methods: CRUD operations, temporal queries, search
+- [x] Implement repository adapters (in `adapters/persistence/repositories/`):
+  - [x] `PostgresRepositoryAdapter` implements `RepositoryPort`
+  - [x] Use mappers for entity ↔ model conversion
+  - [x] Implement async CRUD operations with proper session management
+- [x] Write comprehensive tests:
+  - [x] Mapper tests (12 tests) - bidirectional conversion and round-trip
+  - [x] Repository adapter tests (12 tests) - CRUD operations with real database
+  - [x] Update existing use case tests with new signatures
+  - [x] All 45 backend tests passing
+  - [x] All 17 frontend tests passing
+- [x] Environment configuration:
+  - [x] Create .env.dev with development defaults
+  - [x] Create .env.prod.example for production
+  - [x] Create .env.example with all variables documented
+  - [x] Update docker-compose.dev.yml to use env_file
+  - [x] Update docker-compose.yml to use env_file
+  - [x] Update .gitignore to exclude .env.prod
+- [x] Database management scripts:
+  - [x] `scripts/reset-database.sh` - Reset database from scratch
+  - [x] `scripts/full-rebuild-test.sh` - Complete rebuild and test
+  - [x] `scripts/verify-setup.sh` - Quick verification
+- [x] Documentation:
+  - [x] `docs/database-schema.md` - Complete schema design (600+ lines)
+  - [x] `docs/ENV_SETUP.md` - Environment configuration guide
+  - [x] `CLAUDE.md` - Guide for future Claude instances
+  - [x] Update README.md with environment instructions
+  - [x] `README.env` - Quick reference card
+  - [x] `ENVIRONMENT_SETUP_SUMMARY.md` - Setup summary
 
 **Deliverables:**
 - ✅ Complete database schema with migrations
