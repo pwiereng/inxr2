@@ -12,9 +12,9 @@ import {
   Alert,
   Chip,
 } from '@mui/material';
-import FolderIcon from '@mui/icons-material/Folder';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import CodeIcon from '@mui/icons-material/Code';
 
 interface Repository {
   id: number;
@@ -91,12 +91,12 @@ export default function Repositories() {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {repositories.map((repo) => (
             <Card key={repo.id} elevation={1}>
-              <CardActionArea component={Link} to={`/repositories/${repo.id}/files`}>
+              <CardActionArea component={Link} to={`/browse/${repo.id}`}>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Box sx={{ flex: 1 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                        <FolderIcon color="primary" />
+                        <CodeIcon color="primary" />
                         <Typography variant="h6" component="h2">
                           {repo.name}
                         </Typography>

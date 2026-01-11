@@ -10,13 +10,13 @@ INXR2 is a modern code browser similar to LXR but designed specifically for git-
 
 **Architecture**: Clean Architecture (Hexagonal/Ports & Adapters)
 
-**Current Status**: Phase 1.5 Complete (CLI Indexing Engine)
+**Current Status**: Phase 1.6 Next (Cross-Reference Code Browser UI)
 - ✅ Phase 1.1: Project Setup (COMPLETED)
 - ✅ Phase 1.2: React Frontend and Development Infrastructure (COMPLETED)
 - ✅ Phase 1.3: Database Foundation and Environment Configuration (COMPLETED 2026-01-04)
 - ✅ Phase 1.4: Vertical Slice - Basic File Indexing (COMPLETED 2026-01-05)
 - ✅ Phase 1.5: CLI Indexing Engine - Python & TypeScript (COMPLETED 2026-01-10)
-- ⏭️  Phase 1.6: Configuration System (Deferred)
+- 🚧 Phase 1.6: Cross-Reference Code Browser UI (NEXT)
 - ⏭️  Phase 2: Additional Language Support (Java, C#, Go, C/C++)
 - ⏭️  Phase 3: Advanced Indexing Features
 
@@ -887,21 +887,307 @@ inxr2 index status --path /path/to/repo
 
 ---
 
-### 1.6 Configuration System (Deferred)
+### 1.6 Cross-Reference Code Browser UI
 
-**Note:** YAML configuration parsing moved to Phase 1.6. The CLI indexing engine (1.5) uses command-line arguments only. Configuration file support will be added after the core indexing is working.
+**Status:** 🚧 NEXT
 
 **Objectives:**
-- Parse YAML configuration files
-- Validate repository configurations
-- Support scheduled/batch indexing
+- Build a functional web UI to browse indexed code
+- Enable symbol search and navigation
+- Implement "Go to Definition" and "Find References" features
+- Display code with syntax highlighting
+- Provide file tree navigation
+
+**Prerequisites:**
+- Phase 1.5 complete (indexed data in database)
+- INXR2 indexed: 108 files, 440 symbols, 473 references
+
+---
+
+#### 1.6.1 Backend API Endpoints
 
 **Tasks:**
+- [ ] Symbol endpoints:
+  - [ ] `GET /api/symbols` - List/search symbols with filters
+    - Query params: `q` (search), `kind`, `repository_id`, `limit`, `offset`
+    - Returns: List of symbols with file path and location
+  - [ ] `GET /api/symbols/{id}` - Get symbol details
+    - Returns: Symbol with full metadata, file info, location
+  - [ ] `GET /api/symbols/{id}/references` - Find all references to a symbol
+    - Returns: List of references with source file and location
+- [ ] File content endpoints:
+  - [ ] `GET /api/files/{id}/content` - Get file content
+    - Returns: File content as text, language, line count
+  - [ ] `GET /api/files/{id}/symbols` - Get all symbols in a file
+    - Returns: List of symbols with locations for highlighting
+- [ ] Repository tree endpoint:
+  - [ ] `GET /api/repositories/{id}/tree` - Get file tree structure
+    - Query params: `commit_id` (optional, defaults to latest)
+    - Returns: Nested tree structure of directories and files
+- [ ] Add Pydantic response models for all endpoints
+- [ ] Add OpenAPI documentation
+
+**API Response Examples:**
+```json
+// GET /api/symbols?q=Repository&kind=class
+{
+  "items": [
+    {
+      "id": 123,
+      "name": "Repository",
+      "kind": "class",
+      "qualified_name": "inxr2.domain.entities.Repository",
+      "file_path": "src/inxr2/domain/entities/repository.py",
+      "start_line": 15,
+      "end_line": 45
+    }
+  ],
+  "total": 1
+}
+
+// GET /api/symbols/123/references
+{
+  "items": [
+    {
+      "id": 456,
+      "source_file": "src/inxr2/application/use_cases/indexing.py",
+      "source_line": 23,
+      "source_column": 12,
+      "reference_kind": "import"
+    }
+  ],
+  "total": 15
+}
+```
+
+---
+
+#### 1.6.2 Code Viewer Component
+
+**Tasks:**
+- [ ] Install syntax highlighting library:
+  - [ ] Add Prism.js or highlight.js to frontend
+  - [ ] Configure for Python, TypeScript, and common languages
+- [ ] Create `CodeViewer` component:
+  - [ ] Display file content with syntax highlighting
+  - [ ] Show line numbers (clickable)
+  - [ ] Support line highlighting (for navigation)
+  - [ ] Scroll to specific line on load
+- [ ] Add symbol interaction:
+  - [ ] Highlight symbols on hover (using symbol locations from API)
+  - [ ] Show tooltip with symbol info (kind, qualified name)
+  - [ ] Click symbol → trigger navigation (Go to Definition)
+- [ ] Add line selection:
+  - [ ] Click line number → update URL hash (#L42)
+  - [ ] Shift+click → select range (#L10-L20)
+  - [ ] Highlight selected lines
+  - [ ] Parse URL hash on load → scroll to line
+- [ ] Responsive design:
+  - [ ] Horizontal scroll for long lines
+  - [ ] Configurable font size
+  - [ ] Dark/light theme support (optional)
+
+**Component Structure:**
+```
+CodeViewer/
+├── CodeViewer.tsx        # Main component
+├── LineNumbers.tsx       # Line number gutter
+├── SymbolOverlay.tsx     # Clickable symbol regions
+├── useCodeHighlight.ts   # Prism.js hook
+└── CodeViewer.css        # Styles
+```
+
+---
+
+#### 1.6.3 Symbol Search & Browser
+
+**Tasks:**
+- [ ] Create `SymbolSearch` component:
+  - [ ] Search input with debounced API calls
+  - [ ] Autocomplete dropdown showing matches
+  - [ ] Show symbol kind icons (class, function, method, etc.)
+  - [ ] Keyboard navigation (arrow keys, Enter to select)
+- [ ] Create `SymbolList` component:
+  - [ ] Display search results as list
+  - [ ] Group by file or show flat list
+  - [ ] Show file path and line number
+  - [ ] Click to navigate to symbol
+- [ ] Add filters:
+  - [ ] Filter by symbol kind (dropdown/chips)
+  - [ ] Filter by repository (if multiple)
+  - [ ] Filter by file path pattern (optional)
+- [ ] Create `SymbolDetail` panel:
+  - [ ] Show symbol metadata (name, kind, signature)
+  - [ ] Show docstring if available
+  - [ ] List incoming references ("Who calls this?")
+  - [ ] List outgoing references ("What does this call?")
+
+**UI Layout:**
+```
+┌─────────────────────────────────────────────────────┐
+│  🔍 Search symbols...                    [Filters ▼]│
+├─────────────────────────────────────────────────────┤
+│  class Repository          domain/entities/repo.py:15│
+│  class RepositoryModel     persistence/models/repo.py:8│
+│  func  get_repository      use_cases/indexing.py:42  │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 1.6.4 File Tree Navigation
+
+**Tasks:**
+- [ ] Create `FileTree` component:
+  - [ ] Fetch tree structure from API
+  - [ ] Render as expandable/collapsible tree
+  - [ ] Show folder and file icons
+  - [ ] Highlight current file
+- [ ] Add tree interactions:
+  - [ ] Click folder → expand/collapse
+  - [ ] Click file → load in CodeViewer
+  - [ ] Right-click context menu (optional)
+- [ ] Add tree state management:
+  - [ ] Remember expanded folders in session
+  - [ ] Auto-expand path to current file
+- [ ] Create `RepositorySelector` (if multiple repos):
+  - [ ] Dropdown to switch repositories
+  - [ ] Show repository name and stats
+
+**Component Structure:**
+```
+FileTree/
+├── FileTree.tsx          # Main tree component
+├── TreeNode.tsx          # Single tree node (folder/file)
+├── useFileTree.ts        # Data fetching hook
+└── FileTree.css          # Styles
+```
+
+---
+
+#### 1.6.5 Cross-Reference Features
+
+**Tasks:**
+- [ ] Implement "Go to Definition":
+  - [ ] Click symbol in CodeViewer → navigate to definition
+  - [ ] Handle symbols in same file (scroll)
+  - [ ] Handle symbols in different file (navigate + scroll)
+  - [ ] Handle unresolved symbols (show message)
+- [ ] Implement "Find References":
+  - [ ] Right-click symbol → "Find References" option
+  - [ ] Or button/keyboard shortcut (Shift+F12 style)
+  - [ ] Show references in side panel or modal
+  - [ ] Click reference → navigate to location
+- [ ] Create `ReferencesPanel` component:
+  - [ ] List all references to selected symbol
+  - [ ] Group by file
+  - [ ] Show code snippet context (line preview)
+  - [ ] Click to navigate
+- [ ] Add breadcrumb navigation:
+  - [ ] Show: Repository > path/to/file.py > ClassName > method_name
+  - [ ] Each segment clickable
+  - [ ] Update as user navigates
+
+**Navigation Flow:**
+```
+Symbol Click → Check if definition exists
+  ├─ Same file → Scroll to line
+  ├─ Different file → Navigate to file, scroll to line
+  └─ Not found → Show "Definition not found" tooltip
+```
+
+---
+
+#### 1.6.6 Main Layout & Routing
+
+**Tasks:**
+- [ ] Create main application layout:
+  - [ ] Left sidebar: FileTree (collapsible)
+  - [ ] Main area: CodeViewer
+  - [ ] Right sidebar: SymbolDetail/References (collapsible)
+  - [ ] Top bar: Search, repository selector, breadcrumbs
+- [ ] Set up React Router routes:
+  - [ ] `/` - Home/repository list
+  - [ ] `/repo/:repoId` - Repository view with file tree
+  - [ ] `/repo/:repoId/file/:fileId` - File view
+  - [ ] `/repo/:repoId/file/:fileId#L42` - File at specific line
+  - [ ] `/repo/:repoId/symbol/:symbolId` - Symbol detail view
+  - [ ] `/search?q=...` - Search results page
+- [ ] Add URL state management:
+  - [ ] Sync selected file/symbol with URL
+  - [ ] Support browser back/forward
+  - [ ] Shareable URLs
+
+**Layout Structure:**
+```
+┌──────────────────────────────────────────────────────────┐
+│  INXR2  │ 🔍 Search...              │ repo: inxr2 ▼     │
+├─────────┼────────────────────────────┼───────────────────┤
+│ 📁 src  │  1│ """Repository entity."""  │ Symbol: Repo   │
+│  └📁domain│  2│                          │ Kind: class    │
+│   └📄repo│  3│ from dataclasses import  │                │
+│  └📁app │  4│                          │ References (15)│
+│         │  5│ @dataclass               │ ├ indexing.py:23│
+│         │  6│ class Repository:        │ ├ api/routes:45 │
+│         │  7│     """A git repo."""    │ └ ...          │
+└─────────┴────────────────────────────┴───────────────────┘
+```
+
+---
+
+#### 1.6.7 Testing
+
+**Tasks:**
+- [ ] Backend API tests:
+  - [ ] Test all new endpoints with pytest
+  - [ ] Test query parameters and filters
+  - [ ] Test pagination
+  - [ ] Test error cases (404, invalid params)
+- [ ] Frontend component tests:
+  - [ ] CodeViewer unit tests
+  - [ ] SymbolSearch tests with mock API
+  - [ ] FileTree tests
+  - [ ] Navigation integration tests
+- [ ] End-to-end tests (optional):
+  - [ ] Search for symbol → click → view definition
+  - [ ] Find references workflow
+  - [ ] File tree navigation
+
+---
+
+**Deliverables:**
+- Backend API endpoints for symbols, files, and tree
+- Code viewer with syntax highlighting and symbol interaction
+- Symbol search with autocomplete and filters
+- File tree navigation sidebar
+- "Go to Definition" and "Find References" features
+- Responsive layout with collapsible panels
+- URL-based navigation (shareable links)
+
+**Success Criteria:**
+- [ ] Can search for "Repository" and see all matching symbols
+- [ ] Can click a symbol to jump to its definition
+- [ ] Can find all references to a class/function
+- [ ] Can navigate file tree and view any indexed file
+- [ ] URLs are shareable and link directly to file+line
+
+**Estimated Complexity:** High
+
+**Dependencies:**
+- Phase 1.5 complete (indexed data available)
+- Prism.js or highlight.js for syntax highlighting
+
+---
+
+### 1.7 Configuration System (Deferred)
+
+**Note:** YAML configuration parsing deferred. CLI uses command-line arguments. Configuration file support will be added after core browsing UI is working.
+
+**Tasks (Future):**
 - [ ] Define configuration schema (Pydantic models)
 - [ ] Implement YAML parser with validation
 - [ ] Support environment variable substitution
 - [ ] Add configuration-driven indexing
-- [ ] Configuration tests
 
 **Estimated Complexity:** Low-Medium
 
@@ -1993,7 +2279,7 @@ Finish it off:
 - **Performance**: Monitor performance early and often
 - **Documentation**: Update documentation as you build, not at the end
 
-**Document Version**: 1.2
+**Document Version**: 1.3
 **Created**: 2025-12-29
-**Last Updated**: 2026-01-10 (Phase 1.5 Complete - CLI Indexing Engine)
+**Last Updated**: 2026-01-12 (Phase 1.6 Plan - Cross-Reference Code Browser UI)
 **Status**: Active Development

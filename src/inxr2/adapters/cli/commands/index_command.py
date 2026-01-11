@@ -57,6 +57,7 @@ class IndexingStats:
     files_failed: int = 0
     symbols_found: int = 0
     references_found: int = 0
+    references_resolved: int = 0
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -341,6 +342,11 @@ async def _run_full_index_async(
                 progress.update(
                     file_task, description="[green]Complete[/green]", completed=100
                 )
+
+            # Resolve references to symbols
+            stats.references_resolved = await resolve_references(
+                db_repo.id, session, console
+            )
 
             # Update index status to completed
             index_status = IndexStatus(
@@ -648,6 +654,11 @@ async def _run_incremental_index_async(
                         file_task, description="[green]Complete[/green]", completed=100
                     )
 
+            # Resolve references to symbols
+            stats.references_resolved = await resolve_references(
+                db_repo.id, session, console
+            )
+
             # Update index status to completed
             index_status = IndexStatus(
                 id=index_status.id,
@@ -832,6 +843,7 @@ def _print_summary(
         table.add_row("Files Failed", f"[red]{stats.files_failed}[/red]")
     table.add_row("Symbols Found", f"[cyan]{stats.symbols_found}[/cyan]")
     table.add_row("References Found", f"[cyan]{stats.references_found}[/cyan]")
+    table.add_row("References Resolved", f"[cyan]{stats.references_resolved}[/cyan]")
 
     console.print(Panel(table, border_style="green"))
 
@@ -919,3 +931,48 @@ def _dict_to_reference(
             {"from_module": d.get("from_module")} if d.get("from_module") else None
         ),
     )
+
+
+async def resolve_references(
+    repository_id: int,
+    session: Any,
+    console: Console,
+) -> int:
+    """
+    Resolve references to their target symbols.
+
+    After indexing, this function matches reference_text to symbol names
+    and updates the target_symbol_id for each reference.
+
+    Args:
+        repository_id: The repository ID to resolve references for
+        session: Database session
+        console: Rich console for output
+
+    Returns:
+        Number of references resolved
+    """
+    from sqlalchemy import text
+
+    console.print("[cyan]Resolving references to symbols...[/cyan]")
+
+    # Update references where reference_text matches a symbol name in the same repository
+    # This handles simple cases like function calls, class instantiations, etc.
+    result = await session.execute(
+        text("""
+            UPDATE "references" r
+            SET target_symbol_id = s.id
+            FROM symbols s
+            WHERE r.repository_id = :repo_id
+              AND s.repository_id = :repo_id
+              AND r.reference_text = s.name
+              AND r.target_symbol_id IS NULL
+        """),
+        {"repo_id": repository_id},
+    )
+    await session.commit()
+
+    resolved_count = result.rowcount or 0
+    console.print(f"[green]Resolved {resolved_count} references to symbols[/green]")
+
+    return resolved_count

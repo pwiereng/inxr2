@@ -6,6 +6,7 @@ import { Home } from '@/components/Home'
 import { NotFound } from '@/components/NotFound'
 import Repositories from '@/pages/Repositories'
 import Files from '@/pages/Files'
+import Browse from '@/pages/Browse'
 
 /**
  * App content with routing
@@ -27,6 +28,8 @@ function AppContent() {
         <Route path="/" element={<Home />} />
         <Route path="/repositories" element={<Repositories />} />
         <Route path="/repositories/:repositoryId/files" element={<Files />} />
+        <Route path="/browse/:repositoryId" element={<Browse />} />
+        <Route path="/browse/:repositoryId/file/:fileId" element={<Browse />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </ThemeProvider>

@@ -539,7 +539,7 @@ Recent achievements:
 - Successfully indexed INXR2 itself: 108 files, 440 symbols, 473 references
 - Test coverage: 133 tests passing (SQLite + PostgreSQL compatible)
 
-**Next Phase:** 1.6 Configuration System - Parse YAML config and implement CLI framework
+**Next Phase:** 1.6 Cross-Reference Code Browser UI - Build web UI to browse indexed code with symbol search, file tree, and cross-reference navigation
 
 See `IMPLEMENTATION_PLAN.md` for complete roadmap.
 
