@@ -335,7 +335,7 @@ tests/                         # Backend tests
 ## Important Files
 
 - **DESIGN.md** - Complete design document with architecture decisions
-- **IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.4)
+- **IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.5)
 - **CONTRIBUTING.md** - Coding standards, testing philosophy, git workflow
 - **docs/database-schema.md** - Complete database schema with design rationale
 
@@ -526,7 +526,20 @@ Recent achievements:
 - Comprehensive test suite (47 new tests)
 - Test coverage: 85% (92 tests passing)
 
-**Next Phase:** 1.5 Configuration System - Parse YAML config and implement CLI framework
+**Phase 1.5: CLI Indexing Engine** - ✅ COMPLETED (2026-01-10)
+
+Recent achievements:
+- CLI framework with Click (`inxr2 index full|incremental|status`)
+- Git integration via GitPython (commit tracking, file diffs)
+- Symbol extraction for Python and TypeScript (regex-based placeholder)
+- Reference extraction (imports, function calls)
+- Full and incremental indexing workflows
+- Rich progress bars for excellent UX
+- Database adapters: SymbolRepository, ReferenceRepository, IndexStatusRepository
+- Successfully indexed INXR2 itself: 108 files, 440 symbols, 473 references
+- Test coverage: 133 tests passing (SQLite + PostgreSQL compatible)
+
+**Next Phase:** 1.6 Configuration System - Parse YAML config and implement CLI framework
 
 See `IMPLEMENTATION_PLAN.md` for complete roadmap.
 

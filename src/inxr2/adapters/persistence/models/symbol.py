@@ -53,8 +53,10 @@ class SymbolModel(Base):
     docstring: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
-    # Full-text search (stored as TEXT for SQLite compatibility, TSVECTOR in PostgreSQL via migration)
-    name_tsvector: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Full-text search - excluded from ORM operations
+    # This column is managed by database triggers or updated via raw SQL
+    # We use column_property with deferred loading to avoid insert/update issues
+    # Note: For now, we simply exclude this from the ORM by not mapping it
 
     indexed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default="now()"

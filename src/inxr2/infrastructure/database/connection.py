@@ -128,3 +128,24 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 
 # Alias for consistency with route imports
 get_db_session = get_async_session
+
+
+def get_database_url() -> str:
+    """
+    Get the database URL from environment or default.
+
+    Returns:
+        PostgreSQL connection URL (async format)
+    """
+    url = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/inxr2_dev",
+    )
+
+    # Convert postgres:// to postgresql+asyncpg:// if needed
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and "+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    return url
