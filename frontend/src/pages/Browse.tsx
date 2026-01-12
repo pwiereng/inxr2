@@ -154,6 +154,13 @@ export default function Browse() {
     navigate(`/browse/${repositoryId}/file/${reference.source_file_id}?line=${reference.source_line}`);
   };
 
+  // Handle click on definition in references panel
+  const handleDefinitionClick = (sym: Symbol) => {
+    if (sym.file_id) {
+      navigate(`/browse/${repositoryId}/file/${sym.file_id}?line=${sym.start_line}`);
+    }
+  };
+
   // Handle line click (update URL)
   const handleLineClick = (line: number) => {
     navigate(`/browse/${repositoryId}/file/${fileId}?line=${line}`, { replace: true });
@@ -339,6 +346,7 @@ export default function Browse() {
               <ReferencesPanel
                 symbol={selectedSymbol}
                 onReferenceClick={handleRefPanelClick}
+                onDefinitionClick={handleDefinitionClick}
                 onClose={() => {
                   setRefsPanelOpen(false);
                   setSelectedSymbol(null);

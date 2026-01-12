@@ -10,19 +10,72 @@ import {
   IconButton,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import CallMadeIcon from '@mui/icons-material/CallMade';
+import DownloadIcon from '@mui/icons-material/Download';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import FunctionsIcon from '@mui/icons-material/Functions';
+import ClassIcon from '@mui/icons-material/Class';
+import CodeIcon from '@mui/icons-material/Code';
+import DataObjectIcon from '@mui/icons-material/DataObject';
+import PushPinIcon from '@mui/icons-material/PushPin';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 
 import { getSymbolReferences, type Reference, type Symbol } from '@/lib/api';
+
+// Get icon for reference type
+function getReferenceIcon(refType: string) {
+  switch (refType.toLowerCase()) {
+    case 'import':
+      return <DownloadIcon fontSize="small" sx={{ color: '#ce9178' }} />;
+    case 'call':
+      return <PlayArrowIcon fontSize="small" sx={{ color: '#dcdcaa' }} />;
+    case 'usage':
+    default:
+      return <VisibilityIcon fontSize="small" sx={{ color: '#9cdcfe' }} />;
+  }
+}
+
+// Get chip color for reference type
+function getReferenceChipColor(refType: string): 'warning' | 'info' | 'success' | 'default' {
+  switch (refType.toLowerCase()) {
+    case 'import':
+      return 'warning';
+    case 'call':
+      return 'success';
+    case 'usage':
+      return 'info';
+    default:
+      return 'default';
+  }
+}
+
+// Get icon for symbol kind
+function getSymbolKindIcon(kind: string) {
+  switch (kind.toLowerCase()) {
+    case 'function':
+    case 'method':
+      return <FunctionsIcon fontSize="small" />;
+    case 'class':
+      return <ClassIcon fontSize="small" />;
+    case 'interface':
+    case 'type':
+      return <DataObjectIcon fontSize="small" />;
+    default:
+      return <CodeIcon fontSize="small" />;
+  }
+}
 
 interface ReferencesPanelProps {
   symbol: Symbol | null;
   onReferenceClick?: (reference: Reference) => void;
+  onDefinitionClick?: (symbol: Symbol) => void;
   onClose?: () => void;
 }
 
 export function ReferencesPanel({
   symbol,
   onReferenceClick,
+  onDefinitionClick,
   onClose,
 }: ReferencesPanelProps) {
   const [references, setReferences] = useState<Reference[]>([]);
@@ -81,7 +134,7 @@ export function ReferencesPanel({
       <Box
         sx={{
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           justifyContent: 'space-between',
           p: 1.5,
           borderBottom: 1,
@@ -89,10 +142,19 @@ export function ReferencesPanel({
         }}
       >
         <Box>
-          <Typography variant="subtitle2" sx={{ fontFamily: 'monospace' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+            {getSymbolKindIcon(symbol.kind)}
+            <Chip
+              label={symbol.kind}
+              size="small"
+              variant="outlined"
+              sx={{ height: 18, fontSize: '0.65rem' }}
+            />
+          </Box>
+          <Typography variant="subtitle2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
             {symbol.name}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
             {references.length} reference{references.length !== 1 ? 's' : ''}
           </Typography>
         </Box>
@@ -115,15 +177,107 @@ export function ReferencesPanel({
               {error}
             </Typography>
           </Box>
-        ) : references.length === 0 ? (
-          <Box sx={{ p: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              No references found
-            </Typography>
-          </Box>
         ) : (
           <List dense disablePadding>
-            {Object.entries(referencesByFile).map(([file, refs]) => (
+            {/* Definition section - always first */}
+            <Box>
+              <Box
+                sx={{
+                  px: 1.5,
+                  py: 0.5,
+                  bgcolor: 'primary.dark',
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 600,
+                    display: 'block',
+                    color: 'primary.contrastText',
+                  }}
+                >
+                  Definition
+                </Typography>
+              </Box>
+              {symbol.file_path ? (
+                <ListItemButton
+                  onClick={() => onDefinitionClick?.(symbol)}
+                  sx={{ py: 0.5, px: 1.5 }}
+                >
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <PushPinIcon fontSize="small" sx={{ color: '#4fc3f7' }} />
+                        <Chip
+                          label="definition"
+                          size="small"
+                          color="primary"
+                          sx={{ height: 18, fontSize: '0.65rem', minWidth: 50 }}
+                        />
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                          :{symbol.start_line}
+                        </Typography>
+                      </Box>
+                    }
+                    secondary={
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontFamily: 'monospace',
+                          color: 'text.secondary',
+                          display: 'block',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {symbol.file_path}
+                      </Typography>
+                    }
+                  />
+                </ListItemButton>
+              ) : (
+                <Box sx={{ py: 1, px: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <HelpOutlineIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+                  <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                    No definition found (external symbol)
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+
+            {/* References section */}
+            {references.length === 0 ? (
+              <Box sx={{ p: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  No references found
+                </Typography>
+              </Box>
+            ) : (
+              <>
+                <Box
+                  sx={{
+                    px: 1.5,
+                    py: 0.5,
+                    bgcolor: 'action.selected',
+                    borderBottom: 1,
+                    borderColor: 'divider',
+                    mt: 1,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 600,
+                      display: 'block',
+                    }}
+                  >
+                    References ({references.length})
+                  </Typography>
+                </Box>
+                {Object.entries(referencesByFile).map(([file, refs]) => (
               <Box key={file}>
                 {/* File header */}
                 <Box
@@ -160,16 +314,16 @@ export function ReferencesPanel({
                     <ListItemText
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <CallMadeIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                            Line {ref.source_line}
-                          </Typography>
+                          {getReferenceIcon(ref.reference_type)}
                           <Chip
                             label={ref.reference_type}
                             size="small"
-                            variant="outlined"
-                            sx={{ height: 18, fontSize: '0.65rem' }}
+                            color={getReferenceChipColor(ref.reference_type)}
+                            sx={{ height: 18, fontSize: '0.65rem', minWidth: 50 }}
                           />
+                          <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                            :{ref.source_line}
+                          </Typography>
                         </Box>
                       }
                     />
@@ -177,6 +331,8 @@ export function ReferencesPanel({
                 ))}
               </Box>
             ))}
+              </>
+            )}
           </List>
         )}
       </Box>
