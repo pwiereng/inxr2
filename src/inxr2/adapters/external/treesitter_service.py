@@ -220,6 +220,52 @@ class TreeSitterService:
                     }
                 )
 
+            # Extract function calls and identifier usages
+            # Pattern for function calls: identifier followed by (
+            call_pattern = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\(")
+            for call_match in call_pattern.finditer(line):
+                name = call_match.group(1)
+                # Skip Python keywords and common builtins
+                if name in (
+                    "if", "else", "elif", "for", "while", "with", "try",
+                    "except", "finally", "def", "class", "return", "yield",
+                    "import", "from", "as", "and", "or", "not", "in", "is",
+                    "lambda", "assert", "raise", "pass", "break", "continue",
+                    "print", "len", "str", "int", "float", "bool", "list",
+                    "dict", "set", "tuple", "range", "enumerate", "zip",
+                    "map", "filter", "sorted", "reversed", "open", "type",
+                    "isinstance", "issubclass", "hasattr", "getattr", "setattr",
+                    "super", "property", "staticmethod", "classmethod",
+                ):
+                    continue
+                references.append(
+                    {
+                        "text": name,
+                        "type": "call",
+                        "source_line": line_num,
+                        "source_column": call_match.start(1),
+                    }
+                )
+
+            # Extract UPPER_CASE identifier usages (constants)
+            const_usage_pattern = re.compile(r"\b([A-Z][A-Z0-9_]{2,})\b")
+            for const_match in const_usage_pattern.finditer(line):
+                name = const_match.group(1)
+                # Skip if it's the definition itself
+                if stripped.startswith(name + " ="):
+                    continue
+                # Skip common non-reference patterns
+                if name in ("TRUE", "FALSE", "NONE", "AND", "OR", "NOT"):
+                    continue
+                references.append(
+                    {
+                        "text": name,
+                        "type": "usage",
+                        "source_line": line_num,
+                        "source_column": const_match.start(1),
+                    }
+                )
+
         return symbols, references
 
     async def _extract_typescript_symbols(
@@ -388,5 +434,46 @@ class TreeSitterService:
                             "from_module": from_module,
                         }
                     )
+
+            # Extract function/component calls
+            call_pattern = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\(")
+            for call_match in call_pattern.finditer(line):
+                name = call_match.group(1)
+                # Skip JS/TS keywords and common builtins
+                if name in (
+                    "if", "else", "for", "while", "switch", "case", "try",
+                    "catch", "finally", "function", "class", "return",
+                    "import", "export", "from", "as", "const", "let", "var",
+                    "new", "typeof", "instanceof", "await", "async",
+                    "console", "require", "module", "exports",
+                    "Object", "Array", "String", "Number", "Boolean",
+                    "Promise", "Map", "Set", "JSON", "Math", "Date",
+                    "Error", "RegExp", "Function", "Symbol",
+                ):
+                    continue
+                references.append(
+                    {
+                        "text": name,
+                        "type": "call",
+                        "source_line": line_num,
+                        "source_column": call_match.start(1),
+                    }
+                )
+
+            # Extract UPPER_CASE identifier usages (constants)
+            const_usage_pattern = re.compile(r"\b([A-Z][A-Z0-9_]{2,})\b")
+            for const_match in const_usage_pattern.finditer(line):
+                name = const_match.group(1)
+                # Skip if it's a definition
+                if f"const {name}" in line or f"let {name}" in line:
+                    continue
+                references.append(
+                    {
+                        "text": name,
+                        "type": "usage",
+                        "source_line": line_num,
+                        "source_column": const_match.start(1),
+                    }
+                )
 
         return symbols, references

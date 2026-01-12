@@ -17,6 +17,9 @@ from ....adapters.persistence.repositories.repository_adapter import (
 from ....adapters.persistence.repositories.symbol_adapter import (
     PostgresSymbolRepository,
 )
+from ....adapters.persistence.repositories.reference_adapter import (
+    PostgresReferenceRepository,
+)
 from ....infrastructure.database import get_db_session
 
 router = APIRouter(prefix="/files", tags=["files"])
@@ -56,6 +59,28 @@ class FileSymbolsResponse(BaseModel):
     file_id: int
     file_path: str
     symbols: list[FileSymbolResponse]
+    total: int
+
+
+class FileReferenceResponse(BaseModel):
+    """Reference from a file response model."""
+
+    id: int
+    reference_text: str
+    reference_type: str
+    source_line: int
+    source_column: int
+    target_symbol_id: int | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FileReferencesResponse(BaseModel):
+    """List of references from a file."""
+
+    file_id: int
+    file_path: str
+    references: list[FileReferenceResponse]
     total: int
 
 
@@ -163,4 +188,43 @@ async def get_file_symbols(
             for s in symbols
         ],
         total=len(symbols),
+    )
+
+
+@router.get("/{file_id}/references", response_model=FileReferencesResponse)
+async def get_file_references(
+    file_id: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> FileReferencesResponse:
+    """
+    Get all references from a file.
+
+    Returns references (usages of symbols) with their locations for making them clickable.
+    """
+    file_repo = PostgresFileRepository(session)
+    ref_repo = PostgresReferenceRepository(session)
+
+    # Get file info
+    file = await file_repo.find_by_id(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Get references from this file
+    references = await ref_repo.list_by_file(file_id)
+
+    return FileReferencesResponse(
+        file_id=file.id or 0,
+        file_path=file.path,
+        references=[
+            FileReferenceResponse(
+                id=r.id or 0,
+                reference_text=r.reference_text,
+                reference_type=r.reference_type.value,
+                source_line=r.source_line,
+                source_column=r.source_column,
+                target_symbol_id=r.target_symbol_id,
+            )
+            for r in references
+        ],
+        total=len(references),
     )

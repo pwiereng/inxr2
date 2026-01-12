@@ -6,7 +6,6 @@ import {
   Toolbar,
   Typography,
   IconButton,
-  Drawer,
   Breadcrumbs,
   Link,
   CircularProgress,
@@ -27,16 +26,15 @@ import {
   getRepositoryTree,
   getFileContent,
   getFileSymbols,
+  getFileReferences,
   getSymbol,
   type Repository,
   type TreeNode,
   type FileContent,
   type FileSymbol,
+  type FileReference,
   type Symbol,
 } from '@/lib/api';
-
-const DRAWER_WIDTH = 280;
-const REFS_PANEL_WIDTH = 300;
 
 export default function Browse() {
   const { repositoryId, fileId } = useParams<{ repositoryId: string; fileId?: string }>();
@@ -48,6 +46,7 @@ export default function Browse() {
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
   const [fileSymbols, setFileSymbols] = useState<FileSymbol[]>([]);
+  const [fileReferences, setFileReferences] = useState<FileReference[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState<Symbol | null>(null);
 
   // UI state
@@ -89,18 +88,21 @@ export default function Browse() {
     if (!fileId) {
       setFileContent(null);
       setFileSymbols([]);
+      setFileReferences([]);
       return;
     }
 
     const loadFile = async () => {
       setFileLoading(true);
       try {
-        const [content, symbols] = await Promise.all([
+        const [content, symbols, references] = await Promise.all([
           getFileContent(parseInt(fileId, 10)),
           getFileSymbols(parseInt(fileId, 10)),
+          getFileReferences(parseInt(fileId, 10)),
         ]);
         setFileContent(content);
         setFileSymbols(symbols.symbols);
+        setFileReferences(references.references);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load file');
       } finally {
@@ -118,7 +120,6 @@ export default function Browse() {
 
   // Handle symbol selection from search
   const handleSymbolSelect = async (symbol: Symbol) => {
-    // Navigate to the file containing the symbol
     navigate(`/browse/${repositoryId}/file/${symbol.file_id}?line=${symbol.start_line}`);
   };
 
@@ -133,8 +134,23 @@ export default function Browse() {
     }
   };
 
-  // Handle reference click
-  const handleReferenceClick = (reference: { source_file_id: number; source_line: number }) => {
+  // Handle reference click in code viewer (find references for the target symbol)
+  const handleCodeReferenceClick = async (ref: FileReference) => {
+    if (!ref.target_symbol_id) {
+      console.log('Reference has no resolved target symbol');
+      return;
+    }
+    try {
+      const symbol = await getSymbol(ref.target_symbol_id);
+      setSelectedSymbol(symbol);
+      setRefsPanelOpen(true);
+    } catch (err) {
+      console.error('Failed to get symbol for reference:', err);
+    }
+  };
+
+  // Handle click in references panel (jump to reference location)
+  const handleRefPanelClick = (reference: { source_file_id: number; source_line: number }) => {
     navigate(`/browse/${repositoryId}/file/${reference.source_file_id}?line=${reference.source_line}`);
   };
 
@@ -160,12 +176,11 @@ export default function Browse() {
   }
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       {/* App Bar */}
       <AppBar
-        position="fixed"
+        position="static"
         sx={{
-          zIndex: (theme) => theme.zIndex.drawer + 1,
           bgcolor: 'background.paper',
           borderBottom: 1,
           borderColor: 'divider',
@@ -218,130 +233,121 @@ export default function Browse() {
         </Toolbar>
       </AppBar>
 
-      {/* File Tree Drawer */}
-      <Drawer
-        variant="persistent"
-        anchor="left"
-        open={drawerOpen}
-        sx={{
-          width: drawerOpen ? DRAWER_WIDTH : 0,
-          flexShrink: 0,
-          '& .MuiDrawer-paper': {
-            width: DRAWER_WIDTH,
-            boxSizing: 'border-box',
-            top: 64,
-            height: 'calc(100% - 64px)',
-          },
-        }}
-      >
-        <Box sx={{ overflow: 'auto', height: '100%' }}>
-          <FileTree
-            nodes={treeNodes}
-            selectedFileId={fileId ? parseInt(fileId, 10) : null}
-            onFileSelect={handleFileSelect}
-          />
-        </Box>
-      </Drawer>
-
-      {/* Main Content */}
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          mt: 8,
-          ml: drawerOpen ? `${DRAWER_WIDTH}px` : 0,
-          mr: refsPanelOpen ? `${REFS_PANEL_WIDTH}px` : 0,
-          transition: (theme) =>
-            theme.transitions.create(['margin'], {
-              easing: theme.transitions.easing.sharp,
-              duration: theme.transitions.duration.leavingScreen,
-            }),
-          height: 'calc(100vh - 64px)',
-          overflow: 'auto',
-        }}
-      >
-        {fileLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-            <CircularProgress />
+      {/* Main Content with Flexbox Layout */}
+      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* File Tree Panel */}
+        {drawerOpen && (
+          <Box
+            sx={{
+              width: 220,
+              minWidth: 150,
+              maxWidth: 350,
+              height: '100%',
+              overflow: 'auto',
+              borderRight: 1,
+              borderColor: 'divider',
+              flexShrink: 0,
+              resize: 'horizontal',
+            }}
+          >
+            <FileTree
+              nodes={treeNodes}
+              selectedFileId={fileId ? parseInt(fileId, 10) : null}
+              onFileSelect={handleFileSelect}
+            />
           </Box>
-        ) : fileContent ? (
-          <Box sx={{ height: '100%' }}>
-            {/* File header */}
+        )}
+
+        {/* Code Viewer Panel */}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+          {fileLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
+              <CircularProgress />
+            </Box>
+          ) : fileContent ? (
+            <>
+              {/* File header */}
+              <Box
+                sx={{
+                  px: 2,
+                  py: 1,
+                  bgcolor: 'background.paper',
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  flexShrink: 0,
+                }}
+              >
+                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                  {fileContent.path}
+                </Typography>
+                {fileContent.language && (
+                  <Chip label={fileContent.language} size="small" />
+                )}
+                <Typography variant="caption" color="text.secondary">
+                  {fileContent.line_count} lines
+                </Typography>
+              </Box>
+
+              {/* Code Viewer */}
+              <Box sx={{ flex: 1, overflow: 'auto' }}>
+                <CodeViewer
+                  content={fileContent.content}
+                  language={fileContent.language}
+                  symbols={fileSymbols}
+                  references={fileReferences}
+                  highlightLine={highlightLine}
+                  onSymbolClick={handleSymbolClick}
+                  onReferenceClick={handleCodeReferenceClick}
+                  onLineClick={handleLineClick}
+                />
+              </Box>
+            </>
+          ) : (
             <Box
               sx={{
-                px: 2,
-                py: 1,
-                bgcolor: 'background.paper',
-                borderBottom: 1,
-                borderColor: 'divider',
                 display: 'flex',
+                justifyContent: 'center',
                 alignItems: 'center',
-                gap: 1,
+                flex: 1,
+                color: 'text.secondary',
               }}
             >
-              <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                {fileContent.path}
-              </Typography>
-              {fileContent.language && (
-                <Chip label={fileContent.language} size="small" />
-              )}
-              <Typography variant="caption" color="text.secondary">
-                {fileContent.line_count} lines
-              </Typography>
+              <Typography>Select a file from the tree to view its contents</Typography>
             </Box>
+          )}
+        </Box>
 
-            {/* Code Viewer */}
-            <Box sx={{ height: 'calc(100% - 48px)', overflow: 'auto' }}>
-              <CodeViewer
-                content={fileContent.content}
-                language={fileContent.language}
-                symbols={fileSymbols}
-                highlightLine={highlightLine}
-                onSymbolClick={handleSymbolClick}
-                onLineClick={handleLineClick}
+        {/* References Panel */}
+        {refsPanelOpen && (
+          <Box
+            sx={{
+              width: 280,
+              minWidth: 200,
+              maxWidth: 450,
+              height: '100%',
+              borderLeft: 1,
+              borderColor: 'divider',
+              flexShrink: 0,
+              resize: 'horizontal',
+              direction: 'rtl',  /* Makes resize handle appear on left */
+            }}
+          >
+            <Box sx={{ direction: 'ltr', height: '100%' }}>
+              <ReferencesPanel
+                symbol={selectedSymbol}
+                onReferenceClick={handleRefPanelClick}
+                onClose={() => {
+                  setRefsPanelOpen(false);
+                  setSelectedSymbol(null);
+                }}
               />
             </Box>
           </Box>
-        ) : (
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              height: '100%',
-              color: 'text.secondary',
-            }}
-          >
-            <Typography>Select a file from the tree to view its contents</Typography>
-          </Box>
         )}
       </Box>
-
-      {/* References Panel */}
-      <Drawer
-        variant="persistent"
-        anchor="right"
-        open={refsPanelOpen}
-        sx={{
-          width: refsPanelOpen ? REFS_PANEL_WIDTH : 0,
-          flexShrink: 0,
-          '& .MuiDrawer-paper': {
-            width: REFS_PANEL_WIDTH,
-            boxSizing: 'border-box',
-            top: 64,
-            height: 'calc(100% - 64px)',
-          },
-        }}
-      >
-        <ReferencesPanel
-          symbol={selectedSymbol}
-          onReferenceClick={handleReferenceClick}
-          onClose={() => {
-            setRefsPanelOpen(false);
-            setSelectedSymbol(null);
-          }}
-        />
-      </Drawer>
     </Box>
   );
 }
