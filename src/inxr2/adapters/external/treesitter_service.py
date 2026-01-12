@@ -476,4 +476,29 @@ class TreeSitterService:
                     }
                 )
 
+            # Extract type annotations (: TypeName, <TypeName>, extends TypeName)
+            type_ref_pattern = re.compile(
+                r"(?::\s*|<|extends\s+|implements\s+)([A-Z][a-zA-Z0-9_]*)"
+            )
+            for type_match in type_ref_pattern.finditer(line):
+                name = type_match.group(1)
+                # Skip built-in types
+                if name in (
+                    "Array", "Object", "String", "Number", "Boolean",
+                    "Promise", "Map", "Set", "Date", "Error", "Function",
+                    "Symbol", "RegExp", "Record", "Partial", "Required",
+                    "Readonly", "Pick", "Omit", "Exclude", "Extract",
+                    "React", "FC", "Component", "HTMLElement", "Element",
+                    "Event", "MouseEvent", "KeyboardEvent", "ChangeEvent",
+                ):
+                    continue
+                references.append(
+                    {
+                        "text": name,
+                        "type": "usage",
+                        "source_line": line_num,
+                        "source_column": type_match.start(1),
+                    }
+                )
+
         return symbols, references
