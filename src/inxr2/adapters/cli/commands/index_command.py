@@ -181,7 +181,8 @@ async def _run_full_index_async(
                 db_repo = await repo_repository.save(
                     Repository(
                         name=repo_name,
-                        url=repo_info.get("url"),
+                        # Store local path for file content retrieval
+                        url=str(repo_path.absolute()),
                         description=f"Indexed from {repo_path}",
                         default_branch=current_branch,
                     )
@@ -780,8 +781,23 @@ async def _show_index_status_async(repo_path: Path, console: Console) -> None:
 # =============================================================================
 
 
-def _filter_files_by_language(files: list[str], languages: list[str]) -> list[str]:
-    """Filter files to only include those matching specified languages."""
+def _filter_files_by_language(
+    files: list[str], languages: list[str], include_all_text: bool = True
+) -> list[str]:
+    """Filter files to include text files.
+
+    Args:
+        files: List of file paths
+        languages: Languages with symbol extraction support
+        include_all_text: If True, include all text files (not just supported languages)
+    """
+    from inxr2.domain.services.language_detector import LanguageDetector
+
+    if include_all_text:
+        # Include all text files for browsing
+        return [f for f in files if LanguageDetector.is_text_file(f)]
+
+    # Legacy behavior: only include specified languages
     extensions: dict[str, set[str]] = {
         "python": {".py", ".pyi"},
         "typescript": {".ts", ".tsx"},
@@ -797,18 +813,8 @@ def _filter_files_by_language(files: list[str], languages: list[str]) -> list[st
 
 def _detect_language(file_path: str) -> str | None:
     """Detect language from file extension."""
-    ext = Path(file_path).suffix.lower()
-    mapping = {
-        ".py": "python",
-        ".pyi": "python",
-        ".ts": "typescript",
-        ".tsx": "typescript",
-        ".js": "javascript",
-        ".jsx": "javascript",
-        ".mjs": "javascript",
-        ".cjs": "javascript",
-    }
-    return mapping.get(ext)
+    from inxr2.domain.services.language_detector import LanguageDetector
+    return LanguageDetector.detect(file_path)
 
 
 def _shorten_path(path: str, max_len: int = 50) -> str:

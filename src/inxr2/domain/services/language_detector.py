@@ -176,5 +176,13 @@ class LanguageDetector:
         if cls.detect(file_path):
             return True
 
-        # Unknown extension - be conservative
+        # Common text files without extensions or unknown extensions
+        # Be inclusive - include files without extensions or unknown extensions
+        # as they are often config files, READMEs, etc.
+        if not extension or extension in {
+            ".lock", ".env", ".cfg", ".conf", ".properties",
+            ".editorconfig", ".prettierrc", ".eslintrc",
+        }:
+            return True
+
         return False
