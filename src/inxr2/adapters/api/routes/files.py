@@ -137,7 +137,9 @@ async def get_file_content(
             detail="File is binary and cannot be displayed as text",
         )
 
-    line_count = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
+    # Count lines: number of newlines + 1 if file doesn't end with newline
+    has_trailing_newline = content.endswith("\n") if content else True
+    line_count = content.count("\n") + (0 if has_trailing_newline else 1)
 
     return FileContentResponse(
         id=file.id or 0,
@@ -199,7 +201,8 @@ async def get_file_references(
     """
     Get all references from a file.
 
-    Returns references (usages of symbols) with their locations for making them clickable.
+    Returns references (usages of symbols) with their locations
+    for making them clickable in the code viewer.
     """
     file_repo = PostgresFileRepository(session)
     ref_repo = PostgresReferenceRepository(session)

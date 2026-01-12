@@ -445,9 +445,8 @@ async def _run_incremental_index_async(
             db_repo = await repo_repository.find_by_name(repo_name)
 
             if db_repo is None:
-                console.print(
-                    "\n[yellow]No previous index found. Running full index instead.[/yellow]"
-                )
+                msg = "[yellow]No previous index. Running full index.[/yellow]"
+                console.print(f"\n{msg}")
                 await db.close()
                 await _run_full_index_async(repo_path, branch, languages, console)
                 return
@@ -458,9 +457,8 @@ async def _run_incremental_index_async(
             )
 
             if index_status is None or index_status.last_indexed_commit is None:
-                console.print(
-                    "\n[yellow]No previous index found. Running full index instead.[/yellow]"
-                )
+                msg = "[yellow]No previous index. Running full index.[/yellow]"
+                console.print(f"\n{msg}")
                 await db.close()
                 await _run_full_index_async(repo_path, branch, languages, console)
                 return
@@ -954,10 +952,10 @@ async def resolve_references(
     """
     from sqlalchemy import text
 
-    console.print("[cyan]Resolving references to symbols...[/cyan]")
+    console.print("[cyan]Resolving references...[/cyan]")
 
-    # Update references where reference_text matches a symbol name in the same repository
-    # This handles simple cases like function calls, class instantiations, etc.
+    # Update references where reference_text matches a symbol name
+    # in the same repository (function calls, class instantiations, etc.)
     result = await session.execute(
         text("""
             UPDATE "references" r

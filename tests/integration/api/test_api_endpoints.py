@@ -782,3 +782,142 @@ class TestFilesAPI:
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
+
+    async def test_get_file_references(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting references from a specific file."""
+        from inxr2.adapters.persistence.repositories.reference_adapter import (
+            PostgresReferenceRepository,
+        )
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Reference, Symbol
+        from inxr2.domain.value_objects import ReferenceType, SymbolKind
+
+        # Arrange - create repository, commit, file
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="file-refs-test",
+            url="https://github.com/test/refs.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("fileref" + "0" * 34),
+            author_name="Test",
+            author_email="test@example.com",
+            committer_name="Test",
+            committer_email="test@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Test",
+        )
+        saved_commit = await commit_adapter.save(commit)
+
+        file_adapter = PostgresFileRepository(db_session)
+        file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            path="src/caller.py",
+            content_hash="hash1",
+            size_bytes=100,
+            language="python",
+        )
+        saved_file = await file_adapter.save(file)
+
+        # Create a target symbol
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        target_symbol = Symbol(
+            file_id=saved_file.id,
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            name="target_function",
+            kind=SymbolKind.FUNCTION,
+            start_line=50,
+            start_column=0,
+            end_line=60,
+            end_column=0,
+        )
+        saved_symbol = await symbol_adapter.save(target_symbol)
+
+        # Create references from this file
+        reference_adapter = PostgresReferenceRepository(db_session)
+        references = [
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=10,
+                source_column=4,
+                source_end_column=19,
+                reference_text="target_function",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=saved_symbol.id,
+            ),
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=1,
+                source_column=0,
+                source_end_column=20,
+                reference_text="from module import x",
+                reference_type=ReferenceType.IMPORT,
+                target_symbol_id=None,  # external import
+            ),
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=25,
+                source_column=8,
+                source_end_column=23,
+                reference_text="target_function",
+                reference_type=ReferenceType.USAGE,
+                target_symbol_id=saved_symbol.id,
+            ),
+        ]
+        await reference_adapter.save_many(references)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/files/{saved_file.id}/references")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["file_id"] == saved_file.id
+        assert data["file_path"] == "src/caller.py"
+        assert data["total"] == 3
+        assert len(data["references"]) == 3
+
+        # Verify reference details
+        ref_types = {r["reference_type"] for r in data["references"]}
+        assert "call" in ref_types
+        assert "import" in ref_types
+        assert "usage" in ref_types
+
+        # Verify reference structure
+        ref = data["references"][0]
+        assert "id" in ref
+        assert "reference_text" in ref
+        assert "reference_type" in ref
+        assert "source_line" in ref
+        assert "source_column" in ref
+        assert "target_symbol_id" in ref
+
+    async def test_get_file_references_not_found(self, test_app) -> None:
+        """Test getting references for non-existent file."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/files/99999/references")
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()

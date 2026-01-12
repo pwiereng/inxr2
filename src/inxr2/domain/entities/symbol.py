@@ -63,11 +63,13 @@ class Symbol:
             raise ValueError(f"Start column must be >= 0: {self.start_column}")
         if self.end_line < self.start_line:
             raise ValueError(
-                f"End line ({self.end_line}) cannot be before start line ({self.start_line})"
+                f"End line ({self.end_line}) cannot be before "
+                f"start line ({self.start_line})"
             )
         if self.end_line == self.start_line and self.end_column < self.start_column:
             raise ValueError(
-                f"End column ({self.end_column}) cannot be before start column ({self.start_column}) on same line"
+                f"End column ({self.end_column}) cannot be before "
+                f"start column ({self.start_column}) on same line"
             )
 
     @property

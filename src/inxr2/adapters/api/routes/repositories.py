@@ -4,9 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....adapters.persistence.repositories.commit_adapter import (
-    PostgresCommitRepository,
-)
 from ....adapters.persistence.repositories.file_adapter import PostgresFileRepository
 from ....adapters.persistence.repositories.reference_adapter import (
     PostgresReferenceRepository,
@@ -234,8 +231,10 @@ async def get_repository_tree(
 
     # Sort nodes alphabetically (directories first, then files)
     def sort_nodes(nodes: list[TreeNodeResponse]) -> list[TreeNodeResponse]:
-        dirs = sorted([n for n in nodes if n.type == "directory"], key=lambda x: x.name)
-        files_list = sorted([n for n in nodes if n.type == "file"], key=lambda x: x.name)
+        dirs = [n for n in nodes if n.type == "directory"]
+        files_list = [n for n in nodes if n.type == "file"]
+        dirs = sorted(dirs, key=lambda x: x.name)
+        files_list = sorted(files_list, key=lambda x: x.name)
         for d in dirs:
             if d.children:
                 d.children = sort_nodes(d.children)

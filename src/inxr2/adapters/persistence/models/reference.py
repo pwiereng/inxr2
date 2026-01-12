@@ -78,4 +78,7 @@ class ReferenceModel(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<ReferenceModel(id={self.id}, text='{self.reference_text}', type='{self.reference_type}')>"
+        return (
+            f"<ReferenceModel(id={self.id}, "
+            f"text='{self.reference_text}', type='{self.reference_type}')>"
+        )

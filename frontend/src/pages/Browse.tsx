@@ -114,7 +114,7 @@ export default function Browse() {
   }, [fileId]);
 
   // Handle file selection from tree
-  const handleFileSelect = (selectedFileId: number, _path: string) => {
+  const handleFileSelect = (selectedFileId: number) => {
     navigate(`/browse/${repositoryId}/file/${selectedFileId}`);
   };
 

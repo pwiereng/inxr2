@@ -43,27 +43,27 @@ export default function Files() {
   const [filterLanguage, setFilterLanguage] = useState<string>('');
 
   useEffect(() => {
+    const fetchFiles = async () => {
+      try {
+        const response = await fetch(
+          `http://localhost:8000/api/repositories/${repositoryId}/files`
+        );
+        if (!response.ok) {
+          throw new Error('Failed to fetch files');
+        }
+        const data = await response.json();
+        setFiles(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     if (repositoryId) {
       fetchFiles();
     }
   }, [repositoryId]);
-
-  const fetchFiles = async () => {
-    try {
-      const response = await fetch(
-        `http://localhost:8000/api/repositories/${repositoryId}/files`
-      );
-      if (!response.ok) {
-        throw new Error('Failed to fetch files');
-      }
-      const data = await response.json();
-      setFiles(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;

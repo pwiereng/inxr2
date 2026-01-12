@@ -112,7 +112,8 @@ def index_full(
     unsupported = set(lang_list) - supported_languages
     if unsupported:
         console.print(
-            f"[yellow]Warning:[/yellow] Unsupported languages will be skipped: {unsupported}"
+            f"[yellow]Warning:[/yellow] Unsupported languages skipped: "
+            f"{unsupported}"
         )
         lang_list = [lang for lang in lang_list if lang in supported_languages]
 

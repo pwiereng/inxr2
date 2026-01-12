@@ -1,4 +1,4 @@
-"""Initial schema: core tables for repositories, commits, files, symbols, references, and index_status
+"""Initial schema: core tables for code indexing
 
 Revision ID: edc605da5d0a
 Revises:

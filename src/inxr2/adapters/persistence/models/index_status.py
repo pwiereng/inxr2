@@ -61,4 +61,7 @@ class IndexStatusModel(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        return f"<IndexStatusModel(id={self.id}, repo_id={self.repository_id}, branch='{self.branch}', status='{self.indexing_status}')>"
+        return (
+            f"<IndexStatusModel(id={self.id}, repo_id={self.repository_id}, "
+            f"branch='{self.branch}', status='{self.indexing_status}')>"
+        )
