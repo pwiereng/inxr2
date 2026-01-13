@@ -252,9 +252,9 @@ pgdata/
 # Local config overrides
 config.local.yaml
 
-# Repository clones (if stored locally)
-repos/
-repositories/
+# Repository clones (if stored locally for indexing)
+/repos/
+/repositories/
 
 # IDE and Editor
 .vscode/

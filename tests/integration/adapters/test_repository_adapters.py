@@ -16,8 +16,14 @@ from inxr2.adapters.persistence.repositories.file_adapter import PostgresFileRep
 from inxr2.adapters.persistence.repositories.repository_adapter import (
     PostgresRepositoryAdapter,
 )
-from inxr2.domain.entities import Commit, File, Repository
-from inxr2.domain.value_objects import CommitHash
+from inxr2.adapters.persistence.repositories.reference_adapter import (
+    PostgresReferenceRepository,
+)
+from inxr2.adapters.persistence.repositories.symbol_adapter import (
+    PostgresSymbolRepository,
+)
+from inxr2.domain.entities import Commit, File, Reference, Repository, Symbol
+from inxr2.domain.value_objects import CommitHash, ReferenceType, SymbolKind
 
 
 @pytest.mark.asyncio
@@ -491,3 +497,248 @@ class TestPostgresFileRepository:
 
         # Assert
         assert len(found_files) >= 2
+
+
+@pytest.mark.asyncio
+class TestPostgresSymbolRepository:
+    """Tests for PostgresSymbolRepository adapter."""
+
+    async def _create_test_data(self, db_session: AsyncSession):
+        """Create test repository, commit, and file."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(name="symbol-test", url="https://example.com/repo.git")
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("symtest" + "0" * 33),
+            author_name="Author",
+            author_email="author@example.com",
+            committer_name="Author",
+            committer_email="author@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Test",
+        )
+        saved_commit = await commit_adapter.save(commit)
+
+        file_adapter = PostgresFileRepository(db_session)
+        file1 = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            path="src/repo1.py",
+            content_hash="hash1",
+            size_bytes=100,
+        )
+        file2 = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            path="src/repo2.py",
+            content_hash="hash2",
+            size_bytes=100,
+        )
+        saved_file1 = await file_adapter.save(file1)
+        saved_file2 = await file_adapter.save(file2)
+
+        return saved_repo, saved_commit, saved_file1, saved_file2
+
+    async def test_find_by_exact_name_multiple_symbols(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test finding all symbols with the exact same name."""
+        # Arrange
+        repo, commit, file1, file2 = await self._create_test_data(db_session)
+        symbol_adapter = PostgresSymbolRepository(db_session)
+
+        # Create multiple symbols with same name in different classes
+        symbols = [
+            Symbol(
+                file_id=file1.id,
+                repository_id=repo.id,
+                commit_id=commit.id,
+                name="save",
+                qualified_name="FileRepository.save",
+                kind=SymbolKind.METHOD,
+                start_line=10,
+                start_column=4,
+                end_line=20,
+                end_column=0,
+            ),
+            Symbol(
+                file_id=file2.id,
+                repository_id=repo.id,
+                commit_id=commit.id,
+                name="save",
+                qualified_name="CommitRepository.save",
+                kind=SymbolKind.METHOD,
+                start_line=15,
+                start_column=4,
+                end_line=25,
+                end_column=0,
+            ),
+            Symbol(
+                file_id=file1.id,
+                repository_id=repo.id,
+                commit_id=commit.id,
+                name="delete",  # Different name
+                qualified_name="FileRepository.delete",
+                kind=SymbolKind.METHOD,
+                start_line=30,
+                start_column=4,
+                end_line=40,
+                end_column=0,
+            ),
+        ]
+        await symbol_adapter.save_many(symbols)
+
+        # Act - find all symbols named "save"
+        found = await symbol_adapter.find_by_exact_name("save", repo.id)
+
+        # Assert
+        assert len(found) == 2
+        qualified_names = {s.qualified_name for s in found}
+        assert "FileRepository.save" in qualified_names
+        assert "CommitRepository.save" in qualified_names
+
+    async def test_find_by_exact_name_no_match(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test finding symbols with a name that doesn't exist."""
+        # Arrange
+        repo, commit, file1, _ = await self._create_test_data(db_session)
+        symbol_adapter = PostgresSymbolRepository(db_session)
+
+        symbol = Symbol(
+            file_id=file1.id,
+            repository_id=repo.id,
+            commit_id=commit.id,
+            name="existing",
+            kind=SymbolKind.FUNCTION,
+            start_line=1,
+            start_column=0,
+            end_line=5,
+            end_column=0,
+        )
+        await symbol_adapter.save(symbol)
+
+        # Act
+        found = await symbol_adapter.find_by_exact_name("nonexistent", repo.id)
+
+        # Assert
+        assert len(found) == 0
+
+
+@pytest.mark.asyncio
+class TestPostgresReferenceRepository:
+    """Tests for PostgresReferenceRepository adapter."""
+
+    async def _create_test_data(self, db_session: AsyncSession):
+        """Create test repository, commit, file, and symbols."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(name="ref-test", url="https://example.com/repo.git")
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("reftest" + "0" * 33),
+            author_name="Author",
+            author_email="author@example.com",
+            committer_name="Author",
+            committer_email="author@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Test",
+        )
+        saved_commit = await commit_adapter.save(commit)
+
+        file_adapter = PostgresFileRepository(db_session)
+        file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            path="src/caller.py",
+            content_hash="hash1",
+            size_bytes=100,
+        )
+        saved_file = await file_adapter.save(file)
+
+        return saved_repo, saved_commit, saved_file
+
+    async def test_find_references_by_text(self, db_session: AsyncSession) -> None:
+        """Test finding all references matching a text string."""
+        # Arrange
+        repo, commit, file = await self._create_test_data(db_session)
+        reference_adapter = PostgresReferenceRepository(db_session)
+
+        # Create references with same text but potentially different targets
+        references = [
+            Reference(
+                source_file_id=file.id,
+                repository_id=repo.id,
+                commit_id=commit.id,
+                source_line=10,
+                source_column=4,
+                source_end_column=8,
+                reference_text="save",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,  # Unresolved
+            ),
+            Reference(
+                source_file_id=file.id,
+                repository_id=repo.id,
+                commit_id=commit.id,
+                source_line=20,
+                source_column=4,
+                source_end_column=8,
+                reference_text="save",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            ),
+            Reference(
+                source_file_id=file.id,
+                repository_id=repo.id,
+                commit_id=commit.id,
+                source_line=30,
+                source_column=4,
+                source_end_column=10,
+                reference_text="delete",  # Different text
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            ),
+        ]
+        await reference_adapter.save_many(references)
+
+        # Act - find all references with text "save"
+        found = await reference_adapter.find_references_by_text("save", repo.id)
+
+        # Assert
+        assert len(found) == 2
+        for ref in found:
+            assert ref.reference_text == "save"
+
+    async def test_find_references_by_text_no_match(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test finding references with text that doesn't exist."""
+        # Arrange
+        repo, commit, file = await self._create_test_data(db_session)
+        reference_adapter = PostgresReferenceRepository(db_session)
+
+        reference = Reference(
+            source_file_id=file.id,
+            repository_id=repo.id,
+            commit_id=commit.id,
+            source_line=10,
+            source_column=4,
+            source_end_column=8,
+            reference_text="existing",
+            reference_type=ReferenceType.CALL,
+        )
+        await reference_adapter.save(reference)
+
+        # Act
+        found = await reference_adapter.find_references_by_text("nonexistent", repo.id)
+
+        # Assert
+        assert len(found) == 0

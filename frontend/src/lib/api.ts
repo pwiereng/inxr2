@@ -190,6 +190,18 @@ export async function getSymbol(id: number): Promise<Symbol> {
   return fetchApi<Symbol>(`/symbols/${id}`);
 }
 
+export async function getSymbolsByName(
+  name: string,
+  repositoryId?: number
+): Promise<SymbolListResponse> {
+  const params = new URLSearchParams();
+  if (repositoryId) params.set('repository_id', repositoryId.toString());
+  const query = params.toString();
+  return fetchApi<SymbolListResponse>(
+    `/symbols/by-name/${encodeURIComponent(name)}${query ? `?${query}` : ''}`
+  );
+}
+
 export async function getSymbolReferences(id: number, limit = 100): Promise<ReferencesListResponse> {
   return fetchApi<ReferencesListResponse>(`/symbols/${id}/references?limit=${limit}`);
 }

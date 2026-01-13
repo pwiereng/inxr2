@@ -143,6 +143,63 @@ async def search_symbols(
     )
 
 
+@router.get("/by-name/{name}", response_model=SymbolListResponse)
+async def get_symbols_by_name(
+    name: str,
+    repository_id: int | None = Query(default=None, description="Filter by repository"),
+    session: AsyncSession = Depends(get_db_session),
+) -> SymbolListResponse:
+    """
+    Get all symbols with the exact given name.
+
+    Useful for disambiguation when multiple symbols have the same name
+    (e.g., save() methods in different classes).
+    """
+    symbol_repo = PostgresSymbolRepository(session)
+    file_repo = PostgresFileRepository(session)
+
+    # Find all symbols with exact name match
+    symbols = await symbol_repo.find_by_exact_name(
+        name=name,
+        repository_id=repository_id,
+    )
+
+    # Enrich with file paths
+    items: list[SymbolResponse] = []
+    for symbol in symbols:
+        file_path = None
+        if symbol.file_id:
+            file = await file_repo.find_by_id(symbol.file_id)
+            if file:
+                file_path = file.path
+
+        items.append(
+            SymbolResponse(
+                id=symbol.id or 0,
+                name=symbol.name,
+                qualified_name=symbol.qualified_name,
+                kind=symbol.kind,
+                file_id=symbol.file_id,
+                file_path=file_path,
+                repository_id=symbol.repository_id,
+                commit_id=symbol.commit_id,
+                start_line=symbol.start_line,
+                start_column=symbol.start_column,
+                end_line=symbol.end_line,
+                end_column=symbol.end_column,
+                signature=symbol.signature,
+                docstring=symbol.docstring,
+            )
+        )
+
+    return SymbolListResponse(
+        items=items,
+        total=len(items),
+        limit=len(items),
+        offset=0,
+    )
+
+
 @router.get("/{symbol_id}", response_model=SymbolResponse)
 async def get_symbol(
     symbol_id: int,
@@ -184,6 +241,11 @@ async def get_symbol(
 @router.get("/{symbol_id}/references", response_model=ReferencesListResponse)
 async def get_symbol_references(
     symbol_id: int,
+    by_name: bool = Query(
+        default=True,
+        description="If true, find all references matching the symbol name "
+        "(useful when multiple symbols have the same name)",
+    ),
     limit: int = Query(default=100, ge=1, le=500, description="Max results"),
     session: AsyncSession = Depends(get_db_session),
 ) -> ReferencesListResponse:
@@ -191,6 +253,8 @@ async def get_symbol_references(
     Find all references to a symbol.
 
     Returns list of places where this symbol is referenced (used).
+    When by_name=true (default), finds all references matching the symbol name,
+    which is useful when multiple symbols share the same name (e.g., save() methods).
     """
     symbol_repo = PostgresSymbolRepository(session)
     reference_repo = PostgresReferenceRepository(session)
@@ -201,8 +265,17 @@ async def get_symbol_references(
     if not symbol:
         raise HTTPException(status_code=404, detail="Symbol not found")
 
-    # Get references to this symbol
-    references = await reference_repo.find_references_to_symbol(symbol_id, limit=limit)
+    # Get references - either by symbol ID or by name
+    if by_name:
+        # Find all references matching the symbol name (for disambiguation)
+        references = await reference_repo.find_references_by_text(
+            symbol.name, symbol.repository_id, limit=limit
+        )
+    else:
+        # Find only references pointing to this specific symbol
+        references = await reference_repo.find_references_to_symbol(
+            symbol_id, limit=limit
+        )
 
     # Enrich with file paths
     items: list[ReferenceResponse] = []

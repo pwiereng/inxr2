@@ -215,6 +215,59 @@ pre-commit install
 
 For detailed development workflows and troubleshooting, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
+### Database Reset and Re-indexing
+
+If you need to rebuild the database from scratch or re-index a repository:
+
+**Reset Database (clears all data):**
+```bash
+# Inside dev container
+./scripts/dev-reset-db.sh
+
+# Or manually:
+docker exec inxr2-dev bash -c "PGPASSWORD=inxr2_dev_password psql -h postgres -U inxr2_user -d inxr2_dev -c 'TRUNCATE repositories CASCADE;'"
+```
+
+**Full Index (from scratch):**
+```bash
+# Index a local repository with full re-index
+docker exec inxr2-dev inxr2 index full --path /workspace
+
+# With verbose output
+docker exec inxr2-dev inxr2 index full --path /workspace --verbose
+
+# Index specific languages only (default: python,typescript)
+docker exec inxr2-dev inxr2 index full --path /workspace --languages python,typescript,javascript
+```
+
+**Incremental Index (only changed files):**
+```bash
+# Faster - only indexes files changed since last index
+docker exec inxr2-dev inxr2 index incremental --path /workspace
+
+# Specify a branch
+docker exec inxr2-dev inxr2 index incremental --path /workspace --branch main
+```
+
+**Check Index Status:**
+```bash
+docker exec inxr2-dev inxr2 index status --path /workspace
+```
+
+**Complete Reset and Re-index:**
+```bash
+# 1. Clear all indexed data
+docker exec inxr2-dev bash -c "PGPASSWORD=inxr2_dev_password psql -h postgres -U inxr2_user -d inxr2_dev -c 'TRUNCATE repositories CASCADE;'"
+
+# 2. Run full index
+docker exec inxr2-dev inxr2 index full --path /workspace
+
+# 3. Start the server (if not running)
+docker exec -d inxr2-dev bash -c "cd /workspace && inxr2 serve --reload"
+
+# 4. Access at http://localhost:5173
+```
+
 ### Troubleshooting
 
 **Container won't start?**
@@ -354,9 +407,9 @@ search:
 
 ## Project Status
 
-**Current Phase**: Phase 1.4 Complete (Vertical Slice - File Indexing)
+**Current Phase**: Phase 1.6 Complete (Cross-Reference Code Browser UI)
 
-INXR2 has completed Phase 1.4 with a working vertical slice featuring basic file indexing from database to UI. The implementation follows clean code principles with 85% test coverage (92 tests passing).
+INXR2 has completed Phase 1.6 with a fully functional code browser featuring symbol search, go to definition, find references, and syntax highlighting. The implementation follows clean architecture principles with 155 tests passing.
 
 ### Roadmap
 
@@ -365,16 +418,21 @@ INXR2 has completed Phase 1.4 with a working vertical slice featuring basic file
 - [x] Phase 1.2: React Frontend and Development Infrastructure
 - [x] Phase 1.3: Database Foundation and Environment Configuration (2026-01-04)
 - [x] Phase 1.4: Vertical Slice - Basic File Indexing (2026-01-05)
-  - Backend file indexing with language detection (60+ languages)
-  - API endpoints for repositories and files
-  - Frontend UI for browsing repositories and files
-  - 85% test coverage with 92 passing tests
+- [x] Phase 1.5: CLI Indexing Engine - Python & TypeScript (2026-01-10)
+- [x] Phase 1.6: Cross-Reference Code Browser UI (2026-01-11)
+  - Symbol search with autocomplete and filters
+  - Go to Definition (click symbol to navigate)
+  - Find References panel with type annotations
+  - Syntax highlighting with Prism.js (20+ languages)
+  - File tree navigation with language icons
+  - All text files indexed (173 files including Markdown, JSON, YAML)
+  - Symbol disambiguation for multiple definitions
+  - 155 tests passing
 
 **Next Phases:**
-- [ ] Phase 1.5: Configuration System
-- [ ] Phase 2: Git Integration
-- [ ] Phase 3: Tree-sitter Symbol Extraction
-- [ ] Phase 4: Search and Cross-References
+- [ ] Phase 1.7: Configuration System (YAML config files)
+- [ ] Phase 1.8: Improved Reference Resolution (scope-aware, import-aware)
+- [ ] Phase 2: Additional Language Support (Java, C#, Go, C/C++)
 
 ## Contributing
 

@@ -1022,6 +1022,61 @@ inxr2 index status --path /path/to/repo
 
 ---
 
+### 1.8 Improved Reference Resolution (Future Enhancement)
+
+**Status:** ⏭️ DEFERRED
+
+**Problem:** When multiple symbols have the same name (e.g., `save()` methods in different classes), the current indexer picks one arbitrarily. This leads to incorrect cross-references.
+
+**Current Workaround (Implemented):**
+- UI shows all possible definitions with qualified names (e.g., `PostgresFileRepository.save`)
+- User can click on the correct one to navigate
+
+**Future Improvements:**
+
+#### 1.8.1 Scope-Aware Resolution
+For calls like `self.save()` inside a class method, resolve to that class's `save`:
+```python
+class FileRepository:
+    def process(self):
+        self.save()  # → Should resolve to FileRepository.save
+```
+
+**Tasks:**
+- [ ] Track scope context during reference extraction
+- [ ] For `self.method()` calls, resolve to current class's method
+- [ ] For `super().method()` calls, resolve to parent class's method
+- [ ] Update reference resolution to prefer same-scope matches
+
+#### 1.8.2 Receiver-Aware Extraction
+Extract the receiver object for method calls and try to resolve its type:
+```python
+repo = PostgresFileRepository()
+repo.save(file)  # → Should resolve to PostgresFileRepository.save
+```
+
+**Tasks:**
+- [ ] Extract receiver name along with method name
+- [ ] Track variable assignments to infer types
+- [ ] Track parameter types from function signatures
+- [ ] Use type information during reference resolution
+
+#### 1.8.3 Import-Aware Resolution
+Track imports and prefer symbols from imported modules:
+```python
+from adapters.persistence import PostgresFileRepository
+# → Calls to save() more likely PostgresFileRepository.save
+```
+
+**Tasks:**
+- [ ] Track import statements per file
+- [ ] Build import graph for the repository
+- [ ] Prefer symbols from imported modules during resolution
+
+**Estimated Complexity:** High
+
+---
+
 ## Phase 2: Additional Language Support
 
 **Note:** Phase 2 now focuses on adding languages beyond Python and TypeScript, since those are implemented in Phase 1.5.

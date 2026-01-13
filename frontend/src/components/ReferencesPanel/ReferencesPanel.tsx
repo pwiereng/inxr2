@@ -20,7 +20,12 @@ import DataObjectIcon from '@mui/icons-material/DataObject';
 import PushPinIcon from '@mui/icons-material/PushPin';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 
-import { getSymbolReferences, type Reference, type Symbol } from '@/lib/api';
+import {
+  getSymbolReferences,
+  getSymbolsByName,
+  type Reference,
+  type Symbol,
+} from '@/lib/api';
 
 // Get icon for reference type
 function getReferenceIcon(refType: string) {
@@ -79,30 +84,38 @@ export function ReferencesPanel({
   onClose,
 }: ReferencesPanelProps) {
   const [references, setReferences] = useState<Reference[]>([]);
+  const [allDefinitions, setAllDefinitions] = useState<Symbol[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!symbol) {
       setReferences([]);
+      setAllDefinitions([]);
       return;
     }
 
-    const fetchReferences = async () => {
+    const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
-        const result = await getSymbolReferences(symbol.id);
-        setReferences(result.items);
+        // Fetch references and all definitions with the same name in parallel
+        const [refsResult, defsResult] = await Promise.all([
+          getSymbolReferences(symbol.id),
+          getSymbolsByName(symbol.name, symbol.repository_id),
+        ]);
+        setReferences(refsResult.items);
+        setAllDefinitions(defsResult.items);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load references');
         setReferences([]);
+        setAllDefinitions([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchReferences();
+    fetchData();
   }, [symbol]);
 
   if (!symbol) {
@@ -179,7 +192,7 @@ export function ReferencesPanel({
           </Box>
         ) : (
           <List dense disablePadding>
-            {/* Definition section - always first */}
+            {/* Definition section - show all possible definitions */}
             <Box>
               <Box
                 sx={{
@@ -198,10 +211,70 @@ export function ReferencesPanel({
                     color: 'primary.contrastText',
                   }}
                 >
-                  Definition
+                  {allDefinitions.length > 1
+                    ? `Possible Definitions (${allDefinitions.length})`
+                    : 'Definition'}
                 </Typography>
               </Box>
-              {symbol.file_path ? (
+              {allDefinitions.length > 0 ? (
+                allDefinitions.map((def) => {
+                  const isSelected = def.id === symbol.id;
+                  // Extract short file name from path
+                  const fileName = def.file_path?.split('/').pop() || '';
+                  return (
+                    <ListItemButton
+                      key={def.id}
+                      onClick={() => onDefinitionClick?.(def)}
+                      sx={{
+                        py: 0.5,
+                        px: 1.5,
+                        bgcolor: isSelected ? 'action.selected' : 'transparent',
+                        borderLeft: isSelected ? 3 : 0,
+                        borderColor: 'primary.main',
+                      }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {getSymbolKindIcon(def.kind)}
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontFamily: 'monospace',
+                                fontWeight: isSelected ? 600 : 400,
+                                color: isSelected ? 'primary.main' : 'text.primary',
+                              }}
+                            >
+                              {def.qualified_name || def.name}
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                            >
+                              :{def.start_line}
+                            </Typography>
+                          </Box>
+                        }
+                        secondary={
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontFamily: 'monospace',
+                              color: 'text.secondary',
+                              display: 'block',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {fileName}
+                          </Typography>
+                        }
+                      />
+                    </ListItemButton>
+                  );
+                })
+              ) : symbol.file_path ? (
                 <ListItemButton
                   onClick={() => onDefinitionClick?.(symbol)}
                   sx={{ py: 0.5, px: 1.5 }}
@@ -216,7 +289,10 @@ export function ReferencesPanel({
                           color="primary"
                           sx={{ height: 18, fontSize: '0.65rem', minWidth: 50 }}
                         />
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                        <Typography
+                          variant="body2"
+                          sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                        >
                           :{symbol.start_line}
                         </Typography>
                       </Box>

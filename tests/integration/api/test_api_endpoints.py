@@ -678,6 +678,150 @@ class TestSymbolsAPI:
 
         assert response.status_code == 404
 
+    async def test_get_symbols_by_name_multiple(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting all symbols with the same name (disambiguation)."""
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Symbol
+        from inxr2.domain.value_objects import SymbolKind
+
+        # Arrange - create multiple symbols with same name
+        saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+
+        # Create another file
+        file_adapter = PostgresFileRepository(db_session)
+        file2 = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            path="src/other.py",
+            content_hash="hash2",
+            size_bytes=100,
+            language="python",
+        )
+        saved_file2 = await file_adapter.save(file2)
+
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        symbols = [
+            Symbol(
+                file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                name="save",
+                qualified_name="FileRepository.save",
+                kind=SymbolKind.METHOD,
+                start_line=10,
+                start_column=4,
+                end_line=20,
+                end_column=0,
+            ),
+            Symbol(
+                file_id=saved_file2.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                name="save",
+                qualified_name="CommitRepository.save",
+                kind=SymbolKind.METHOD,
+                start_line=15,
+                start_column=4,
+                end_line=25,
+                end_column=0,
+            ),
+        ]
+        await symbol_adapter.save_many(symbols)
+
+        # Act - get all symbols named "save"
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                f"/api/symbols/by-name/save?repository_id={saved_repo.id}"
+            )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        assert len(data["items"]) == 2
+
+        qualified_names = {s["qualified_name"] for s in data["items"]}
+        assert "FileRepository.save" in qualified_names
+        assert "CommitRepository.save" in qualified_names
+
+    async def test_get_symbol_references_by_name(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting references by symbol name (for disambiguation)."""
+        from inxr2.adapters.persistence.repositories.reference_adapter import (
+            PostgresReferenceRepository,
+        )
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Reference, Symbol
+        from inxr2.domain.value_objects import ReferenceType, SymbolKind
+
+        # Arrange
+        saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+
+        # Create symbol
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        symbol = Symbol(
+            file_id=saved_file.id,
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            name="save",
+            qualified_name="Repository.save",
+            kind=SymbolKind.METHOD,
+            start_line=10,
+            start_column=4,
+            end_line=20,
+            end_column=0,
+        )
+        saved_symbol = await symbol_adapter.save(symbol)
+
+        # Create multiple references with same text
+        reference_adapter = PostgresReferenceRepository(db_session)
+        references = [
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=30,
+                source_column=8,
+                source_end_column=12,
+                reference_text="save",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=saved_symbol.id,
+            ),
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=40,
+                source_column=8,
+                source_end_column=12,
+                reference_text="save",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,  # Unresolved - different target
+            ),
+        ]
+        await reference_adapter.save_many(references)
+
+        # Act - get references by name (default behavior)
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/symbols/{saved_symbol.id}/references")
+
+        # Assert - should find both references (by name)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        assert all(r["reference_text"] == "save" for r in data["items"])
+
 
 @pytest.mark.asyncio
 class TestFilesAPI:
