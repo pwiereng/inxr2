@@ -17,8 +17,12 @@ INXR2 is a modern code browser similar to LXR but designed specifically for git-
 - ✅ Phase 1.4: Vertical Slice - Basic File Indexing (COMPLETED 2026-01-05)
 - ✅ Phase 1.5: CLI Indexing Engine - Python & TypeScript (COMPLETED 2026-01-10)
 - ✅ Phase 1.6: Cross-Reference Code Browser UI (COMPLETED 2026-01-11)
+- 🔄 Phase 1.7: Configuration System (Multi-Repository Support) ← **NEXT**
+- ⏭️  Phase 1.8: Tree-sitter Integration (Replace Regex Extraction)
+- ⏭️  Phase 1.9: Remote Repository Support (Clone from URLs)
+- ⏭️  Phase 1.10: Improved Reference Resolution
 - ⏭️  Phase 2: Additional Language Support (Java, C#, Go, C/C++)
-- ⏭️  Phase 3: Advanced Indexing Features
+- ⏭️  Phase 3: Advanced Features (Temporal Navigation, Parallel Indexing)
 
 ---
 
@@ -1008,21 +1012,343 @@ inxr2 index status --path /path/to/repo
 
 ---
 
-### 1.7 Configuration System (Deferred)
+### 1.7 Configuration System (Multi-Repository Support)
 
-**Note:** YAML configuration parsing deferred. CLI uses command-line arguments. Configuration file support will be added after core browsing UI is working.
+**Status:** 🔄 IN PROGRESS
 
-**Tasks (Future):**
-- [ ] Define configuration schema (Pydantic models)
-- [ ] Implement YAML parser with validation
-- [ ] Support environment variable substitution
-- [ ] Add configuration-driven indexing
+**Objectives:**
+- Enable configuration of multiple repositories via YAML file
+- Support both local paths and remote URLs (local paths first)
+- Provide CLI commands for config-driven indexing
+- Update UI to browse multiple repositories
 
-**Estimated Complexity:** Low-Medium
+**Scope:**
+- Phase 1.7 focuses on **local paths only** (remote URL cloning deferred to 1.9)
+- YAML configuration with Pydantic validation
+- CLI integration with config file
+- UI updates for repository selection
 
 ---
 
-### 1.8 Improved Reference Resolution (Future Enhancement)
+#### 1.7.1 Configuration Schema
+
+**Tasks:**
+- [ ] Define Pydantic models for configuration:
+  - [ ] `RepositoryConfig` - name, path/url, branches, languages
+  - [ ] `IndexingConfig` - incremental, max_history, file patterns
+  - [ ] `AppConfig` - root config combining all sections
+- [ ] Support environment variable substitution (`${ENV_VAR}`)
+- [ ] Add sensible defaults for optional fields
+- [ ] Validate paths exist (for local repos)
+
+**Configuration Schema:**
+```yaml
+# config.yaml
+repositories:
+  - name: "inxr2"
+    path: "/path/to/inxr2"           # Local path (Phase 1.7)
+    # url: "https://github.com/..."  # Remote URL (Phase 1.9)
+    branches:
+      - main
+    languages:
+      - python
+      - typescript
+    exclude_patterns:
+      - "**/node_modules/**"
+      - "**/__pycache__/**"
+      - "**/venv/**"
+
+  - name: "other-project"
+    path: "${HOME}/projects/other"   # Environment variable support
+    branches:
+      - main
+      - develop
+
+indexing:
+  incremental: true
+  max_commit_history: 1000           # Only index last N commits
+  batch_size: 100                    # Files per batch insert
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+```
+
+**Pydantic Models:**
+```python
+class RepositoryConfig(BaseModel):
+    name: str
+    path: str | None = None          # Local path
+    url: str | None = None           # Remote URL (Phase 1.9)
+    branches: list[str] = ["main"]
+    languages: list[str] = ["python", "typescript", "javascript"]
+    exclude_patterns: list[str] = []
+
+    @model_validator
+    def validate_path_or_url(self):
+        if not self.path and not self.url:
+            raise ValueError("Either path or url must be specified")
+        return self
+
+class IndexingConfig(BaseModel):
+    incremental: bool = True
+    max_commit_history: int = 1000
+    batch_size: int = 100
+
+class ServerConfig(BaseModel):
+    host: str = "0.0.0.0"
+    port: int = 8000
+
+class AppConfig(BaseModel):
+    repositories: list[RepositoryConfig]
+    indexing: IndexingConfig = IndexingConfig()
+    server: ServerConfig = ServerConfig()
+```
+
+---
+
+#### 1.7.2 Configuration Parser
+
+**Tasks:**
+- [ ] Create `ConfigService` in application layer:
+  - [ ] Load YAML file with PyYAML
+  - [ ] Parse into Pydantic models
+  - [ ] Expand environment variables
+  - [ ] Validate all paths exist
+- [ ] Add configuration port interface
+- [ ] Create file-based adapter implementation
+- [ ] Handle missing/invalid config gracefully
+
+**Key Files:**
+- `src/inxr2/application/ports/config.py` - ConfigServicePort interface
+- `src/inxr2/adapters/config/yaml_config.py` - YAML implementation
+- `src/inxr2/domain/value_objects/config.py` - Config value objects
+
+---
+
+#### 1.7.3 CLI Integration
+
+**Tasks:**
+- [ ] Add `--config` option to CLI commands:
+  - [ ] `inxr2 index full --config config.yaml` - Index all repos
+  - [ ] `inxr2 index full --config config.yaml --repo inxr2` - Index specific repo
+  - [ ] `inxr2 index incremental --config config.yaml` - Incremental all
+  - [ ] `inxr2 index status --config config.yaml` - Status for all repos
+- [ ] Add config validation command:
+  - [ ] `inxr2 config validate config.yaml` - Validate without indexing
+  - [ ] `inxr2 config show config.yaml` - Show parsed config
+- [ ] Support default config location (`~/.inxr2/config.yaml` or `./inxr2.yaml`)
+- [ ] Maintain backward compatibility with `--path` for single repo
+
+**CLI Examples:**
+```bash
+# Index all configured repositories
+inxr2 index full --config config.yaml
+
+# Index specific repository from config
+inxr2 index full --config config.yaml --repo backend-api
+
+# Incremental update all repos
+inxr2 index incremental --config config.yaml
+
+# Check status of all repos
+inxr2 index status --config config.yaml
+
+# Validate config file
+inxr2 config validate config.yaml
+
+# Still works for single repo (backward compatible)
+inxr2 index full --path /path/to/repo
+```
+
+---
+
+#### 1.7.4 Multi-Repository Indexing
+
+**Tasks:**
+- [ ] Update indexing pipeline to iterate over configured repos
+- [ ] Show progress per repository (Rich progress bars)
+- [ ] Handle failures gracefully (continue with other repos)
+- [ ] Store repository config metadata in database
+- [ ] Support `--repo` filter to index specific repository
+
+**Progress Output:**
+```
+Indexing 3 repositories from config.yaml...
+
+[1/3] inxr2 (/path/to/inxr2)
+  Branch: main
+  ████████████████████ 100% | 173 files | 440 symbols | 473 refs
+
+[2/3] backend-api (/path/to/backend)
+  Branch: main
+  ████████████████████ 100% | 85 files | 210 symbols | 320 refs
+
+[3/3] frontend-app (/path/to/frontend)
+  Branch: main
+  ████████████████████ 100% | 42 files | 95 symbols | 150 refs
+
+✓ Indexing complete: 3 repositories, 300 files, 745 symbols, 943 refs
+```
+
+---
+
+#### 1.7.5 UI Updates
+
+**Tasks:**
+- [ ] Update repository selector in header/sidebar
+- [ ] Show all configured repositories in dropdown
+- [ ] Remember last selected repository
+- [ ] Update file tree when repository changes
+- [ ] Cross-repository symbol search (optional)
+
+---
+
+#### 1.7.6 Testing
+
+**Tasks:**
+- [ ] Unit tests for config parsing
+- [ ] Unit tests for environment variable expansion
+- [ ] Integration tests for multi-repo indexing
+- [ ] Test invalid config handling
+- [ ] Test backward compatibility with `--path`
+
+---
+
+**Deliverables:**
+- [ ] YAML configuration file support
+- [ ] Multi-repository indexing via CLI
+- [ ] Repository selector in UI
+- [ ] Documentation for config format
+- [ ] All tests passing
+
+**Success Criteria:**
+- [ ] Can define 3+ repositories in config.yaml
+- [ ] `inxr2 index full --config config.yaml` indexes all repos
+- [ ] UI shows repository dropdown with all indexed repos
+- [ ] Backward compatible with `--path` single repo
+
+**Dependencies:**
+- Phase 1.6 complete ✅
+
+**Estimated Complexity:** Medium
+
+---
+
+### 1.8 Tree-sitter Integration
+
+**Status:** ⏭️ PLANNED
+
+**Objectives:**
+- Replace regex-based symbol extraction with proper AST parsing
+- Use Tree-sitter for accurate symbol boundaries
+- Enable proper parent/child relationships (methods within classes)
+- Foundation for better reference resolution
+
+**Current State:**
+- `TreeSitterService` exists but uses regex (placeholder)
+- Tree-sitter packages in `pyproject.toml` but not used
+- Regex patterns miss edge cases and don't track scope properly
+
+**Tasks:**
+
+#### 1.8.1 Tree-sitter Setup
+- [ ] Initialize Tree-sitter parsers properly:
+  - [ ] `tree-sitter-python` grammar
+  - [ ] `tree-sitter-typescript` grammar
+  - [ ] `tree-sitter-javascript` grammar
+- [ ] Create parser factory to select grammar by language
+- [ ] Handle parser initialization errors gracefully
+
+#### 1.8.2 Python Symbol Extraction
+- [ ] Write Tree-sitter queries for Python:
+  - [ ] Function definitions (def, async def)
+  - [ ] Class definitions
+  - [ ] Method definitions (with parent class tracking)
+  - [ ] Variable assignments
+  - [ ] Import statements
+- [ ] Extract accurate symbol boundaries (start/end line/column)
+- [ ] Track parent symbols (class → method relationship)
+- [ ] Extract docstrings and type annotations
+
+#### 1.8.3 TypeScript Symbol Extraction
+- [ ] Write Tree-sitter queries for TypeScript:
+  - [ ] Function declarations and arrow functions
+  - [ ] Class and interface definitions
+  - [ ] Type aliases
+  - [ ] Method definitions
+  - [ ] Import/export statements
+- [ ] Handle JSX/TSX properly
+- [ ] Extract type annotations
+
+#### 1.8.4 Reference Extraction
+- [ ] Extract references with scope context:
+  - [ ] Function/method calls
+  - [ ] Class instantiations
+  - [ ] Import references
+  - [ ] Type references
+- [ ] Track receiver for method calls (e.g., `obj.method()`)
+- [ ] Track scope path for resolution
+
+#### 1.8.5 Testing & Migration
+- [ ] Create comprehensive test fixtures
+- [ ] Compare regex vs Tree-sitter output
+- [ ] Verify improved accuracy
+- [ ] Update existing tests
+- [ ] Re-index test repositories
+
+**Deliverables:**
+- [ ] Tree-sitter properly integrated
+- [ ] Accurate symbol extraction for Python & TypeScript
+- [ ] Proper parent/child relationships
+- [ ] Scope context for references
+- [ ] All tests passing
+
+**Estimated Complexity:** Medium-High
+
+**Dependencies:**
+- Phase 1.7 complete (configuration system)
+
+---
+
+### 1.9 Remote Repository Support
+
+**Status:** ⏭️ PLANNED
+
+**Objectives:**
+- Support cloning repositories from URLs
+- Handle authentication (SSH keys, tokens)
+- Manage local repository cache
+
+**Tasks:**
+- [ ] Implement repository cloning:
+  - [ ] Clone to local cache directory (`~/.inxr2/repos/`)
+  - [ ] Support HTTPS and SSH URLs
+  - [ ] Handle authentication via environment variables
+- [ ] Create cache manager:
+  - [ ] Track cloned repositories
+  - [ ] Fetch updates on re-index
+  - [ ] Clean up unused repos
+- [ ] Update config to support `url` field
+- [ ] Add progress reporting for clone operations
+
+**Configuration:**
+```yaml
+repositories:
+  - name: "react"
+    url: "https://github.com/facebook/react"
+    branches:
+      - main
+```
+
+**Estimated Complexity:** Medium
+
+**Dependencies:**
+- Phase 1.7 complete (configuration system)
+
+---
+
+### 1.10 Improved Reference Resolution
 
 **Status:** ⏭️ DEFERRED
 
@@ -1034,7 +1360,7 @@ inxr2 index status --path /path/to/repo
 
 **Future Improvements:**
 
-#### 1.8.1 Scope-Aware Resolution
+#### 1.10.1 Scope-Aware Resolution
 For calls like `self.save()` inside a class method, resolve to that class's `save`:
 ```python
 class FileRepository:
@@ -1048,7 +1374,7 @@ class FileRepository:
 - [ ] For `super().method()` calls, resolve to parent class's method
 - [ ] Update reference resolution to prefer same-scope matches
 
-#### 1.8.2 Receiver-Aware Extraction
+#### 1.10.2 Receiver-Aware Extraction
 Extract the receiver object for method calls and try to resolve its type:
 ```python
 repo = PostgresFileRepository()
@@ -1061,7 +1387,7 @@ repo.save(file)  # → Should resolve to PostgresFileRepository.save
 - [ ] Track parameter types from function signatures
 - [ ] Use type information during reference resolution
 
-#### 1.8.3 Import-Aware Resolution
+#### 1.10.3 Import-Aware Resolution
 Track imports and prefer symbols from imported modules:
 ```python
 from adapters.persistence import PostgresFileRepository
@@ -1074,6 +1400,9 @@ from adapters.persistence import PostgresFileRepository
 - [ ] Prefer symbols from imported modules during resolution
 
 **Estimated Complexity:** High
+
+**Dependencies:**
+- Phase 1.8 complete (Tree-sitter provides proper scope context)
 
 ---
 
@@ -2163,7 +2492,7 @@ Finish it off:
 - **Performance**: Monitor performance early and often
 - **Documentation**: Update documentation as you build, not at the end
 
-**Document Version**: 1.4
+**Document Version**: 1.5
 **Created**: 2025-12-29
-**Last Updated**: 2026-01-11 (Phase 1.6 Complete - Cross-Reference Code Browser UI)
-**Status**: Active Development - Phase 1 Complete, Ready for Phase 2
+**Last Updated**: 2026-01-12 (Roadmap updated: Configuration → Tree-sitter → Remote Repos → Reference Resolution)
+**Status**: Active Development - Phase 1.7 Configuration System Next
