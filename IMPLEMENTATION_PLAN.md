@@ -1406,6 +1406,29 @@ from adapters.persistence import PostgresFileRepository
 
 ---
 
+## Backlog: Minor Improvements
+
+Small fixes and enhancements that can be done at any time.
+
+### Indexing Improvements
+
+- [ ] **Include more text file types in indexing**
+  - Currently skipped: `.env*` files, `Dockerfile.dev`, `.mako` templates, `py.typed`
+  - Update `LanguageDetector.is_text_file()` to recognize:
+    - `.env` files (match by name pattern, not extension)
+    - `Dockerfile*` variants (Dockerfile.dev, Dockerfile.prod, etc.)
+    - `.mako` template files
+    - `py.typed` marker files
+  - Files: `src/inxr2/domain/services/language_detector.py`
+
+- [ ] **Add --show-skipped flag to index command**
+  - `inxr2 index full --path /repo --show-skipped` should list skipped files
+  - Helps debug why files aren't being indexed
+  - Could also add to verbose output
+  - Files: `src/inxr2/adapters/cli/commands/index_command.py`
+
+---
+
 ## Phase 2: Additional Language Support
 
 **Note:** Phase 2 now focuses on adding languages beyond Python and TypeScript, since those are implemented in Phase 1.5.
