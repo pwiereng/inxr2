@@ -71,11 +71,11 @@ class TestIndexCommands:
         assert result.exit_code == 0
         assert "--path" in result.output
 
-    def test_index_full_missing_path(self, runner: CliRunner) -> None:
-        """Test index full without required path."""
+    def test_index_full_missing_path_or_config(self, runner: CliRunner) -> None:
+        """Test index full without path or config."""
         result = runner.invoke(main, ["index", "full"])
         assert result.exit_code != 0
-        assert "Missing option" in result.output or "required" in result.output.lower()
+        assert "--path or --config" in result.output or "must be specified" in result.output
 
     def test_index_full_invalid_path(self, runner: CliRunner) -> None:
         """Test index full with invalid path."""

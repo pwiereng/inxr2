@@ -31,6 +31,8 @@ services:
     volumes:
       # Mount entire project for development
       - .:/workspace
+      # Mount test repos directory (sibling to inxr2)
+      - ../test-repos:/test-repos:ro
       # Use named volume for frontend node_modules (Linux binaries)
       - node_modules:/workspace/frontend/node_modules
       # Cache pip packages

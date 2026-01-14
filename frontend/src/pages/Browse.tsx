@@ -11,6 +11,9 @@ import {
   CircularProgress,
   Alert,
   Chip,
+  Select,
+  MenuItem,
+  FormControl,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -23,6 +26,7 @@ import { SymbolSearch } from '@/components/SymbolSearch';
 import { ReferencesPanel } from '@/components/ReferencesPanel';
 import {
   getRepository,
+  getRepositories,
   getRepositoryTree,
   getFileContent,
   getFileSymbols,
@@ -42,6 +46,7 @@ export default function Browse() {
   const navigate = useNavigate();
 
   // State
+  const [allRepositories, setAllRepositories] = useState<Repository[]>([]);
   const [repository, setRepository] = useState<Repository | null>(null);
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
@@ -58,6 +63,18 @@ export default function Browse() {
 
   // Get highlight line from URL
   const highlightLine = searchParams.get('line') ? parseInt(searchParams.get('line')!, 10) : undefined;
+
+  // Load all repositories (for selector dropdown)
+  useEffect(() => {
+    getRepositories()
+      .then(setAllRepositories)
+      .catch(console.error);
+  }, []);
+
+  // Handle repository switch
+  const handleRepositoryChange = (newRepoId: number) => {
+    navigate(`/browse/${newRepoId}`);
+  };
 
   // Load repository and tree
   useEffect(() => {
@@ -203,6 +220,39 @@ export default function Browse() {
             {drawerOpen ? <ChevronLeftIcon /> : <MenuIcon />}
           </IconButton>
 
+          {/* Repository Selector */}
+          {allRepositories.length > 1 ? (
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <Select
+                value={repositoryId ? parseInt(repositoryId, 10) : ''}
+                onChange={(e) => handleRepositoryChange(e.target.value as number)}
+                displayEmpty
+                sx={{
+                  '& .MuiSelect-select': {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    py: 0.5,
+                  }
+                }}
+              >
+                {allRepositories.map((repo) => (
+                  <MenuItem key={repo.id} value={repo.id}>
+                    <FolderIcon fontSize="small" sx={{ mr: 1 }} />
+                    {repo.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ) : (
+            repository && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <FolderIcon fontSize="small" />
+                <Typography variant="body1">{repository.name}</Typography>
+              </Box>
+            )
+          )}
+
           {/* Breadcrumbs */}
           <Breadcrumbs sx={{ flex: 1 }}>
             <Link
@@ -214,17 +264,6 @@ export default function Browse() {
               <HomeIcon fontSize="small" />
               Home
             </Link>
-            {repository && (
-              <Link
-                href={`/browse/${repositoryId}`}
-                underline="hover"
-                color="inherit"
-                sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-              >
-                <FolderIcon fontSize="small" />
-                {repository.name}
-              </Link>
-            )}
             {fileContent && (
               <Typography color="text.primary" sx={{ fontFamily: 'monospace' }}>
                 {fileContent.path.split('/').pop()}

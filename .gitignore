@@ -140,6 +140,9 @@ celerybeat.pid
 .env.local
 .env.*.local
 .envrc
+
+# Local configuration (use config.example.yaml as template)
+config.yaml
 .venv
 env/
 venv/
