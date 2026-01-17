@@ -335,7 +335,7 @@ tests/                         # Backend tests
 ## Important Files
 
 - **DESIGN.md** - Complete design document with architecture decisions
-- **IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.5)
+- **IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.9)
 - **CONTRIBUTING.md** - Coding standards, testing philosophy, git workflow
 - **docs/database-schema.md** - Complete database schema with design rationale
 
@@ -531,15 +531,38 @@ Recent achievements:
 Recent achievements:
 - CLI framework with Click (`inxr2 index full|incremental|status`)
 - Git integration via GitPython (commit tracking, file diffs)
-- Symbol extraction for Python and TypeScript (regex-based placeholder)
-- Reference extraction (imports, function calls)
 - Full and incremental indexing workflows
 - Rich progress bars for excellent UX
 - Database adapters: SymbolRepository, ReferenceRepository, IndexStatusRepository
 - Successfully indexed INXR2 itself: 108 files, 440 symbols, 473 references
-- Test coverage: 133 tests passing (SQLite + PostgreSQL compatible)
 
-**Next Phase:** 1.6 Cross-Reference Code Browser UI - Build web UI to browse indexed code with symbol search, file tree, and cross-reference navigation
+**Phase 1.6: Cross-Reference Code Browser UI** - ✅ COMPLETED (2026-01-11)
+
+Recent achievements:
+- Web UI for browsing indexed code
+- Symbol search with autocomplete
+- File tree navigation
+- Code viewer with syntax highlighting
+- References panel showing usages
+
+**Phase 1.7: Configuration System** - ✅ COMPLETED (2026-01-13)
+
+Recent achievements:
+- YAML configuration for multi-repository support
+- Pydantic-based configuration validation
+- CLI integration with config files
+- UI updates for repository selection
+
+**Phase 1.8: Tree-sitter Integration** - ✅ COMPLETED (2026-01-14)
+
+Recent achievements:
+- Tree-sitter AST parsing for Python, TypeScript, and JavaScript
+- Replaced regex-based extraction with proper AST traversal
+- New symbol types: properties, staticmethods, classmethods, interface properties, enums
+- Proper scope tracking for nested symbols (class → method relationships)
+- 28 comprehensive Tree-sitter tests
+
+**Next Phase:** 1.9 Remote Repository Support - Clone and index repositories from URLs
 
 See `IMPLEMENTATION_PLAN.md` for complete roadmap.
 
