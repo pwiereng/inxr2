@@ -27,6 +27,12 @@ services:
     restart: unless-stopped
     env_file:
       - .env.prod
+    volumes:
+      # Mount repos directory (configurable via INXR2_REPOS_DIR env var)
+      # Set INXR2_REPOS_DIR to the directory containing your git repositories
+      - ${INXR2_REPOS_DIR:-.}:/repos:ro
+      # Mount custom config file if provided
+      - ${INXR2_CONFIG:-./config.yaml}:/app/config.yaml:ro
     ports:
       - "8000:8000"
     # Note: env_file loads all variables defined in .env.prod

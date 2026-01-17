@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -17,6 +17,30 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
 import type { TreeNode } from '@/lib/api';
 
+// Find a file in the tree by its ID and return the path to it
+function findFilePathById(nodes: TreeNode[], fileId: number): string | null {
+  for (const node of nodes) {
+    if (node.file_id === fileId) {
+      return node.path;
+    }
+    if (node.children) {
+      const found = findFilePathById(node.children, fileId);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+// Get all parent directory paths for a given file path
+function getParentPaths(filePath: string): string[] {
+  const parts = filePath.split('/');
+  const paths: string[] = [];
+  for (let i = 1; i < parts.length; i++) {
+    paths.push(parts.slice(0, i).join('/'));
+  }
+  return paths;
+}
+
 interface FileTreeProps {
   nodes: TreeNode[];
   selectedFileId?: number | null;
@@ -31,6 +55,7 @@ interface TreeNodeItemProps {
   onFileSelect?: (fileId: number, path: string) => void;
   expandedPaths: Set<string>;
   toggleExpanded: (path: string) => void;
+  selectedRef?: React.RefObject<HTMLDivElement>;
 }
 
 // Get file icon color based on language
@@ -57,6 +82,7 @@ function TreeNodeItem({
   onFileSelect,
   expandedPaths,
   toggleExpanded,
+  selectedRef,
 }: TreeNodeItemProps) {
   const isExpanded = expandedPaths.has(node.path);
   const isDirectory = node.type === 'directory';
@@ -73,6 +99,7 @@ function TreeNodeItem({
   return (
     <>
       <ListItemButton
+        ref={isSelected ? selectedRef : undefined}
         onClick={handleClick}
         selected={isSelected}
         sx={{
@@ -80,7 +107,14 @@ function TreeNodeItem({
           py: 0.5,
           minHeight: 32,
           '&.Mui-selected': {
-            bgcolor: 'action.selected',
+            bgcolor: 'primary.main',
+            color: 'primary.contrastText',
+            '&:hover': {
+              bgcolor: 'primary.dark',
+            },
+            '& .MuiListItemIcon-root': {
+              color: 'primary.contrastText',
+            },
           },
         }}
       >
@@ -140,6 +174,7 @@ function TreeNodeItem({
                 onFileSelect={onFileSelect}
                 expandedPaths={expandedPaths}
                 toggleExpanded={toggleExpanded}
+                selectedRef={selectedRef}
               />
             ))}
           </List>
@@ -156,8 +191,9 @@ export function FileTree({
   loading = false,
 }: FileTreeProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const selectedRef = useRef<HTMLDivElement>(null!);
 
-  const toggleExpanded = (path: string) => {
+  const toggleExpanded = useCallback((path: string) => {
     setExpandedPaths((prev) => {
       const next = new Set(prev);
       if (next.has(path)) {
@@ -167,7 +203,30 @@ export function FileTree({
       }
       return next;
     });
-  };
+  }, []);
+
+  // Auto-expand path and scroll to selected file when selectedFileId changes
+  useEffect(() => {
+    if (selectedFileId && nodes.length > 0) {
+      const filePath = findFilePathById(nodes, selectedFileId);
+      if (filePath) {
+        const parentPaths = getParentPaths(filePath);
+        // Expand all parent directories
+        setExpandedPaths((prev) => {
+          const next = new Set(prev);
+          parentPaths.forEach((p) => next.add(p));
+          return next;
+        });
+        // Scroll into view after a short delay to allow expansion animation
+        setTimeout(() => {
+          selectedRef.current?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          });
+        }, 100);
+      }
+    }
+  }, [selectedFileId, nodes]);
 
   if (loading) {
     return (
@@ -198,6 +257,7 @@ export function FileTree({
           onFileSelect={onFileSelect}
           expandedPaths={expandedPaths}
           toggleExpanded={toggleExpanded}
+          selectedRef={selectedRef}
         />
       ))}
     </List>
