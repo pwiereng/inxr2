@@ -10,16 +10,16 @@ INXR2 is a modern code browser similar to LXR but designed specifically for git-
 
 **Architecture**: Clean Architecture (Hexagonal/Ports & Adapters)
 
-**Current Status**: Phase 1.6 Complete (Cross-Reference Code Browser UI)
+**Current Status**: Phase 1.8 Complete (Tree-sitter Integration)
 - ✅ Phase 1.1: Project Setup (COMPLETED)
 - ✅ Phase 1.2: React Frontend and Development Infrastructure (COMPLETED)
 - ✅ Phase 1.3: Database Foundation and Environment Configuration (COMPLETED 2026-01-04)
 - ✅ Phase 1.4: Vertical Slice - Basic File Indexing (COMPLETED 2026-01-05)
 - ✅ Phase 1.5: CLI Indexing Engine - Python & TypeScript (COMPLETED 2026-01-10)
 - ✅ Phase 1.6: Cross-Reference Code Browser UI (COMPLETED 2026-01-11)
-- 🔄 Phase 1.7: Configuration System (Multi-Repository Support) ← **NEXT**
-- ⏭️  Phase 1.8: Tree-sitter Integration (Replace Regex Extraction)
-- ⏭️  Phase 1.9: Remote Repository Support (Clone from URLs)
+- ✅ Phase 1.7: Configuration System (Multi-Repository Support) (COMPLETED 2026-01-13)
+- ✅ Phase 1.8: Tree-sitter Integration (Replace Regex Extraction) (COMPLETED 2026-01-14)
+- 🔄 Phase 1.9: Remote Repository Support (Clone from URLs) ← **NEXT**
 - ⏭️  Phase 1.10: Improved Reference Resolution
 - ⏭️  Phase 2: Additional Language Support (Java, C#, Go, C/C++)
 - ⏭️  Phase 3: Advanced Features (Temporal Navigation, Parallel Indexing)
@@ -1237,7 +1237,7 @@ Indexing 3 repositories from config.yaml...
 
 ### 1.8 Tree-sitter Integration
 
-**Status:** ⏭️ PLANNED
+**Status:** ✅ COMPLETED (2026-01-14)
 
 **Objectives:**
 - Replace regex-based symbol extraction with proper AST parsing
@@ -1245,66 +1245,69 @@ Indexing 3 repositories from config.yaml...
 - Enable proper parent/child relationships (methods within classes)
 - Foundation for better reference resolution
 
-**Current State:**
-- `TreeSitterService` exists but uses regex (placeholder)
-- Tree-sitter packages in `pyproject.toml` but not used
-- Regex patterns miss edge cases and don't track scope properly
+**Accomplishments:**
+- Tree-sitter properly initialized with Python, TypeScript, and JavaScript grammars
+- Replaced placeholder regex-based extraction with real AST parsing
+- Added support for many new symbol types previously not extracted:
+  - **Python**: instance variables, class variables, class constants, properties, staticmethods, classmethods
+  - **TypeScript**: interface properties, interface methods, enum members, class fields (static, readonly), getters/setters
+- Improved reference extraction with scope context
+- Fixed empty reference text validation issue
+- All 189 tests passing with 11 new tree-sitter tests
 
 **Tasks:**
 
 #### 1.8.1 Tree-sitter Setup
-- [ ] Initialize Tree-sitter parsers properly:
-  - [ ] `tree-sitter-python` grammar
-  - [ ] `tree-sitter-typescript` grammar
-  - [ ] `tree-sitter-javascript` grammar
-- [ ] Create parser factory to select grammar by language
-- [ ] Handle parser initialization errors gracefully
+- [x] Initialize Tree-sitter parsers properly:
+  - [x] `tree-sitter-python>=0.23.0` grammar
+  - [x] `tree-sitter-typescript>=0.23.0` grammar
+  - [x] `tree-sitter-javascript>=0.23.0` grammar
+- [x] Create parser factory to select grammar by language (including TSX support)
+- [x] Handle parser initialization errors gracefully with logging
 
 #### 1.8.2 Python Symbol Extraction
-- [ ] Write Tree-sitter queries for Python:
-  - [ ] Function definitions (def, async def)
-  - [ ] Class definitions
-  - [ ] Method definitions (with parent class tracking)
-  - [ ] Variable assignments
-  - [ ] Import statements
-- [ ] Extract accurate symbol boundaries (start/end line/column)
-- [ ] Track parent symbols (class → method relationship)
-- [ ] Extract docstrings and type annotations
+- [x] Write Tree-sitter AST traversal for Python:
+  - [x] Function definitions (def, async def)
+  - [x] Class definitions
+  - [x] Method definitions (with parent class tracking)
+  - [x] Instance variables (self.x assignments in __init__)
+  - [x] Class variables and class constants
+  - [x] Properties (@property decorator)
+  - [x] Static methods and class methods
+  - [x] Module-level constants (UPPER_CASE)
+- [x] Extract accurate symbol boundaries (start/end line/column)
+- [x] Track parent symbols (class → method relationship)
 
 #### 1.8.3 TypeScript Symbol Extraction
-- [ ] Write Tree-sitter queries for TypeScript:
-  - [ ] Function declarations and arrow functions
-  - [ ] Class and interface definitions
-  - [ ] Type aliases
-  - [ ] Method definitions
-  - [ ] Import/export statements
-- [ ] Handle JSX/TSX properly
-- [ ] Extract type annotations
+- [x] Write Tree-sitter AST traversal for TypeScript:
+  - [x] Function declarations and arrow functions
+  - [x] Class and interface definitions (with properties/methods)
+  - [x] Type aliases
+  - [x] Enum declarations and members
+  - [x] Class fields (static, readonly, private/public)
+  - [x] Method definitions (including static, getters/setters)
+  - [x] Import/export statements
+- [x] Handle JSX/TSX properly (TSX parser for .tsx/.jsx files)
+- [x] Extract type annotations
 
 #### 1.8.4 Reference Extraction
-- [ ] Extract references with scope context:
-  - [ ] Function/method calls
-  - [ ] Class instantiations
-  - [ ] Import references
-  - [ ] Type references
-- [ ] Track receiver for method calls (e.g., `obj.method()`)
-- [ ] Track scope path for resolution
+- [x] Extract references with scope context:
+  - [x] Function/method calls
+  - [x] Import references (from/import)
+  - [x] Type annotation references
+- [x] Track scope for references (which class/function they're in)
+- [x] Added `add_reference` helper to filter empty references
 
 #### 1.8.5 Testing & Migration
-- [ ] Create comprehensive test fixtures
-- [ ] Compare regex vs Tree-sitter output
-- [ ] Verify improved accuracy
-- [ ] Update existing tests
-- [ ] Re-index test repositories
+- [x] Added 11 new tests for tree-sitter extraction (28 total tree-sitter tests)
+- [x] Re-indexed test repositories with new extraction
+- [x] Verified improved symbol counts (e.g., inxr: 55 → 248 symbols, 4.5x increase)
+- [x] All 189 tests passing
 
-**Deliverables:**
-- [ ] Tree-sitter properly integrated
-- [ ] Accurate symbol extraction for Python & TypeScript
-- [ ] Proper parent/child relationships
-- [ ] Scope context for references
-- [ ] All tests passing
-
-**Estimated Complexity:** Medium-High
+**Results:**
+- inxr repository: 55 → 248 symbols (4.5x increase)
+- multidockerdevcontainer: 738 symbols, 4899 references extracted
+- Much better coverage of navigable code elements
 
 **Dependencies:**
 - Phase 1.7 complete (configuration system)

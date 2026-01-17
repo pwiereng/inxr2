@@ -93,9 +93,23 @@ export function CodeViewer({
     return false;
   };
 
-  // Find symbols on a specific line
+  // Find symbols on a specific line, prioritizing those that start on this line
   const getSymbolsOnLine = (lineNum: number): FileSymbol[] => {
-    return symbols.filter((s) => lineNum >= s.start_line && lineNum <= s.end_line);
+    return symbols
+      .filter((s) => lineNum >= s.start_line && lineNum <= s.end_line)
+      .sort((a, b) => {
+        // Prioritize symbols that start on this line (definitions)
+        const aStartsHere = a.start_line === lineNum;
+        const bStartsHere = b.start_line === lineNum;
+        if (aStartsHere && !bStartsHere) return -1;
+        if (!aStartsHere && bStartsHere) return 1;
+        // For symbols starting on this line, sort by column (leftmost first)
+        if (aStartsHere && bStartsHere) {
+          return a.start_column - b.start_column;
+        }
+        // For enclosing symbols, prefer the most specific (larger start_line = smaller scope)
+        return b.start_line - a.start_line;
+      });
   };
 
   // Find references on a specific line (only those with resolved target_symbol_id)

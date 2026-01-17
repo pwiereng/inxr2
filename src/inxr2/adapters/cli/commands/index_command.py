@@ -264,6 +264,12 @@ async def _run_full_index_async(
                     )
 
                     try:
+                        # Check if file already exists for this commit
+                        existing_file = await file_repository.find_by_path(
+                            db_repo.id, db_commit.id, file_path
+                        )
+                        progress.update(file_task, completed=10)
+
                         # Get file content
                         content = git_service.get_file_content(
                             repo_path, commit_hash, file_path
@@ -278,18 +284,25 @@ async def _run_full_index_async(
                         language = _detect_language(file_path)
                         progress.update(file_task, completed=30)
 
-                        # Create file record
-                        db_file = await file_repository.save(
-                            File(
-                                repository_id=db_repo.id,
-                                commit_id=db_commit.id,
-                                path=file_path,
-                                content_hash=content_hash,
-                                size_bytes=len(content.encode("utf-8")),
-                                language=language,
-                                line_count=content.count("\n") + 1,
+                        # If file exists, delete old symbols/references first
+                        if existing_file:
+                            await symbol_repository.delete_by_file(existing_file.id)
+                            await reference_repository.delete_by_file(existing_file.id)
+                            # Reuse existing file record
+                            db_file = existing_file
+                        else:
+                            # Create new file record
+                            db_file = await file_repository.save(
+                                File(
+                                    repository_id=db_repo.id,
+                                    commit_id=db_commit.id,
+                                    path=file_path,
+                                    content_hash=content_hash,
+                                    size_bytes=len(content.encode("utf-8")),
+                                    language=language,
+                                    line_count=content.count("\n") + 1,
+                                )
                             )
-                        )
                         progress.update(file_task, completed=40)
 
                         # Parse file and extract symbols
