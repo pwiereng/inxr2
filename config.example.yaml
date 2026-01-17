@@ -1,0 +1,44 @@
+# INXR2 Configuration Example
+#
+# This file configures repositories to index and browse.
+# Copy this to config.yaml and customize for your setup.
+#
+# Environment variables can be used with ${VAR} or ${VAR:-default} syntax.
+
+repositories:
+  # Local repository example
+  - name: "inxr2"
+    path: "/workspace"                    # Local path (inside Docker container)
+    branches:
+      - main
+    languages:
+      - python
+      - typescript
+      - javascript
+    exclude_patterns:
+      - "**/node_modules/**"
+      - "**/__pycache__/**"
+      - "**/venv/**"
+      - "**/.git/**"
+
+  # Another local repository (using environment variable)
+  # - name: "my-project"
+  #   path: "${HOME}/projects/my-project"
+  #   branches:
+  #     - main
+  #     - develop
+
+  # Remote repository (Phase 1.9 - not yet implemented)
+  # - name: "react"
+  #   url: "https://github.com/facebook/react"
+  #   branches:
+  #     - main
+
+indexing:
+  incremental: true                       # Use incremental indexing when possible
+  max_commit_history: 1000                # Max commits to index per branch
+  batch_size: 100                         # Files per database batch
+
+server:
+  host: "0.0.0.0"
+  port: 8000

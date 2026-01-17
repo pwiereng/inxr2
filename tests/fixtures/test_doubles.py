@@ -33,11 +33,13 @@ fake_repo.add_test_symbol(Symbol(...))
 from pathlib import Path
 
 from inxr2.application.ports.repositories import (
+    CommitRepositoryPort,
     FileRepositoryPort,
+    RepositoryPort,
     SymbolRepositoryPort,
 )
 from inxr2.application.ports.services import GitServicePort, ParserServicePort
-from inxr2.domain.entities import File, Symbol
+from inxr2.domain.entities import Commit, File, Repository, Symbol
 
 # ============================================================================
 # Repository Test Doubles
@@ -108,16 +110,65 @@ class InMemoryFileRepository(FileRepositoryPort):
 
     def __init__(self) -> None:
         """Initialize with empty storage."""
-        self._files: dict[str, File] = {}
+        self._files: dict[int, File] = {}
+        self._next_id = 1
 
     async def save(self, file: File) -> File:
         """Save file to in-memory storage."""
+        if file.id is None:
+            file = File(
+                id=self._next_id,
+                repository_id=file.repository_id,
+                commit_id=file.commit_id,
+                path=file.path,
+                content_hash=file.content_hash,
+                size_bytes=file.size_bytes,
+                language=file.language,
+                encoding=file.encoding,
+                is_binary=file.is_binary,
+                line_count=file.line_count,
+                indexed_at=file.indexed_at,
+            )
+            self._next_id += 1
         self._files[file.id] = file
         return file
 
-    async def find_by_id(self, file_id: str) -> File | None:
+    async def find_by_id(self, file_id: int) -> File | None:
         """Find file by ID."""
         return self._files.get(file_id)
+
+    async def save_many(self, files: list[File]) -> list[File]:
+        """Save multiple files."""
+        for file in files:
+            if file.id is None:
+                file.id = len(self._files) + 1
+            self._files[file.id] = file
+        return files
+
+    async def list_by_repository(self, repository_id: int) -> list[File]:
+        """List all files for a repository."""
+        return [f for f in self._files.values() if f.repository_id == repository_id]
+
+    async def find_by_path(
+        self, repository_id: int, commit_id: int, path: str
+    ) -> File | None:
+        """Find file by path."""
+        for file in self._files.values():
+            if (
+                file.repository_id == repository_id
+                and file.commit_id == commit_id
+                and file.path == path
+            ):
+                return file
+        return None
+
+    async def list_by_commit(self, commit_id: int) -> list[File]:
+        """List files for a commit."""
+        return [f for f in self._files.values() if f.commit_id == commit_id]
+
+    async def find_by_content_hash(self, content_hash: str) -> list[File]:
+        """Find files by content hash."""
+        return [f for f in self._files.values() if f.content_hash == content_hash]
 
     # Test helper methods
     def add(self, file: File) -> None:
@@ -127,6 +178,142 @@ class InMemoryFileRepository(FileRepositoryPort):
     def clear(self) -> None:
         """Clear all files."""
         self._files.clear()
+
+
+class InMemoryRepositoryRepository(RepositoryPort):
+    """In-memory implementation of RepositoryPort for testing."""
+
+    def __init__(self) -> None:
+        """Initialize with empty storage."""
+        self._repositories: dict[int, Repository] = {}
+        self._next_id = 1
+
+    async def save(self, repository: Repository) -> Repository:
+        """Save repository to in-memory storage."""
+        if repository.id is None:
+            repository = Repository(
+                id=self._next_id,
+                name=repository.name,
+                url=repository.url,
+                description=repository.description,
+                default_branch=repository.default_branch,
+                config=repository.config,
+                created_at=repository.created_at,
+                updated_at=repository.updated_at,
+            )
+            self._next_id += 1
+        self._repositories[repository.id] = repository
+        return repository
+
+    async def find_by_id(self, repository_id: int) -> Repository | None:
+        """Find repository by ID."""
+        return self._repositories.get(repository_id)
+
+    async def find_by_name(self, name: str) -> Repository | None:
+        """Find repository by name."""
+        for repo in self._repositories.values():
+            if repo.name == name:
+                return repo
+        return None
+
+    async def list_all(self) -> list[Repository]:
+        """List all repositories."""
+        return list(self._repositories.values())
+
+    async def update(self, repository: Repository) -> Repository:
+        """Update repository."""
+        if repository.id in self._repositories:
+            self._repositories[repository.id] = repository
+            return repository
+        raise ValueError(f"Repository {repository.id} not found")
+
+    async def delete(self, repository_id: int) -> bool:
+        """Delete repository."""
+        if repository_id in self._repositories:
+            del self._repositories[repository_id]
+            return True
+        return False
+
+    def clear(self) -> None:
+        """Clear all repositories."""
+        self._repositories.clear()
+
+
+class InMemoryCommitRepository(CommitRepositoryPort):
+    """In-memory implementation of CommitRepositoryPort for testing."""
+
+    def __init__(self) -> None:
+        """Initialize with empty storage."""
+        self._commits: dict[int, Commit] = {}
+        self._next_id = 1
+
+    async def save(self, commit: Commit) -> Commit:
+        """Save commit to in-memory storage."""
+        if commit.id is None:
+            from inxr2.domain.value_objects import CommitHash
+
+            commit = Commit(
+                id=self._next_id,
+                repository_id=commit.repository_id,
+                commit_hash=(
+                    commit.commit_hash
+                    if isinstance(commit.commit_hash, CommitHash)
+                    else CommitHash(commit.commit_hash)
+                ),
+                short_hash=commit.short_hash,
+                parent_hashes=commit.parent_hashes,
+                branch=commit.branch,
+                author_name=commit.author_name,
+                author_email=commit.author_email,
+                committer_name=commit.committer_name,
+                committer_email=commit.committer_email,
+                author_date=commit.author_date,
+                commit_date=commit.commit_date,
+                message=commit.message,
+                indexed_at=commit.indexed_at,
+            )
+            self._next_id += 1
+        self._commits[commit.id] = commit
+        return commit
+
+    async def save_many(self, commits: list[Commit]) -> list[Commit]:
+        """Save multiple commits."""
+        result = []
+        for commit in commits:
+            saved = await self.save(commit)
+            result.append(saved)
+        return result
+
+    async def find_by_id(self, commit_id: int) -> Commit | None:
+        """Find commit by ID."""
+        return self._commits.get(commit_id)
+
+    async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
+        """Find commit by repository and hash."""
+        for commit in self._commits.values():
+            if (
+                commit.repository_id == repository_id
+                and commit.commit_hash.value == commit_hash
+            ):
+                return commit
+        return None
+
+    async def list_by_repository(
+        self, repository_id: int, branch: str | None = None, limit: int = 100
+    ) -> list[Commit]:
+        """List commits for a repository."""
+        commits = [
+            c for c in self._commits.values() if c.repository_id == repository_id
+        ]
+        if branch:
+            commits = [c for c in commits if c.branch == branch]
+        # Sort by commit date descending
+        commits.sort(key=lambda c: c.commit_date, reverse=True)
+        return commits[:limit]
+
+    def clear(self) -> None:
+        """Clear all commits."""
+        self._commits.clear()
 
 
 # ============================================================================

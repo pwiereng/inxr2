@@ -2,12 +2,15 @@
 
 from dataclasses import FrozenInstanceError
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
 from inxr2.domain.entities import Commit, File, Reference, Repository, Symbol
-from inxr2.domain.value_objects import CommitHash, SymbolKind, SymbolLocation
+from inxr2.domain.value_objects import (
+    CommitHash,
+    ReferenceType,
+    SymbolKind,
+)
 
 
 class TestRepository:
@@ -16,13 +19,13 @@ class TestRepository:
     def test_repository_creation(self) -> None:
         """Test creating a repository entity."""
         repo = Repository(
-            id="repo-1",
             name="test-repo",
             url="https://github.com/test/repo.git",
+            id=1,
             config={"branch": "main"},
         )
 
-        assert repo.id == "repo-1"
+        assert repo.id == 1
         assert repo.name == "test-repo"
         assert repo.url == "https://github.com/test/repo.git"
         assert repo.config == {"branch": "main"}
@@ -30,7 +33,7 @@ class TestRepository:
     def test_repository_is_immutable(self) -> None:
         """Test that repository is frozen (immutable)."""
         repo = Repository(
-            id="repo-1", name="test-repo", url="https://github.com/test/repo.git"
+            name="test-repo", url="https://github.com/test/repo.git", id=1
         )
 
         with pytest.raises(FrozenInstanceError):
@@ -46,19 +49,23 @@ class TestCommit:
         timestamp = datetime(2025, 1, 1, 12, 0, 0)
 
         commit = Commit(
-            hash=commit_hash,
-            repository_id="repo-1",
-            branch="main",
-            timestamp=timestamp,
-            author="Test Author",
+            commit_hash=commit_hash,
+            repository_id=1,
+            author_name="Test Author",
+            author_email="test@example.com",
+            committer_name="Test Committer",
+            committer_email="committer@example.com",
+            author_date=timestamp,
+            commit_date=timestamp,
             message="Initial commit",
+            branch="main",
         )
 
-        assert commit.hash == commit_hash
-        assert commit.repository_id == "repo-1"
+        assert commit.commit_hash == commit_hash
+        assert commit.repository_id == 1
         assert commit.branch == "main"
-        assert commit.timestamp == timestamp
-        assert commit.author == "Test Author"
+        assert commit.author_date == timestamp
+        assert commit.author_name == "Test Author"
         assert commit.message == "Initial commit"
 
 
@@ -68,20 +75,20 @@ class TestFile:
     def test_file_creation(self) -> None:
         """Test creating a file entity."""
         file = File(
-            id="file-1",
-            repository_id="repo-1",
-            commit_hash="abcdef12",
-            path=Path("src/main.py"),
+            repository_id=1,
+            commit_id=1,
+            path="src/main.py",
             content_hash="sha256hash",
+            size_bytes=1024,
+            id=1,
             language="python",
-            content="print('hello')",
         )
 
-        assert file.id == "file-1"
-        assert file.repository_id == "repo-1"
-        assert file.path == Path("src/main.py")
+        assert file.id == 1
+        assert file.repository_id == 1
+        assert file.path == "src/main.py"
         assert file.language == "python"
-        assert file.content == "print('hello')"
+        assert file.size_bytes == 1024
 
 
 class TestSymbol:
@@ -89,23 +96,27 @@ class TestSymbol:
 
     def test_symbol_creation(self) -> None:
         """Test creating a symbol entity."""
-        location = SymbolLocation(line=10, column=4)
         symbol = Symbol(
-            id="sym-1",
+            file_id=1,
+            repository_id=1,
+            commit_id=1,
             name="my_function",
             kind=SymbolKind.FUNCTION,
-            location=location,
-            file_id="file-1",
+            start_line=10,
+            start_column=4,
+            end_line=20,
+            end_column=10,
+            id=1,
             scope="module",
             metadata={"params": ["x", "y"]},
         )
 
-        assert symbol.id == "sym-1"
+        assert symbol.id == 1
         assert symbol.name == "my_function"
         assert symbol.kind == SymbolKind.FUNCTION
         assert symbol.location.line == 10
         assert symbol.location.column == 4
-        assert symbol.file_id == "file-1"
+        assert symbol.file_id == 1
         assert symbol.scope == "module"
         assert symbol.metadata == {"params": ["x", "y"]}
 
@@ -115,17 +126,21 @@ class TestReference:
 
     def test_reference_creation(self) -> None:
         """Test creating a reference entity."""
-        location = SymbolLocation(line=20, column=8)
         ref = Reference(
-            id="ref-1",
-            source_location=location,
-            source_file_id="file-2",
-            target_symbol_id="sym-1",
-            reference_type="call",
+            repository_id=1,
+            commit_id=1,
+            source_file_id=2,
+            source_line=20,
+            source_column=8,
+            source_end_column=15,
+            reference_text="my_function",
+            reference_type=ReferenceType.CALL,
+            id=1,
+            target_symbol_id=1,
         )
 
-        assert ref.id == "ref-1"
-        assert ref.source_location.line == 20
-        assert ref.source_file_id == "file-2"
-        assert ref.target_symbol_id == "sym-1"
-        assert ref.reference_type == "call"
+        assert ref.id == 1
+        assert ref.source_line == 20
+        assert ref.source_file_id == 2
+        assert ref.target_symbol_id == 1
+        assert ref.reference_type == ReferenceType.CALL

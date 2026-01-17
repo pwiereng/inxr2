@@ -4,17 +4,15 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: inxr2-postgres-dev
-    environment:
-      POSTGRES_DB: inxr2_dev
-      POSTGRES_USER: inxr2_user
-      POSTGRES_PASSWORD: inxr2_dev_password
-      PGDATA: /var/lib/postgresql/data/pgdata
+    env_file:
+      - .env.dev
+    # Note: env_file loads all variables, no need to redeclare
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U inxr2_user -d inxr2_dev"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,9 +26,13 @@ services:
       dockerfile: Dockerfile.dev
     container_name: inxr2-dev
     working_dir: /workspace
+    env_file:
+      - .env.dev
     volumes:
       # Mount entire project for development
       - .:/workspace
+      # Mount test repos directory (sibling to inxr2)
+      - ../test-repos:/test-repos:ro
       # Use named volume for frontend node_modules (Linux binaries)
       - node_modules:/workspace/frontend/node_modules
       # Cache pip packages
@@ -38,20 +40,7 @@ services:
     ports:
       - "8000:8000"  # FastAPI backend
       - "5173:5173"  # Vite frontend dev server
-    environment:
-      # Database connection
-      DATABASE_URL: postgresql://inxr2_user:inxr2_dev_password@postgres:5432/inxr2_dev
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: inxr2_dev
-      POSTGRES_USER: inxr2_user
-      POSTGRES_PASSWORD: inxr2_dev_password
-      # Development settings
-      ENVIRONMENT: development
-      DEBUG: "true"
-      LOG_LEVEL: DEBUG
-      # Hot reload
-      WATCHFILES_FORCE_POLLING: "true"
+    # Note: env_file loads all variables defined in .env.dev
     depends_on:
       postgres:
         condition: service_healthy

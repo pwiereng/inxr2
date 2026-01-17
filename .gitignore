@@ -136,7 +136,13 @@ celerybeat.pid
 
 # Environments
 .env
+.env.prod
+.env.local
+.env.*.local
 .envrc
+
+# Local configuration (use config.example.yaml as template)
+config.yaml
 .venv
 env/
 venv/
@@ -248,12 +254,10 @@ pgdata/
 
 # Local config overrides
 config.local.yaml
-.env.local
-.env.*.local
 
-# Repository clones (if stored locally)
-repos/
-repositories/
+# Repository clones (if stored locally for indexing)
+/repos/
+/repositories/
 
 # IDE and Editor
 .vscode/

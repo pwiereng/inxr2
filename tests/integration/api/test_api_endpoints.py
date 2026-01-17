@@ -1,0 +1,1067 @@
+"""Integration tests for API endpoints.
+
+These tests verify that the FastAPI routes work correctly
+with real use cases and database adapters.
+"""
+
+from datetime import datetime
+
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from inxr2.adapters.persistence.repositories.commit_adapter import (
+    PostgresCommitRepository,
+)
+from inxr2.adapters.persistence.repositories.file_adapter import PostgresFileRepository
+from inxr2.adapters.persistence.repositories.repository_adapter import (
+    PostgresRepositoryAdapter,
+)
+from inxr2.domain.entities import Commit, File, Repository
+from inxr2.domain.value_objects import CommitHash
+from inxr2.infrastructure.fastapi.app import create_app
+
+
+@pytest_asyncio.fixture
+async def test_app(db_session: AsyncSession):
+    """Create a FastAPI app with overridden database session."""
+    from inxr2.infrastructure.database import get_db_session
+
+    app = create_app()
+
+    # Override the database session dependency
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db_session] = override_get_db
+
+    return app
+
+
+@pytest.mark.asyncio
+class TestRepositoriesAPI:
+    """Tests for /api/repositories endpoints."""
+
+    async def test_list_repositories_empty(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test listing repositories when none exist."""
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/repositories")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+
+    async def test_list_repositories_with_data(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test listing repositories with existing data."""
+        # Arrange - create test repositories
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repo1 = Repository(
+            name="test-repo-api-1",
+            url="https://github.com/test/repo1.git",
+            description="Test repository 1",
+        )
+        repo2 = Repository(
+            name="test-repo-api-2",
+            url="https://github.com/test/repo2.git",
+            description="Test repository 2",
+        )
+        await repo_adapter.save(repo1)
+        await repo_adapter.save(repo2)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/repositories")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) >= 2
+
+        # Verify our repositories are in the response
+        repo_names = {r["name"] for r in data}
+        assert "test-repo-api-1" in repo_names
+        assert "test-repo-api-2" in repo_names
+
+    async def test_get_repository_files_not_found(self, test_app) -> None:
+        """Test getting files for non-existent repository."""
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/repositories/99999/files")
+
+        # Assert
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    async def test_get_repository_files_with_data(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting files for repository with files."""
+        # Arrange - create repository with files
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="repo-with-files-api",
+            url="https://github.com/test/files.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        # Create commit
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("abc123" + "0" * 34),
+            author_name="Test Author",
+            author_email="test@example.com",
+            committer_name="Test Author",
+            committer_email="test@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Test commit",
+        )
+        saved_commit = await commit_adapter.save(commit)
+
+        # Create files
+        file_adapter = PostgresFileRepository(db_session)
+        files = [
+            File(
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                path=f"src/api_file{i}.py",
+                content_hash=f"hash{i}",
+                size_bytes=100 * (i + 1),
+                language="python",
+                line_count=10 * (i + 1),
+            )
+            for i in range(3)
+        ]
+        await file_adapter.save_many(files)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/repositories/{saved_repo.id}/files")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 3
+
+        # Verify file details
+        paths = {f["path"] for f in data}
+        assert "src/api_file0.py" in paths
+        assert "src/api_file1.py" in paths
+        assert "src/api_file2.py" in paths
+
+        # Verify response structure
+        first_file = data[0]
+        assert "id" in first_file
+        assert "path" in first_file
+        assert "language" in first_file
+        assert "size_bytes" in first_file
+        assert "line_count" in first_file
+
+    async def test_get_repository_by_id(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting a specific repository by ID."""
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="specific-repo-test",
+            url="https://github.com/test/specific.git",
+            description="Specific test repo",
+        )
+        saved = await repo_adapter.save(repository)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/repositories/{saved.id}")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == saved.id
+        assert data["name"] == "specific-repo-test"
+        assert data["description"] == "Specific test repo"
+
+    async def test_get_repository_not_found(self, test_app) -> None:
+        """Test getting a non-existent repository."""
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/repositories/99999")
+
+        # Assert
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    async def test_get_repository_tree(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting the file tree for a repository."""
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="tree-test-repo",
+            url="https://github.com/test/tree.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        # Create commit
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("tree123" + "0" * 34),
+            author_name="Test",
+            author_email="test@example.com",
+            committer_name="Test",
+            committer_email="test@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Test",
+        )
+        saved_commit = await commit_adapter.save(commit)
+
+        # Create files with nested paths
+        file_adapter = PostgresFileRepository(db_session)
+        files = [
+            File(
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                path="src/main.py",
+                content_hash="hash1",
+                size_bytes=100,
+                language="python",
+            ),
+            File(
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                path="src/utils/helper.py",
+                content_hash="hash2",
+                size_bytes=200,
+                language="python",
+            ),
+            File(
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                path="tests/test_main.py",
+                content_hash="hash3",
+                size_bytes=150,
+                language="python",
+            ),
+        ]
+        await file_adapter.save_many(files)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/repositories/{saved_repo.id}/tree")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["repository_id"] == saved_repo.id
+        assert data["repository_name"] == "tree-test-repo"
+        assert data["total_files"] == 3
+        assert data["total_directories"] >= 2  # src, src/utils, tests
+        assert "root" in data
+        assert len(data["root"]) == 2  # src and tests directories
+
+    async def test_get_repository_tree_not_found(self, test_app) -> None:
+        """Test getting tree for non-existent repository."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/repositories/99999/tree")
+
+        assert response.status_code == 404
+
+    async def test_get_repository_stats(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting statistics for a repository."""
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="stats-test-repo",
+            url="https://github.com/test/stats.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        # Create commit
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("stats12" + "0" * 34),
+            author_name="Test",
+            author_email="test@example.com",
+            committer_name="Test",
+            committer_email="test@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Test",
+        )
+        saved_commit = await commit_adapter.save(commit)
+
+        # Create files with different languages
+        file_adapter = PostgresFileRepository(db_session)
+        files = [
+            File(
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                path="main.py",
+                content_hash="hash1",
+                size_bytes=100,
+                language="python",
+            ),
+            File(
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                path="app.ts",
+                content_hash="hash2",
+                size_bytes=200,
+                language="typescript",
+            ),
+            File(
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                path="helper.py",
+                content_hash="hash3",
+                size_bytes=150,
+                language="python",
+            ),
+        ]
+        await file_adapter.save_many(files)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/repositories/{saved_repo.id}/stats")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["repository_id"] == saved_repo.id
+        assert data["name"] == "stats-test-repo"
+        assert data["total_files"] == 3
+        assert "languages" in data
+        assert data["languages"]["python"] == 2
+        assert data["languages"]["typescript"] == 1
+
+
+@pytest.mark.asyncio
+class TestSymbolsAPI:
+    """Tests for /api/symbols endpoints."""
+
+    async def _create_test_data(
+        self, db_session: AsyncSession
+    ) -> tuple[Repository, Commit, File]:
+        """Create test repository, commit, and file for symbol tests."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="symbols-test-repo",
+            url="https://github.com/test/symbols.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("symbols" + "0" * 34),
+            author_name="Test",
+            author_email="test@example.com",
+            committer_name="Test",
+            committer_email="test@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Test",
+        )
+        saved_commit = await commit_adapter.save(commit)
+
+        file_adapter = PostgresFileRepository(db_session)
+        file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            path="src/main.py",
+            content_hash="hash1",
+            size_bytes=100,
+            language="python",
+        )
+        saved_file = await file_adapter.save(file)
+
+        return saved_repo, saved_commit, saved_file
+
+    async def test_search_symbols_empty(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test searching symbols when none exist."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/symbols?q=test")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert data["total"] == 0
+
+    async def test_search_symbols_with_data(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test searching symbols with existing data."""
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Symbol
+        from inxr2.domain.value_objects import SymbolKind
+
+        # Arrange
+        saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        symbols = [
+            Symbol(
+                file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                name="MyClass",
+                qualified_name="src.main.MyClass",
+                kind=SymbolKind.CLASS,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            ),
+            Symbol(
+                file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                name="my_function",
+                qualified_name="src.main.my_function",
+                kind=SymbolKind.FUNCTION,
+                start_line=12,
+                start_column=0,
+                end_line=20,
+                end_column=0,
+            ),
+        ]
+        await symbol_adapter.save_many(symbols)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/symbols?q=my")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 2
+        names = {s["name"] for s in data["items"]}
+        assert "MyClass" in names
+        assert "my_function" in names
+
+    async def test_search_symbols_with_kind_filter(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test searching symbols with kind filter."""
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Symbol
+        from inxr2.domain.value_objects import SymbolKind
+
+        # Arrange
+        saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        symbols = [
+            Symbol(
+                file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                name="TestClass",
+                kind=SymbolKind.CLASS,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            ),
+            Symbol(
+                file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                name="test_function",
+                kind=SymbolKind.FUNCTION,
+                start_line=12,
+                start_column=0,
+                end_line=20,
+                end_column=0,
+            ),
+        ]
+        await symbol_adapter.save_many(symbols)
+
+        # Act - search for functions only
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/symbols?q=test&kind=function")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["name"] == "test_function"
+        assert data["items"][0]["kind"] == "function"
+
+    async def test_get_symbol_by_id(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting a specific symbol by ID."""
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Symbol
+        from inxr2.domain.value_objects import SymbolKind
+
+        # Arrange
+        saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        symbol = Symbol(
+            file_id=saved_file.id,
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            name="UniqueSymbol",
+            qualified_name="src.main.UniqueSymbol",
+            kind=SymbolKind.CLASS,
+            start_line=1,
+            start_column=0,
+            end_line=10,
+            end_column=0,
+            signature="class UniqueSymbol:",
+            docstring="Test docstring",
+        )
+        saved_symbol = await symbol_adapter.save(symbol)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/symbols/{saved_symbol.id}")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == saved_symbol.id
+        assert data["name"] == "UniqueSymbol"
+        assert data["qualified_name"] == "src.main.UniqueSymbol"
+        assert data["kind"] == "class"
+        assert data["file_path"] == "src/main.py"
+        assert data["signature"] == "class UniqueSymbol:"
+        assert data["docstring"] == "Test docstring"
+
+    async def test_get_symbol_not_found(self, test_app) -> None:
+        """Test getting a non-existent symbol."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/symbols/99999")
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    async def test_get_symbol_references(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting references to a symbol."""
+        from inxr2.adapters.persistence.repositories.reference_adapter import (
+            PostgresReferenceRepository,
+        )
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Reference, Symbol
+        from inxr2.domain.value_objects import ReferenceType, SymbolKind
+
+        # Arrange
+        saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        symbol = Symbol(
+            file_id=saved_file.id,
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            name="TargetSymbol",
+            kind=SymbolKind.CLASS,
+            start_line=1,
+            start_column=0,
+            end_line=10,
+            end_column=0,
+        )
+        saved_symbol = await symbol_adapter.save(symbol)
+
+        # Create references to this symbol
+        reference_adapter = PostgresReferenceRepository(db_session)
+        references = [
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=15,
+                source_column=4,
+                source_end_column=16,
+                reference_text="TargetSymbol",
+                reference_type=ReferenceType.USAGE,
+                target_symbol_id=saved_symbol.id,
+            ),
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=20,
+                source_column=8,
+                source_end_column=20,
+                reference_text="TargetSymbol",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=saved_symbol.id,
+            ),
+        ]
+        await reference_adapter.save_many(references)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/symbols/{saved_symbol.id}/references")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol_name"] == "TargetSymbol"
+        assert data["total"] == 2
+        assert len(data["items"]) == 2
+
+        # Verify reference details
+        ref = data["items"][0]
+        assert "source_line" in ref
+        assert "source_column" in ref
+        assert "reference_type" in ref
+        assert ref["source_file_path"] == "src/main.py"
+
+    async def test_get_symbol_references_not_found(self, test_app) -> None:
+        """Test getting references for non-existent symbol."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/symbols/99999/references")
+
+        assert response.status_code == 404
+
+    async def test_get_symbols_by_name_multiple(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting all symbols with the same name (disambiguation)."""
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Symbol
+        from inxr2.domain.value_objects import SymbolKind
+
+        # Arrange - create multiple symbols with same name
+        saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+
+        # Create another file
+        file_adapter = PostgresFileRepository(db_session)
+        file2 = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            path="src/other.py",
+            content_hash="hash2",
+            size_bytes=100,
+            language="python",
+        )
+        saved_file2 = await file_adapter.save(file2)
+
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        symbols = [
+            Symbol(
+                file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                name="save",
+                qualified_name="FileRepository.save",
+                kind=SymbolKind.METHOD,
+                start_line=10,
+                start_column=4,
+                end_line=20,
+                end_column=0,
+            ),
+            Symbol(
+                file_id=saved_file2.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                name="save",
+                qualified_name="CommitRepository.save",
+                kind=SymbolKind.METHOD,
+                start_line=15,
+                start_column=4,
+                end_line=25,
+                end_column=0,
+            ),
+        ]
+        await symbol_adapter.save_many(symbols)
+
+        # Act - get all symbols named "save"
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                f"/api/symbols/by-name/save?repository_id={saved_repo.id}"
+            )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        assert len(data["items"]) == 2
+
+        qualified_names = {s["qualified_name"] for s in data["items"]}
+        assert "FileRepository.save" in qualified_names
+        assert "CommitRepository.save" in qualified_names
+
+    async def test_get_symbol_references_by_name(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting references by symbol name (for disambiguation)."""
+        from inxr2.adapters.persistence.repositories.reference_adapter import (
+            PostgresReferenceRepository,
+        )
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Reference, Symbol
+        from inxr2.domain.value_objects import ReferenceType, SymbolKind
+
+        # Arrange
+        saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+
+        # Create symbol
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        symbol = Symbol(
+            file_id=saved_file.id,
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            name="save",
+            qualified_name="Repository.save",
+            kind=SymbolKind.METHOD,
+            start_line=10,
+            start_column=4,
+            end_line=20,
+            end_column=0,
+        )
+        saved_symbol = await symbol_adapter.save(symbol)
+
+        # Create multiple references with same text
+        reference_adapter = PostgresReferenceRepository(db_session)
+        references = [
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=30,
+                source_column=8,
+                source_end_column=12,
+                reference_text="save",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=saved_symbol.id,
+            ),
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=40,
+                source_column=8,
+                source_end_column=12,
+                reference_text="save",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,  # Unresolved - different target
+            ),
+        ]
+        await reference_adapter.save_many(references)
+
+        # Act - get references by name (default behavior)
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/symbols/{saved_symbol.id}/references")
+
+        # Assert - should find both references (by name)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        assert all(r["reference_text"] == "save" for r in data["items"])
+
+
+@pytest.mark.asyncio
+class TestFilesAPI:
+    """Tests for /api/files endpoints."""
+
+    async def test_get_file_symbols(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting symbols for a specific file."""
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Symbol
+        from inxr2.domain.value_objects import SymbolKind
+
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="file-symbols-test",
+            url="https://github.com/test/files.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("filesym" + "0" * 34),
+            author_name="Test",
+            author_email="test@example.com",
+            committer_name="Test",
+            committer_email="test@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Test",
+        )
+        saved_commit = await commit_adapter.save(commit)
+
+        file_adapter = PostgresFileRepository(db_session)
+        file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            path="src/module.py",
+            content_hash="hash1",
+            size_bytes=100,
+            language="python",
+        )
+        saved_file = await file_adapter.save(file)
+
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        symbols = [
+            Symbol(
+                file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                name="FileClass",
+                kind=SymbolKind.CLASS,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            ),
+            Symbol(
+                file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                name="file_function",
+                kind=SymbolKind.FUNCTION,
+                start_line=12,
+                start_column=0,
+                end_line=20,
+                end_column=0,
+                signature="def file_function(x: int) -> str:",
+            ),
+        ]
+        await symbol_adapter.save_many(symbols)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/files/{saved_file.id}/symbols")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["file_id"] == saved_file.id
+        assert data["file_path"] == "src/module.py"
+        assert data["total"] == 2
+        assert len(data["symbols"]) == 2
+
+        # Verify symbol details
+        symbol_names = {s["name"] for s in data["symbols"]}
+        assert "FileClass" in symbol_names
+        assert "file_function" in symbol_names
+
+    async def test_get_file_symbols_not_found(self, test_app) -> None:
+        """Test getting symbols for non-existent file."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/files/99999/symbols")
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    async def test_get_file_references(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test getting references from a specific file."""
+        from inxr2.adapters.persistence.repositories.reference_adapter import (
+            PostgresReferenceRepository,
+        )
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Reference, Symbol
+        from inxr2.domain.value_objects import ReferenceType, SymbolKind
+
+        # Arrange - create repository, commit, file
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="file-refs-test",
+            url="https://github.com/test/refs.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("fileref" + "0" * 34),
+            author_name="Test",
+            author_email="test@example.com",
+            committer_name="Test",
+            committer_email="test@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Test",
+        )
+        saved_commit = await commit_adapter.save(commit)
+
+        file_adapter = PostgresFileRepository(db_session)
+        file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            path="src/caller.py",
+            content_hash="hash1",
+            size_bytes=100,
+            language="python",
+        )
+        saved_file = await file_adapter.save(file)
+
+        # Create a target symbol
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        target_symbol = Symbol(
+            file_id=saved_file.id,
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            name="target_function",
+            kind=SymbolKind.FUNCTION,
+            start_line=50,
+            start_column=0,
+            end_line=60,
+            end_column=0,
+        )
+        saved_symbol = await symbol_adapter.save(target_symbol)
+
+        # Create references from this file
+        reference_adapter = PostgresReferenceRepository(db_session)
+        references = [
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=10,
+                source_column=4,
+                source_end_column=19,
+                reference_text="target_function",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=saved_symbol.id,
+            ),
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=1,
+                source_column=0,
+                source_end_column=20,
+                reference_text="from module import x",
+                reference_type=ReferenceType.IMPORT,
+                target_symbol_id=None,  # external import
+            ),
+            Reference(
+                source_file_id=saved_file.id,
+                repository_id=saved_repo.id,
+                commit_id=saved_commit.id,
+                source_line=25,
+                source_column=8,
+                source_end_column=23,
+                reference_text="target_function",
+                reference_type=ReferenceType.USAGE,
+                target_symbol_id=saved_symbol.id,
+            ),
+        ]
+        await reference_adapter.save_many(references)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/files/{saved_file.id}/references")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["file_id"] == saved_file.id
+        assert data["file_path"] == "src/caller.py"
+        assert data["total"] == 3
+        assert len(data["references"]) == 3
+
+        # Verify reference details
+        ref_types = {r["reference_type"] for r in data["references"]}
+        assert "call" in ref_types
+        assert "import" in ref_types
+        assert "usage" in ref_types
+
+        # Verify reference structure
+        ref = data["references"][0]
+        assert "id" in ref
+        assert "reference_text" in ref
+        assert "reference_type" in ref
+        assert "source_line" in ref
+        assert "source_column" in ref
+        assert "target_symbol_id" in ref
+
+    async def test_get_file_references_not_found(self, test_app) -> None:
+        """Test getting references for non-existent file."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/files/99999/references")
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()

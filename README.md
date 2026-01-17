@@ -63,6 +63,10 @@ The fastest way to get started is using the Docker development environment:
 # Clone the repository
 git clone <repository-url>
 cd inxr2
+
+# The project includes a .env.dev file with development defaults
+# No additional configuration needed for development!
+# For production, see "Production Deployment" section below
 ```
 
 **Option 1: Using VS Code/Cursor (Recommended)**
@@ -137,7 +141,24 @@ For more details, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ### Production Deployment
 
-See [Deployment](#deployment) section below for production setup instructions.
+**IMPORTANT: Configure environment variables before deployment!**
+
+```bash
+# 1. Create production environment file
+cp .env.prod.example .env.prod
+
+# 2. Edit .env.prod and set secure values
+# CRITICAL: Change POSTGRES_PASSWORD to a strong password!
+# CRITICAL: Generate a random SECRET_KEY!
+# Update ALLOWED_HOSTS and CORS_ORIGINS for your domain
+nano .env.prod
+
+# 3. Build and start
+docker-compose build
+docker-compose up -d
+```
+
+See [Deployment](#deployment) section below for complete production setup instructions.
 
 ## Documentation
 
@@ -194,6 +215,122 @@ pre-commit install
 
 For detailed development workflows and troubleshooting, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
+### Database Reset and Re-indexing
+
+If you need to rebuild the database from scratch or re-index a repository:
+
+**Reset Database (clears all data):**
+```bash
+# Inside dev container
+./scripts/dev-reset-db.sh
+
+# Or manually:
+docker exec inxr2-dev bash -c "PGPASSWORD=inxr2_dev_password psql -h postgres -U inxr2_user -d inxr2_dev -c 'TRUNCATE repositories CASCADE;'"
+```
+
+**Full Index (from scratch):**
+```bash
+# Index a single repository
+docker exec inxr2-dev inxr2 index full --path /workspace
+
+# Index multiple repositories using config file
+docker exec inxr2-dev inxr2 index full --config /workspace/config.yaml
+
+# Index a specific repository from config
+docker exec inxr2-dev inxr2 index full --config /workspace/config.yaml --repo myrepo
+
+# With verbose output
+docker exec inxr2-dev inxr2 index full --path /workspace --verbose
+
+# Index specific languages only (default: python,typescript)
+docker exec inxr2-dev inxr2 index full --path /workspace --languages python,typescript,javascript
+```
+
+**Incremental Index (only changed files):**
+```bash
+# Faster - only indexes files changed since last index
+docker exec inxr2-dev inxr2 index incremental --path /workspace
+
+# Specify a branch
+docker exec inxr2-dev inxr2 index incremental --path /workspace --branch main
+```
+
+**Check Index Status:**
+```bash
+docker exec inxr2-dev inxr2 index status --path /workspace
+```
+
+### Indexing External Repositories
+
+You can index repositories stored outside the INXR2 project directory by mounting them into the container:
+
+**1. Update docker-compose.dev.yml to mount your repos:**
+```yaml
+volumes:
+  - .:/workspace
+  - /path/to/your/repos:/repos:ro  # Mount repos read-only
+```
+
+**2. Create a config.yaml:**
+```yaml
+# config.yaml
+repositories:
+  - name: "project-a"
+    path: "/repos/project-a"
+    branches:
+      - main
+    languages:
+      - python
+      - typescript
+
+  - name: "project-b"
+    path: "/repos/project-b"
+    branches:
+      - main
+      - develop
+```
+
+**3. Restart containers and index:**
+```bash
+# Restart to pick up new mount
+docker-compose -f docker-compose.dev.yml up -d
+
+# Validate config
+docker exec inxr2-dev inxr2 config validate /workspace/config.yaml
+
+# Index all repositories
+docker exec inxr2-dev inxr2 index full --config /workspace/config.yaml
+
+# Start the servers
+docker exec -d inxr2-dev bash -c "cd /workspace && inxr2 serve --reload"
+docker exec -d inxr2-dev bash -c "cd /workspace/frontend && npm run dev"
+
+# Browse at http://localhost:5173
+```
+
+**Config Commands:**
+```bash
+# Validate config file
+docker exec inxr2-dev inxr2 config validate /workspace/config.yaml
+
+# Show parsed config (with env vars expanded)
+docker exec inxr2-dev inxr2 config show /workspace/config.yaml
+```
+
+**Complete Reset and Re-index:**
+```bash
+# 1. Clear all indexed data
+docker exec inxr2-dev bash -c "PGPASSWORD=inxr2_dev_password psql -h postgres -U inxr2_user -d inxr2_dev -c 'TRUNCATE repositories CASCADE;'"
+
+# 2. Run full index
+docker exec inxr2-dev inxr2 index full --path /workspace
+
+# 3. Start the server (if not running)
+docker exec -d inxr2-dev bash -c "cd /workspace && inxr2 serve --reload"
+
+# 4. Access at http://localhost:5173
+```
+
 ### Troubleshooting
 
 **Container won't start?**
@@ -216,15 +353,53 @@ docker-compose -f docker-compose.dev.yml ps  # Check postgres is healthy
 
 ## Deployment
 
-INXR2 is designed to run in a self-contained Docker container:
+### Environment Configuration
+
+**CRITICAL: Set up environment variables before deploying to production!**
+
+1. **Create production environment file:**
+   ```bash
+   cp .env.prod.example .env.prod
+   ```
+
+2. **Edit `.env.prod` and set secure values:**
+   - `POSTGRES_PASSWORD`: Strong password (generate with `openssl rand -base64 32`)
+   - `SECRET_KEY`: Random secret key (generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`)
+   - `ALLOWED_HOSTS`: Your domain(s)
+   - `CORS_ORIGINS`: Your frontend URL(s)
+
+3. **Never commit `.env.prod` to version control!** (already in `.gitignore`)
+
+### Docker Compose Deployment (Recommended)
+
+```bash
+# 1. Configure environment (see above)
+cp .env.prod.example .env.prod
+nano .env.prod  # Edit with secure values
+
+# 2. Build and start
+docker-compose build
+docker-compose up -d
+
+# 3. View logs
+docker-compose logs -f
+
+# 4. Stop
+docker-compose down
+```
+
+### Standalone Docker Deployment
+
+INXR2 can also run as a single Docker container:
 
 ```bash
 # Build the image
 docker build -t inxr2 .
 
-# Run the container
+# Run with environment file
 docker run -d \
   -p 8000:8000 \
+  --env-file .env.prod \
   -v $(pwd)/config.yaml:/app/config.yaml \
   -v inxr2-data:/var/lib/postgresql/data \
   --name inxr2 \
@@ -241,53 +416,104 @@ See [DESIGN.md - Section 9](DESIGN.md#9-deployment) for detailed deployment opti
 
 ## Configuration
 
+### Environment Variables
+
+Environment variables are managed through `.env` files:
+
+- **`.env.dev`**: Development environment (committed to repo)
+- **`.env.prod`**: Production environment (NOT committed - create from `.env.prod.example`)
+- **`.env.example`**: Template showing all available variables
+
+**Key Variables:**
+- `POSTGRES_PASSWORD`: Database password (CHANGE in production!)
+- `DATABASE_URL`: Full database connection string
+- `ENVIRONMENT`: development, staging, or production
+- `DEBUG`: Enable debug mode (false in production)
+- `LOG_LEVEL`: Logging verbosity (DEBUG, INFO, WARNING, ERROR)
+- `SECRET_KEY`: Secret key for security features (production only)
+- `ALLOWED_HOSTS`: Comma-separated list of allowed domains
+- `CORS_ORIGINS`: Comma-separated list of allowed CORS origins
+
+See `.env.example` for complete list of variables.
+
+### Application Configuration
+
 Example `config.yaml`:
 
 ```yaml
 repositories:
-  team_repos:
-    - name: "backend-api"
-      url: "https://github.com/myorg/backend-api"
-      branches:
-        - main
+  # Local repository (path must be accessible inside container)
+  - name: "backend-api"
+    path: "/repos/backend-api"
+    branches:
+      - main
+    languages:
+      - python
+      - typescript
+      - javascript
+    exclude_patterns:
+      - "**/node_modules/**"
+      - "**/__pycache__/**"
 
-    - name: "frontend-app"
-      url: "https://github.com/myorg/frontend-app"
-      branches:
-        - main
-        - develop
+  # Environment variables supported
+  - name: "frontend-app"
+    path: "${HOME}/projects/frontend"
+    branches:
+      - main
+      - develop
 
-  third_party:
-    - name: "react"
-      url: "https://github.com/facebook/react"
-      branches:
-        - main
+  # Remote URLs (Phase 1.9 - not yet implemented)
+  # - name: "react"
+  #   url: "https://github.com/facebook/react"
+  #   branches:
+  #     - main
 
 indexing:
-  incremental: true
-  max_commit_history: 1000
+  incremental: true           # Use incremental indexing when possible
+  max_commit_history: 1000    # Max commits to index per branch
+  batch_size: 100             # Files per database batch
 
-search:
-  max_results: 100
+server:
+  host: "0.0.0.0"
+  port: 8000
 ```
+
+See `config.example.yaml` for a complete example.
 
 ## Project Status
 
-**Current Phase**: Design and Early Development
+**Current Phase**: Phase 1.7 Complete (Configuration System)
 
-INXR2 is currently in the design phase with comprehensive documentation complete. Implementation is underway following clean code principles with high test coverage.
+INXR2 has completed Phase 1.7 with multi-repository configuration support. You can now define multiple repositories in a YAML config file and index them all with a single command. The implementation includes 195 tests passing.
 
 ### Roadmap
 
-- [x] Design document
-- [x] Coding standards and guidelines
-- [ ] Core indexing engine
-- [ ] Database schema and migrations
-- [ ] Tree-sitter integration
-- [ ] FastAPI backend
-- [ ] React frontend
-- [ ] Docker packaging
-- [ ] Documentation and examples
+**Completed Phases:**
+- [x] Phase 1.1: Project Setup
+- [x] Phase 1.2: React Frontend and Development Infrastructure
+- [x] Phase 1.3: Database Foundation and Environment Configuration (2026-01-04)
+- [x] Phase 1.4: Vertical Slice - Basic File Indexing (2026-01-05)
+- [x] Phase 1.5: CLI Indexing Engine - Python & TypeScript (2026-01-10)
+- [x] Phase 1.6: Cross-Reference Code Browser UI (2026-01-11)
+  - Symbol search with autocomplete and filters
+  - Go to Definition (click symbol to navigate)
+  - Find References panel with type annotations
+  - Syntax highlighting with Prism.js (20+ languages)
+  - File tree navigation with language icons
+  - Symbol disambiguation for multiple definitions
+- [x] Phase 1.7: Configuration System (2026-01-13)
+  - YAML configuration with Pydantic validation
+  - Multi-repository indexing via `--config` flag
+  - Environment variable expansion (`${VAR}` and `${VAR:-default}`)
+  - Config validation and show commands
+  - Repository selector in UI
+  - 195 tests passing (178 backend + 17 frontend)
+
+**Next Phases:**
+- [ ] Phase 1.8: Tree-sitter Integration (replace regex extraction)
+- [ ] Phase 1.9: Remote Repository Support (clone from URLs)
+- [ ] Phase 1.10: Improved Reference Resolution (scope-aware, import-aware)
+- [ ] Phase 2: Additional Language Support (Java, C#, Go, C/C++)
 
 ## Contributing
 

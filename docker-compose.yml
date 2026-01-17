@@ -5,15 +5,13 @@ services:
     image: postgres:15-alpine
     container_name: inxr2-postgres
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: inxr2
-      POSTGRES_USER: inxr2_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_production_password}
-      PGDATA: /var/lib/postgresql/data/pgdata
+    env_file:
+      - .env.prod
+    # Note: env_file loads all variables, no need to redeclare
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U inxr2_user -d inxr2"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,20 +25,11 @@ services:
       dockerfile: Dockerfile
     container_name: inxr2-app
     restart: unless-stopped
+    env_file:
+      - .env.prod
     ports:
-      - "${APP_PORT:-8000}:8000"
-    environment:
-      # Database connection
-      DATABASE_URL: postgresql://inxr2_user:${POSTGRES_PASSWORD:-changeme_production_password}@postgres:5432/inxr2
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: inxr2
-      POSTGRES_USER: inxr2_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_production_password}
-      # Application settings
-      ENVIRONMENT: production
-      DEBUG: "false"
-      LOG_LEVEL: INFO
+      - "8000:8000"
+    # Note: env_file loads all variables defined in .env.prod
     depends_on:
       postgres:
         condition: service_healthy

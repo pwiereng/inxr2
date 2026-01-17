@@ -1,4 +1,15 @@
 """CLI adapters - command-line interface."""
 
-# TODO: Move cli.py logic here
-# TODO: Create command modules for index, serve, status
+from .commands import (
+    run_full_index,
+    run_incremental_index,
+    show_index_status,
+    show_overall_status,
+)
+
+__all__ = [
+    "run_full_index",
+    "run_incremental_index",
+    "show_index_status",
+    "show_overall_status",
+]

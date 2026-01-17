@@ -1,6 +1,7 @@
 """Repository entity - represents a git repository."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 
@@ -9,25 +10,39 @@ class Repository:
     """
     A git repository that is indexed by INXR2.
 
-    Attributes:
-        id: Unique identifier for this repository
-        name: Human-readable name
-        url: Git URL or local path
-        config: JSONB configuration metadata
+    Domain entity (framework-agnostic). Separate from SQLAlchemy ORM model.
 
-    TODO: Add validation for URL format
-    TODO: Add methods for repository operations (if needed)
+    Attributes:
+        name: Unique human-readable name (e.g., 'linux-kernel')
+        url: Git repository URL (https:// or ssh://)
+        id: Database ID (None for new entities)
+        description: Optional description
+        default_branch: Default branch to index (usually 'main' or 'master')
+        config: JSONB configuration metadata (branches, patterns, etc.)
+        created_at: When repository was added
+        updated_at: Last update timestamp
     """
 
-    id: str
     name: str
     url: str
+    id: int | None = None
+    description: str | None = None
+    default_branch: str = "main"
     config: dict[str, Any] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate repository entity."""
-        # TODO: Add validation logic
-        # - Validate name is non-empty
-        # - Validate URL format (git:// or https:// or file://)
-        # - Validate config schema if present
-        pass
+        if not self.name:
+            raise ValueError("Repository name cannot be empty")
+        if not self.url:
+            raise ValueError("Repository URL cannot be empty")
+        # Name validation: alphanumeric, underscores, hyphens only
+        import re
+
+        if not re.match(r"^[a-zA-Z0-9_-]+$", self.name):
+            raise ValueError(
+                f"Invalid repository name '{self.name}': "
+                "must contain only letters, numbers, underscores, and hyphens"
+            )
