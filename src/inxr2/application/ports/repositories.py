@@ -244,7 +244,11 @@ class ReferenceRepositoryPort(ABC):
 
     @abstractmethod
     async def find_references_by_text(
-        self, text: str, repository_id: int, limit: int = 100, commit_id: int | None = None
+        self,
+        text: str,
+        repository_id: int,
+        limit: int = 100,
+        commit_id: int | None = None,
     ) -> list[Reference]:
         """Find all references matching the given text.
 

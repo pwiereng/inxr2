@@ -36,9 +36,7 @@ describe('VersionSelector', () => {
 
   describe('empty state', () => {
     it('should render nothing when no repoName provided', async () => {
-      const { container } = render(
-        <VersionSelector {...defaultProps} repoName="" />
-      )
+      const { container } = render(<VersionSelector {...defaultProps} repoName="" />)
 
       // Should not call API and render nothing
       expect(mockGetFileHistory).not.toHaveBeenCalled()
@@ -46,9 +44,7 @@ describe('VersionSelector', () => {
     })
 
     it('should render nothing when no filePath provided', async () => {
-      const { container } = render(
-        <VersionSelector {...defaultProps} filePath="" />
-      )
+      const { container } = render(<VersionSelector {...defaultProps} filePath="" />)
 
       expect(mockGetFileHistory).not.toHaveBeenCalled()
       expect(container.firstChild).toBeNull()
@@ -199,9 +195,7 @@ describe('VersionSelector', () => {
       fireEvent.click(options[2]!) // Third option (oldest)
 
       // Should call with the commit hash
-      expect(onVersionChange).toHaveBeenCalledWith(
-        'aaa1234567890abcdef1234567890abcdef123456'
-      )
+      expect(onVersionChange).toHaveBeenCalledWith('aaa1234567890abcdef1234567890abcdef123456')
     })
   })
 

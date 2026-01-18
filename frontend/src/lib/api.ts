@@ -219,11 +219,16 @@ export async function getRepositoryByName(name: string): Promise<Repository> {
   return fetchApi<Repository>(`/repositories/by-name/${encodeURIComponent(name)}`)
 }
 
-export async function getRepositoryTreeByName(name: string, commit?: string): Promise<TreeResponse> {
+export async function getRepositoryTreeByName(
+  name: string,
+  commit?: string
+): Promise<TreeResponse> {
   const params = new URLSearchParams()
   if (commit) params.set('commit', commit)
   const query = params.toString()
-  return fetchApi<TreeResponse>(`/repositories/by-name/${encodeURIComponent(name)}/tree${query ? `?${query}` : ''}`)
+  return fetchApi<TreeResponse>(
+    `/repositories/by-name/${encodeURIComponent(name)}/tree${query ? `?${query}` : ''}`
+  )
 }
 
 // Symbols

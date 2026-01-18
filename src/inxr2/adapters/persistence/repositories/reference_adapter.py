@@ -117,7 +117,11 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         return [self.mapper.to_domain(model) for model in models]
 
     async def find_references_by_text(
-        self, text: str, repository_id: int, limit: int = 100, commit_id: int | None = None
+        self,
+        text: str,
+        repository_id: int,
+        limit: int = 100,
+        commit_id: int | None = None,
     ) -> list[Reference]:
         """Find all references matching the given text.
 

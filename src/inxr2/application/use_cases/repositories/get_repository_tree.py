@@ -2,7 +2,11 @@
 
 from dataclasses import dataclass, field
 
-from ...ports.repositories import CommitRepositoryPort, FileRepositoryPort, RepositoryPort
+from ...ports.repositories import (
+    CommitRepositoryPort,
+    FileRepositoryPort,
+    RepositoryPort,
+)
 
 
 @dataclass
@@ -93,7 +97,9 @@ class GetRepositoryTreeUseCase:
         # Get files - either at specific commit (time travel) or latest
         if request.commit_hash and self._commit_repo:
             # Time travel: get files at specific commit
-            commit = await self._commit_repo.find_by_hash(repository_id, request.commit_hash)
+            commit = await self._commit_repo.find_by_hash(
+                repository_id, request.commit_hash
+            )
             if not commit or commit.id is None:
                 raise ValueError(f"Commit not found: {request.commit_hash}")
             files = await self._file_repo.list_by_commit(commit.id)
