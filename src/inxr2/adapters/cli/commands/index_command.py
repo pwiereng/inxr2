@@ -119,7 +119,7 @@ async def _run_full_index_async(
 ) -> None:
     """Async implementation of full indexing."""
     from inxr2.adapters.external.git_service import GitService
-    from inxr2.adapters.external.treesitter_service import TreeSitterService
+    from inxr2.adapters.external.treesitter import TreeSitterService
     from inxr2.adapters.persistence.repositories import (
         PostgresCommitRepository,
         PostgresFileRepository,
@@ -326,6 +326,11 @@ async def _run_full_index_async(
                                     line_count=content.count("\n") + 1,
                                 )
                             )
+                        if db_file.id is None:
+                            raise RuntimeError(
+                                "File record missing database ID after save"
+                            )
+                        file_id = db_file.id
                         progress.update(file_task, completed=40)
 
                         # Parse file and extract symbols
@@ -342,7 +347,7 @@ async def _run_full_index_async(
                                 symbols = [
                                     _dict_to_symbol(
                                         s,
-                                        file_id=db_file.id,
+                                        file_id=file_id,
                                         repository_id=db_repo.id,
                                         commit_id=commit_id,
                                     )
@@ -357,7 +362,7 @@ async def _run_full_index_async(
                                 references = [
                                     _dict_to_reference(
                                         r,
-                                        source_file_id=db_file.id,
+                                        source_file_id=file_id,
                                         repository_id=repo_id,
                                         commit_id=commit_id,
                                     )
@@ -440,7 +445,7 @@ async def _run_incremental_index_async(
 ) -> None:
     """Async implementation of incremental indexing."""
     from inxr2.adapters.external.git_service import GitService
-    from inxr2.adapters.external.treesitter_service import TreeSitterService
+    from inxr2.adapters.external.treesitter import TreeSitterService
     from inxr2.adapters.persistence.repositories import (
         PostgresCommitRepository,
         PostgresFileRepository,
@@ -653,6 +658,11 @@ async def _run_incremental_index_async(
                                     line_count=content.count("\n") + 1,
                                 )
                             )
+                            if db_file.id is None:
+                                raise RuntimeError(
+                                    "File record missing database ID after save"
+                                )
+                            file_id = db_file.id
                             progress.update(file_task, completed=50)
 
                             if language and parser_service.supports_language(language):
@@ -671,7 +681,7 @@ async def _run_incremental_index_async(
                                     symbols = [
                                         _dict_to_symbol(
                                             s,
-                                            file_id=db_file.id,
+                                            file_id=file_id,
                                             repository_id=repo_id,
                                             commit_id=commit_id,
                                         )
@@ -686,7 +696,7 @@ async def _run_incremental_index_async(
                                     references = [
                                         _dict_to_reference(
                                             r,
-                                            source_file_id=db_file.id,
+                                            source_file_id=file_id,
                                             repository_id=repo_id,
                                             commit_id=commit_id,
                                         )

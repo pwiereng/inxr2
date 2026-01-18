@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....application.ports.repositories import ReferenceRepositoryPort
 from ....domain.entities import Reference
 from ..mappers import ReferenceMapper
+from ..models.file import FileModel
 from ..models.reference import ReferenceModel
 
 
@@ -61,10 +62,36 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
     async def find_references_to_symbol(
         self, symbol_id: int, limit: int = 100
     ) -> list[Reference]:
-        """Find all references TO a symbol (find usages)."""
+        """Find all references TO a symbol (find usages).
+
+        Only returns references from the latest version of each file,
+        avoiding duplicates from multiple indexed commits.
+        """
+        # First get the repository_id from any reference to this symbol
+        # (needed to scope the latest files subquery)
+        ref_check = await self.session.execute(
+            select(ReferenceModel.repository_id)
+            .where(ReferenceModel.target_symbol_id == symbol_id)
+            .limit(1)
+        )
+        repo_id_result = ref_check.scalar_one_or_none()
+        if repo_id_result is None:
+            return []
+
+        # Subquery to find the latest file ID for each path
+        latest_files = (
+            select(func.max(FileModel.id).label("latest_id"))
+            .where(FileModel.repository_id == repo_id_result)
+            .group_by(FileModel.path)
+            .subquery()
+        )
+
         result = await self.session.execute(
             select(ReferenceModel)
-            .where(ReferenceModel.target_symbol_id == symbol_id)
+            .where(
+                ReferenceModel.target_symbol_id == symbol_id,
+                ReferenceModel.source_file_id.in_(select(latest_files.c.latest_id)),
+            )
             .order_by(ReferenceModel.source_line)
             .limit(limit)
         )
@@ -78,12 +105,26 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
 
         Useful for finding all calls to a symbol name when multiple
         symbols share the same name (e.g., save() methods in different classes).
+
+        Only returns references from the latest version of each file
+        (highest file ID per unique path), avoiding duplicates from
+        multiple indexed commits.
         """
+        # Subquery to find the latest file ID for each path in the repository
+        # (Since file IDs are auto-incrementing, max ID = latest version)
+        latest_files = (
+            select(func.max(FileModel.id).label("latest_id"))
+            .where(FileModel.repository_id == repository_id)
+            .group_by(FileModel.path)
+            .subquery()
+        )
+
         result = await self.session.execute(
             select(ReferenceModel)
             .where(
                 ReferenceModel.reference_text == text,
                 ReferenceModel.repository_id == repository_id,
+                ReferenceModel.source_file_id.in_(select(latest_files.c.latest_id)),
             )
             .order_by(ReferenceModel.source_file_id, ReferenceModel.source_line)
             .limit(limit)

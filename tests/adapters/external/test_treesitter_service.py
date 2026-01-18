@@ -2,7 +2,7 @@
 
 import pytest
 
-from inxr2.adapters.external.treesitter_service import TreeSitterService
+from inxr2.adapters.external.treesitter import TreeSitterService
 
 
 class TestTreeSitterService:
