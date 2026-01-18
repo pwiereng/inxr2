@@ -442,11 +442,14 @@ def run_incremental_index(
     branch: str | None,
     languages: list[str],
     console: Console,
+    max_history: int = 1,  # Ignored for incremental - only indexes since last commit
 ) -> None:
     """
     Run incremental indexing of a repository.
 
     Only indexes files that have changed since the last index.
+    The max_history parameter is accepted for API compatibility but ignored
+    (incremental always indexes from the last indexed commit to HEAD).
     """
     asyncio.run(
         _run_incremental_index_async(

@@ -168,11 +168,17 @@ def _tree_node_to_response(node: TreeNode) -> TreeNodeResponse:
 async def get_repository_tree_by_name(
     name: str,
     use_case: GetRepositoryTreeUseCaseDep,
+    commit: str | None = None,
 ) -> TreeResponse:
-    """Get the file tree structure for a repository by name."""
+    """Get the file tree structure for a repository by name.
+
+    Query parameters:
+    - commit: Commit hash for time travel (optional). If provided, returns
+              the tree as it existed at that specific commit.
+    """
     try:
         response = await use_case.execute(
-            GetRepositoryTreeRequest(repository_name=name)
+            GetRepositoryTreeRequest(repository_name=name, commit_hash=commit)
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -240,15 +246,20 @@ async def get_repository_files(
 async def get_repository_tree(
     repository_id: int,
     use_case: GetRepositoryTreeUseCaseDep,
+    commit: str | None = None,
 ) -> TreeResponse:
     """
     Get the file tree structure for a repository.
 
     Returns a hierarchical tree of directories and files.
+
+    Query parameters:
+    - commit: Commit hash for time travel (optional). If provided, returns
+              the tree as it existed at that specific commit.
     """
     try:
         response = await use_case.execute(
-            GetRepositoryTreeRequest(repository_id=repository_id)
+            GetRepositoryTreeRequest(repository_id=repository_id, commit_hash=commit)
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

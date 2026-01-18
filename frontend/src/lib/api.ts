@@ -204,8 +204,11 @@ export async function getRepositoryFiles(id: number): Promise<FileInfo[]> {
   return fetchApi<FileInfo[]>(`/repositories/${id}/files`)
 }
 
-export async function getRepositoryTree(id: number): Promise<TreeResponse> {
-  return fetchApi<TreeResponse>(`/repositories/${id}/tree`)
+export async function getRepositoryTree(id: number, commit?: string): Promise<TreeResponse> {
+  const params = new URLSearchParams()
+  if (commit) params.set('commit', commit)
+  const query = params.toString()
+  return fetchApi<TreeResponse>(`/repositories/${id}/tree${query ? `?${query}` : ''}`)
 }
 
 export async function getRepositoryStats(id: number): Promise<RepositoryStats> {
@@ -216,8 +219,11 @@ export async function getRepositoryByName(name: string): Promise<Repository> {
   return fetchApi<Repository>(`/repositories/by-name/${encodeURIComponent(name)}`)
 }
 
-export async function getRepositoryTreeByName(name: string): Promise<TreeResponse> {
-  return fetchApi<TreeResponse>(`/repositories/by-name/${encodeURIComponent(name)}/tree`)
+export async function getRepositoryTreeByName(name: string, commit?: string): Promise<TreeResponse> {
+  const params = new URLSearchParams()
+  if (commit) params.set('commit', commit)
+  const query = params.toString()
+  return fetchApi<TreeResponse>(`/repositories/by-name/${encodeURIComponent(name)}/tree${query ? `?${query}` : ''}`)
 }
 
 // Symbols

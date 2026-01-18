@@ -19,30 +19,39 @@ interface VersionSelectorProps {
   onVersionChange: (commitHash: string | null) => void
 }
 
-function formatCommitDate(dateString: string, allDates: string[]): string {
-  const date = new Date(dateString)
+function parseAsUTC(dateString: string): Date {
+  // If no timezone indicator, treat as UTC by appending Z
+  if (!dateString.endsWith('Z') && !dateString.includes('+') && !dateString.includes('-', 10)) {
+    return new Date(dateString + 'Z')
+  }
+  return new Date(dateString)
+}
 
-  // Format as yyyymmdd in local timezone
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
+function formatCommitDate(dateString: string, allDates: string[]): string {
+  // Parse as UTC since git commit dates are stored in UTC
+  const date = parseAsUTC(dateString)
+
+  // Format as yyyymmdd in UTC
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
   const dateStr = `${year}${month}${day}`
 
-  // Check if there are other commits on the same day
+  // Check if there are other commits on the same day (in UTC)
   const sameDayCount = allDates.filter((d) => {
-    const other = new Date(d)
+    const other = parseAsUTC(d)
     return (
-      other.getFullYear() === date.getFullYear() &&
-      other.getMonth() === date.getMonth() &&
-      other.getDate() === date.getDate()
+      other.getUTCFullYear() === date.getUTCFullYear() &&
+      other.getUTCMonth() === date.getUTCMonth() &&
+      other.getUTCDate() === date.getUTCDate()
     )
   }).length
 
-  // If multiple commits on same day, add time
+  // If multiple commits on same day, add time with UTC indicator
   if (sameDayCount > 1) {
-    const hours = String(date.getHours()).padStart(2, '0')
-    const minutes = String(date.getMinutes()).padStart(2, '0')
-    return `${dateStr} ${hours}:${minutes}`
+    const hours = String(date.getUTCHours()).padStart(2, '0')
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0')
+    return `${dateStr} ${hours}:${minutes} UTC`
   }
 
   return dateStr
@@ -132,13 +141,36 @@ export function VersionSelector({
           // Check if content changed from previous version (next in array since sorted newest first)
           const prevVersion = versions[index + 1]
           const hasChange = !prevVersion || version.content_hash !== prevVersion.content_hash
+          // Check if this version is selected
+          const isSelected =
+            version.commit_hash === selectedCommit ||
+            (!selectedCommit && version.commit_hash === latestHash)
 
           return (
-            <MenuItem key={version.commit_hash} value={version.commit_hash}>
+            <MenuItem
+              key={version.commit_hash}
+              value={version.commit_hash}
+              sx={{
+                bgcolor: isSelected ? 'action.selected' : 'transparent',
+                borderLeft: isSelected ? 3 : 0,
+                borderColor: 'primary.main',
+                '&.Mui-selected': {
+                  bgcolor: 'action.selected',
+                },
+              }}
+            >
               <Tooltip title={version.message} placement="left">
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   {hasChange && <EditIcon sx={{ fontSize: '0.9rem', color: 'warning.main' }} />}
-                  <Typography component="span" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                  <Typography
+                    component="span"
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: '0.8rem',
+                      fontWeight: isSelected ? 600 : 400,
+                      color: isSelected ? 'primary.main' : 'text.primary',
+                    }}
+                  >
                     {version.short_hash}
                   </Typography>
                   <Typography component="span" variant="caption" color="text.secondary">

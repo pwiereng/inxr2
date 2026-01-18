@@ -84,7 +84,7 @@ export default function Browse() {
     navigate(`/browse/${encodeURIComponent(newRepoName)}`)
   }
 
-  // Load repository and tree by name
+  // Load repository by name (only when repo changes)
   useEffect(() => {
     if (!repoName) return
 
@@ -92,12 +92,8 @@ export default function Browse() {
       setLoading(true)
       setError(null)
       try {
-        const [repo, tree] = await Promise.all([
-          getRepositoryByName(repoName),
-          getRepositoryTreeByName(repoName),
-        ])
+        const repo = await getRepositoryByName(repoName)
         setRepository(repo)
-        setTreeNodes(tree.root)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load repository')
       } finally {
@@ -107,6 +103,22 @@ export default function Browse() {
 
     loadRepository()
   }, [repoName])
+
+  // Load tree (commit-aware for time travel) - separate from repository loading
+  useEffect(() => {
+    if (!repoName) return
+
+    const loadTree = async () => {
+      try {
+        const tree = await getRepositoryTreeByName(repoName, selectedCommit || undefined)
+        setTreeNodes(tree.root)
+      } catch (err) {
+        console.error('Failed to load tree:', err)
+      }
+    }
+
+    loadTree()
+  }, [repoName, selectedCommit])
 
   // Load file content when file path or commit changes
   useEffect(() => {

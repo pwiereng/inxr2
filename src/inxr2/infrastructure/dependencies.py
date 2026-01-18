@@ -167,11 +167,13 @@ def get_index_local_directory_use_case(
 def get_repository_tree_use_case(
     repository_adapter: RepositoryAdapter,
     file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
 ) -> GetRepositoryTreeUseCase:
     """Provide GetRepositoryTreeUseCase with dependencies."""
     return GetRepositoryTreeUseCase(
         repository_repo=repository_adapter,
         file_repo=file_adapter,
+        commit_repo=commit_adapter,
     )
 
 
