@@ -22,9 +22,10 @@ class DatabaseConnection:
                          Defaults to DATABASE_URL environment variable.
         """
         # Use provided URL or fall back to environment variable with default
-        # The default ensures we always get a string, not None
+        # os.getenv with a default value always returns str (never None)
         default_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/inxr2_dev"
-        self.database_url: str = database_url or os.getenv("DATABASE_URL", default_url) or default_url
+        env_url = os.getenv("DATABASE_URL", default_url)
+        self.database_url: str = database_url or env_url
 
         # Convert postgres:// to postgresql+asyncpg:// if needed
         if self.database_url.startswith("postgres://"):
