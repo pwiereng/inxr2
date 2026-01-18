@@ -98,3 +98,20 @@ class PostgresFileRepository(FileRepositoryPort):
         )
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
+
+    async def find_by_repository_and_path(
+        self, repository_id: int, path: str
+    ) -> File | None:
+        """Find file by repository and path (latest version for now)."""
+        # For now, get the first matching file for the repository.
+        # In the future, this can be extended to support specific commit/branch.
+        result = await self.session.execute(
+            select(FileModel)
+            .where(
+                FileModel.repository_id == repository_id,
+                FileModel.path == path,
+            )
+            .limit(1)
+        )
+        model = result.scalar_one_or_none()
+        return self.mapper.to_domain(model) if model else None

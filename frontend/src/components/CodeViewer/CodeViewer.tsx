@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Box, Typography, Tooltip } from '@mui/material'
 import Prism from 'prismjs'
 import 'prismjs/themes/prism-tomorrow.css'
@@ -47,6 +47,15 @@ const languageMap: Record<string, string> = {
   sql: 'sql',
 }
 
+// Represents a clickable segment in a line
+interface ClickableSegment {
+  start: number
+  end: number
+  type: 'symbol' | 'reference'
+  symbol?: FileSymbol
+  reference?: FileReference
+}
+
 export function CodeViewer({
   content,
   language,
@@ -60,8 +69,6 @@ export function CodeViewer({
 }: CodeViewerProps) {
   const codeRef = useRef<HTMLElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [hoveredSymbol, setHoveredSymbol] = useState<FileSymbol | null>(null)
-  const [hoveredReference, setHoveredReference] = useState<FileReference | null>(null)
 
   // Map language to Prism language
   const prismLanguage = language ? languageMap[language.toLowerCase()] || 'text' : 'text'
@@ -93,34 +100,202 @@ export function CodeViewer({
     return false
   }
 
-  // Find symbols on a specific line, prioritizing those that start on this line
-  const getSymbolsOnLine = (lineNum: number): FileSymbol[] => {
+  // Get symbols that START on this line (definitions)
+  const getSymbolDefinitionsOnLine = (lineNum: number): FileSymbol[] => {
     return symbols
-      .filter((s) => lineNum >= s.start_line && lineNum <= s.end_line)
-      .sort((a, b) => {
-        // Prioritize symbols that start on this line (definitions)
-        const aStartsHere = a.start_line === lineNum
-        const bStartsHere = b.start_line === lineNum
-        if (aStartsHere && !bStartsHere) return -1
-        if (!aStartsHere && bStartsHere) return 1
-        // For symbols starting on this line, sort by column (leftmost first)
-        if (aStartsHere && bStartsHere) {
-          return a.start_column - b.start_column
-        }
-        // For enclosing symbols, prefer the most specific (larger start_line = smaller scope)
-        return b.start_line - a.start_line
-      })
+      .filter((s) => s.start_line === lineNum)
+      .sort((a, b) => a.start_column - b.start_column)
   }
 
-  // Find references on a specific line (only those with resolved target_symbol_id)
+  // Get references on this line (only those with resolved target_symbol_id)
   const getReferencesOnLine = (lineNum: number): FileReference[] => {
-    return references.filter((r) => r.source_line === lineNum && r.target_symbol_id !== null)
+    return references
+      .filter((r) => r.source_line === lineNum && r.target_symbol_id !== null)
+      .sort((a, b) => a.source_column - b.source_column)
+  }
+
+  // Build clickable segments for a line
+  const getClickableSegments = (lineNum: number, lineText: string): ClickableSegment[] => {
+    const segments: ClickableSegment[] = []
+
+    // Add symbol definitions
+    for (const sym of getSymbolDefinitionsOnLine(lineNum)) {
+      // Find the symbol name in the line, starting search from symbol's start_column
+      // (start_column might point to keyword like 'class' or 'def', not the name itself)
+      const searchStart = sym.start_column
+      const nameIndex = lineText.indexOf(sym.name, searchStart)
+      if (nameIndex !== -1) {
+        segments.push({
+          start: nameIndex,
+          end: nameIndex + sym.name.length,
+          type: 'symbol',
+          symbol: sym,
+        })
+      }
+    }
+
+    // Add references
+    for (const ref of getReferencesOnLine(lineNum)) {
+      const startCol = ref.source_column
+      const refLen = ref.reference_text.length
+      // Verify the reference text is at the expected position
+      if (lineText.substring(startCol, startCol + refLen) === ref.reference_text) {
+        // Check if this overlaps with an existing segment (symbol definition takes priority)
+        const overlaps = segments.some(
+          (seg) =>
+            (startCol >= seg.start && startCol < seg.end) ||
+            (startCol + refLen > seg.start && startCol + refLen <= seg.end)
+        )
+        if (!overlaps) {
+          segments.push({
+            start: startCol,
+            end: startCol + refLen,
+            type: 'reference',
+            reference: ref,
+          })
+        }
+      }
+    }
+
+    // Sort by start position
+    segments.sort((a, b) => a.start - b.start)
+    return segments
   }
 
   // Handle line number click
   const handleLineClick = (lineNum: number, event: React.MouseEvent) => {
     event.preventDefault()
     onLineClick?.(lineNum)
+  }
+
+  // Render a line with clickable segments
+  const renderLineContent = (lineNum: number, lineText: string) => {
+    const segments = getClickableSegments(lineNum, lineText)
+    const langGrammar = Prism.languages[prismLanguage]
+
+    // If no clickable segments, just render the highlighted line
+    if (segments.length === 0) {
+      const highlightedHtml = langGrammar
+        ? Prism.highlight(lineText || ' ', langGrammar, prismLanguage)
+        : (lineText || ' ').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      return <Box component="span" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
+    }
+
+    // Build parts: alternating between plain text and clickable segments
+    const parts: React.ReactNode[] = []
+    let lastEnd = 0
+
+    segments.forEach((seg, i) => {
+      // Add plain text before this segment
+      if (seg.start > lastEnd) {
+        const plainText = lineText.substring(lastEnd, seg.start)
+        const plainHtml = langGrammar
+          ? Prism.highlight(plainText, langGrammar, prismLanguage)
+          : plainText.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        parts.push(
+          <Box key={`plain-${i}`} component="span" dangerouslySetInnerHTML={{ __html: plainHtml }} />
+        )
+      }
+
+      // Add the clickable segment
+      const segmentText = lineText.substring(seg.start, seg.end)
+      const segmentHtml = langGrammar
+        ? Prism.highlight(segmentText, langGrammar, prismLanguage)
+        : segmentText.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+      if (seg.type === 'symbol' && seg.symbol) {
+        const sym = seg.symbol
+        parts.push(
+          <Tooltip
+            key={`sym-${i}`}
+            title={
+              <Box>
+                <Typography variant="body2" fontWeight="bold">
+                  {sym.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {sym.kind}
+                  {sym.signature && <> - {sym.signature}</>}
+                </Typography>
+              </Box>
+            }
+            placement="top-start"
+            arrow
+          >
+            <Box
+              component="span"
+              onClick={() => onSymbolClick?.(sym)}
+              sx={{
+                cursor: onSymbolClick ? 'pointer' : 'default',
+                '&:hover': onSymbolClick
+                  ? {
+                      textDecoration: 'underline',
+                      textDecorationColor: '#569cd6',
+                    }
+                  : {},
+              }}
+              dangerouslySetInnerHTML={{ __html: segmentHtml }}
+            />
+          </Tooltip>
+        )
+      } else if (seg.type === 'reference' && seg.reference && onReferenceClick) {
+        const ref = seg.reference
+        parts.push(
+          <Tooltip
+            key={`ref-${i}`}
+            title={
+              <Box>
+                <Typography variant="body2" fontWeight="bold">
+                  {ref.reference_text}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {ref.reference_type} - Click to see references
+                </Typography>
+              </Box>
+            }
+            placement="top-start"
+            arrow
+          >
+            <Box
+              component="span"
+              onClick={() => onReferenceClick(ref)}
+              sx={{
+                cursor: 'pointer',
+                '&:hover': {
+                  textDecoration: 'underline',
+                  textDecorationColor: '#4ec9b0',
+                },
+              }}
+              dangerouslySetInnerHTML={{ __html: segmentHtml }}
+            />
+          </Tooltip>
+        )
+      }
+
+      lastEnd = seg.end
+    })
+
+    // Add any remaining plain text after the last segment
+    if (lastEnd < lineText.length) {
+      const plainText = lineText.substring(lastEnd)
+      const plainHtml = langGrammar
+        ? Prism.highlight(plainText, langGrammar, prismLanguage)
+        : plainText.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      parts.push(
+        <Box
+          key="plain-end"
+          component="span"
+          dangerouslySetInnerHTML={{ __html: plainHtml }}
+        />
+      )
+    }
+
+    // Handle empty line
+    if (parts.length === 0) {
+      return <Box component="span">&nbsp;</Box>
+    }
+
+    return <>{parts}</>
   }
 
   return (
@@ -141,8 +316,6 @@ export function CodeViewer({
           {lines.map((line, index) => {
             const lineNum = index + 1
             const isHighlighted = isLineHighlighted(lineNum)
-            const lineSymbols = getSymbolsOnLine(lineNum)
-            const lineRefs = getReferencesOnLine(lineNum)
 
             return (
               <Box
@@ -191,96 +364,7 @@ export function CodeViewer({
                     textAlign: 'left',
                   }}
                 >
-                  {(() => {
-                    const firstSymbol = lineSymbols[0]
-                    const firstRef = lineRefs[0]
-                    // Get grammar for the language
-                    const langGrammar = Prism.languages[prismLanguage]
-
-                    const highlightedHtml = langGrammar
-                      ? Prism.highlight(line || ' ', langGrammar, prismLanguage)
-                      : (line || ' ').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-                    // Symbol definition takes priority (clickable to find usages)
-                    if (firstSymbol && firstSymbol.start_line === lineNum) {
-                      return (
-                        <Tooltip
-                          title={
-                            <Box>
-                              <Typography variant="body2" fontWeight="bold">
-                                {hoveredSymbol?.name ?? firstSymbol.name}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {hoveredSymbol?.kind ?? firstSymbol.kind}
-                                {(hoveredSymbol?.signature ?? firstSymbol.signature) && (
-                                  <> - {hoveredSymbol?.signature ?? firstSymbol.signature}</>
-                                )}
-                              </Typography>
-                            </Box>
-                          }
-                          placement="top-start"
-                          arrow
-                        >
-                          <Box
-                            component="span"
-                            onClick={() => onSymbolClick?.(firstSymbol)}
-                            onMouseEnter={() => setHoveredSymbol(firstSymbol)}
-                            onMouseLeave={() => setHoveredSymbol(null)}
-                            sx={{
-                              cursor: onSymbolClick ? 'pointer' : 'default',
-                              '&:hover': onSymbolClick
-                                ? {
-                                    textDecoration: 'underline',
-                                    textDecorationColor: '#569cd6',
-                                  }
-                                : {},
-                            }}
-                            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-                          />
-                        </Tooltip>
-                      )
-                    }
-
-                    // Reference with resolved target (clickable to find all usages of that symbol)
-                    if (firstRef && onReferenceClick) {
-                      return (
-                        <Tooltip
-                          title={
-                            <Box>
-                              <Typography variant="body2" fontWeight="bold">
-                                {hoveredReference?.reference_text ?? firstRef.reference_text}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {hoveredReference?.reference_type ?? firstRef.reference_type} -
-                                Click to see references
-                              </Typography>
-                            </Box>
-                          }
-                          placement="top-start"
-                          arrow
-                        >
-                          <Box
-                            component="span"
-                            onClick={() => onReferenceClick(firstRef)}
-                            onMouseEnter={() => setHoveredReference(firstRef)}
-                            onMouseLeave={() => setHoveredReference(null)}
-                            sx={{
-                              cursor: 'pointer',
-                              '&:hover': {
-                                textDecoration: 'underline',
-                                textDecorationColor: '#4ec9b0',
-                              },
-                            }}
-                            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-                          />
-                        </Tooltip>
-                      )
-                    }
-
-                    return (
-                      <Box component="span" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
-                    )
-                  })()}
+                  {renderLineContent(lineNum, line)}
                 </Box>
               </Box>
             )

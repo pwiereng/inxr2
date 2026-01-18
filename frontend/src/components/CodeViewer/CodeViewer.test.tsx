@@ -1,0 +1,249 @@
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { CodeViewer } from './CodeViewer'
+import type { FileSymbol, FileReference } from '@/lib/api'
+
+describe('CodeViewer', () => {
+  describe('basic rendering', () => {
+    it('should render code content with line numbers', () => {
+      const content = `line 1
+line 2
+line 3`
+      render(<CodeViewer content={content} language="text" />)
+
+      // Check that line numbers are rendered
+      expect(screen.getByText('1')).toBeInTheDocument()
+      expect(screen.getByText('2')).toBeInTheDocument()
+      expect(screen.getByText('3')).toBeInTheDocument()
+    })
+
+    it('should render correct number of rows', () => {
+      const content = `line 1
+line 2
+line 3`
+      render(<CodeViewer content={content} language="text" />)
+
+      // Check for data-line attributes
+      expect(document.querySelector('[data-line="1"]')).toBeInTheDocument()
+      expect(document.querySelector('[data-line="2"]')).toBeInTheDocument()
+      expect(document.querySelector('[data-line="3"]')).toBeInTheDocument()
+    })
+  })
+
+  describe('symbol definitions', () => {
+    it('should make symbol definition clickable', () => {
+      const onSymbolClick = vi.fn()
+      const symbols: FileSymbol[] = [
+        {
+          id: 1,
+          name: 'myFunction',
+          qualified_name: null,
+          kind: 'function',
+          start_line: 1,
+          start_column: 4,
+          end_line: 3,
+          end_column: 0,
+          signature: null,
+        },
+      ]
+
+      render(
+        <CodeViewer
+          content="def myFunction():"
+          language="python"
+          symbols={symbols}
+          onSymbolClick={onSymbolClick}
+        />
+      )
+
+      // Click on the symbol - use getAllByText since Prism may create multiple spans
+      const elements = screen.getAllByText(/myFunction/)
+      expect(elements.length).toBeGreaterThan(0)
+      fireEvent.click(elements[0]!)
+
+      expect(onSymbolClick).toHaveBeenCalledWith(symbols[0])
+    })
+
+    it('should find symbol name even when start_column points to keyword', () => {
+      // This tests the bug fix where start_column=0 pointed to "class" keyword
+      // but we need to find "RepositoryMapper" which starts later in the line
+      const onSymbolClick = vi.fn()
+      const symbols: FileSymbol[] = [
+        {
+          id: 1,
+          name: 'RepositoryMapper',
+          qualified_name: null,
+          kind: 'class',
+          start_line: 1,
+          start_column: 0, // Points to 'class' keyword, not the class name
+          end_line: 10,
+          end_column: 0,
+          signature: null,
+        },
+      ]
+
+      render(
+        <CodeViewer
+          content="class RepositoryMapper:"
+          language="python"
+          symbols={symbols}
+          onSymbolClick={onSymbolClick}
+        />
+      )
+
+      // The class name should still be clickable
+      const elements = screen.getAllByText(/RepositoryMapper/)
+      expect(elements.length).toBeGreaterThan(0)
+      fireEvent.click(elements[0]!)
+
+      expect(onSymbolClick).toHaveBeenCalledWith(symbols[0])
+    })
+  })
+
+  describe('references', () => {
+    it('should make reference with target_symbol_id clickable', () => {
+      const onReferenceClick = vi.fn()
+      const references: FileReference[] = [
+        {
+          id: 1,
+          reference_text: 'helper',
+          reference_type: 'call',
+          source_line: 1,
+          source_column: 0,
+          target_symbol_id: 100,
+        },
+      ]
+
+      render(
+        <CodeViewer
+          content="helper()"
+          language="python"
+          references={references}
+          onReferenceClick={onReferenceClick}
+        />
+      )
+
+      const elements = screen.getAllByText(/helper/)
+      expect(elements.length).toBeGreaterThan(0)
+      fireEvent.click(elements[0]!)
+
+      expect(onReferenceClick).toHaveBeenCalledWith(references[0])
+    })
+
+    it('should not make reference without target_symbol_id clickable', () => {
+      const onReferenceClick = vi.fn()
+      const references: FileReference[] = [
+        {
+          id: 1,
+          reference_text: 'unresolved',
+          reference_type: 'call',
+          source_line: 1,
+          source_column: 0,
+          target_symbol_id: null, // Unresolved reference
+        },
+      ]
+
+      render(
+        <CodeViewer
+          content="unresolved()"
+          language="python"
+          references={references}
+          onReferenceClick={onReferenceClick}
+        />
+      )
+
+      // Click on the text - it should not trigger the handler
+      const elements = screen.getAllByText(/unresolved/)
+      expect(elements.length).toBeGreaterThan(0)
+      fireEvent.click(elements[0]!)
+
+      expect(onReferenceClick).not.toHaveBeenCalled()
+    })
+
+    it('should make multiple references on same line all clickable', () => {
+      // This tests the bug fix for multiple references per line
+      const onReferenceClick = vi.fn()
+      const references: FileReference[] = [
+        {
+          id: 1,
+          reference_text: 'foo',
+          reference_type: 'call',
+          source_line: 1,
+          source_column: 0,
+          target_symbol_id: 100,
+        },
+        {
+          id: 2,
+          reference_text: 'bar',
+          reference_type: 'call',
+          source_line: 1,
+          source_column: 7,
+          target_symbol_id: 101,
+        },
+        {
+          id: 3,
+          reference_text: 'baz',
+          reference_type: 'call',
+          source_line: 1,
+          source_column: 14,
+          target_symbol_id: 102,
+        },
+      ]
+
+      // Simple line without syntax that would be broken up by Prism
+      const lineContent = 'foo(), bar(), baz()'
+
+      render(
+        <CodeViewer
+          content={lineContent}
+          language="text" // Use text to avoid Prism splitting
+          references={references}
+          onReferenceClick={onReferenceClick}
+        />
+      )
+
+      // All three references should be clickable
+      fireEvent.click(screen.getByText('foo'))
+      expect(onReferenceClick).toHaveBeenLastCalledWith(references[0])
+
+      fireEvent.click(screen.getByText('bar'))
+      expect(onReferenceClick).toHaveBeenLastCalledWith(references[1])
+
+      fireEvent.click(screen.getByText('baz'))
+      expect(onReferenceClick).toHaveBeenLastCalledWith(references[2])
+
+      expect(onReferenceClick).toHaveBeenCalledTimes(3)
+    })
+  })
+
+  describe('line click', () => {
+    it('should call onLineClick when line number is clicked', () => {
+      const onLineClick = vi.fn()
+      const content = `line 1
+line 2
+line 3`
+
+      render(<CodeViewer content={content} language="text" onLineClick={onLineClick} />)
+
+      // Click on line number 2
+      fireEvent.click(screen.getByText('2'))
+
+      expect(onLineClick).toHaveBeenCalledWith(2)
+    })
+  })
+
+  describe('highlight', () => {
+    it('should have data-line attribute for highlighted line', () => {
+      // Mock scrollIntoView since jsdom doesn't support it
+      Element.prototype.scrollIntoView = vi.fn()
+
+      const content = `line 1
+line 2
+line 3`
+      render(<CodeViewer content={content} language="text" highlightLine={2} />)
+
+      const line2Row = document.querySelector('[data-line="2"]')
+      expect(line2Row).toBeInTheDocument()
+    })
+  })
+})

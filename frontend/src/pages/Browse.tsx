@@ -25,12 +25,12 @@ import { FileTree } from '@/components/FileTree'
 import { SymbolSearch } from '@/components/SymbolSearch'
 import { ReferencesPanel } from '@/components/ReferencesPanel'
 import {
-  getRepository,
   getRepositories,
-  getRepositoryTree,
-  getFileContent,
-  getFileSymbols,
-  getFileReferences,
+  getRepositoryByName,
+  getRepositoryTreeByName,
+  getFileContentByPath,
+  getFileSymbolsByPath,
+  getFileReferencesByPath,
   getSymbol,
   type Repository,
   type TreeNode,
@@ -41,9 +41,15 @@ import {
 } from '@/lib/api'
 
 export default function Browse() {
-  const { repositoryId, fileId } = useParams<{ repositoryId: string; fileId?: string }>()
-  const [searchParams] = useSearchParams()
+  const { repoName } = useParams<{ repoName: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+
+  // Get file path and line from URL query params
+  const filePath = searchParams.get('file')
+  const highlightLine = searchParams.get('line')
+    ? parseInt(searchParams.get('line')!, 10)
+    : undefined
 
   // State
   const [allRepositories, setAllRepositories] = useState<Repository[]>([])
@@ -60,11 +66,7 @@ export default function Browse() {
   const [loading, setLoading] = useState(true)
   const [fileLoading, setFileLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  // Get highlight line from URL
-  const highlightLine = searchParams.get('line')
-    ? parseInt(searchParams.get('line')!, 10)
-    : undefined
+  const [searchQuery, setSearchQuery] = useState('')
 
   // Load all repositories (for selector dropdown)
   useEffect(() => {
@@ -72,21 +74,21 @@ export default function Browse() {
   }, [])
 
   // Handle repository switch
-  const handleRepositoryChange = (newRepoId: number) => {
-    navigate(`/browse/${newRepoId}`)
+  const handleRepositoryChange = (newRepoName: string) => {
+    navigate(`/browse/${encodeURIComponent(newRepoName)}`)
   }
 
-  // Load repository and tree
+  // Load repository and tree by name
   useEffect(() => {
-    if (!repositoryId) return
+    if (!repoName) return
 
     const loadRepository = async () => {
       setLoading(true)
       setError(null)
       try {
         const [repo, tree] = await Promise.all([
-          getRepository(parseInt(repositoryId, 10)),
-          getRepositoryTree(parseInt(repositoryId, 10)),
+          getRepositoryByName(repoName),
+          getRepositoryTreeByName(repoName),
         ])
         setRepository(repo)
         setTreeNodes(tree.root)
@@ -98,11 +100,11 @@ export default function Browse() {
     }
 
     loadRepository()
-  }, [repositoryId])
+  }, [repoName])
 
-  // Load file content when fileId changes
+  // Load file content when file path changes
   useEffect(() => {
-    if (!fileId) {
+    if (!filePath || !repoName) {
       setFileContent(null)
       setFileSymbols([])
       setFileReferences([])
@@ -113,9 +115,9 @@ export default function Browse() {
       setFileLoading(true)
       try {
         const [content, symbols, references] = await Promise.all([
-          getFileContent(parseInt(fileId, 10)),
-          getFileSymbols(parseInt(fileId, 10)),
-          getFileReferences(parseInt(fileId, 10)),
+          getFileContentByPath(repoName, filePath),
+          getFileSymbolsByPath(repoName, filePath),
+          getFileReferencesByPath(repoName, filePath),
         ])
         setFileContent(content)
         setFileSymbols(symbols.symbols)
@@ -128,16 +130,18 @@ export default function Browse() {
     }
 
     loadFile()
-  }, [fileId])
+  }, [repoName, filePath])
 
   // Handle file selection from tree
-  const handleFileSelect = (selectedFileId: number) => {
-    navigate(`/browse/${repositoryId}/file/${selectedFileId}`)
+  const handleFileSelect = (_fileId: number, path: string) => {
+    setSearchParams({ file: path })
   }
 
   // Handle symbol selection from search
   const handleSymbolSelect = async (symbol: Symbol) => {
-    navigate(`/browse/${repositoryId}/file/${symbol.file_id}?line=${symbol.start_line}`)
+    if (symbol.file_path) {
+      setSearchParams({ file: symbol.file_path, line: symbol.start_line.toString() })
+    }
   }
 
   // Handle symbol click in code viewer (find references)
@@ -146,6 +150,7 @@ export default function Browse() {
       const symbol = await getSymbol(fileSymbol.id)
       setSelectedSymbol(symbol)
       setRefsPanelOpen(true)
+      setSearchQuery(symbol.name)
     } catch (err) {
       console.error('Failed to get symbol:', err)
     }
@@ -161,28 +166,31 @@ export default function Browse() {
       const symbol = await getSymbol(ref.target_symbol_id)
       setSelectedSymbol(symbol)
       setRefsPanelOpen(true)
+      setSearchQuery(symbol.name)
     } catch (err) {
       console.error('Failed to get symbol for reference:', err)
     }
   }
 
   // Handle click in references panel (jump to reference location)
-  const handleRefPanelClick = (reference: { source_file_id: number; source_line: number }) => {
-    navigate(
-      `/browse/${repositoryId}/file/${reference.source_file_id}?line=${reference.source_line}`
-    )
+  const handleRefPanelClick = (reference: { source_file_path: string | null; source_line: number }) => {
+    if (reference.source_file_path) {
+      setSearchParams({ file: reference.source_file_path, line: reference.source_line.toString() })
+    }
   }
 
   // Handle click on definition in references panel
   const handleDefinitionClick = (sym: Symbol) => {
-    if (sym.file_id) {
-      navigate(`/browse/${repositoryId}/file/${sym.file_id}?line=${sym.start_line}`)
+    if (sym.file_path) {
+      setSearchParams({ file: sym.file_path, line: sym.start_line.toString() })
     }
   }
 
   // Handle line click (update URL)
   const handleLineClick = (line: number) => {
-    navigate(`/browse/${repositoryId}/file/${fileId}?line=${line}`, { replace: true })
+    if (filePath) {
+      setSearchParams({ file: filePath, line: line.toString() }, { replace: true })
+    }
   }
 
   if (loading) {
@@ -224,8 +232,8 @@ export default function Browse() {
           {allRepositories.length > 1 ? (
             <FormControl size="small" sx={{ minWidth: 150 }}>
               <Select
-                value={repositoryId ? parseInt(repositoryId, 10) : ''}
-                onChange={(e) => handleRepositoryChange(e.target.value as number)}
+                value={repoName || ''}
+                onChange={(e) => handleRepositoryChange(e.target.value as string)}
                 displayEmpty
                 sx={{
                   '& .MuiSelect-select': {
@@ -237,7 +245,7 @@ export default function Browse() {
                 }}
               >
                 {allRepositories.map((repo) => (
-                  <MenuItem key={repo.id} value={repo.id}>
+                  <MenuItem key={repo.id} value={repo.name}>
                     <FolderIcon fontSize="small" sx={{ mr: 1 }} />
                     {repo.name}
                   </MenuItem>
@@ -273,8 +281,10 @@ export default function Browse() {
 
           {/* Symbol Search */}
           <SymbolSearch
-            repositoryId={repositoryId ? parseInt(repositoryId, 10) : undefined}
+            repositoryId={repository?.id}
             onSymbolSelect={handleSymbolSelect}
+            value={searchQuery}
+            onValueChange={setSearchQuery}
           />
         </Toolbar>
       </AppBar>
@@ -298,7 +308,7 @@ export default function Browse() {
           >
             <FileTree
               nodes={treeNodes}
-              selectedFileId={fileId ? parseInt(fileId, 10) : null}
+              selectedFileId={fileContent?.id ?? null}
               onFileSelect={handleFileSelect}
             />
           </Box>

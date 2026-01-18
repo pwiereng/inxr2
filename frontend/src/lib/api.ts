@@ -167,6 +167,14 @@ export async function getRepositoryStats(id: number): Promise<RepositoryStats> {
   return fetchApi<RepositoryStats>(`/repositories/${id}/stats`)
 }
 
+export async function getRepositoryByName(name: string): Promise<Repository> {
+  return fetchApi<Repository>(`/repositories/by-name/${encodeURIComponent(name)}`)
+}
+
+export async function getRepositoryTreeByName(name: string): Promise<TreeResponse> {
+  return fetchApi<TreeResponse>(`/repositories/by-name/${encodeURIComponent(name)}/tree`)
+}
+
 // Symbols
 export async function searchSymbols(params: {
   q?: string
@@ -220,4 +228,22 @@ export async function getFileSymbols(id: number): Promise<FileSymbolsResponse> {
 
 export async function getFileReferences(id: number): Promise<FileReferencesResponse> {
   return fetchApi<FileReferencesResponse>(`/files/${id}/references`)
+}
+
+export async function getFileContentByPath(repo: string, path: string): Promise<FileContent> {
+  const params = new URLSearchParams({ repo, path })
+  return fetchApi<FileContent>(`/files/by-path?${params}`)
+}
+
+export async function getFileSymbolsByPath(repo: string, path: string): Promise<FileSymbolsResponse> {
+  const params = new URLSearchParams({ repo, path })
+  return fetchApi<FileSymbolsResponse>(`/files/by-path/symbols?${params}`)
+}
+
+export async function getFileReferencesByPath(
+  repo: string,
+  path: string
+): Promise<FileReferencesResponse> {
+  const params = new URLSearchParams({ repo, path })
+  return fetchApi<FileReferencesResponse>(`/files/by-path/references?${params}`)
 }

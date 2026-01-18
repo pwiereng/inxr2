@@ -91,7 +91,7 @@ export default function Repositories() {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {repositories.map((repo) => (
             <Card key={repo.id} elevation={1}>
-              <CardActionArea component={Link} to={`/browse/${repo.id}`}>
+              <CardActionArea component={Link} to={`/browse/${encodeURIComponent(repo.name)}`}>
                 <CardContent>
                   <Box
                     sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}

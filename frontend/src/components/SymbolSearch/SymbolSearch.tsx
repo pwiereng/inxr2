@@ -19,6 +19,8 @@ interface SymbolSearchProps {
   repositoryId?: number
   onSymbolSelect?: (symbol: Symbol) => void
   placeholder?: string
+  value?: string
+  onValueChange?: (value: string) => void
 }
 
 // Get icon for symbol kind
@@ -60,10 +62,22 @@ export function SymbolSearch({
   repositoryId,
   onSymbolSelect,
   placeholder = 'Search symbols...',
+  value,
+  onValueChange,
 }: SymbolSearchProps) {
-  const [inputValue, setInputValue] = useState('')
+  const [internalValue, setInternalValue] = useState('')
   const [options, setOptions] = useState<Symbol[]>([])
   const [loading, setLoading] = useState(false)
+
+  // Use external value if provided, otherwise use internal state
+  const inputValue = value !== undefined ? value : internalValue
+  const setInputValue = (newValue: string) => {
+    if (onValueChange) {
+      onValueChange(newValue)
+    } else {
+      setInternalValue(newValue)
+    }
+  }
 
   // Debounced search
   const searchDebounced = useCallback(
