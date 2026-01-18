@@ -8,7 +8,7 @@ import asyncio
 import hashlib
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,15 @@ logger = logging.getLogger(__name__)
 INDEXER_VERSION = "0.1.0"
 
 
+def _utc_now() -> datetime:
+    """Return current UTC time as a naive datetime.
+
+    Uses datetime.now(UTC) instead of deprecated _utc_now().
+    Returns naive datetime for PostgreSQL TIMESTAMP WITHOUT TIME ZONE columns.
+    """
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 def _to_naive_utc(dt: datetime | None) -> datetime | None:
     """Convert a datetime to timezone-naive UTC.
 
@@ -42,7 +51,7 @@ def _to_naive_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is not None:
-        dt = dt.astimezone(timezone.utc)
+        dt = dt.astimezone(UTC)
         return dt.replace(tzinfo=None)
     return dt
 
@@ -191,12 +200,17 @@ async def _run_full_index_async(
             else:
                 console.print(f"  Using repository: [cyan]{repo_name}[/cyan]")
 
+            # Ensure repository has an ID after save (for downstream operations)
+            if db_repo.id is None:
+                raise RuntimeError("Repository record missing database ID after save")
+            repo_id = db_repo.id
+
             # Get or create commit record
-            db_commit = await commit_repository.find_by_hash(db_repo.id, commit_hash)
+            db_commit = await commit_repository.find_by_hash(repo_id, commit_hash)
             if db_commit is None:
                 db_commit = await commit_repository.save(
                     Commit(
-                        repository_id=db_repo.id,
+                        repository_id=repo_id,
                         commit_hash=CommitHash(value=commit_hash),
                         short_hash=commit_hash[:7],
                         parent_hashes=commit_info.get("parent_hashes", []),
@@ -205,33 +219,38 @@ async def _run_full_index_async(
                         author_email=commit_info.get("author_email", ""),
                         committer_name=commit_info.get("committer_name", "unknown"),
                         committer_email=commit_info.get("committer_email", ""),
-                        author_date=_to_naive_utc(commit_info.get("author_date")),
-                        commit_date=_to_naive_utc(commit_info.get("commit_date")),
+                        author_date=_to_naive_utc(commit_info.get("author_date"))
+                        or _utc_now(),
+                        commit_date=_to_naive_utc(commit_info.get("commit_date"))
+                        or _utc_now(),
                         message=commit_info.get("message", ""),
                     )
                 )
                 console.print(f"  Created commit: [cyan]{commit_hash[:8]}[/cyan]")
+            if db_commit.id is None:
+                raise RuntimeError("Commit record missing database ID after save")
+            commit_id = db_commit.id
 
             # Update index status to in_progress
             index_status = await index_status_repository.find_by_repository_and_branch(
-                db_repo.id, current_branch
+                repo_id, current_branch
             )
             if index_status is None:
                 index_status = IndexStatus(
-                    repository_id=db_repo.id,
+                    repository_id=repo_id,
                     branch=current_branch,
                     indexing_status="in_progress",
-                    indexing_started_at=datetime.utcnow(),
+                    indexing_started_at=_utc_now(),
                     indexer_version=INDEXER_VERSION,
                 )
             else:
                 # Create updated status (frozen dataclass)
                 index_status = IndexStatus(
                     id=index_status.id,
-                    repository_id=db_repo.id,
+                    repository_id=repo_id,
                     branch=current_branch,
                     indexing_status="in_progress",
-                    indexing_started_at=datetime.utcnow(),
+                    indexing_started_at=_utc_now(),
                     last_indexed_commit=index_status.last_indexed_commit,
                     last_indexed_at=index_status.last_indexed_at,
                     total_commits_indexed=index_status.total_commits_indexed,
@@ -266,7 +285,7 @@ async def _run_full_index_async(
                     try:
                         # Check if file already exists for this commit
                         existing_file = await file_repository.find_by_path(
-                            db_repo.id, db_commit.id, file_path
+                            repo_id, commit_id, file_path
                         )
                         progress.update(file_task, completed=10)
 
@@ -286,6 +305,10 @@ async def _run_full_index_async(
 
                         # If file exists, delete old symbols/references first
                         if existing_file:
+                            if existing_file.id is None:
+                                raise RuntimeError(
+                                    "Existing file record missing database ID"
+                                )
                             await symbol_repository.delete_by_file(existing_file.id)
                             await reference_repository.delete_by_file(existing_file.id)
                             # Reuse existing file record
@@ -294,8 +317,8 @@ async def _run_full_index_async(
                             # Create new file record
                             db_file = await file_repository.save(
                                 File(
-                                    repository_id=db_repo.id,
-                                    commit_id=db_commit.id,
+                                    repository_id=repo_id,
+                                    commit_id=commit_id,
                                     path=file_path,
                                     content_hash=content_hash,
                                     size_bytes=len(content.encode("utf-8")),
@@ -321,7 +344,7 @@ async def _run_full_index_async(
                                         s,
                                         file_id=db_file.id,
                                         repository_id=db_repo.id,
-                                        commit_id=db_commit.id,
+                                        commit_id=commit_id,
                                     )
                                     for s in symbol_dicts
                                 ]
@@ -335,8 +358,8 @@ async def _run_full_index_async(
                                     _dict_to_reference(
                                         r,
                                         source_file_id=db_file.id,
-                                        repository_id=db_repo.id,
-                                        commit_id=db_commit.id,
+                                        repository_id=repo_id,
+                                        commit_id=commit_id,
                                     )
                                     for r in ref_dicts
                                 ]
@@ -359,17 +382,17 @@ async def _run_full_index_async(
 
             # Resolve references to symbols
             stats.references_resolved = await resolve_references(
-                db_repo.id, session, console
+                repo_id, session, console
             )
 
             # Update index status to completed
             index_status = IndexStatus(
                 id=index_status.id,
-                repository_id=db_repo.id,
+                repository_id=repo_id,
                 branch=current_branch,
                 indexing_status="completed",
                 last_indexed_commit=commit_hash,
-                last_indexed_at=datetime.utcnow(),
+                last_indexed_at=_utc_now(),
                 indexing_started_at=index_status.indexing_started_at,
                 total_commits_indexed=1,
                 total_files_indexed=stats.files_succeeded,
@@ -465,9 +488,18 @@ async def _run_incremental_index_async(
                 await _run_full_index_async(repo_path, branch, languages, console)
                 return
 
+            # Ensure repository ID is available
+            if db_repo.id is None:
+                msg = "[red]Repository record missing database ID; aborting incremental index.[/red]"
+                console.print(f"\n{msg}")
+                await db.close()
+                raise RuntimeError("Repository record missing database ID")
+
+            repo_id = db_repo.id
+
             # Check index status
             index_status = await index_status_repository.find_by_repository_and_branch(
-                db_repo.id, current_branch
+                repo_id, current_branch
             )
 
             if index_status is None or index_status.last_indexed_commit is None:
@@ -519,11 +551,12 @@ async def _run_incremental_index_async(
 
             # Get commit info and create commit record
             commit_info = git_service.get_commit_info(repo_path, current_commit)
-            db_commit = await commit_repository.find_by_hash(db_repo.id, current_commit)
+
+            db_commit = await commit_repository.find_by_hash(repo_id, current_commit)
             if db_commit is None:
                 db_commit = await commit_repository.save(
                     Commit(
-                        repository_id=db_repo.id,
+                        repository_id=repo_id,
                         commit_hash=CommitHash(value=current_commit),
                         short_hash=current_commit[:7],
                         parent_hashes=commit_info.get("parent_hashes", []),
@@ -532,19 +565,25 @@ async def _run_incremental_index_async(
                         author_email=commit_info.get("author_email", ""),
                         committer_name=commit_info.get("committer_name", "unknown"),
                         committer_email=commit_info.get("committer_email", ""),
-                        author_date=_to_naive_utc(commit_info.get("author_date")),
-                        commit_date=_to_naive_utc(commit_info.get("commit_date")),
+                        author_date=_to_naive_utc(commit_info.get("author_date"))
+                        or _utc_now(),
+                        commit_date=_to_naive_utc(commit_info.get("commit_date"))
+                        or _utc_now(),
                         message=commit_info.get("message", ""),
                     )
                 )
 
+            if db_commit.id is None:
+                raise RuntimeError("Commit record missing database ID after save")
+            commit_id = db_commit.id
+
             # Update index status to in_progress
             index_status = IndexStatus(
                 id=index_status.id,
-                repository_id=db_repo.id,
+                repository_id=repo_id,
                 branch=current_branch,
                 indexing_status="in_progress",
-                indexing_started_at=datetime.utcnow(),
+                indexing_started_at=_utc_now(),
                 last_indexed_commit=last_indexed_commit,
                 last_indexed_at=index_status.last_indexed_at,
                 total_commits_indexed=index_status.total_commits_indexed,
@@ -561,9 +600,13 @@ async def _run_incremental_index_async(
                 for file_path in deleted:
                     # Find file by path and delete its symbols/references
                     db_file = await file_repository.find_by_path(
-                        db_repo.id, db_commit.id, file_path
+                        repo_id, db_commit.id, file_path
                     )
                     if db_file:
+                        if db_file.id is None:
+                            raise RuntimeError(
+                                "Existing file record missing database ID"
+                            )
                         await symbol_repository.delete_by_file(db_file.id)
                         await reference_repository.delete_by_file(db_file.id)
 
@@ -601,8 +644,8 @@ async def _run_incremental_index_async(
                             # Create new file record
                             db_file = await file_repository.save(
                                 File(
-                                    repository_id=db_repo.id,
-                                    commit_id=db_commit.id,
+                                    repository_id=repo_id,
+                                    commit_id=commit_id,
                                     path=file_path,
                                     content_hash=content_hash,
                                     size_bytes=len(content.encode("utf-8")),
@@ -629,8 +672,8 @@ async def _run_incremental_index_async(
                                         _dict_to_symbol(
                                             s,
                                             file_id=db_file.id,
-                                            repository_id=db_repo.id,
-                                            commit_id=db_commit.id,
+                                            repository_id=repo_id,
+                                            commit_id=commit_id,
                                         )
                                         for s in symbol_dicts
                                     ]
@@ -644,8 +687,8 @@ async def _run_incremental_index_async(
                                         _dict_to_reference(
                                             r,
                                             source_file_id=db_file.id,
-                                            repository_id=db_repo.id,
-                                            commit_id=db_commit.id,
+                                            repository_id=repo_id,
+                                            commit_id=commit_id,
                                         )
                                         for r in ref_dicts
                                     ]
@@ -668,17 +711,17 @@ async def _run_incremental_index_async(
 
             # Resolve references to symbols
             stats.references_resolved = await resolve_references(
-                db_repo.id, session, console
+                repo_id, session, console
             )
 
             # Update index status to completed
             index_status = IndexStatus(
                 id=index_status.id,
-                repository_id=db_repo.id,
+                repository_id=repo_id,
                 branch=current_branch,
                 indexing_status="completed",
                 last_indexed_commit=current_commit,
-                last_indexed_at=datetime.utcnow(),
+                last_indexed_at=_utc_now(),
                 indexing_started_at=index_status.indexing_started_at,
                 total_commits_indexed=index_status.total_commits_indexed + 1,
                 total_files_indexed=index_status.total_files_indexed
@@ -745,11 +788,15 @@ async def _show_index_status_async(repo_path: Path, console: Console) -> None:
             table.add_row("", "")
 
             if db_repo:
-                index_status = (
-                    await index_status_repository.find_by_repository_and_branch(
-                        db_repo.id, current_branch
+                if db_repo.id is None:
+                    index_status = None
+                else:
+                    repo_id = db_repo.id
+                    index_status = (
+                        await index_status_repository.find_by_repository_and_branch(
+                            repo_id, current_branch
+                        )
                     )
-                )
 
                 if index_status and index_status.last_indexed_commit:
                     table.add_row(
@@ -827,6 +874,7 @@ def _filter_files_by_language(
 def _detect_language(file_path: str) -> str | None:
     """Detect language from file extension."""
     from inxr2.domain.services.language_detector import LanguageDetector
+
     return LanguageDetector.detect(file_path)
 
 
@@ -976,7 +1024,8 @@ async def resolve_references(
     # Update references where reference_text matches a symbol name
     # in the same repository (function calls, class instantiations, etc.)
     result = await session.execute(
-        text("""
+        text(
+            """
             UPDATE "references" r
             SET target_symbol_id = s.id
             FROM symbols s
@@ -984,7 +1033,8 @@ async def resolve_references(
               AND s.repository_id = :repo_id
               AND r.reference_text = s.name
               AND r.target_symbol_id IS NULL
-        """),
+        """
+        ),
         {"repo_id": repository_id},
     )
     await session.commit()

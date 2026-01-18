@@ -8,7 +8,7 @@ import yaml
 from pydantic import ValidationError
 
 from ...application.ports.services import ConfigServicePort
-from ...domain.value_objects import AppConfig, RepositoryConfig
+from ...domain.value_objects import AppConfig
 
 
 class YamlConfigService(ConfigServicePort):
@@ -63,7 +63,9 @@ class YamlConfigService(ConfigServicePort):
             for error in e.errors():
                 loc = ".".join(str(x) for x in error["loc"])
                 errors.append(f"{loc}: {error['msg']}")
-            raise ValueError(f"Configuration validation failed:\n" + "\n".join(errors))
+            raise ValueError(
+                "Configuration validation failed:\n" + "\n".join(errors)
+            ) from e
 
         # Validate paths exist for local repositories
         self._validate_paths(config, config_path.parent)
@@ -131,9 +133,9 @@ class YamlConfigService(ConfigServicePort):
         - ${VAR:-default} - replaced with value of VAR, or 'default' if not set
         """
 
-        def replace(match: re.Match) -> str:
-            var_name = match.group(1)
-            default = match.group(2)
+        def replace(match: re.Match[str]) -> str:
+            var_name: str = match.group(1)
+            default: str | None = match.group(2)
             value = os.environ.get(var_name)
             if value is not None:
                 return value

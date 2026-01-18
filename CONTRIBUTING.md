@@ -133,6 +133,14 @@ docker exec inxr2-dev bash -c "cd /workspace && isort ."
 docker exec inxr2-dev bash -c "cd /workspace && ruff check ."
 docker exec inxr2-dev bash -c "cd /workspace && mypy src/inxr2"
 
+# IMPORTANT: Always run `mypy` inside the development container. Do NOT run
+# type checks against your host environment — the project is configured and
+# validated against the container's Python environment. Example:
+#
+# ```bash
+# docker exec inxr2-dev bash -c "cd /workspace && mypy src/inxr2"
+# ```
+
 # TypeScript (run in container)
 docker exec inxr2-dev bash -c "cd /workspace/frontend && npm run format"
 docker exec inxr2-dev bash -c "cd /workspace/frontend && npm run lint"
@@ -282,6 +290,10 @@ tests/
 ```bash
 ./scripts/run-all-tests.sh
 ```
+
+Note: `./scripts/run-all-tests.sh` runs `mypy` inside the `inxr2-dev` container
+as part of the Python quality checks. If you need to run `mypy` manually,
+use the container command shown above.
 
 **This script is REQUIRED and checks:**
 - ✅ All backend tests with coverage

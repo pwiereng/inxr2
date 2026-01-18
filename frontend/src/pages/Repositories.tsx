@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Container,
   Typography,
@@ -11,43 +11,43 @@ import {
   CircularProgress,
   Alert,
   Chip,
-} from '@mui/material';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import CodeIcon from '@mui/icons-material/Code';
+} from '@mui/material'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import CodeIcon from '@mui/icons-material/Code'
 
 interface Repository {
-  id: number;
-  name: string;
-  url: string;
-  description: string | null;
-  created_at: string | null;
-  updated_at: string | null;
+  id: number
+  name: string
+  url: string
+  description: string | null
+  created_at: string | null
+  updated_at: string | null
 }
 
 export default function Repositories() {
-  const [repositories, setRepositories] = useState<Repository[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [repositories, setRepositories] = useState<Repository[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchRepositories();
-  }, []);
+    fetchRepositories()
+  }, [])
 
   const fetchRepositories = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/repositories');
+      const response = await fetch('http://localhost:8000/api/repositories')
       if (!response.ok) {
-        throw new Error('Failed to fetch repositories');
+        throw new Error('Failed to fetch repositories')
       }
-      const data = await response.json();
-      setRepositories(data);
+      const data = await response.json()
+      setRepositories(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   if (loading) {
     return (
@@ -56,7 +56,7 @@ export default function Repositories() {
           <CircularProgress />
         </Box>
       </Container>
-    );
+    )
   }
 
   if (error) {
@@ -64,7 +64,7 @@ export default function Repositories() {
       <Container maxWidth="lg" sx={{ mt: 4 }}>
         <Alert severity="error">Error: {error}</Alert>
       </Container>
-    );
+    )
   }
 
   return (
@@ -91,9 +91,11 @@ export default function Repositories() {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {repositories.map((repo) => (
             <Card key={repo.id} elevation={1}>
-              <CardActionArea component={Link} to={`/browse/${repo.id}`}>
+              <CardActionArea component={Link} to={`/browse/${encodeURIComponent(repo.name)}`}>
                 <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box
+                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                  >
                     <Box sx={{ flex: 1 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                         <CodeIcon color="primary" />
@@ -107,11 +109,7 @@ export default function Repositories() {
                         </Typography>
                       )}
                       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                        <Chip
-                          size="small"
-                          label={repo.url}
-                          variant="outlined"
-                        />
+                        <Chip size="small" label={repo.url} variant="outlined" />
                         {repo.created_at && (
                           <Chip
                             size="small"
@@ -131,5 +129,5 @@ export default function Repositories() {
         </Box>
       )}
     </Container>
-  );
+  )
 }

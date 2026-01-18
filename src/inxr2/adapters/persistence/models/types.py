@@ -1,6 +1,6 @@
 """Custom SQLAlchemy types for cross-database compatibility."""
 
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import JSON, String, TypeDecorator
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -40,4 +40,4 @@ class StringArray(TypeDecorator):
         if value is None:
             return None
         # Both PostgreSQL and SQLite return the value in the correct format
-        return value
+        return cast(list[str], value)

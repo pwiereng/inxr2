@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
   AppBar,
@@ -14,23 +14,23 @@ import {
   Select,
   MenuItem,
   FormControl,
-} from '@mui/material';
-import MenuIcon from '@mui/icons-material/Menu';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import HomeIcon from '@mui/icons-material/Home';
-import FolderIcon from '@mui/icons-material/Folder';
+} from '@mui/material'
+import MenuIcon from '@mui/icons-material/Menu'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import HomeIcon from '@mui/icons-material/Home'
+import FolderIcon from '@mui/icons-material/Folder'
 
-import { CodeViewer } from '@/components/CodeViewer';
-import { FileTree } from '@/components/FileTree';
-import { SymbolSearch } from '@/components/SymbolSearch';
-import { ReferencesPanel } from '@/components/ReferencesPanel';
+import { CodeViewer } from '@/components/CodeViewer'
+import { FileTree } from '@/components/FileTree'
+import { SymbolSearch } from '@/components/SymbolSearch'
+import { ReferencesPanel } from '@/components/ReferencesPanel'
 import {
-  getRepository,
   getRepositories,
-  getRepositoryTree,
-  getFileContent,
-  getFileSymbols,
-  getFileReferences,
+  getRepositoryByName,
+  getRepositoryTreeByName,
+  getFileContentByPath,
+  getFileSymbolsByPath,
+  getFileReferencesByPath,
   getSymbol,
   type Repository,
   type TreeNode,
@@ -38,157 +38,169 @@ import {
   type FileSymbol,
   type FileReference,
   type Symbol,
-} from '@/lib/api';
+} from '@/lib/api'
 
 export default function Browse() {
-  const { repositoryId, fileId } = useParams<{ repositoryId: string; fileId?: string }>();
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const { repoName } = useParams<{ repoName: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
+
+  // Get file path and line from URL query params
+  const filePath = searchParams.get('file')
+  const highlightLine = searchParams.get('line')
+    ? parseInt(searchParams.get('line')!, 10)
+    : undefined
 
   // State
-  const [allRepositories, setAllRepositories] = useState<Repository[]>([]);
-  const [repository, setRepository] = useState<Repository | null>(null);
-  const [treeNodes, setTreeNodes] = useState<TreeNode[]>([]);
-  const [fileContent, setFileContent] = useState<FileContent | null>(null);
-  const [fileSymbols, setFileSymbols] = useState<FileSymbol[]>([]);
-  const [fileReferences, setFileReferences] = useState<FileReference[]>([]);
-  const [selectedSymbol, setSelectedSymbol] = useState<Symbol | null>(null);
+  const [allRepositories, setAllRepositories] = useState<Repository[]>([])
+  const [repository, setRepository] = useState<Repository | null>(null)
+  const [treeNodes, setTreeNodes] = useState<TreeNode[]>([])
+  const [fileContent, setFileContent] = useState<FileContent | null>(null)
+  const [fileSymbols, setFileSymbols] = useState<FileSymbol[]>([])
+  const [fileReferences, setFileReferences] = useState<FileReference[]>([])
+  const [selectedSymbol, setSelectedSymbol] = useState<Symbol | null>(null)
 
   // UI state
-  const [drawerOpen, setDrawerOpen] = useState(true);
-  const [refsPanelOpen, setRefsPanelOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [fileLoading, setFileLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Get highlight line from URL
-  const highlightLine = searchParams.get('line') ? parseInt(searchParams.get('line')!, 10) : undefined;
+  const [drawerOpen, setDrawerOpen] = useState(true)
+  const [refsPanelOpen, setRefsPanelOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [fileLoading, setFileLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   // Load all repositories (for selector dropdown)
   useEffect(() => {
-    getRepositories()
-      .then(setAllRepositories)
-      .catch(console.error);
-  }, []);
+    getRepositories().then(setAllRepositories).catch(console.error)
+  }, [])
 
   // Handle repository switch
-  const handleRepositoryChange = (newRepoId: number) => {
-    navigate(`/browse/${newRepoId}`);
-  };
+  const handleRepositoryChange = (newRepoName: string) => {
+    navigate(`/browse/${encodeURIComponent(newRepoName)}`)
+  }
 
-  // Load repository and tree
+  // Load repository and tree by name
   useEffect(() => {
-    if (!repositoryId) return;
+    if (!repoName) return
 
     const loadRepository = async () => {
-      setLoading(true);
-      setError(null);
+      setLoading(true)
+      setError(null)
       try {
         const [repo, tree] = await Promise.all([
-          getRepository(parseInt(repositoryId, 10)),
-          getRepositoryTree(parseInt(repositoryId, 10)),
-        ]);
-        setRepository(repo);
-        setTreeNodes(tree.root);
+          getRepositoryByName(repoName),
+          getRepositoryTreeByName(repoName),
+        ])
+        setRepository(repo)
+        setTreeNodes(tree.root)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load repository');
+        setError(err instanceof Error ? err.message : 'Failed to load repository')
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    };
+    }
 
-    loadRepository();
-  }, [repositoryId]);
+    loadRepository()
+  }, [repoName])
 
-  // Load file content when fileId changes
+  // Load file content when file path changes
   useEffect(() => {
-    if (!fileId) {
-      setFileContent(null);
-      setFileSymbols([]);
-      setFileReferences([]);
-      return;
+    if (!filePath || !repoName) {
+      setFileContent(null)
+      setFileSymbols([])
+      setFileReferences([])
+      return
     }
 
     const loadFile = async () => {
-      setFileLoading(true);
+      setFileLoading(true)
       try {
         const [content, symbols, references] = await Promise.all([
-          getFileContent(parseInt(fileId, 10)),
-          getFileSymbols(parseInt(fileId, 10)),
-          getFileReferences(parseInt(fileId, 10)),
-        ]);
-        setFileContent(content);
-        setFileSymbols(symbols.symbols);
-        setFileReferences(references.references);
+          getFileContentByPath(repoName, filePath),
+          getFileSymbolsByPath(repoName, filePath),
+          getFileReferencesByPath(repoName, filePath),
+        ])
+        setFileContent(content)
+        setFileSymbols(symbols.symbols)
+        setFileReferences(references.references)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load file');
+        setError(err instanceof Error ? err.message : 'Failed to load file')
       } finally {
-        setFileLoading(false);
+        setFileLoading(false)
       }
-    };
+    }
 
-    loadFile();
-  }, [fileId]);
+    loadFile()
+  }, [repoName, filePath])
 
   // Handle file selection from tree
-  const handleFileSelect = (selectedFileId: number) => {
-    navigate(`/browse/${repositoryId}/file/${selectedFileId}`);
-  };
+  const handleFileSelect = (path: string) => {
+    setSearchParams({ file: path })
+  }
 
   // Handle symbol selection from search
   const handleSymbolSelect = async (symbol: Symbol) => {
-    navigate(`/browse/${repositoryId}/file/${symbol.file_id}?line=${symbol.start_line}`);
-  };
+    if (symbol.file_path) {
+      setSearchParams({ file: symbol.file_path, line: symbol.start_line.toString() })
+    }
+  }
 
   // Handle symbol click in code viewer (find references)
   const handleSymbolClick = async (fileSymbol: FileSymbol) => {
     try {
-      const symbol = await getSymbol(fileSymbol.id);
-      setSelectedSymbol(symbol);
-      setRefsPanelOpen(true);
+      const symbol = await getSymbol(fileSymbol.id)
+      setSelectedSymbol(symbol)
+      setRefsPanelOpen(true)
+      setSearchQuery(symbol.name)
     } catch (err) {
-      console.error('Failed to get symbol:', err);
+      console.error('Failed to get symbol:', err)
     }
-  };
+  }
 
   // Handle reference click in code viewer (find references for the target symbol)
   const handleCodeReferenceClick = async (ref: FileReference) => {
     if (!ref.target_symbol_id) {
-      console.log('Reference has no resolved target symbol');
-      return;
+      console.log('Reference has no resolved target symbol')
+      return
     }
     try {
-      const symbol = await getSymbol(ref.target_symbol_id);
-      setSelectedSymbol(symbol);
-      setRefsPanelOpen(true);
+      const symbol = await getSymbol(ref.target_symbol_id)
+      setSelectedSymbol(symbol)
+      setRefsPanelOpen(true)
+      setSearchQuery(symbol.name)
     } catch (err) {
-      console.error('Failed to get symbol for reference:', err);
+      console.error('Failed to get symbol for reference:', err)
     }
-  };
+  }
 
   // Handle click in references panel (jump to reference location)
-  const handleRefPanelClick = (reference: { source_file_id: number; source_line: number }) => {
-    navigate(`/browse/${repositoryId}/file/${reference.source_file_id}?line=${reference.source_line}`);
-  };
+  const handleRefPanelClick = (reference: { source_file_path: string | null; source_line: number }) => {
+    if (reference.source_file_path) {
+      setSearchParams({ file: reference.source_file_path, line: reference.source_line.toString() })
+    }
+  }
 
   // Handle click on definition in references panel
   const handleDefinitionClick = (sym: Symbol) => {
-    if (sym.file_id) {
-      navigate(`/browse/${repositoryId}/file/${sym.file_id}?line=${sym.start_line}`);
+    if (sym.file_path) {
+      setSearchParams({ file: sym.file_path, line: sym.start_line.toString() })
     }
-  };
+  }
 
   // Handle line click (update URL)
   const handleLineClick = (line: number) => {
-    navigate(`/browse/${repositoryId}/file/${fileId}?line=${line}`, { replace: true });
-  };
+    if (filePath) {
+      setSearchParams({ file: filePath, line: line.toString() }, { replace: true })
+    }
+  }
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <Box
+        sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}
+      >
         <CircularProgress />
       </Box>
-    );
+    )
   }
 
   if (error) {
@@ -196,7 +208,7 @@ export default function Browse() {
       <Box sx={{ p: 4 }}>
         <Alert severity="error">{error}</Alert>
       </Box>
-    );
+    )
   }
 
   return (
@@ -212,11 +224,7 @@ export default function Browse() {
         elevation={0}
       >
         <Toolbar sx={{ gap: 2 }}>
-          <IconButton
-            edge="start"
-            color="inherit"
-            onClick={() => setDrawerOpen(!drawerOpen)}
-          >
+          <IconButton edge="start" color="inherit" onClick={() => setDrawerOpen(!drawerOpen)}>
             {drawerOpen ? <ChevronLeftIcon /> : <MenuIcon />}
           </IconButton>
 
@@ -224,8 +232,8 @@ export default function Browse() {
           {allRepositories.length > 1 ? (
             <FormControl size="small" sx={{ minWidth: 150 }}>
               <Select
-                value={repositoryId ? parseInt(repositoryId, 10) : ''}
-                onChange={(e) => handleRepositoryChange(e.target.value as number)}
+                value={repoName || ''}
+                onChange={(e) => handleRepositoryChange(e.target.value as string)}
                 displayEmpty
                 sx={{
                   '& .MuiSelect-select': {
@@ -233,11 +241,11 @@ export default function Browse() {
                     alignItems: 'center',
                     gap: 0.5,
                     py: 0.5,
-                  }
+                  },
                 }}
               >
                 {allRepositories.map((repo) => (
-                  <MenuItem key={repo.id} value={repo.id}>
+                  <MenuItem key={repo.id} value={repo.name}>
                     <FolderIcon fontSize="small" sx={{ mr: 1 }} />
                     {repo.name}
                   </MenuItem>
@@ -273,8 +281,10 @@ export default function Browse() {
 
           {/* Symbol Search */}
           <SymbolSearch
-            repositoryId={repositoryId ? parseInt(repositoryId, 10) : undefined}
+            repositoryId={repository?.id}
             onSymbolSelect={handleSymbolSelect}
+            value={searchQuery}
+            onValueChange={setSearchQuery}
           />
         </Toolbar>
       </AppBar>
@@ -298,14 +308,22 @@ export default function Browse() {
           >
             <FileTree
               nodes={treeNodes}
-              selectedFileId={fileId ? parseInt(fileId, 10) : null}
+              selectedFileId={fileContent?.id ?? null}
               onFileSelect={handleFileSelect}
             />
           </Box>
         )}
 
         {/* Code Viewer Panel */}
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+        <Box
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+            overflow: 'hidden',
+          }}
+        >
           {fileLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
               <CircularProgress />
@@ -329,9 +347,7 @@ export default function Browse() {
                 <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
                   {fileContent.path}
                 </Typography>
-                {fileContent.language && (
-                  <Chip label={fileContent.language} size="small" />
-                )}
+                {fileContent.language && <Chip label={fileContent.language} size="small" />}
                 <Typography variant="caption" color="text.secondary">
                   {fileContent.line_count} lines
                 </Typography>
@@ -378,7 +394,7 @@ export default function Browse() {
               borderColor: 'divider',
               flexShrink: 0,
               resize: 'horizontal',
-              direction: 'rtl',  /* Makes resize handle appear on left */
+              direction: 'rtl' /* Makes resize handle appear on left */,
             }}
           >
             <Box sx={{ direction: 'ltr', height: '100%' }}>
@@ -387,8 +403,8 @@ export default function Browse() {
                 onReferenceClick={handleRefPanelClick}
                 onDefinitionClick={handleDefinitionClick}
                 onClose={() => {
-                  setRefsPanelOpen(false);
-                  setSelectedSymbol(null);
+                  setRefsPanelOpen(false)
+                  setSelectedSymbol(null)
                 }}
               />
             </Box>
@@ -396,5 +412,5 @@ export default function Browse() {
         )}
       </Box>
     </Box>
-  );
+  )
 }

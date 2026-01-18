@@ -110,6 +110,13 @@ class FileRepositoryPort(ABC):
         """Find files with matching content hash (deduplication)."""
         pass
 
+    @abstractmethod
+    async def find_by_repository_and_path(
+        self, repository_id: int, path: str
+    ) -> File | None:
+        """Find file by repository and path (latest version for now)."""
+        pass
+
 
 class SymbolRepositoryPort(ABC):
     """Port for symbol entity operations."""

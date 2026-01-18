@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react'
+import { useParams, Link } from 'react-router-dom'
 import {
   Container,
   Typography,
@@ -20,59 +20,57 @@ import {
   CircularProgress,
   Alert,
   Button,
-} from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+} from '@mui/material'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 
 interface File {
-  id: number;
-  repository_id: number;
-  commit_id: number;
-  path: string;
-  language: string | null;
-  size_bytes: number;
-  line_count: number | null;
+  id: number
+  repository_id: number
+  commit_id: number
+  path: string
+  language: string | null
+  size_bytes: number
+  line_count: number | null
 }
 
 export default function Files() {
-  const { repositoryId } = useParams<{ repositoryId: string }>();
-  const [files, setFiles] = useState<File[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterLanguage, setFilterLanguage] = useState<string>('');
+  const { repositoryId } = useParams<{ repositoryId: string }>()
+  const [files, setFiles] = useState<File[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterLanguage, setFilterLanguage] = useState<string>('')
 
   useEffect(() => {
     const fetchFiles = async () => {
       try {
-        const response = await fetch(
-          `http://localhost:8000/api/repositories/${repositoryId}/files`
-        );
+        const response = await fetch(`http://localhost:8000/api/repositories/${repositoryId}/files`)
         if (!response.ok) {
-          throw new Error('Failed to fetch files');
+          throw new Error('Failed to fetch files')
         }
-        const data = await response.json();
-        setFiles(data);
+        const data = await response.json()
+        setFiles(data)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        setError(err instanceof Error ? err.message : 'Unknown error')
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    };
+    }
 
     if (repositoryId) {
-      fetchFiles();
+      fetchFiles()
     }
-  }, [repositoryId]);
+  }, [repositoryId])
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
 
   const getLanguageColor = (language: string | null): 'primary' | 'secondary' | 'default' => {
-    if (!language) return 'default';
+    if (!language) return 'default'
     const colors: Record<string, 'primary' | 'secondary'> = {
       python: 'primary',
       javascript: 'secondary',
@@ -80,24 +78,19 @@ export default function Files() {
       java: 'secondary',
       go: 'primary',
       rust: 'secondary',
-    };
-    return colors[language.toLowerCase()] || 'default';
-  };
+    }
+    return colors[language.toLowerCase()] || 'default'
+  }
 
   // Get unique languages for filter
-  const languages = Array.from(
-    new Set(files.map((f) => f.language).filter(Boolean))
-  ).sort();
+  const languages = Array.from(new Set(files.map((f) => f.language).filter(Boolean))).sort()
 
   // Filter files
   const filteredFiles = files.filter((file) => {
-    const matchesSearch = file.path
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    const matchesLanguage =
-      !filterLanguage || file.language === filterLanguage;
-    return matchesSearch && matchesLanguage;
-  });
+    const matchesSearch = file.path.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesLanguage = !filterLanguage || file.language === filterLanguage
+    return matchesSearch && matchesLanguage
+  })
 
   if (loading) {
     return (
@@ -106,7 +99,7 @@ export default function Files() {
           <CircularProgress />
         </Box>
       </Container>
-    );
+    )
   }
 
   if (error) {
@@ -114,18 +107,13 @@ export default function Files() {
       <Container maxWidth="lg" sx={{ mt: 4 }}>
         <Alert severity="error">Error: {error}</Alert>
       </Container>
-    );
+    )
   }
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ mb: 4 }}>
-        <Button
-          component={Link}
-          to="/repositories"
-          startIcon={<ArrowBackIcon />}
-          sx={{ mb: 2 }}
-        >
+        <Button component={Link} to="/repositories" startIcon={<ArrowBackIcon />} sx={{ mb: 2 }}>
           Back to Repositories
         </Button>
         <Typography variant="h4" component="h1" gutterBottom>
@@ -170,9 +158,7 @@ export default function Files() {
       {filteredFiles.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="body1" color="text.secondary">
-            {searchTerm || filterLanguage
-              ? 'No files match your filters'
-              : 'No files found'}
+            {searchTerm || filterLanguage ? 'No files match your filters' : 'No files found'}
           </Typography>
         </Paper>
       ) : (
@@ -215,9 +201,7 @@ export default function Files() {
                     )}
                   </TableCell>
                   <TableCell align="right">
-                    <Typography variant="body2">
-                      {formatFileSize(file.size_bytes)}
-                    </Typography>
+                    <Typography variant="body2">{formatFileSize(file.size_bytes)}</Typography>
                   </TableCell>
                   <TableCell align="right">
                     <Typography variant="body2">
@@ -231,5 +215,5 @@ export default function Files() {
         </TableContainer>
       )}
     </Container>
-  );
+  )
 }

@@ -170,6 +170,15 @@ class InMemoryFileRepository(FileRepositoryPort):
         """Find files by content hash."""
         return [f for f in self._files.values() if f.content_hash == content_hash]
 
+    async def find_by_repository_and_path(
+        self, repository_id: int, path: str
+    ) -> File | None:
+        """Find file by repository and path (latest version)."""
+        for file in self._files.values():
+            if file.repository_id == repository_id and file.path == path:
+                return file
+        return None
+
     # Test helper methods
     def add(self, file: File) -> None:
         """Add a file for testing."""

@@ -75,7 +75,10 @@ class TestIndexCommands:
         """Test index full without path or config."""
         result = runner.invoke(main, ["index", "full"])
         assert result.exit_code != 0
-        assert "--path or --config" in result.output or "must be specified" in result.output
+        assert (
+            "--path or --config" in result.output
+            or "must be specified" in result.output
+        )
 
     def test_index_full_invalid_path(self, runner: CliRunner) -> None:
         """Test index full with invalid path."""

@@ -1,2 +1,2 @@
-export { CodeViewer } from './CodeViewer';
-export { default } from './CodeViewer';
+export { CodeViewer } from './CodeViewer'
+export { default } from './CodeViewer'

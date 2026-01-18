@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react'
 import {
   Box,
   Typography,
@@ -8,35 +8,30 @@ import {
   Chip,
   CircularProgress,
   IconButton,
-} from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
-import DownloadIcon from '@mui/icons-material/Download';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import FunctionsIcon from '@mui/icons-material/Functions';
-import ClassIcon from '@mui/icons-material/Class';
-import CodeIcon from '@mui/icons-material/Code';
-import DataObjectIcon from '@mui/icons-material/DataObject';
-import PushPinIcon from '@mui/icons-material/PushPin';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+} from '@mui/material'
+import CloseIcon from '@mui/icons-material/Close'
+import DownloadIcon from '@mui/icons-material/Download'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import FunctionsIcon from '@mui/icons-material/Functions'
+import ClassIcon from '@mui/icons-material/Class'
+import CodeIcon from '@mui/icons-material/Code'
+import DataObjectIcon from '@mui/icons-material/DataObject'
+import PushPinIcon from '@mui/icons-material/PushPin'
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 
-import {
-  getSymbolReferences,
-  getSymbolsByName,
-  type Reference,
-  type Symbol,
-} from '@/lib/api';
+import { getSymbolReferences, getSymbolsByName, type Reference, type Symbol } from '@/lib/api'
 
 // Get icon for reference type
 function getReferenceIcon(refType: string) {
   switch (refType.toLowerCase()) {
     case 'import':
-      return <DownloadIcon fontSize="small" sx={{ color: '#ce9178' }} />;
+      return <DownloadIcon fontSize="small" sx={{ color: '#ce9178' }} />
     case 'call':
-      return <PlayArrowIcon fontSize="small" sx={{ color: '#dcdcaa' }} />;
+      return <PlayArrowIcon fontSize="small" sx={{ color: '#dcdcaa' }} />
     case 'usage':
     default:
-      return <VisibilityIcon fontSize="small" sx={{ color: '#9cdcfe' }} />;
+      return <VisibilityIcon fontSize="small" sx={{ color: '#9cdcfe' }} />
   }
 }
 
@@ -44,13 +39,13 @@ function getReferenceIcon(refType: string) {
 function getReferenceChipColor(refType: string): 'warning' | 'info' | 'success' | 'default' {
   switch (refType.toLowerCase()) {
     case 'import':
-      return 'warning';
+      return 'warning'
     case 'call':
-      return 'success';
+      return 'success'
     case 'usage':
-      return 'info';
+      return 'info'
     default:
-      return 'default';
+      return 'default'
   }
 }
 
@@ -59,22 +54,22 @@ function getSymbolKindIcon(kind: string) {
   switch (kind.toLowerCase()) {
     case 'function':
     case 'method':
-      return <FunctionsIcon fontSize="small" />;
+      return <FunctionsIcon fontSize="small" />
     case 'class':
-      return <ClassIcon fontSize="small" />;
+      return <ClassIcon fontSize="small" />
     case 'interface':
     case 'type':
-      return <DataObjectIcon fontSize="small" />;
+      return <DataObjectIcon fontSize="small" />
     default:
-      return <CodeIcon fontSize="small" />;
+      return <CodeIcon fontSize="small" />
   }
 }
 
 interface ReferencesPanelProps {
-  symbol: Symbol | null;
-  onReferenceClick?: (reference: Reference) => void;
-  onDefinitionClick?: (symbol: Symbol) => void;
-  onClose?: () => void;
+  symbol: Symbol | null
+  onReferenceClick?: (reference: Reference) => void
+  onDefinitionClick?: (symbol: Symbol) => void
+  onClose?: () => void
 }
 
 export function ReferencesPanel({
@@ -83,40 +78,40 @@ export function ReferencesPanel({
   onDefinitionClick,
   onClose,
 }: ReferencesPanelProps) {
-  const [references, setReferences] = useState<Reference[]>([]);
-  const [allDefinitions, setAllDefinitions] = useState<Symbol[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [references, setReferences] = useState<Reference[]>([])
+  const [allDefinitions, setAllDefinitions] = useState<Symbol[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!symbol) {
-      setReferences([]);
-      setAllDefinitions([]);
-      return;
+      setReferences([])
+      setAllDefinitions([])
+      return
     }
 
     const fetchData = async () => {
-      setLoading(true);
-      setError(null);
+      setLoading(true)
+      setError(null)
       try {
         // Fetch references and all definitions with the same name in parallel
         const [refsResult, defsResult] = await Promise.all([
           getSymbolReferences(symbol.id),
           getSymbolsByName(symbol.name, symbol.repository_id),
-        ]);
-        setReferences(refsResult.items);
-        setAllDefinitions(defsResult.items);
+        ])
+        setReferences(refsResult.items)
+        setAllDefinitions(defsResult.items)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load references');
-        setReferences([]);
-        setAllDefinitions([]);
+        setError(err instanceof Error ? err.message : 'Failed to load references')
+        setReferences([])
+        setAllDefinitions([])
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    };
+    }
 
-    fetchData();
-  }, [symbol]);
+    fetchData()
+  }, [symbol])
 
   if (!symbol) {
     return (
@@ -125,21 +120,21 @@ export function ReferencesPanel({
           Select a symbol to see its references
         </Typography>
       </Box>
-    );
+    )
   }
 
   // Group references by file
   const referencesByFile = references.reduce(
     (acc, ref) => {
-      const file = ref.source_file_path || `File ${ref.source_file_id}`;
+      const file = ref.source_file_path || `File ${ref.source_file_id}`
       if (!acc[file]) {
-        acc[file] = [];
+        acc[file] = []
       }
-      acc[file].push(ref);
-      return acc;
+      acc[file].push(ref)
+      return acc
     },
     {} as Record<string, Reference[]>
-  );
+  )
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -218,9 +213,9 @@ export function ReferencesPanel({
               </Box>
               {allDefinitions.length > 0 ? (
                 allDefinitions.map((def) => {
-                  const isSelected = def.id === symbol.id;
+                  const isSelected = def.id === symbol.id
                   // Extract short file name from path
-                  const fileName = def.file_path?.split('/').pop() || '';
+                  const fileName = def.file_path?.split('/').pop() || ''
                   return (
                     <ListItemButton
                       key={def.id}
@@ -272,7 +267,7 @@ export function ReferencesPanel({
                         }
                       />
                     </ListItemButton>
-                  );
+                  )
                 })
               ) : symbol.file_path ? (
                 <ListItemButton
@@ -354,66 +349,69 @@ export function ReferencesPanel({
                   </Typography>
                 </Box>
                 {Object.entries(referencesByFile).map(([file, refs]) => (
-              <Box key={file}>
-                {/* File header */}
-                <Box
-                  sx={{
-                    px: 1.5,
-                    py: 0.5,
-                    bgcolor: 'action.hover',
-                    borderBottom: 1,
-                    borderColor: 'divider',
-                  }}
-                >
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      fontFamily: 'monospace',
-                      fontWeight: 500,
-                      display: 'block',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {file}
-                  </Typography>
-                </Box>
+                  <Box key={file}>
+                    {/* File header */}
+                    <Box
+                      sx={{
+                        px: 1.5,
+                        py: 0.5,
+                        bgcolor: 'action.hover',
+                        borderBottom: 1,
+                        borderColor: 'divider',
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontFamily: 'monospace',
+                          fontWeight: 500,
+                          display: 'block',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {file}
+                      </Typography>
+                    </Box>
 
-                {/* References in file */}
-                {refs.map((ref) => (
-                  <ListItemButton
-                    key={ref.id}
-                    onClick={() => onReferenceClick?.(ref)}
-                    sx={{ py: 0.5, px: 1.5 }}
-                  >
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {getReferenceIcon(ref.reference_type)}
-                          <Chip
-                            label={ref.reference_type}
-                            size="small"
-                            color={getReferenceChipColor(ref.reference_type)}
-                            sx={{ height: 18, fontSize: '0.65rem', minWidth: 50 }}
-                          />
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-                            :{ref.source_line}
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                  </ListItemButton>
+                    {/* References in file */}
+                    {refs.map((ref) => (
+                      <ListItemButton
+                        key={ref.id}
+                        onClick={() => onReferenceClick?.(ref)}
+                        sx={{ py: 0.5, px: 1.5 }}
+                      >
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              {getReferenceIcon(ref.reference_type)}
+                              <Chip
+                                label={ref.reference_type}
+                                size="small"
+                                color={getReferenceChipColor(ref.reference_type)}
+                                sx={{ height: 18, fontSize: '0.65rem', minWidth: 50 }}
+                              />
+                              <Typography
+                                variant="body2"
+                                sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                              >
+                                :{ref.source_line}
+                              </Typography>
+                            </Box>
+                          }
+                        />
+                      </ListItemButton>
+                    ))}
+                  </Box>
                 ))}
-              </Box>
-            ))}
               </>
             )}
           </List>
         )}
       </Box>
     </Box>
-  );
+  )
 }
 
-export default ReferencesPanel;
+export default ReferencesPanel

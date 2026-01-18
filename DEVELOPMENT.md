@@ -170,7 +170,8 @@ ruff check .
 ruff check . --fix  # Auto-fix issues
 
 # Type check
-mypy .
+# Run type checking inside the dev container to ensure consistent environment
+docker exec inxr2-dev bash -c "cd /workspace && mypy src/inxr2"
 
 # Test
 pytest                              # All tests

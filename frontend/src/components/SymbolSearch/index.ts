@@ -1,2 +1,2 @@
-export { SymbolSearch } from './SymbolSearch';
-export { default } from './SymbolSearch';
+export { SymbolSearch } from './SymbolSearch'
+export { default } from './SymbolSearch'

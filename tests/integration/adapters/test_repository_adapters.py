@@ -13,11 +13,11 @@ from inxr2.adapters.persistence.repositories.commit_adapter import (
     PostgresCommitRepository,
 )
 from inxr2.adapters.persistence.repositories.file_adapter import PostgresFileRepository
-from inxr2.adapters.persistence.repositories.repository_adapter import (
-    PostgresRepositoryAdapter,
-)
 from inxr2.adapters.persistence.repositories.reference_adapter import (
     PostgresReferenceRepository,
+)
+from inxr2.adapters.persistence.repositories.repository_adapter import (
+    PostgresRepositoryAdapter,
 )
 from inxr2.adapters.persistence.repositories.symbol_adapter import (
     PostgresSymbolRepository,
@@ -498,6 +498,71 @@ class TestPostgresFileRepository:
         # Assert
         assert len(found_files) >= 2
 
+    async def test_find_by_repository_and_path(self, db_session: AsyncSession) -> None:
+        """Test finding file by repository and path."""
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="find-by-path-repo", url="https://example.com/repo.git"
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("findpath" + "0" * 32),
+            author_name="Author",
+            author_email="author@example.com",
+            committer_name="Author",
+            committer_email="author@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Test",
+        )
+        saved_commit = await commit_adapter.save(commit)
+
+        file_adapter = PostgresFileRepository(db_session)
+        file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            path="src/utils/helper.py",
+            content_hash="unique_hash",
+            size_bytes=200,
+            language="python",
+        )
+        await file_adapter.save(file)
+
+        # Act
+        found = await file_adapter.find_by_repository_and_path(
+            saved_repo.id, "src/utils/helper.py"
+        )
+
+        # Assert
+        assert found is not None
+        assert found.path == "src/utils/helper.py"
+        assert found.repository_id == saved_repo.id
+
+    async def test_find_by_repository_and_path_not_found(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test finding file by repository and path when it doesn't exist."""
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="empty-repo", url="https://example.com/empty.git"
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        file_adapter = PostgresFileRepository(db_session)
+
+        # Act
+        found = await file_adapter.find_by_repository_and_path(
+            saved_repo.id, "nonexistent/file.py"
+        )
+
+        # Assert
+        assert found is None
+
 
 @pytest.mark.asyncio
 class TestPostgresSymbolRepository:
@@ -601,9 +666,7 @@ class TestPostgresSymbolRepository:
         assert "FileRepository.save" in qualified_names
         assert "CommitRepository.save" in qualified_names
 
-    async def test_find_by_exact_name_no_match(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_find_by_exact_name_no_match(self, db_session: AsyncSession) -> None:
         """Test finding symbols with a name that doesn't exist."""
         # Arrange
         repo, commit, file1, _ = await self._create_test_data(db_session)

@@ -1,2 +1,2 @@
-export { ReferencesPanel } from './ReferencesPanel';
-export { default } from './ReferencesPanel';
+export { ReferencesPanel } from './ReferencesPanel'
+export { default } from './ReferencesPanel'

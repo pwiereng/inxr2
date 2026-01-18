@@ -107,7 +107,7 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
             delete(ReferenceModel).where(ReferenceModel.source_file_id == file_id)
         )
         await self.session.flush()
-        return result.rowcount  # type: ignore[return-value]
+        return result.rowcount or 0  # type: ignore[attr-defined]
 
     async def count_by_repository(self, repository_id: int) -> int:
         """Count references for a repository."""
