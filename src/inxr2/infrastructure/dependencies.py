@@ -47,6 +47,9 @@ from ..application.use_cases.indexing.index_local_directory import (
 from ..application.use_cases.repositories.get_repository_files import (
     GetRepositoryFilesUseCase,
 )
+from ..application.use_cases.repositories.get_repository_tree import (
+    GetRepositoryTreeUseCase,
+)
 from ..application.use_cases.repositories.list_repositories import (
     ListRepositoriesUseCase,
 )
@@ -149,6 +152,17 @@ def get_index_local_directory_use_case(
     )
 
 
+def get_repository_tree_use_case(
+    repository_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+) -> GetRepositoryTreeUseCase:
+    """Provide GetRepositoryTreeUseCase with dependencies."""
+    return GetRepositoryTreeUseCase(
+        repository_repo=repository_adapter,
+        file_repo=file_adapter,
+    )
+
+
 # Type aliases for injected use cases
 ListRepositoriesUseCaseDep = Annotated[
     ListRepositoriesUseCase, Depends(get_list_repositories_use_case)
@@ -158,4 +172,7 @@ GetRepositoryFilesUseCaseDep = Annotated[
 ]
 IndexLocalDirectoryUseCaseDep = Annotated[
     IndexLocalDirectoryUseCase, Depends(get_index_local_directory_use_case)
+]
+GetRepositoryTreeUseCaseDep = Annotated[
+    GetRepositoryTreeUseCase, Depends(get_repository_tree_use_case)
 ]

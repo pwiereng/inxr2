@@ -59,6 +59,10 @@ export default function Browse() {
   const [fileSymbols, setFileSymbols] = useState<FileSymbol[]>([])
   const [fileReferences, setFileReferences] = useState<FileReference[]>([])
   const [selectedSymbol, setSelectedSymbol] = useState<Symbol | null>(null)
+  const [isDirectDefinition, setIsDirectDefinition] = useState(false)
+  const [searchByName, setSearchByName] = useState<{ name: string; repositoryId: number } | null>(
+    null
+  )
 
   // UI state
   const [drawerOpen, setDrawerOpen] = useState(true)
@@ -146,11 +150,13 @@ export default function Browse() {
     }
   }
 
-  // Handle symbol click in code viewer (find references)
+  // Handle symbol click in code viewer (clicking on a definition)
   const handleSymbolClick = async (fileSymbol: FileSymbol) => {
     try {
       const symbol = await getSymbol(fileSymbol.id)
       setSelectedSymbol(symbol)
+      setSearchByName(null)
+      setIsDirectDefinition(true) // We clicked directly on the definition
       setRefsPanelOpen(true)
       setSearchQuery(symbol.name)
     } catch (err) {
@@ -158,15 +164,24 @@ export default function Browse() {
     }
   }
 
-  // Handle reference click in code viewer (find references for the target symbol)
+  // Handle reference click in code viewer (clicking on a usage/reference)
   const handleCodeReferenceClick = async (ref: FileReference) => {
     if (!ref.target_symbol_id) {
-      console.log('Reference has no resolved target symbol')
+      // Unresolved reference - search by name to find possible definitions
+      if (repository?.id) {
+        setSelectedSymbol(null)
+        setSearchByName({ name: ref.reference_text, repositoryId: repository.id })
+        setIsDirectDefinition(false)
+        setRefsPanelOpen(true)
+        setSearchQuery(ref.reference_text)
+      }
       return
     }
     try {
       const symbol = await getSymbol(ref.target_symbol_id)
       setSelectedSymbol(symbol)
+      setSearchByName(null)
+      setIsDirectDefinition(false) // We clicked on a reference, show all possible definitions
       setRefsPanelOpen(true)
       setSearchQuery(symbol.name)
     } catch (err) {
@@ -409,11 +424,15 @@ export default function Browse() {
             <Box sx={{ direction: 'ltr', height: '100%' }}>
               <ReferencesPanel
                 symbol={selectedSymbol}
+                isDirectDefinition={isDirectDefinition}
+                searchByName={searchByName}
                 onReferenceClick={handleRefPanelClick}
                 onDefinitionClick={handleDefinitionClick}
                 onClose={() => {
                   setRefsPanelOpen(false)
                   setSelectedSymbol(null)
+                  setIsDirectDefinition(false)
+                  setSearchByName(null)
                 }}
               />
             </Box>

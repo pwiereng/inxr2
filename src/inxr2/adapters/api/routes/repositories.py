@@ -6,9 +6,14 @@ from pydantic import BaseModel, ConfigDict
 from ....application.use_cases.repositories.get_repository_files import (
     GetRepositoryFilesRequest,
 )
+from ....application.use_cases.repositories.get_repository_tree import (
+    GetRepositoryTreeRequest,
+    TreeNode,
+)
 from ....infrastructure.dependencies import (
     FileAdapter,
     GetRepositoryFilesUseCaseDep,
+    GetRepositoryTreeUseCaseDep,
     ListRepositoriesUseCaseDep,
     ReferenceAdapter,
     RepositoryAdapter,
@@ -126,77 +131,41 @@ async def get_repository_by_name(
     )
 
 
+def _tree_node_to_response(node: TreeNode) -> TreeNodeResponse:
+    """Convert a TreeNode from the use case to a TreeNodeResponse."""
+    return TreeNodeResponse(
+        name=node.name,
+        path=node.path,
+        type=node.node_type,
+        file_id=node.file_id,
+        language=node.language,
+        children=(
+            [_tree_node_to_response(child) for child in node.children]
+            if node.children
+            else None
+        ),
+    )
+
+
 @router.get("/by-name/{name}/tree", response_model=TreeResponse)
 async def get_repository_tree_by_name(
     name: str,
-    repo_adapter: RepositoryAdapter,
-    file_adapter: FileAdapter,
+    use_case: GetRepositoryTreeUseCaseDep,
 ) -> TreeResponse:
     """Get the file tree structure for a repository by name."""
-    # Get repository by name
-    repository = await repo_adapter.find_by_name(name)
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    repository_id = repository.id if repository.id is not None else 0
-
-    # Get all files
-    files = await file_adapter.list_by_repository(repository_id)
-
-    # Build tree structure
-    tree_dict: dict[str, TreeNodeResponse] = {}
-    root_nodes: list[TreeNodeResponse] = []
-    total_dirs = 0
-
-    for file in files:
-        parts = file.path.split("/")
-        current_path = ""
-
-        for i, part in enumerate(parts):
-            parent_path = current_path
-            current_path = f"{current_path}/{part}" if current_path else part
-            is_file = i == len(parts) - 1
-
-            if current_path not in tree_dict:
-                node = TreeNodeResponse(
-                    name=part,
-                    path=current_path,
-                    type="file" if is_file else "directory",
-                    file_id=file.id if is_file else None,
-                    language=file.language if is_file else None,
-                    children=None if is_file else [],
-                )
-                tree_dict[current_path] = node
-
-                if not is_file:
-                    total_dirs += 1
-
-                if parent_path:
-                    parent_node = tree_dict.get(parent_path)
-                    if parent_node and parent_node.children is not None:
-                        parent_node.children.append(node)
-                else:
-                    root_nodes.append(node)
-
-    # Sort nodes alphabetically (directories first, then files)
-    def sort_nodes(nodes: list[TreeNodeResponse]) -> list[TreeNodeResponse]:
-        dirs = [n for n in nodes if n.type == "directory"]
-        files_list = [n for n in nodes if n.type == "file"]
-        dirs = sorted(dirs, key=lambda x: x.name)
-        files_list = sorted(files_list, key=lambda x: x.name)
-        for d in dirs:
-            if d.children:
-                d.children = sort_nodes(d.children)
-        return dirs + files_list
-
-    root_nodes = sort_nodes(root_nodes)
+    try:
+        response = await use_case.execute(
+            GetRepositoryTreeRequest(repository_name=name)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
     return TreeResponse(
-        repository_id=repository_id,
-        repository_name=repository.name,
-        root=root_nodes,
-        total_files=len(files),
-        total_directories=total_dirs,
+        repository_id=response.repository_id,
+        repository_name=response.repository_name,
+        root=[_tree_node_to_response(node) for node in response.root],
+        total_files=response.total_files,
+        total_directories=response.total_directories,
     )
 
 
@@ -253,76 +222,26 @@ async def get_repository_files(
 @router.get("/{repository_id}/tree", response_model=TreeResponse)
 async def get_repository_tree(
     repository_id: int,
-    repo_adapter: RepositoryAdapter,
-    file_adapter: FileAdapter,
+    use_case: GetRepositoryTreeUseCaseDep,
 ) -> TreeResponse:
     """
     Get the file tree structure for a repository.
 
     Returns a hierarchical tree of directories and files.
     """
-    # Get repository
-    repository = await repo_adapter.find_by_id(repository_id)
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    # Get all files
-    files = await file_adapter.list_by_repository(repository_id)
-
-    # Build tree structure
-    tree_dict: dict[str, TreeNodeResponse] = {}
-    root_nodes: list[TreeNodeResponse] = []
-    total_dirs = 0
-
-    for file in files:
-        parts = file.path.split("/")
-        current_path = ""
-
-        for i, part in enumerate(parts):
-            parent_path = current_path
-            current_path = f"{current_path}/{part}" if current_path else part
-            is_file = i == len(parts) - 1
-
-            if current_path not in tree_dict:
-                node = TreeNodeResponse(
-                    name=part,
-                    path=current_path,
-                    type="file" if is_file else "directory",
-                    file_id=file.id if is_file else None,
-                    language=file.language if is_file else None,
-                    children=None if is_file else [],
-                )
-                tree_dict[current_path] = node
-
-                if not is_file:
-                    total_dirs += 1
-
-                if parent_path:
-                    parent_node = tree_dict.get(parent_path)
-                    if parent_node and parent_node.children is not None:
-                        parent_node.children.append(node)
-                else:
-                    root_nodes.append(node)
-
-    # Sort nodes alphabetically (directories first, then files)
-    def sort_nodes(nodes: list[TreeNodeResponse]) -> list[TreeNodeResponse]:
-        dirs = [n for n in nodes if n.type == "directory"]
-        files_list = [n for n in nodes if n.type == "file"]
-        dirs = sorted(dirs, key=lambda x: x.name)
-        files_list = sorted(files_list, key=lambda x: x.name)
-        for d in dirs:
-            if d.children:
-                d.children = sort_nodes(d.children)
-        return dirs + files_list
-
-    root_nodes = sort_nodes(root_nodes)
+    try:
+        response = await use_case.execute(
+            GetRepositoryTreeRequest(repository_id=repository_id)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
     return TreeResponse(
-        repository_id=repository_id,
-        repository_name=repository.name,
-        root=root_nodes,
-        total_files=len(files),
-        total_directories=total_dirs,
+        repository_id=response.repository_id,
+        repository_name=response.repository_name,
+        root=[_tree_node_to_response(node) for node in response.root],
+        total_files=response.total_files,
+        total_directories=response.total_directories,
     )
 
 

@@ -604,6 +604,44 @@ if not repository.name:
     raise InvalidRepositoryError("Repository name cannot be empty")
 ```
 
+## Indexing Test Repositories
+
+⚠️ **CRITICAL: Working Directory vs Test Repos**
+
+The working directory (`/workspace` or `.`) is where you develop code - it must **NEVER** be indexed.
+
+Test repositories live in a **separate location** (`../test-repos`, mounted as `/repos/test-repos` in the container). Even if a repo like `inxr2` exists in both places, they are **completely separate**:
+
+- `/workspace` = Live codebase you're editing (NEVER index this)
+- `/repos/test-repos/inxr2` = Test copy for indexing (index this one)
+
+**Always use the config file for indexing:**
+
+```bash
+# ✅ CORRECT: Index via config file
+inxr2 index full --config config.yaml --repo inxr2
+
+# ✅ CORRECT: Index all configured repos
+inxr2 index full --config config.yaml
+
+# ❌ WRONG: Never index working directory
+inxr2 index full --path /workspace
+inxr2 index full --path .
+```
+
+**Why this matters:**
+- Indexing creates database records tied to a specific path
+- Indexing `/workspace` creates a duplicate repo with wrong path
+- The frontend looks up repos by name, so duplicates cause stale data issues
+- Each repository should exist exactly once in the database
+
+**Config file (`config.yaml`) defines:**
+- Repository names and paths under `/repos/test-repos/`
+- Branches to index
+- Languages to parse
+
+See `config.yaml` for the current repository configuration.
+
 ## Common Pitfalls
 
 1. **Don't import framework code in domain layer**
@@ -624,6 +662,11 @@ if not repository.name:
 
 6. **Don't commit without formatting**
    - Run black, isort, prettier before commit
+
+7. **Don't index the working directory**
+   - NEVER use `--path /workspace` or `--path .`
+   - ALWAYS use `--config config.yaml` for indexing
+   - Test repos are at `/repos/test-repos/`, not the current codebase
 
 ## Getting Help
 
@@ -652,6 +695,11 @@ cd frontend && npm run format     # Format TypeScript
 # Database
 alembic upgrade head              # Apply migrations
 alembic revision --autogenerate   # Create migration
+
+# Indexing (ALWAYS use config file, NEVER --path /workspace)
+inxr2 index full --config config.yaml              # Index all repos
+inxr2 index full --config config.yaml --repo X     # Index specific repo
+inxr2 index incremental --config config.yaml       # Incremental update
 
 # Running apps
 inxr2 serve --reload              # Backend

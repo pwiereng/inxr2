@@ -526,18 +526,18 @@ class PythonParser(BaseLanguageParser):
                             )
                     elif func_node.type == "attribute":
                         # Method call like obj.method()
-                        attr_name = None
+                        attr_node = None
                         for child in reversed(func_node.children):
                             if child.type == "identifier":
-                                attr_name = get_text(child)
+                                attr_node = child
                                 break
-                        if attr_name:
+                        if attr_node:
                             add_reference(
                                 {
-                                    "text": attr_name,
+                                    "text": get_text(attr_node),
                                     "type": "call",
-                                    "source_line": func_node.start_point[0] + 1,
-                                    "source_column": func_node.start_point[1],
+                                    "source_line": attr_node.start_point[0] + 1,
+                                    "source_column": attr_node.start_point[1],
                                     "scope": scope,
                                 }
                             )
