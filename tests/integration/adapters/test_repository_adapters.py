@@ -548,9 +548,7 @@ class TestPostgresFileRepository:
         """Test finding file by repository and path when it doesn't exist."""
         # Arrange
         repo_adapter = PostgresRepositoryAdapter(db_session)
-        repository = Repository(
-            name="empty-repo", url="https://example.com/empty.git"
-        )
+        repository = Repository(name="empty-repo", url="https://example.com/empty.git")
         saved_repo = await repo_adapter.save(repository)
 
         file_adapter = PostgresFileRepository(db_session)
@@ -562,6 +560,87 @@ class TestPostgresFileRepository:
 
         # Assert
         assert found is None
+
+    async def test_find_by_repository_and_path_returns_latest_version(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that find_by_repository_and_path returns the latest file version.
+
+        When multiple versions of the same file exist (from different commits),
+        the method should return the one with the highest commit_id.
+        """
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="multi-version-repo", url="https://example.com/repo.git"
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+
+        # Create an older commit
+        old_commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("oldcommit" + "0" * 31),
+            author_name="Author",
+            author_email="author@example.com",
+            committer_name="Author",
+            committer_email="author@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Old commit",
+        )
+        saved_old_commit = await commit_adapter.save(old_commit)
+
+        # Create a newer commit
+        new_commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("newcommit" + "0" * 31),
+            author_name="Author",
+            author_email="author@example.com",
+            committer_name="Author",
+            committer_email="author@example.com",
+            author_date=datetime(2025, 1, 2),
+            commit_date=datetime(2025, 1, 2),
+            message="New commit",
+        )
+        saved_new_commit = await commit_adapter.save(new_commit)
+
+        file_adapter = PostgresFileRepository(db_session)
+
+        # Create old version of file (smaller size to distinguish)
+        old_file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_old_commit.id,
+            path="src/app.py",
+            content_hash="old_hash",
+            size_bytes=100,
+            language="python",
+        )
+        await file_adapter.save(old_file)
+
+        # Create new version of same file (larger size)
+        new_file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_new_commit.id,
+            path="src/app.py",
+            content_hash="new_hash",
+            size_bytes=200,
+            language="python",
+        )
+        saved_new_file = await file_adapter.save(new_file)
+
+        # Act
+        found = await file_adapter.find_by_repository_and_path(
+            saved_repo.id, "src/app.py"
+        )
+
+        # Assert - should return the latest version (from new_commit)
+        assert found is not None
+        assert found.id == saved_new_file.id
+        assert found.commit_id == saved_new_commit.id
+        assert found.content_hash == "new_hash"
+        assert found.size_bytes == 200
 
 
 @pytest.mark.asyncio
@@ -805,3 +884,107 @@ class TestPostgresReferenceRepository:
 
         # Assert
         assert len(found) == 0
+
+    async def test_find_references_by_text_only_returns_latest_file_version(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that find_references_by_text only returns references from latest files.
+
+        When the same file is indexed multiple times (different commits),
+        only references from the latest version should be returned to avoid
+        duplicate results.
+        """
+        # Arrange - create repository
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="multi-commit-ref-test", url="https://example.com/repo.git"
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+        reference_adapter = PostgresReferenceRepository(db_session)
+
+        # Create first (older) commit
+        old_commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("oldref00" + "0" * 32),
+            author_name="Author",
+            author_email="author@example.com",
+            committer_name="Author",
+            committer_email="author@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Old commit",
+        )
+        saved_old_commit = await commit_adapter.save(old_commit)
+
+        # Create file in old commit
+        old_file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_old_commit.id,
+            path="src/caller.py",
+            content_hash="old_hash",
+            size_bytes=100,
+        )
+        saved_old_file = await file_adapter.save(old_file)
+
+        # Create reference in old file
+        old_ref = Reference(
+            source_file_id=saved_old_file.id,
+            repository_id=saved_repo.id,
+            commit_id=saved_old_commit.id,
+            source_line=10,
+            source_column=4,
+            source_end_column=14,
+            reference_text="my_function",
+            reference_type=ReferenceType.CALL,
+        )
+        await reference_adapter.save(old_ref)
+
+        # Create second (newer) commit
+        new_commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("newref00" + "0" * 32),
+            author_name="Author",
+            author_email="author@example.com",
+            committer_name="Author",
+            committer_email="author@example.com",
+            author_date=datetime(2025, 1, 2),
+            commit_date=datetime(2025, 1, 2),
+            message="New commit",
+        )
+        saved_new_commit = await commit_adapter.save(new_commit)
+
+        # Create file in new commit (same path, newer version)
+        new_file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_new_commit.id,
+            path="src/caller.py",  # Same path as old file
+            content_hash="new_hash",
+            size_bytes=150,
+        )
+        saved_new_file = await file_adapter.save(new_file)
+
+        # Create reference in new file (same text, different line)
+        new_ref = Reference(
+            source_file_id=saved_new_file.id,
+            repository_id=saved_repo.id,
+            commit_id=saved_new_commit.id,
+            source_line=15,  # Different line in new version
+            source_column=4,
+            source_end_column=14,
+            reference_text="my_function",
+            reference_type=ReferenceType.CALL,
+        )
+        await reference_adapter.save(new_ref)
+
+        # Act - find references by text
+        found = await reference_adapter.find_references_by_text(
+            "my_function", saved_repo.id
+        )
+
+        # Assert - should only return the reference from the latest file version
+        assert len(found) == 1
+        assert found[0].source_file_id == saved_new_file.id
+        assert found[0].source_line == 15  # From new version

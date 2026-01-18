@@ -1,27 +1,24 @@
 """Repository API endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....adapters.persistence.repositories.file_adapter import PostgresFileRepository
-from ....adapters.persistence.repositories.reference_adapter import (
-    PostgresReferenceRepository,
-)
-from ....adapters.persistence.repositories.repository_adapter import (
-    PostgresRepositoryAdapter,
-)
-from ....adapters.persistence.repositories.symbol_adapter import (
-    PostgresSymbolRepository,
-)
 from ....application.use_cases.repositories.get_repository_files import (
     GetRepositoryFilesRequest,
-    GetRepositoryFilesUseCase,
 )
-from ....application.use_cases.repositories.list_repositories import (
-    ListRepositoriesUseCase,
+from ....application.use_cases.repositories.get_repository_tree import (
+    GetRepositoryTreeRequest,
+    TreeNode,
 )
-from ....infrastructure.database import get_db_session
+from ....infrastructure.dependencies import (
+    FileAdapter,
+    GetRepositoryFilesUseCaseDep,
+    GetRepositoryTreeUseCaseDep,
+    ListRepositoriesUseCaseDep,
+    ReferenceAdapter,
+    RepositoryAdapter,
+    SymbolAdapter,
+)
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 
@@ -92,12 +89,9 @@ class RepositoryStatsResponse(BaseModel):
 
 @router.get("", response_model=list[RepositoryResponse])
 async def list_repositories(
-    session: AsyncSession = Depends(get_db_session),
+    use_case: ListRepositoriesUseCaseDep,
 ) -> list[RepositoryResponse]:
     """List all repositories."""
-    repo_adapter = PostgresRepositoryAdapter(session)
-    use_case = ListRepositoriesUseCase(repository_repo=repo_adapter)
-
     response = await use_case.execute()
 
     # Convert to response models
@@ -118,10 +112,9 @@ async def list_repositories(
 @router.get("/by-name/{name}", response_model=RepositoryResponse)
 async def get_repository_by_name(
     name: str,
-    session: AsyncSession = Depends(get_db_session),
+    repo_adapter: RepositoryAdapter,
 ) -> RepositoryResponse:
     """Get a repository by name."""
-    repo_adapter = PostgresRepositoryAdapter(session)
     repository = await repo_adapter.find_by_name(name)
 
     if not repository:
@@ -138,89 +131,50 @@ async def get_repository_by_name(
     )
 
 
+def _tree_node_to_response(node: TreeNode) -> TreeNodeResponse:
+    """Convert a TreeNode from the use case to a TreeNodeResponse."""
+    return TreeNodeResponse(
+        name=node.name,
+        path=node.path,
+        type=node.node_type,
+        file_id=node.file_id,
+        language=node.language,
+        children=(
+            [_tree_node_to_response(child) for child in node.children]
+            if node.children
+            else None
+        ),
+    )
+
+
 @router.get("/by-name/{name}/tree", response_model=TreeResponse)
 async def get_repository_tree_by_name(
     name: str,
-    session: AsyncSession = Depends(get_db_session),
+    use_case: GetRepositoryTreeUseCaseDep,
 ) -> TreeResponse:
     """Get the file tree structure for a repository by name."""
-    repo_adapter = PostgresRepositoryAdapter(session)
-    file_adapter = PostgresFileRepository(session)
-
-    # Get repository by name
-    repository = await repo_adapter.find_by_name(name)
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    repository_id = repository.id if repository.id is not None else 0
-
-    # Get all files
-    files = await file_adapter.list_by_repository(repository_id)
-
-    # Build tree structure
-    tree_dict: dict[str, TreeNodeResponse] = {}
-    root_nodes: list[TreeNodeResponse] = []
-    total_dirs = 0
-
-    for file in files:
-        parts = file.path.split("/")
-        current_path = ""
-
-        for i, part in enumerate(parts):
-            parent_path = current_path
-            current_path = f"{current_path}/{part}" if current_path else part
-            is_file = i == len(parts) - 1
-
-            if current_path not in tree_dict:
-                node = TreeNodeResponse(
-                    name=part,
-                    path=current_path,
-                    type="file" if is_file else "directory",
-                    file_id=file.id if is_file else None,
-                    language=file.language if is_file else None,
-                    children=None if is_file else [],
-                )
-                tree_dict[current_path] = node
-
-                if not is_file:
-                    total_dirs += 1
-
-                if parent_path:
-                    parent_node = tree_dict.get(parent_path)
-                    if parent_node and parent_node.children is not None:
-                        parent_node.children.append(node)
-                else:
-                    root_nodes.append(node)
-
-    # Sort nodes alphabetically (directories first, then files)
-    def sort_nodes(nodes: list[TreeNodeResponse]) -> list[TreeNodeResponse]:
-        dirs = [n for n in nodes if n.type == "directory"]
-        files_list = [n for n in nodes if n.type == "file"]
-        dirs = sorted(dirs, key=lambda x: x.name)
-        files_list = sorted(files_list, key=lambda x: x.name)
-        for d in dirs:
-            if d.children:
-                d.children = sort_nodes(d.children)
-        return dirs + files_list
-
-    root_nodes = sort_nodes(root_nodes)
+    try:
+        response = await use_case.execute(
+            GetRepositoryTreeRequest(repository_name=name)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
     return TreeResponse(
-        repository_id=repository_id,
-        repository_name=repository.name,
-        root=root_nodes,
-        total_files=len(files),
-        total_directories=total_dirs,
+        repository_id=response.repository_id,
+        repository_name=response.repository_name,
+        root=[_tree_node_to_response(node) for node in response.root],
+        total_files=response.total_files,
+        total_directories=response.total_directories,
     )
 
 
 @router.get("/{repository_id}", response_model=RepositoryResponse)
 async def get_repository(
     repository_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    repo_adapter: RepositoryAdapter,
 ) -> RepositoryResponse:
     """Get a specific repository."""
-    repo_adapter = PostgresRepositoryAdapter(session)
     repository = await repo_adapter.find_by_id(repository_id)
 
     if not repository:
@@ -240,16 +194,9 @@ async def get_repository(
 @router.get("/{repository_id}/files", response_model=list[FileResponse])
 async def get_repository_files(
     repository_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    use_case: GetRepositoryFilesUseCaseDep,
 ) -> list[FileResponse]:
     """Get all files for a repository."""
-    repo_adapter = PostgresRepositoryAdapter(session)
-    file_adapter = PostgresFileRepository(session)
-
-    use_case = GetRepositoryFilesUseCase(
-        repository_repo=repo_adapter, file_repo=file_adapter
-    )
-
     try:
         response = await use_case.execute(
             GetRepositoryFilesRequest(repository_id=repository_id)
@@ -275,96 +222,42 @@ async def get_repository_files(
 @router.get("/{repository_id}/tree", response_model=TreeResponse)
 async def get_repository_tree(
     repository_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    use_case: GetRepositoryTreeUseCaseDep,
 ) -> TreeResponse:
     """
     Get the file tree structure for a repository.
 
     Returns a hierarchical tree of directories and files.
     """
-    repo_adapter = PostgresRepositoryAdapter(session)
-    file_adapter = PostgresFileRepository(session)
-
-    # Get repository
-    repository = await repo_adapter.find_by_id(repository_id)
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    # Get all files
-    files = await file_adapter.list_by_repository(repository_id)
-
-    # Build tree structure
-    tree_dict: dict[str, TreeNodeResponse] = {}
-    root_nodes: list[TreeNodeResponse] = []
-    total_dirs = 0
-
-    for file in files:
-        parts = file.path.split("/")
-        current_path = ""
-
-        for i, part in enumerate(parts):
-            parent_path = current_path
-            current_path = f"{current_path}/{part}" if current_path else part
-            is_file = i == len(parts) - 1
-
-            if current_path not in tree_dict:
-                node = TreeNodeResponse(
-                    name=part,
-                    path=current_path,
-                    type="file" if is_file else "directory",
-                    file_id=file.id if is_file else None,
-                    language=file.language if is_file else None,
-                    children=None if is_file else [],
-                )
-                tree_dict[current_path] = node
-
-                if not is_file:
-                    total_dirs += 1
-
-                if parent_path:
-                    parent_node = tree_dict.get(parent_path)
-                    if parent_node and parent_node.children is not None:
-                        parent_node.children.append(node)
-                else:
-                    root_nodes.append(node)
-
-    # Sort nodes alphabetically (directories first, then files)
-    def sort_nodes(nodes: list[TreeNodeResponse]) -> list[TreeNodeResponse]:
-        dirs = [n for n in nodes if n.type == "directory"]
-        files_list = [n for n in nodes if n.type == "file"]
-        dirs = sorted(dirs, key=lambda x: x.name)
-        files_list = sorted(files_list, key=lambda x: x.name)
-        for d in dirs:
-            if d.children:
-                d.children = sort_nodes(d.children)
-        return dirs + files_list
-
-    root_nodes = sort_nodes(root_nodes)
+    try:
+        response = await use_case.execute(
+            GetRepositoryTreeRequest(repository_id=repository_id)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
     return TreeResponse(
-        repository_id=repository_id,
-        repository_name=repository.name,
-        root=root_nodes,
-        total_files=len(files),
-        total_directories=total_dirs,
+        repository_id=response.repository_id,
+        repository_name=response.repository_name,
+        root=[_tree_node_to_response(node) for node in response.root],
+        total_files=response.total_files,
+        total_directories=response.total_directories,
     )
 
 
 @router.get("/{repository_id}/stats", response_model=RepositoryStatsResponse)
 async def get_repository_stats(
     repository_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    repo_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    symbol_adapter: SymbolAdapter,
+    reference_adapter: ReferenceAdapter,
 ) -> RepositoryStatsResponse:
     """
     Get statistics for a repository.
 
     Returns counts of files, symbols, and references.
     """
-    repo_adapter = PostgresRepositoryAdapter(session)
-    file_adapter = PostgresFileRepository(session)
-    symbol_repo = PostgresSymbolRepository(session)
-    reference_repo = PostgresReferenceRepository(session)
-
     # Get repository
     repository = await repo_adapter.find_by_id(repository_id)
     if not repository:
@@ -372,8 +265,8 @@ async def get_repository_stats(
 
     # Get counts
     files = await file_adapter.list_by_repository(repository_id)
-    symbol_count = await symbol_repo.count_by_repository(repository_id)
-    reference_count = await reference_repo.count_by_repository(repository_id)
+    symbol_count = await symbol_adapter.count_by_repository(repository_id)
+    reference_count = await reference_adapter.count_by_repository(repository_id)
 
     # Count languages
     languages: dict[str, int] = {}

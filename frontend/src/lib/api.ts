@@ -235,7 +235,10 @@ export async function getFileContentByPath(repo: string, path: string): Promise<
   return fetchApi<FileContent>(`/files/by-path?${params}`)
 }
 
-export async function getFileSymbolsByPath(repo: string, path: string): Promise<FileSymbolsResponse> {
+export async function getFileSymbolsByPath(
+  repo: string,
+  path: string
+): Promise<FileSymbolsResponse> {
   const params = new URLSearchParams({ repo, path })
   return fetchApi<FileSymbolsResponse>(`/files/by-path/symbols?${params}`)
 }

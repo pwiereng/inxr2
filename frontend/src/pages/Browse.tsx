@@ -41,12 +41,12 @@ import {
 } from '@/lib/api'
 
 export default function Browse() {
-  const { repoName } = useParams<{ repoName: string }>()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const { repoName, '*': splatPath } = useParams<{ repoName: string; '*': string }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
 
-  // Get file path and line from URL query params
-  const filePath = searchParams.get('file')
+  // Get file path from URL path (splat param) and line from query params
+  const filePath = splatPath || null
   const highlightLine = searchParams.get('line')
     ? parseInt(searchParams.get('line')!, 10)
     : undefined
@@ -59,6 +59,10 @@ export default function Browse() {
   const [fileSymbols, setFileSymbols] = useState<FileSymbol[]>([])
   const [fileReferences, setFileReferences] = useState<FileReference[]>([])
   const [selectedSymbol, setSelectedSymbol] = useState<Symbol | null>(null)
+  const [isDirectDefinition, setIsDirectDefinition] = useState(false)
+  const [searchByName, setSearchByName] = useState<{ name: string; repositoryId: number } | null>(
+    null
+  )
 
   // UI state
   const [drawerOpen, setDrawerOpen] = useState(true)
@@ -134,21 +138,25 @@ export default function Browse() {
 
   // Handle file selection from tree
   const handleFileSelect = (path: string) => {
-    setSearchParams({ file: path })
+    navigate(`/browse/${encodeURIComponent(repoName!)}/${path}`)
   }
 
   // Handle symbol selection from search
   const handleSymbolSelect = async (symbol: Symbol) => {
     if (symbol.file_path) {
-      setSearchParams({ file: symbol.file_path, line: symbol.start_line.toString() })
+      navigate(
+        `/browse/${encodeURIComponent(repoName!)}/${symbol.file_path}?line=${symbol.start_line}`
+      )
     }
   }
 
-  // Handle symbol click in code viewer (find references)
+  // Handle symbol click in code viewer (clicking on a definition)
   const handleSymbolClick = async (fileSymbol: FileSymbol) => {
     try {
       const symbol = await getSymbol(fileSymbol.id)
       setSelectedSymbol(symbol)
+      setSearchByName(null)
+      setIsDirectDefinition(true) // We clicked directly on the definition
       setRefsPanelOpen(true)
       setSearchQuery(symbol.name)
     } catch (err) {
@@ -156,15 +164,24 @@ export default function Browse() {
     }
   }
 
-  // Handle reference click in code viewer (find references for the target symbol)
+  // Handle reference click in code viewer (clicking on a usage/reference)
   const handleCodeReferenceClick = async (ref: FileReference) => {
     if (!ref.target_symbol_id) {
-      console.log('Reference has no resolved target symbol')
+      // Unresolved reference - search by name to find possible definitions
+      if (repository?.id) {
+        setSelectedSymbol(null)
+        setSearchByName({ name: ref.reference_text, repositoryId: repository.id })
+        setIsDirectDefinition(false)
+        setRefsPanelOpen(true)
+        setSearchQuery(ref.reference_text)
+      }
       return
     }
     try {
       const symbol = await getSymbol(ref.target_symbol_id)
       setSelectedSymbol(symbol)
+      setSearchByName(null)
+      setIsDirectDefinition(false) // We clicked on a reference, show all possible definitions
       setRefsPanelOpen(true)
       setSearchQuery(symbol.name)
     } catch (err) {
@@ -173,23 +190,30 @@ export default function Browse() {
   }
 
   // Handle click in references panel (jump to reference location)
-  const handleRefPanelClick = (reference: { source_file_path: string | null; source_line: number }) => {
+  const handleRefPanelClick = (reference: {
+    source_file_path: string | null
+    source_line: number
+  }) => {
     if (reference.source_file_path) {
-      setSearchParams({ file: reference.source_file_path, line: reference.source_line.toString() })
+      navigate(
+        `/browse/${encodeURIComponent(repoName!)}/${reference.source_file_path}?line=${reference.source_line}`
+      )
     }
   }
 
   // Handle click on definition in references panel
   const handleDefinitionClick = (sym: Symbol) => {
     if (sym.file_path) {
-      setSearchParams({ file: sym.file_path, line: sym.start_line.toString() })
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${sym.file_path}?line=${sym.start_line}`)
     }
   }
 
   // Handle line click (update URL)
   const handleLineClick = (line: number) => {
     if (filePath) {
-      setSearchParams({ file: filePath, line: line.toString() }, { replace: true })
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?line=${line}`, {
+        replace: true,
+      })
     }
   }
 
@@ -400,11 +424,15 @@ export default function Browse() {
             <Box sx={{ direction: 'ltr', height: '100%' }}>
               <ReferencesPanel
                 symbol={selectedSymbol}
+                isDirectDefinition={isDirectDefinition}
+                searchByName={searchByName}
                 onReferenceClick={handleRefPanelClick}
                 onDefinitionClick={handleDefinitionClick}
                 onClose={() => {
                   setRefsPanelOpen(false)
                   setSelectedSymbol(null)
+                  setIsDirectDefinition(false)
+                  setSearchByName(null)
                 }}
               />
             </Box>

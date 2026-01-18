@@ -120,6 +120,23 @@ class FakeSymbolRepository(SymbolRepositoryPort):
             del self._symbols[sid]
         return len(to_delete)
 
+    async def find_by_exact_name(
+        self, name: str, repository_id: int | None = None
+    ) -> list[Symbol]:
+        """Find all symbols with exact name match."""
+        return [
+            symbol
+            for symbol in self._symbols.values()
+            if symbol.name == name
+            and (repository_id is None or symbol.repository_id == repository_id)
+        ]
+
+    async def count_by_repository(self, repository_id: int) -> int:
+        """Count total symbols in a repository."""
+        return len(
+            [s for s in self._symbols.values() if s.repository_id == repository_id]
+        )
+
     def add_test_symbol(self, symbol: Symbol) -> None:
         """Helper method to add test data."""
         if symbol.id is not None:

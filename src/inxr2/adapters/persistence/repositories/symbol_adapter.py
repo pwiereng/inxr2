@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....application.ports.repositories import SymbolRepositoryPort
 from ....domain.entities import Symbol
 from ..mappers import SymbolMapper
+from ..models.file import FileModel
 from ..models.symbol import SymbolModel
 
 
@@ -65,11 +66,27 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         kind: str | None = None,
         limit: int = 50,
     ) -> list[Symbol]:
-        """Search symbols by name (supports autocomplete)."""
+        """Search symbols by name (supports autocomplete).
+
+        Only returns symbols from the latest version of each file,
+        avoiding duplicates from multiple indexed commits.
+        """
+        # Build base query
         query = select(SymbolModel).where(SymbolModel.name.ilike(f"%{name}%"))
 
         if repository_id is not None:
             query = query.where(SymbolModel.repository_id == repository_id)
+
+            # Filter to only symbols from latest file versions
+            latest_files = (
+                select(func.max(FileModel.id).label("latest_id"))
+                .where(FileModel.repository_id == repository_id)
+                .group_by(FileModel.path)
+                .subquery()
+            )
+            query = query.where(
+                SymbolModel.file_id.in_(select(latest_files.c.latest_id))
+            )
 
         if kind is not None:
             query = query.where(SymbolModel.kind == kind)
@@ -90,11 +107,25 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
 
         Useful for disambiguation when multiple symbols have the same name
         (e.g., save() methods in different classes).
+
+        Only returns symbols from the latest version of each file,
+        avoiding duplicates from multiple indexed commits.
         """
         query = select(SymbolModel).where(SymbolModel.name == name)
 
         if repository_id is not None:
             query = query.where(SymbolModel.repository_id == repository_id)
+
+            # Filter to only symbols from latest file versions
+            latest_files = (
+                select(func.max(FileModel.id).label("latest_id"))
+                .where(FileModel.repository_id == repository_id)
+                .group_by(FileModel.path)
+                .subquery()
+            )
+            query = query.where(
+                SymbolModel.file_id.in_(select(latest_files.c.latest_id))
+            )
 
         # Order by qualified_name for consistent ordering
         query = query.order_by(SymbolModel.qualified_name, SymbolModel.id)
@@ -106,11 +137,24 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
     async def find_by_qualified_name(
         self, repository_id: int, qualified_name: str
     ) -> list[Symbol]:
-        """Find symbols by fully qualified name."""
+        """Find symbols by fully qualified name.
+
+        Only returns symbols from the latest version of each file,
+        avoiding duplicates from multiple indexed commits.
+        """
+        # Filter to only symbols from latest file versions
+        latest_files = (
+            select(func.max(FileModel.id).label("latest_id"))
+            .where(FileModel.repository_id == repository_id)
+            .group_by(FileModel.path)
+            .subquery()
+        )
+
         result = await self.session.execute(
             select(SymbolModel).where(
                 SymbolModel.repository_id == repository_id,
                 SymbolModel.qualified_name == qualified_name,
+                SymbolModel.file_id.in_(select(latest_files.c.latest_id)),
             )
         )
         models = result.scalars().all()

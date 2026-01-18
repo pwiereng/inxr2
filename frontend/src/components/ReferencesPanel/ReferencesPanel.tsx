@@ -67,6 +67,10 @@ function getSymbolKindIcon(kind: string) {
 
 interface ReferencesPanelProps {
   symbol: Symbol | null
+  /** When true, the symbol was clicked directly (we know it's THE definition, not searching by name) */
+  isDirectDefinition?: boolean
+  /** Search for symbols by name (used when clicking unresolved references) */
+  searchByName?: { name: string; repositoryId: number } | null
   onReferenceClick?: (reference: Reference) => void
   onDefinitionClick?: (symbol: Symbol) => void
   onClose?: () => void
@@ -74,6 +78,8 @@ interface ReferencesPanelProps {
 
 export function ReferencesPanel({
   symbol,
+  isDirectDefinition = false,
+  searchByName = null,
   onReferenceClick,
   onDefinitionClick,
   onClose,
@@ -83,7 +89,30 @@ export function ReferencesPanel({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Determine display name for header
+  const displayName = symbol?.name || searchByName?.name || ''
+
   useEffect(() => {
+    // Handle search-by-name mode (unresolved references)
+    if (!symbol && searchByName) {
+      const fetchByName = async () => {
+        setLoading(true)
+        setError(null)
+        try {
+          const defsResult = await getSymbolsByName(searchByName.name, searchByName.repositoryId)
+          setAllDefinitions(defsResult.items)
+          setReferences([]) // No references without a specific symbol
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to load definitions')
+          setAllDefinitions([])
+        } finally {
+          setLoading(false)
+        }
+      }
+      fetchByName()
+      return
+    }
+
     if (!symbol) {
       setReferences([])
       setAllDefinitions([])
@@ -94,13 +123,19 @@ export function ReferencesPanel({
       setLoading(true)
       setError(null)
       try {
-        // Fetch references and all definitions with the same name in parallel
-        const [refsResult, defsResult] = await Promise.all([
-          getSymbolReferences(symbol.id),
-          getSymbolsByName(symbol.name, symbol.repository_id),
-        ])
+        // Always fetch references for this symbol
+        const refsResult = await getSymbolReferences(symbol.id)
         setReferences(refsResult.items)
-        setAllDefinitions(defsResult.items)
+
+        // Only search for other definitions if this wasn't a direct definition click
+        if (isDirectDefinition) {
+          // We clicked directly on this definition - no need to search for others
+          setAllDefinitions([symbol])
+        } else {
+          // Clicked on a reference or search result - show all possible definitions
+          const defsResult = await getSymbolsByName(symbol.name, symbol.repository_id)
+          setAllDefinitions(defsResult.items)
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load references')
         setReferences([])
@@ -111,9 +146,9 @@ export function ReferencesPanel({
     }
 
     fetchData()
-  }, [symbol])
+  }, [symbol, isDirectDefinition, searchByName])
 
-  if (!symbol) {
+  if (!symbol && !searchByName) {
     return (
       <Box sx={{ p: 2 }}>
         <Typography variant="body2" color="text.secondary">
@@ -150,21 +185,25 @@ export function ReferencesPanel({
         }}
       >
         <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-            {getSymbolKindIcon(symbol.kind)}
-            <Chip
-              label={symbol.kind}
-              size="small"
-              variant="outlined"
-              sx={{ height: 18, fontSize: '0.65rem' }}
-            />
-          </Box>
+          {symbol && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+              {getSymbolKindIcon(symbol.kind)}
+              <Chip
+                label={symbol.kind}
+                size="small"
+                variant="outlined"
+                sx={{ height: 18, fontSize: '0.65rem' }}
+              />
+            </Box>
+          )}
           <Typography variant="subtitle2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
-            {symbol.name}
+            {displayName}
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-            {references.length} reference{references.length !== 1 ? 's' : ''}
-          </Typography>
+          {symbol && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              {references.length} reference{references.length !== 1 ? 's' : ''}
+            </Typography>
+          )}
         </Box>
         {onClose && (
           <IconButton size="small" onClick={onClose}>
@@ -213,7 +252,7 @@ export function ReferencesPanel({
               </Box>
               {allDefinitions.length > 0 ? (
                 allDefinitions.map((def) => {
-                  const isSelected = def.id === symbol.id
+                  const isSelected = symbol ? def.id === symbol.id : false
                   // Extract short file name from path
                   const fileName = def.file_path?.split('/').pop() || ''
                   return (
@@ -269,7 +308,7 @@ export function ReferencesPanel({
                     </ListItemButton>
                   )
                 })
-              ) : symbol.file_path ? (
+              ) : symbol?.file_path ? (
                 <ListItemButton
                   onClick={() => onDefinitionClick?.(symbol)}
                   sx={{ py: 0.5, px: 1.5 }}
@@ -313,7 +352,7 @@ export function ReferencesPanel({
                 <Box sx={{ py: 1, px: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <HelpOutlineIcon fontSize="small" sx={{ color: 'text.disabled' }} />
                   <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>
-                    No definition found (external symbol)
+                    No definition found
                   </Typography>
                 </Box>
               )}

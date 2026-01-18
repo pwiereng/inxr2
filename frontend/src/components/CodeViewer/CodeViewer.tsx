@@ -119,8 +119,8 @@ export function CodeViewer({
   // 1. Character before start is non-word (or start is at beginning)
   // 2. Character at end is non-word (or end is at string end)
   const isWholeWordMatch = (text: string, start: number, end: number): boolean => {
-    const charBefore = start > 0 ? text[start - 1] : ''
-    const charAfter = end < text.length ? text[end] : ''
+    const charBefore = start > 0 ? (text[start - 1] ?? '') : ''
+    const charAfter = end < text.length ? (text[end] ?? '') : ''
     const boundaryBefore = start === 0 || !/\w/.test(charBefore)
     const boundaryAfter = end >= text.length || !/\w/.test(charAfter)
     return boundaryBefore && boundaryAfter
@@ -218,7 +218,11 @@ export function CodeViewer({
           ? Prism.highlight(plainText, langGrammar, prismLanguage)
           : plainText.replace(/</g, '&lt;').replace(/>/g, '&gt;')
         parts.push(
-          <Box key={`plain-${i}`} component="span" dangerouslySetInnerHTML={{ __html: plainHtml }} />
+          <Box
+            key={`plain-${i}`}
+            component="span"
+            dangerouslySetInnerHTML={{ __html: plainHtml }}
+          />
         )
       }
 
@@ -307,11 +311,7 @@ export function CodeViewer({
         ? Prism.highlight(plainText, langGrammar, prismLanguage)
         : plainText.replace(/</g, '&lt;').replace(/>/g, '&gt;')
       parts.push(
-        <Box
-          key="plain-end"
-          component="span"
-          dangerouslySetInnerHTML={{ __html: plainHtml }}
-        />
+        <Box key="plain-end" component="span" dangerouslySetInnerHTML={{ __html: plainHtml }} />
       )
     }
 

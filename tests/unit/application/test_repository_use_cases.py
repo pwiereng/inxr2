@@ -8,6 +8,10 @@ from inxr2.application.use_cases.repositories.get_repository_files import (
     GetRepositoryFilesRequest,
     GetRepositoryFilesUseCase,
 )
+from inxr2.application.use_cases.repositories.get_repository_tree import (
+    GetRepositoryTreeRequest,
+    GetRepositoryTreeUseCase,
+)
 from inxr2.application.use_cases.repositories.list_repositories import (
     ListRepositoriesUseCase,
 )
@@ -302,3 +306,273 @@ class TestGetRepositoryFilesUseCase:
         assert all(f.repository_id == repo1.id for f in result.files)
         paths = {f.path for f in result.files}
         assert paths == {"file1.py", "file2.py"}
+
+
+class TestGetRepositoryTreeUseCase:
+    """Tests for GetRepositoryTreeUseCase."""
+
+    @pytest.mark.asyncio
+    async def test_get_tree_for_nonexistent_repository_by_id(self) -> None:
+        """Test getting tree for a repository that doesn't exist by ID."""
+        repo_repository = InMemoryRepositoryRepository()
+        file_repository = InMemoryFileRepository()
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+        )
+
+        with pytest.raises(ValueError, match="Repository not found"):
+            await use_case.execute(GetRepositoryTreeRequest(repository_id=999))
+
+    @pytest.mark.asyncio
+    async def test_get_tree_for_nonexistent_repository_by_name(self) -> None:
+        """Test getting tree for a repository that doesn't exist by name."""
+        repo_repository = InMemoryRepositoryRepository()
+        file_repository = InMemoryFileRepository()
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+        )
+
+        with pytest.raises(ValueError, match="Repository not found"):
+            await use_case.execute(
+                GetRepositoryTreeRequest(repository_name="nonexistent")
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_tree_for_empty_repository(self) -> None:
+        """Test getting tree for a repository with no files."""
+        repo_repository = InMemoryRepositoryRepository()
+        file_repository = InMemoryFileRepository()
+
+        repo = await repo_repository.save(
+            Repository(name="test-repo", url="https://example.com/repo.git")
+        )
+
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+        )
+
+        result = await use_case.execute(GetRepositoryTreeRequest(repository_id=repo.id))
+
+        assert result.repository_id == repo.id
+        assert result.repository_name == "test-repo"
+        assert result.root == []
+        assert result.total_files == 0
+        assert result.total_directories == 0
+
+    @pytest.mark.asyncio
+    async def test_get_tree_builds_hierarchy(self) -> None:
+        """Test that tree structure is built correctly from flat file paths."""
+        repo_repository = InMemoryRepositoryRepository()
+        file_repository = InMemoryFileRepository()
+        commit_repository = InMemoryCommitRepository()
+
+        repo = await repo_repository.save(
+            Repository(name="test-repo", url="https://example.com/repo.git")
+        )
+
+        commit = await commit_repository.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=CommitHash("abc123" + "0" * 34),
+                short_hash="abc123",
+                parent_hashes=[],
+                branch="main",
+                author_name="Test",
+                author_email="test@example.com",
+                committer_name="Test",
+                committer_email="test@example.com",
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+                message="Test commit",
+            )
+        )
+
+        # Create files in nested structure
+        await file_repository.save(
+            File(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="src/main.py",
+                content_hash="hash1",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        await file_repository.save(
+            File(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="src/utils/helper.py",
+                content_hash="hash2",
+                size_bytes=200,
+                language="python",
+            )
+        )
+        await file_repository.save(
+            File(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="README.md",
+                content_hash="hash3",
+                size_bytes=50,
+                language="markdown",
+            )
+        )
+
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+        )
+
+        result = await use_case.execute(GetRepositoryTreeRequest(repository_id=repo.id))
+
+        assert result.total_files == 3
+        assert result.total_directories == 2  # src, src/utils
+
+        # Check root level: should have src directory and README.md file
+        root_names = {node.name for node in result.root}
+        assert root_names == {"src", "README.md"}
+
+        # Find src directory
+        src_node = next(n for n in result.root if n.name == "src")
+        assert src_node.node_type == "directory"
+        assert len(src_node.children) == 2  # main.py and utils
+
+        # Find README
+        readme_node = next(n for n in result.root if n.name == "README.md")
+        assert readme_node.node_type == "file"
+        assert readme_node.language == "markdown"
+
+    @pytest.mark.asyncio
+    async def test_get_tree_sorts_directories_first(self) -> None:
+        """Test that directories are sorted before files."""
+        repo_repository = InMemoryRepositoryRepository()
+        file_repository = InMemoryFileRepository()
+        commit_repository = InMemoryCommitRepository()
+
+        repo = await repo_repository.save(
+            Repository(name="test-repo", url="https://example.com/repo.git")
+        )
+
+        commit = await commit_repository.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=CommitHash("abc123" + "0" * 34),
+                short_hash="abc123",
+                parent_hashes=[],
+                branch="main",
+                author_name="Test",
+                author_email="test@example.com",
+                committer_name="Test",
+                committer_email="test@example.com",
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+                message="Test commit",
+            )
+        )
+
+        # Create files: alphabetically "app.py" comes before "src"
+        # but directories should be listed first
+        await file_repository.save(
+            File(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="app.py",
+                content_hash="hash1",
+                size_bytes=100,
+            )
+        )
+        await file_repository.save(
+            File(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="src/main.py",
+                content_hash="hash2",
+                size_bytes=100,
+            )
+        )
+        await file_repository.save(
+            File(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="zebra.txt",
+                content_hash="hash3",
+                size_bytes=100,
+            )
+        )
+
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+        )
+
+        result = await use_case.execute(GetRepositoryTreeRequest(repository_id=repo.id))
+
+        # Directories first, then files (alphabetically within each group)
+        assert result.root[0].name == "src"
+        assert result.root[0].node_type == "directory"
+        assert result.root[1].name == "app.py"
+        assert result.root[1].node_type == "file"
+        assert result.root[2].name == "zebra.txt"
+        assert result.root[2].node_type == "file"
+
+    @pytest.mark.asyncio
+    async def test_get_tree_by_name(self) -> None:
+        """Test getting tree using repository name instead of ID."""
+        repo_repository = InMemoryRepositoryRepository()
+        file_repository = InMemoryFileRepository()
+        commit_repository = InMemoryCommitRepository()
+
+        repo = await repo_repository.save(
+            Repository(name="my-repo", url="https://example.com/repo.git")
+        )
+
+        commit = await commit_repository.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=CommitHash("abc123" + "0" * 34),
+                short_hash="abc123",
+                parent_hashes=[],
+                branch="main",
+                author_name="Test",
+                author_email="test@example.com",
+                committer_name="Test",
+                committer_email="test@example.com",
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+                message="Test commit",
+            )
+        )
+
+        await file_repository.save(
+            File(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="index.js",
+                content_hash="hash1",
+                size_bytes=100,
+            )
+        )
+
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+        )
+
+        # Use repository_name instead of repository_id
+        result = await use_case.execute(
+            GetRepositoryTreeRequest(repository_name="my-repo")
+        )
+
+        assert result.repository_id == repo.id
+        assert result.repository_name == "my-repo"
+        assert result.total_files == 1
+
+    @pytest.mark.asyncio
+    async def test_request_requires_id_or_name(self) -> None:
+        """Test that request requires either repository_id or repository_name."""
+        with pytest.raises(ValueError, match="Either repository_id or repository_name"):
+            GetRepositoryTreeRequest()

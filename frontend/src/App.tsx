@@ -28,7 +28,7 @@ function AppContent() {
         <Route path="/" element={<Home />} />
         <Route path="/repositories" element={<Repositories />} />
         <Route path="/repositories/:repositoryId/files" element={<Files />} />
-        <Route path="/browse/:repoName" element={<Browse />} />
+        <Route path="/browse/:repoName/*" element={<Browse />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </ThemeProvider>

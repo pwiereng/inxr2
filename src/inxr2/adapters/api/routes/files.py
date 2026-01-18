@@ -1,96 +1,19 @@
 """File API endpoints for code browsing."""
 
-import re
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy.ext.asyncio import AsyncSession
 
-
-def _validate_path(path: str) -> str:
-    """Validate and normalize a file path to prevent path traversal attacks.
-
-    Args:
-        path: The file path to validate
-
-    Returns:
-        Normalized path string
-
-    Raises:
-        HTTPException: If path is invalid or contains traversal attempts
-    """
-    # Reject empty paths
-    if not path or not path.strip():
-        raise HTTPException(status_code=400, detail="Path cannot be empty")
-
-    # Reject absolute paths
-    if path.startswith("/") or path.startswith("\\"):
-        raise HTTPException(status_code=400, detail="Absolute paths are not allowed")
-
-    # Normalize the path and check for traversal
-    normalized = PurePosixPath(path)
-
-    # Check each part for ".."
-    for part in normalized.parts:
-        if part == "..":
-            raise HTTPException(
-                status_code=400, detail="Path traversal (..) is not allowed"
-            )
-
-    return str(normalized)
-
-
-def _validate_repo_name(repo: str) -> str:
-    """Validate repository name format.
-
-    Args:
-        repo: Repository name to validate
-
-    Returns:
-        Validated repository name
-
-    Raises:
-        HTTPException: If repo name is invalid
-    """
-    if not repo or not repo.strip():
-        raise HTTPException(status_code=400, detail="Repository name cannot be empty")
-
-    # Allow only safe characters for repository names:
-    # - a-zA-Z0-9_ (alphanumeric and underscore)
-    # - hyphen (-)
-    # - dot (.) for repo names like "my.repo"
-    # This prevents injection of path separators, spaces, or special chars
-    if not re.match(r"^[a-zA-Z0-9_.-]+$", repo):
-        raise HTTPException(
-            status_code=400,
-            detail="Repository name contains invalid characters",
-        )
-
-    # Reject problematic dot patterns
-    if repo in (".", "..") or repo.startswith(".") or repo.endswith("."):
-        raise HTTPException(
-            status_code=400,
-            detail="Repository name cannot be '.', '..', or start/end with a dot",
-        )
-
-    return repo
-
-from ....adapters.external.git_service import GitService
-from ....adapters.persistence.repositories.commit_adapter import (
-    PostgresCommitRepository,
+from ....infrastructure.dependencies import (
+    CommitAdapter,
+    FileAdapter,
+    GitServiceDep,
+    ReferenceAdapter,
+    RepositoryAdapter,
+    SymbolAdapter,
 )
-from ....adapters.persistence.repositories.file_adapter import PostgresFileRepository
-from ....adapters.persistence.repositories.reference_adapter import (
-    PostgresReferenceRepository,
-)
-from ....adapters.persistence.repositories.repository_adapter import (
-    PostgresRepositoryAdapter,
-)
-from ....adapters.persistence.repositories.symbol_adapter import (
-    PostgresSymbolRepository,
-)
-from ....infrastructure.database import get_db_session
+from ..validation import validate_path, validate_repo_name
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -158,7 +81,10 @@ class FileReferencesResponse(BaseModel):
 async def get_file_content_by_path(
     repo: str,
     path: str,
-    session: AsyncSession = Depends(get_db_session),
+    repo_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+    git_service: GitServiceDep,
 ) -> FileContentResponse:
     """
     Get file content by repository name and file path.
@@ -168,12 +94,8 @@ async def get_file_content_by_path(
     - path: File path within the repository
     """
     # Validate inputs to prevent path traversal and injection
-    repo = _validate_repo_name(repo)
-    path = _validate_path(path)
-
-    repo_adapter = PostgresRepositoryAdapter(session)
-    file_repo = PostgresFileRepository(session)
-    commit_repo = PostgresCommitRepository(session)
+    repo = validate_repo_name(repo)
+    path = validate_path(path)
 
     # Get repository by name
     repository = await repo_adapter.find_by_name(repo)
@@ -183,12 +105,12 @@ async def get_file_content_by_path(
     repository_id = repository.id if repository.id is not None else 0
 
     # Get file by repository and path
-    file = await file_repo.find_by_repository_and_path(repository_id, path)
+    file = await file_adapter.find_by_repository_and_path(repository_id, path)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
     # Get commit info to get the hash
-    commit = await commit_repo.find_by_id(file.commit_id)
+    commit = await commit_adapter.find_by_id(file.commit_id)
     if not commit:
         raise HTTPException(status_code=404, detail="Commit not found")
 
@@ -201,7 +123,6 @@ async def get_file_content_by_path(
         )
 
     # Fetch content from git
-    git_service = GitService()
     try:
         content = git_service.get_file_content(
             repo_path=repo_path,
@@ -234,18 +155,16 @@ async def get_file_content_by_path(
 async def get_file_symbols_by_path(
     repo: str,
     path: str,
-    session: AsyncSession = Depends(get_db_session),
+    repo_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    symbol_adapter: SymbolAdapter,
 ) -> FileSymbolsResponse:
     """
     Get symbols for a file by repository name and file path.
     """
     # Validate inputs to prevent path traversal and injection
-    repo = _validate_repo_name(repo)
-    path = _validate_path(path)
-
-    repo_adapter = PostgresRepositoryAdapter(session)
-    file_repo = PostgresFileRepository(session)
-    symbol_repo = PostgresSymbolRepository(session)
+    repo = validate_repo_name(repo)
+    path = validate_path(path)
 
     # Get repository by name
     repository = await repo_adapter.find_by_name(repo)
@@ -255,14 +174,14 @@ async def get_file_symbols_by_path(
     repository_id = repository.id if repository.id is not None else 0
 
     # Get file by repository and path
-    file = await file_repo.find_by_repository_and_path(repository_id, path)
+    file = await file_adapter.find_by_repository_and_path(repository_id, path)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
     file_id = file.id or 0
 
     # Get symbols in this file
-    symbols = await symbol_repo.list_by_file(file_id)
+    symbols = await symbol_adapter.list_by_file(file_id)
 
     return FileSymbolsResponse(
         file_id=file_id,
@@ -289,18 +208,16 @@ async def get_file_symbols_by_path(
 async def get_file_references_by_path(
     repo: str,
     path: str,
-    session: AsyncSession = Depends(get_db_session),
+    repo_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    ref_adapter: ReferenceAdapter,
 ) -> FileReferencesResponse:
     """
     Get references from a file by repository name and file path.
     """
     # Validate inputs to prevent path traversal and injection
-    repo = _validate_repo_name(repo)
-    path = _validate_path(path)
-
-    repo_adapter = PostgresRepositoryAdapter(session)
-    file_repo = PostgresFileRepository(session)
-    ref_repo = PostgresReferenceRepository(session)
+    repo = validate_repo_name(repo)
+    path = validate_path(path)
 
     # Get repository by name
     repository = await repo_adapter.find_by_name(repo)
@@ -310,14 +227,14 @@ async def get_file_references_by_path(
     repository_id = repository.id if repository.id is not None else 0
 
     # Get file by repository and path
-    file = await file_repo.find_by_repository_and_path(repository_id, path)
+    file = await file_adapter.find_by_repository_and_path(repository_id, path)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
     file_id = file.id or 0
 
     # Get references from this file
-    references = await ref_repo.list_by_file(file_id)
+    references = await ref_adapter.list_by_file(file_id)
 
     return FileReferencesResponse(
         file_id=file_id,
@@ -340,24 +257,23 @@ async def get_file_references_by_path(
 @router.get("/{file_id}/content", response_model=FileContentResponse)
 async def get_file_content(
     file_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+    repo_adapter: RepositoryAdapter,
+    git_service: GitServiceDep,
 ) -> FileContentResponse:
     """
     Get the content of a file.
 
     Fetches file content from the git repository at the indexed commit.
     """
-    file_repo = PostgresFileRepository(session)
-    commit_repo = PostgresCommitRepository(session)
-    repo_adapter = PostgresRepositoryAdapter(session)
-
     # Get file info
-    file = await file_repo.find_by_id(file_id)
+    file = await file_adapter.find_by_id(file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
     # Get commit info to get the hash
-    commit = await commit_repo.find_by_id(file.commit_id)
+    commit = await commit_adapter.find_by_id(file.commit_id)
     if not commit:
         raise HTTPException(status_code=404, detail="Commit not found")
 
@@ -375,7 +291,6 @@ async def get_file_content(
         )
 
     # Fetch content from git
-    git_service = GitService()
     try:
         content = git_service.get_file_content(
             repo_path=repo_path,
@@ -407,23 +322,21 @@ async def get_file_content(
 @router.get("/{file_id}/symbols", response_model=FileSymbolsResponse)
 async def get_file_symbols(
     file_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    file_adapter: FileAdapter,
+    symbol_adapter: SymbolAdapter,
 ) -> FileSymbolsResponse:
     """
     Get all symbols defined in a file.
 
     Returns symbols with their locations for highlighting in the code viewer.
     """
-    file_repo = PostgresFileRepository(session)
-    symbol_repo = PostgresSymbolRepository(session)
-
     # Get file info
-    file = await file_repo.find_by_id(file_id)
+    file = await file_adapter.find_by_id(file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
     # Get symbols in this file
-    symbols = await symbol_repo.list_by_file(file_id)
+    symbols = await symbol_adapter.list_by_file(file_id)
 
     return FileSymbolsResponse(
         file_id=file.id or 0,
@@ -449,7 +362,8 @@ async def get_file_symbols(
 @router.get("/{file_id}/references", response_model=FileReferencesResponse)
 async def get_file_references(
     file_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    file_adapter: FileAdapter,
+    ref_adapter: ReferenceAdapter,
 ) -> FileReferencesResponse:
     """
     Get all references from a file.
@@ -457,16 +371,13 @@ async def get_file_references(
     Returns references (usages of symbols) with their locations
     for making them clickable in the code viewer.
     """
-    file_repo = PostgresFileRepository(session)
-    ref_repo = PostgresReferenceRepository(session)
-
     # Get file info
-    file = await file_repo.find_by_id(file_id)
+    file = await file_adapter.find_by_id(file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
     # Get references from this file
-    references = await ref_repo.list_by_file(file_id)
+    references = await ref_adapter.list_by_file(file_id)
 
     return FileReferencesResponse(
         file_id=file.id or 0,
