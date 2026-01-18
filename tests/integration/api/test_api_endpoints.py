@@ -1437,3 +1437,68 @@ class TestPathValidation:
 
         assert response.status_code == 400
         assert "Path traversal" in response.json()["detail"]
+
+    async def test_repo_name_dot_rejected(self, test_app) -> None:
+        """Test that '.' as repo name is rejected."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/by-path",
+                params={"repo": ".", "path": "file.txt"},
+            )
+
+        assert response.status_code == 400
+        assert "start/end with a dot" in response.json()["detail"]
+
+    async def test_repo_name_dotdot_rejected(self, test_app) -> None:
+        """Test that '..' as repo name is rejected."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/by-path",
+                params={"repo": "..", "path": "file.txt"},
+            )
+
+        assert response.status_code == 400
+        assert "start/end with a dot" in response.json()["detail"]
+
+    async def test_repo_name_starting_with_dot_rejected(self, test_app) -> None:
+        """Test that repo names starting with dot are rejected."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/by-path",
+                params={"repo": ".hidden", "path": "file.txt"},
+            )
+
+        assert response.status_code == 400
+        assert "start/end with a dot" in response.json()["detail"]
+
+    async def test_repo_name_ending_with_dot_rejected(self, test_app) -> None:
+        """Test that repo names ending with dot are rejected."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/by-path",
+                params={"repo": "repo.", "path": "file.txt"},
+            )
+
+        assert response.status_code == 400
+        assert "start/end with a dot" in response.json()["detail"]
+
+    async def test_repo_name_with_middle_dot_accepted(self, test_app) -> None:
+        """Test that repo names with dots in the middle are accepted."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/by-path",
+                params={"repo": "my.repo.name", "path": "file.txt"},
+            )
+
+        # Should get 404 (not found) not 400 (validation error)
+        assert response.status_code == 404

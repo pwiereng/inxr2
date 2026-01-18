@@ -67,6 +67,13 @@ def _validate_repo_name(repo: str) -> str:
             detail="Repository name contains invalid characters",
         )
 
+    # Reject problematic dot patterns
+    if repo in (".", "..") or repo.startswith(".") or repo.endswith("."):
+        raise HTTPException(
+            status_code=400,
+            detail="Repository name cannot be '.', '..', or start/end with a dot",
+        )
+
     return repo
 
 from ....adapters.external.git_service import GitService
