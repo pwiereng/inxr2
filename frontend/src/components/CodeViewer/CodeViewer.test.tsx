@@ -98,6 +98,111 @@ line 3`
 
       expect(onSymbolClick).toHaveBeenCalledWith(symbols[0])
     })
+
+    it('should not match symbol name that is part of a larger word', () => {
+      // "name" should not match inside "myname" or "name123"
+      const onSymbolClick = vi.fn()
+      const symbols: FileSymbol[] = [
+        {
+          id: 1,
+          name: 'name',
+          qualified_name: null,
+          kind: 'variable',
+          start_line: 1,
+          start_column: 0,
+          end_line: 1,
+          end_column: 4,
+          signature: null,
+        },
+      ]
+
+      // Line contains "myname" but not standalone "name"
+      render(
+        <CodeViewer
+          content="myname = 123"
+          language="python"
+          symbols={symbols}
+          onSymbolClick={onSymbolClick}
+        />
+      )
+
+      // Click on the text - should not find a clickable symbol
+      const elements = screen.queryAllByText(/name/)
+      // Even if we find text containing "name", clicking should not trigger handler
+      // because "name" is part of "myname", not a standalone word
+      if (elements.length > 0) {
+        fireEvent.click(elements[0]!)
+      }
+      expect(onSymbolClick).not.toHaveBeenCalled()
+    })
+
+    it('should match symbol name after a dot separator', () => {
+      // "name" in "self.name" should be clickable (dot is not a word char)
+      const onSymbolClick = vi.fn()
+      const symbols: FileSymbol[] = [
+        {
+          id: 1,
+          name: 'name',
+          qualified_name: null,
+          kind: 'attribute',
+          start_line: 1,
+          start_column: 0,
+          end_line: 1,
+          end_column: 9,
+          signature: null,
+        },
+      ]
+
+      render(
+        <CodeViewer
+          content="self.name = value"
+          language="python"
+          symbols={symbols}
+          onSymbolClick={onSymbolClick}
+        />
+      )
+
+      // "name" after the dot should be clickable
+      const elements = screen.getAllByText(/name/)
+      expect(elements.length).toBeGreaterThan(0)
+      fireEvent.click(elements[0]!)
+
+      expect(onSymbolClick).toHaveBeenCalledWith(symbols[0])
+    })
+
+    it('should match correct occurrence when symbol appears multiple times', () => {
+      // In "name = self.name", we should match based on word boundaries
+      const onSymbolClick = vi.fn()
+      const symbols: FileSymbol[] = [
+        {
+          id: 1,
+          name: 'name',
+          qualified_name: null,
+          kind: 'variable',
+          start_line: 1,
+          start_column: 0, // Points to start of line where "name" variable is
+          end_line: 1,
+          end_column: 4,
+          signature: null,
+        },
+      ]
+
+      render(
+        <CodeViewer
+          content="name = self.name"
+          language="text"
+          symbols={symbols}
+          onSymbolClick={onSymbolClick}
+        />
+      )
+
+      // Should find and make the first "name" clickable
+      const elements = screen.getAllByText('name')
+      expect(elements.length).toBeGreaterThanOrEqual(1)
+      fireEvent.click(elements[0]!)
+
+      expect(onSymbolClick).toHaveBeenCalledWith(symbols[0])
+    })
   })
 
   describe('references', () => {

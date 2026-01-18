@@ -114,17 +114,16 @@ export function CodeViewer({
       .sort((a, b) => a.source_column - b.source_column)
   }
 
-  // Check if a position in text is at a word boundary
-  const isWordBoundary = (text: string, pos: number): boolean => {
-    // Start of string or non-word character before
-    const beforeOk = pos === 0 || !/\w/.test(text[pos - 1] || '')
-    return beforeOk
-  }
-
-  // Check if a position marks the end of a word
-  const isWordEnd = (text: string, pos: number): boolean => {
-    // End of string or non-word character after
-    return pos >= text.length || !/\w/.test(text[pos] || '')
+  // Check if a substring at [start, end) is a complete word (not part of a larger identifier)
+  // A word match requires:
+  // 1. Character before start is non-word (or start is at beginning)
+  // 2. Character at end is non-word (or end is at string end)
+  const isWholeWordMatch = (text: string, start: number, end: number): boolean => {
+    const charBefore = start > 0 ? text[start - 1] : ''
+    const charAfter = end < text.length ? text[end] : ''
+    const boundaryBefore = start === 0 || !/\w/.test(charBefore)
+    const boundaryAfter = end >= text.length || !/\w/.test(charAfter)
+    return boundaryBefore && boundaryAfter
   }
 
   // Build clickable segments for a line
@@ -145,7 +144,7 @@ export function CodeViewer({
         if (idx === -1) break
 
         // Check if this is a whole word match (not part of a larger identifier)
-        if (isWordBoundary(lineText, idx) && isWordEnd(lineText, idx + sym.name.length)) {
+        if (isWholeWordMatch(lineText, idx, idx + sym.name.length)) {
           nameIndex = idx
           break
         }
