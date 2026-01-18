@@ -1,27 +1,19 @@
 """Repository API endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....adapters.persistence.repositories.file_adapter import PostgresFileRepository
-from ....adapters.persistence.repositories.reference_adapter import (
-    PostgresReferenceRepository,
-)
-from ....adapters.persistence.repositories.repository_adapter import (
-    PostgresRepositoryAdapter,
-)
-from ....adapters.persistence.repositories.symbol_adapter import (
-    PostgresSymbolRepository,
-)
 from ....application.use_cases.repositories.get_repository_files import (
     GetRepositoryFilesRequest,
-    GetRepositoryFilesUseCase,
 )
-from ....application.use_cases.repositories.list_repositories import (
-    ListRepositoriesUseCase,
+from ....infrastructure.dependencies import (
+    FileAdapter,
+    GetRepositoryFilesUseCaseDep,
+    ListRepositoriesUseCaseDep,
+    ReferenceAdapter,
+    RepositoryAdapter,
+    SymbolAdapter,
 )
-from ....infrastructure.database import get_db_session
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 
@@ -92,12 +84,9 @@ class RepositoryStatsResponse(BaseModel):
 
 @router.get("", response_model=list[RepositoryResponse])
 async def list_repositories(
-    session: AsyncSession = Depends(get_db_session),
+    use_case: ListRepositoriesUseCaseDep,
 ) -> list[RepositoryResponse]:
     """List all repositories."""
-    repo_adapter = PostgresRepositoryAdapter(session)
-    use_case = ListRepositoriesUseCase(repository_repo=repo_adapter)
-
     response = await use_case.execute()
 
     # Convert to response models
@@ -118,10 +107,9 @@ async def list_repositories(
 @router.get("/by-name/{name}", response_model=RepositoryResponse)
 async def get_repository_by_name(
     name: str,
-    session: AsyncSession = Depends(get_db_session),
+    repo_adapter: RepositoryAdapter,
 ) -> RepositoryResponse:
     """Get a repository by name."""
-    repo_adapter = PostgresRepositoryAdapter(session)
     repository = await repo_adapter.find_by_name(name)
 
     if not repository:
@@ -141,12 +129,10 @@ async def get_repository_by_name(
 @router.get("/by-name/{name}/tree", response_model=TreeResponse)
 async def get_repository_tree_by_name(
     name: str,
-    session: AsyncSession = Depends(get_db_session),
+    repo_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
 ) -> TreeResponse:
     """Get the file tree structure for a repository by name."""
-    repo_adapter = PostgresRepositoryAdapter(session)
-    file_adapter = PostgresFileRepository(session)
-
     # Get repository by name
     repository = await repo_adapter.find_by_name(name)
     if not repository:
@@ -217,10 +203,9 @@ async def get_repository_tree_by_name(
 @router.get("/{repository_id}", response_model=RepositoryResponse)
 async def get_repository(
     repository_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    repo_adapter: RepositoryAdapter,
 ) -> RepositoryResponse:
     """Get a specific repository."""
-    repo_adapter = PostgresRepositoryAdapter(session)
     repository = await repo_adapter.find_by_id(repository_id)
 
     if not repository:
@@ -240,16 +225,9 @@ async def get_repository(
 @router.get("/{repository_id}/files", response_model=list[FileResponse])
 async def get_repository_files(
     repository_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    use_case: GetRepositoryFilesUseCaseDep,
 ) -> list[FileResponse]:
     """Get all files for a repository."""
-    repo_adapter = PostgresRepositoryAdapter(session)
-    file_adapter = PostgresFileRepository(session)
-
-    use_case = GetRepositoryFilesUseCase(
-        repository_repo=repo_adapter, file_repo=file_adapter
-    )
-
     try:
         response = await use_case.execute(
             GetRepositoryFilesRequest(repository_id=repository_id)
@@ -275,16 +253,14 @@ async def get_repository_files(
 @router.get("/{repository_id}/tree", response_model=TreeResponse)
 async def get_repository_tree(
     repository_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    repo_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
 ) -> TreeResponse:
     """
     Get the file tree structure for a repository.
 
     Returns a hierarchical tree of directories and files.
     """
-    repo_adapter = PostgresRepositoryAdapter(session)
-    file_adapter = PostgresFileRepository(session)
-
     # Get repository
     repository = await repo_adapter.find_by_id(repository_id)
     if not repository:
@@ -353,18 +329,16 @@ async def get_repository_tree(
 @router.get("/{repository_id}/stats", response_model=RepositoryStatsResponse)
 async def get_repository_stats(
     repository_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    repo_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    symbol_adapter: SymbolAdapter,
+    reference_adapter: ReferenceAdapter,
 ) -> RepositoryStatsResponse:
     """
     Get statistics for a repository.
 
     Returns counts of files, symbols, and references.
     """
-    repo_adapter = PostgresRepositoryAdapter(session)
-    file_adapter = PostgresFileRepository(session)
-    symbol_repo = PostgresSymbolRepository(session)
-    reference_repo = PostgresReferenceRepository(session)
-
     # Get repository
     repository = await repo_adapter.find_by_id(repository_id)
     if not repository:
@@ -372,8 +346,8 @@ async def get_repository_stats(
 
     # Get counts
     files = await file_adapter.list_by_repository(repository_id)
-    symbol_count = await symbol_repo.count_by_repository(repository_id)
-    reference_count = await reference_repo.count_by_repository(repository_id)
+    symbol_count = await symbol_adapter.count_by_repository(repository_id)
+    reference_count = await reference_adapter.count_by_repository(repository_id)
 
     # Count languages
     languages: dict[str, int] = {}

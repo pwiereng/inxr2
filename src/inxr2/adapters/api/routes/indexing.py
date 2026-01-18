@@ -1,21 +1,12 @@
 """Indexing API endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....adapters.persistence.repositories.commit_adapter import (
-    PostgresCommitRepository,
-)
-from ....adapters.persistence.repositories.file_adapter import PostgresFileRepository
-from ....adapters.persistence.repositories.repository_adapter import (
-    PostgresRepositoryAdapter,
-)
 from ....application.use_cases.indexing.index_local_directory import (
     IndexLocalDirectoryRequest,
-    IndexLocalDirectoryUseCase,
 )
-from ....infrastructure.database import get_db_session
+from ....infrastructure.dependencies import IndexLocalDirectoryUseCaseDep
 
 router = APIRouter(prefix="/index", tags=["indexing"])
 
@@ -41,25 +32,13 @@ class IndexLocalResponse(BaseModel):
 @router.post("/local", response_model=IndexLocalResponse)
 async def index_local_directory(
     request: IndexLocalRequest,
-    session: AsyncSession = Depends(get_db_session),
+    use_case: IndexLocalDirectoryUseCaseDep,
 ) -> IndexLocalResponse:
     """
     Index a local directory.
 
     This creates a repository and indexes all text files in the directory.
     """
-    # Create adapters
-    repo_adapter = PostgresRepositoryAdapter(session)
-    commit_adapter = PostgresCommitRepository(session)
-    file_adapter = PostgresFileRepository(session)
-
-    # Create use case
-    use_case = IndexLocalDirectoryUseCase(
-        repository_repo=repo_adapter,
-        commit_repo=commit_adapter,
-        file_repo=file_adapter,
-    )
-
     # Execute indexing
     try:
         response = await use_case.execute(

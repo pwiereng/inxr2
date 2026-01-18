@@ -1,17 +1,13 @@
 """Symbol API endpoints for code browsing."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....adapters.persistence.repositories.file_adapter import PostgresFileRepository
-from ....adapters.persistence.repositories.reference_adapter import (
-    PostgresReferenceRepository,
+from ....infrastructure.dependencies import (
+    FileAdapter,
+    ReferenceAdapter,
+    SymbolAdapter,
 )
-from ....adapters.persistence.repositories.symbol_adapter import (
-    PostgresSymbolRepository,
-)
-from ....infrastructure.database import get_db_session
 
 router = APIRouter(prefix="/symbols", tags=["symbols"])
 
@@ -72,24 +68,22 @@ class ReferencesListResponse(BaseModel):
 
 @router.get("", response_model=SymbolListResponse)
 async def search_symbols(
+    symbol_adapter: SymbolAdapter,
+    file_adapter: FileAdapter,
     q: str = Query(default="", description="Search query for symbol name"),
     kind: str | None = Query(default=None, description="Filter by symbol kind"),
     repository_id: int | None = Query(default=None, description="Filter by repository"),
     limit: int = Query(default=50, ge=1, le=200, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
-    session: AsyncSession = Depends(get_db_session),
 ) -> SymbolListResponse:
     """
     Search symbols by name with optional filters.
 
     Returns paginated list of symbols matching the query.
     """
-    symbol_repo = PostgresSymbolRepository(session)
-    file_repo = PostgresFileRepository(session)
-
     # Search symbols
     if q:
-        symbols = await symbol_repo.search_by_name(
+        symbols = await symbol_adapter.search_by_name(
             name=q,
             repository_id=repository_id,
             kind=kind,
@@ -97,7 +91,7 @@ async def search_symbols(
         )
     else:
         # If no query, list all symbols (with filters)
-        symbols = await symbol_repo.search_by_name(
+        symbols = await symbol_adapter.search_by_name(
             name="",
             repository_id=repository_id,
             kind=kind,
@@ -112,7 +106,7 @@ async def search_symbols(
     for symbol in symbols:
         file_path = None
         if symbol.file_id:
-            file = await file_repo.find_by_id(symbol.file_id)
+            file = await file_adapter.find_by_id(symbol.file_id)
             if file:
                 file_path = file.path
 
@@ -146,8 +140,9 @@ async def search_symbols(
 @router.get("/by-name/{name}", response_model=SymbolListResponse)
 async def get_symbols_by_name(
     name: str,
+    symbol_adapter: SymbolAdapter,
+    file_adapter: FileAdapter,
     repository_id: int | None = Query(default=None, description="Filter by repository"),
-    session: AsyncSession = Depends(get_db_session),
 ) -> SymbolListResponse:
     """
     Get all symbols with the exact given name.
@@ -155,11 +150,8 @@ async def get_symbols_by_name(
     Useful for disambiguation when multiple symbols have the same name
     (e.g., save() methods in different classes).
     """
-    symbol_repo = PostgresSymbolRepository(session)
-    file_repo = PostgresFileRepository(session)
-
     # Find all symbols with exact name match
-    symbols = await symbol_repo.find_by_exact_name(
+    symbols = await symbol_adapter.find_by_exact_name(
         name=name,
         repository_id=repository_id,
     )
@@ -169,7 +161,7 @@ async def get_symbols_by_name(
     for symbol in symbols:
         file_path = None
         if symbol.file_id:
-            file = await file_repo.find_by_id(symbol.file_id)
+            file = await file_adapter.find_by_id(symbol.file_id)
             if file:
                 file_path = file.path
 
@@ -203,20 +195,18 @@ async def get_symbols_by_name(
 @router.get("/{symbol_id}", response_model=SymbolResponse)
 async def get_symbol(
     symbol_id: int,
-    session: AsyncSession = Depends(get_db_session),
+    symbol_adapter: SymbolAdapter,
+    file_adapter: FileAdapter,
 ) -> SymbolResponse:
     """Get a specific symbol by ID."""
-    symbol_repo = PostgresSymbolRepository(session)
-    file_repo = PostgresFileRepository(session)
-
-    symbol = await symbol_repo.find_by_id(symbol_id)
+    symbol = await symbol_adapter.find_by_id(symbol_id)
     if not symbol:
         raise HTTPException(status_code=404, detail="Symbol not found")
 
     # Get file path
     file_path = None
     if symbol.file_id:
-        file = await file_repo.find_by_id(symbol.file_id)
+        file = await file_adapter.find_by_id(symbol.file_id)
         if file:
             file_path = file.path
 
@@ -241,13 +231,15 @@ async def get_symbol(
 @router.get("/{symbol_id}/references", response_model=ReferencesListResponse)
 async def get_symbol_references(
     symbol_id: int,
+    symbol_adapter: SymbolAdapter,
+    reference_adapter: ReferenceAdapter,
+    file_adapter: FileAdapter,
     by_name: bool = Query(
         default=True,
         description="If true, find all references matching the symbol name "
         "(useful when multiple symbols have the same name)",
     ),
     limit: int = Query(default=100, ge=1, le=500, description="Max results"),
-    session: AsyncSession = Depends(get_db_session),
 ) -> ReferencesListResponse:
     """
     Find all references to a symbol.
@@ -256,24 +248,20 @@ async def get_symbol_references(
     When by_name=true (default), finds all references matching the symbol name,
     which is useful when multiple symbols share the same name (e.g., save() methods).
     """
-    symbol_repo = PostgresSymbolRepository(session)
-    reference_repo = PostgresReferenceRepository(session)
-    file_repo = PostgresFileRepository(session)
-
     # Get the symbol first
-    symbol = await symbol_repo.find_by_id(symbol_id)
+    symbol = await symbol_adapter.find_by_id(symbol_id)
     if not symbol:
         raise HTTPException(status_code=404, detail="Symbol not found")
 
     # Get references - either by symbol ID or by name
     if by_name:
         # Find all references matching the symbol name (for disambiguation)
-        references = await reference_repo.find_references_by_text(
+        references = await reference_adapter.find_references_by_text(
             symbol.name, symbol.repository_id, limit=limit
         )
     else:
         # Find only references pointing to this specific symbol
-        references = await reference_repo.find_references_to_symbol(
+        references = await reference_adapter.find_references_to_symbol(
             symbol_id, limit=limit
         )
 
@@ -282,7 +270,7 @@ async def get_symbol_references(
     for ref in references:
         file_path = None
         if ref.source_file_id:
-            file = await file_repo.find_by_id(ref.source_file_id)
+            file = await file_adapter.find_by_id(ref.source_file_id)
             if file:
                 file_path = file.path
 

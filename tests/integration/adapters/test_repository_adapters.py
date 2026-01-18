@@ -548,9 +548,7 @@ class TestPostgresFileRepository:
         """Test finding file by repository and path when it doesn't exist."""
         # Arrange
         repo_adapter = PostgresRepositoryAdapter(db_session)
-        repository = Repository(
-            name="empty-repo", url="https://example.com/empty.git"
-        )
+        repository = Repository(name="empty-repo", url="https://example.com/empty.git")
         saved_repo = await repo_adapter.save(repository)
 
         file_adapter = PostgresFileRepository(db_session)

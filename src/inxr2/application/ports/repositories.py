@@ -160,6 +160,18 @@ class SymbolRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def find_by_exact_name(
+        self, name: str, repository_id: int | None = None
+    ) -> list[Symbol]:
+        """Find all symbols with exact name match."""
+        pass
+
+    @abstractmethod
+    async def count_by_repository(self, repository_id: int) -> int:
+        """Count total symbols in a repository."""
+        pass
+
+    @abstractmethod
     async def delete_by_file(self, file_id: int) -> int:
         """Delete all symbols for a file (for re-indexing). Returns count deleted."""
         pass
@@ -193,6 +205,18 @@ class ReferenceRepositoryPort(ABC):
     @abstractmethod
     async def list_by_file(self, file_id: int) -> list[Reference]:
         """List all references in a file."""
+        pass
+
+    @abstractmethod
+    async def find_references_by_text(
+        self, text: str, repository_id: int, limit: int = 100
+    ) -> list[Reference]:
+        """Find all references matching the given text."""
+        pass
+
+    @abstractmethod
+    async def count_by_repository(self, repository_id: int) -> int:
+        """Count total references in a repository."""
         pass
 
     @abstractmethod
