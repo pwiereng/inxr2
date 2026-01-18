@@ -923,14 +923,11 @@ def _print_summary(
 
 def _dict_to_symbol(
     d: dict[str, Any],
-    file_id: int | None,
-    repository_id: int | None,
-    commit_id: int | None,
+    file_id: int,
+    repository_id: int,
+    commit_id: int,
 ) -> Any:
     """Convert a symbol dict from parser to Symbol domain entity."""
-    # Ensure required numeric IDs are present
-    if file_id is None or repository_id is None or commit_id is None:
-        raise RuntimeError("Missing numeric identifiers when creating Symbol entity")
     from inxr2.domain.entities import Symbol
     from inxr2.domain.value_objects import SymbolKind
 
@@ -965,14 +962,11 @@ def _dict_to_symbol(
 
 def _dict_to_reference(
     d: dict[str, Any],
-    source_file_id: int | None,
-    repository_id: int | None,
-    commit_id: int | None,
+    source_file_id: int,
+    repository_id: int,
+    commit_id: int,
 ) -> Any:
     """Convert a reference dict from parser to Reference domain entity."""
-    # Ensure required numeric IDs are present
-    if source_file_id is None or repository_id is None or commit_id is None:
-        raise RuntimeError("Missing numeric identifiers when creating Reference entity")
     from inxr2.domain.entities import Reference
     from inxr2.domain.value_objects import ReferenceType
 

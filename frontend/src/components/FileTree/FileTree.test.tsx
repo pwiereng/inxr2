@@ -140,7 +140,7 @@ describe('FileTree', () => {
       // Click on README.md (top-level file)
       fireEvent.click(screen.getByText('README.md'))
 
-      expect(onFileSelect).toHaveBeenCalledWith(5, 'README.md')
+      expect(onFileSelect).toHaveBeenCalledWith('README.md')
     })
 
     it('should call onFileSelect for nested file', () => {
@@ -154,7 +154,7 @@ describe('FileTree', () => {
       // Click on Button.tsx
       fireEvent.click(screen.getByText('Button.tsx'))
 
-      expect(onFileSelect).toHaveBeenCalledWith(1, 'src/components/Button.tsx')
+      expect(onFileSelect).toHaveBeenCalledWith('src/components/Button.tsx')
     })
   })
 

@@ -133,7 +133,7 @@ export default function Browse() {
   }, [repoName, filePath])
 
   // Handle file selection from tree
-  const handleFileSelect = (_fileId: number, path: string) => {
+  const handleFileSelect = (path: string) => {
     setSearchParams({ file: path })
   }
 

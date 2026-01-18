@@ -44,7 +44,7 @@ function getParentPaths(filePath: string): string[] {
 interface FileTreeProps {
   nodes: TreeNode[]
   selectedFileId?: number | null
-  onFileSelect?: (fileId: number, path: string) => void
+  onFileSelect?: (path: string) => void
   loading?: boolean
 }
 
@@ -52,7 +52,7 @@ interface TreeNodeItemProps {
   node: TreeNode
   level: number
   selectedFileId?: number | null
-  onFileSelect?: (fileId: number, path: string) => void
+  onFileSelect?: (path: string) => void
   expandedPaths: Set<string>
   toggleExpanded: (path: string) => void
   selectedRef?: React.RefObject<HTMLDivElement>
@@ -91,8 +91,8 @@ function TreeNodeItem({
   const handleClick = () => {
     if (isDirectory) {
       toggleExpanded(node.path)
-    } else if (node.file_id && onFileSelect) {
-      onFileSelect(node.file_id, node.path)
+    } else if (onFileSelect) {
+      onFileSelect(node.path)
     }
   }
 
