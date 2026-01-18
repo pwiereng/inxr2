@@ -114,6 +114,19 @@ export function CodeViewer({
       .sort((a, b) => a.source_column - b.source_column)
   }
 
+  // Check if a position in text is at a word boundary
+  const isWordBoundary = (text: string, pos: number): boolean => {
+    // Start of string or non-word character before
+    const beforeOk = pos === 0 || !/\w/.test(text[pos - 1] || '')
+    return beforeOk
+  }
+
+  // Check if a position marks the end of a word
+  const isWordEnd = (text: string, pos: number): boolean => {
+    // End of string or non-word character after
+    return pos >= text.length || !/\w/.test(text[pos] || '')
+  }
+
   // Build clickable segments for a line
   const getClickableSegments = (lineNum: number, lineText: string): ClickableSegment[] => {
     const segments: ClickableSegment[] = []
@@ -122,8 +135,24 @@ export function CodeViewer({
     for (const sym of getSymbolDefinitionsOnLine(lineNum)) {
       // Find the symbol name in the line, starting search from symbol's start_column
       // (start_column might point to keyword like 'class' or 'def', not the name itself)
-      const searchStart = sym.start_column
-      const nameIndex = lineText.indexOf(sym.name, searchStart)
+      // We need to find a whole-word match to avoid matching substrings
+      let searchStart = sym.start_column
+      let nameIndex = -1
+
+      // Search for the symbol name, ensuring it's a whole word match
+      while (searchStart < lineText.length) {
+        const idx = lineText.indexOf(sym.name, searchStart)
+        if (idx === -1) break
+
+        // Check if this is a whole word match (not part of a larger identifier)
+        if (isWordBoundary(lineText, idx) && isWordEnd(lineText, idx + sym.name.length)) {
+          nameIndex = idx
+          break
+        }
+        // Continue searching after this partial match
+        searchStart = idx + 1
+      }
+
       if (nameIndex !== -1) {
         segments.push({
           start: nameIndex,
@@ -137,19 +166,16 @@ export function CodeViewer({
     // Add references
     for (const ref of getReferencesOnLine(lineNum)) {
       const startCol = ref.source_column
-      const refLen = ref.reference_text.length
+      const refEnd = startCol + ref.reference_text.length
       // Verify the reference text is at the expected position
-      if (lineText.substring(startCol, startCol + refLen) === ref.reference_text) {
+      if (lineText.substring(startCol, refEnd) === ref.reference_text) {
         // Check if this overlaps with an existing segment (symbol definition takes priority)
-        const overlaps = segments.some(
-          (seg) =>
-            (startCol >= seg.start && startCol < seg.end) ||
-            (startCol + refLen > seg.start && startCol + refLen <= seg.end)
-        )
+        // Use standard interval overlap: two intervals [a,b) and [c,d) overlap iff a < d && b > c
+        const overlaps = segments.some((seg) => startCol < seg.end && refEnd > seg.start)
         if (!overlaps) {
           segments.push({
             start: startCol,
-            end: startCol + refLen,
+            end: refEnd,
             type: 'reference',
             reference: ref,
           })

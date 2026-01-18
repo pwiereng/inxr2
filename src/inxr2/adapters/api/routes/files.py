@@ -56,8 +56,12 @@ def _validate_repo_name(repo: str) -> str:
     if not repo or not repo.strip():
         raise HTTPException(status_code=400, detail="Repository name cannot be empty")
 
-    # Allow alphanumeric, hyphens, underscores, and dots (common in repo names)
-    if not re.match(r"^[\w\-\.]+$", repo):
+    # Allow only safe characters for repository names:
+    # - \w = word characters (a-z, A-Z, 0-9, _)
+    # - hyphen (-)
+    # - dot (.) - literal in character class, common in repo names like "my.repo"
+    # This prevents injection of path separators, spaces, or special chars
+    if not re.match(r"^[a-zA-Z0-9_\-\.]+$", repo):
         raise HTTPException(
             status_code=400,
             detail="Repository name contains invalid characters",
