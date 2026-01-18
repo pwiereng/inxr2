@@ -563,6 +563,87 @@ class TestPostgresFileRepository:
         # Assert
         assert found is None
 
+    async def test_find_by_repository_and_path_returns_latest_version(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that find_by_repository_and_path returns the latest file version.
+
+        When multiple versions of the same file exist (from different commits),
+        the method should return the one with the highest commit_id.
+        """
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="multi-version-repo", url="https://example.com/repo.git"
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+
+        # Create an older commit
+        old_commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("oldcommit" + "0" * 31),
+            author_name="Author",
+            author_email="author@example.com",
+            committer_name="Author",
+            committer_email="author@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Old commit",
+        )
+        saved_old_commit = await commit_adapter.save(old_commit)
+
+        # Create a newer commit
+        new_commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=CommitHash("newcommit" + "0" * 31),
+            author_name="Author",
+            author_email="author@example.com",
+            committer_name="Author",
+            committer_email="author@example.com",
+            author_date=datetime(2025, 1, 2),
+            commit_date=datetime(2025, 1, 2),
+            message="New commit",
+        )
+        saved_new_commit = await commit_adapter.save(new_commit)
+
+        file_adapter = PostgresFileRepository(db_session)
+
+        # Create old version of file (smaller size to distinguish)
+        old_file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_old_commit.id,
+            path="src/app.py",
+            content_hash="old_hash",
+            size_bytes=100,
+            language="python",
+        )
+        await file_adapter.save(old_file)
+
+        # Create new version of same file (larger size)
+        new_file = File(
+            repository_id=saved_repo.id,
+            commit_id=saved_new_commit.id,
+            path="src/app.py",
+            content_hash="new_hash",
+            size_bytes=200,
+            language="python",
+        )
+        saved_new_file = await file_adapter.save(new_file)
+
+        # Act
+        found = await file_adapter.find_by_repository_and_path(
+            saved_repo.id, "src/app.py"
+        )
+
+        # Assert - should return the latest version (from new_commit)
+        assert found is not None
+        assert found.id == saved_new_file.id
+        assert found.commit_id == saved_new_commit.id
+        assert found.content_hash == "new_hash"
+        assert found.size_bytes == 200
+
 
 @pytest.mark.asyncio
 class TestPostgresSymbolRepository:

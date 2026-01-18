@@ -102,15 +102,18 @@ class PostgresFileRepository(FileRepositoryPort):
     async def find_by_repository_and_path(
         self, repository_id: int, path: str
     ) -> File | None:
-        """Find file by repository and path (latest version for now)."""
-        # For now, get the first matching file for the repository.
-        # In the future, this can be extended to support specific commit/branch.
+        """Find file by repository and path (latest version).
+
+        Returns the most recently indexed version of the file by ordering
+        by commit_id descending (higher commit_id = more recent index).
+        """
         result = await self.session.execute(
             select(FileModel)
             .where(
                 FileModel.repository_id == repository_id,
                 FileModel.path == path,
             )
+            .order_by(FileModel.commit_id.desc())
             .limit(1)
         )
         model = result.scalar_one_or_none()
