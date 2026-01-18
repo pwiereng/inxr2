@@ -1,10 +1,69 @@
 """File API endpoints for code browsing."""
 
-from pathlib import Path
+import re
+from pathlib import Path, PurePosixPath
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+def _validate_path(path: str) -> str:
+    """Validate and normalize a file path to prevent path traversal attacks.
+
+    Args:
+        path: The file path to validate
+
+    Returns:
+        Normalized path string
+
+    Raises:
+        HTTPException: If path is invalid or contains traversal attempts
+    """
+    # Reject empty paths
+    if not path or not path.strip():
+        raise HTTPException(status_code=400, detail="Path cannot be empty")
+
+    # Reject absolute paths
+    if path.startswith("/") or path.startswith("\\"):
+        raise HTTPException(status_code=400, detail="Absolute paths are not allowed")
+
+    # Normalize the path and check for traversal
+    normalized = PurePosixPath(path)
+
+    # Check each part for ".."
+    for part in normalized.parts:
+        if part == "..":
+            raise HTTPException(
+                status_code=400, detail="Path traversal (..) is not allowed"
+            )
+
+    return str(normalized)
+
+
+def _validate_repo_name(repo: str) -> str:
+    """Validate repository name format.
+
+    Args:
+        repo: Repository name to validate
+
+    Returns:
+        Validated repository name
+
+    Raises:
+        HTTPException: If repo name is invalid
+    """
+    if not repo or not repo.strip():
+        raise HTTPException(status_code=400, detail="Repository name cannot be empty")
+
+    # Allow alphanumeric, hyphens, underscores, and dots (common in repo names)
+    if not re.match(r"^[\w\-\.]+$", repo):
+        raise HTTPException(
+            status_code=400,
+            detail="Repository name contains invalid characters",
+        )
+
+    return repo
 
 from ....adapters.external.git_service import GitService
 from ....adapters.persistence.repositories.commit_adapter import (
@@ -97,6 +156,10 @@ async def get_file_content_by_path(
     - repo: Repository name
     - path: File path within the repository
     """
+    # Validate inputs to prevent path traversal and injection
+    repo = _validate_repo_name(repo)
+    path = _validate_path(path)
+
     repo_adapter = PostgresRepositoryAdapter(session)
     file_repo = PostgresFileRepository(session)
     commit_repo = PostgresCommitRepository(session)
@@ -165,6 +228,10 @@ async def get_file_symbols_by_path(
     """
     Get symbols for a file by repository name and file path.
     """
+    # Validate inputs to prevent path traversal and injection
+    repo = _validate_repo_name(repo)
+    path = _validate_path(path)
+
     repo_adapter = PostgresRepositoryAdapter(session)
     file_repo = PostgresFileRepository(session)
     symbol_repo = PostgresSymbolRepository(session)
@@ -216,6 +283,10 @@ async def get_file_references_by_path(
     """
     Get references from a file by repository name and file path.
     """
+    # Validate inputs to prevent path traversal and injection
+    repo = _validate_repo_name(repo)
+    path = _validate_path(path)
+
     repo_adapter = PostgresRepositoryAdapter(session)
     file_repo = PostgresFileRepository(session)
     ref_repo = PostgresReferenceRepository(session)

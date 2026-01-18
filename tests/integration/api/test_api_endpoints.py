@@ -23,6 +23,20 @@ from inxr2.domain.value_objects import CommitHash
 from inxr2.infrastructure.fastapi.app import create_app
 
 
+def make_test_commit_hash(prefix: str) -> CommitHash:
+    """Create a valid 40-character test commit hash with a readable prefix.
+
+    Args:
+        prefix: A short readable prefix (will be padded to 40 chars with zeros)
+
+    Returns:
+        A CommitHash with exactly 40 characters
+    """
+    # Ensure exactly 40 characters (standard git commit hash length)
+    padded = (prefix + "0" * 40)[:40]
+    return CommitHash(padded)
+
+
 @pytest_asyncio.fixture
 async def test_app(db_session: AsyncSession):
     """Create a FastAPI app with overridden database session."""
@@ -122,7 +136,7 @@ class TestRepositoriesAPI:
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
             repository_id=saved_repo.id,
-            commit_hash=CommitHash("abc123" + "0" * 34),
+            commit_hash=make_test_commit_hash("abc123"),
             author_name="Test Author",
             author_email="test@example.com",
             committer_name="Test Author",
@@ -229,7 +243,7 @@ class TestRepositoriesAPI:
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
             repository_id=saved_repo.id,
-            commit_hash=CommitHash("tree123" + "0" * 34),
+            commit_hash=make_test_commit_hash("tree123"),
             author_name="Test",
             author_email="test@example.com",
             committer_name="Test",
@@ -346,7 +360,7 @@ class TestRepositoriesAPI:
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
             repository_id=saved_repo.id,
-            commit_hash=CommitHash("treename" + "0" * 32),
+            commit_hash=make_test_commit_hash("treename"),
             author_name="Test",
             author_email="test@example.com",
             committer_name="Test",
@@ -420,7 +434,7 @@ class TestRepositoriesAPI:
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
             repository_id=saved_repo.id,
-            commit_hash=CommitHash("stats12" + "0" * 34),
+            commit_hash=make_test_commit_hash("stats12"),
             author_name="Test",
             author_email="test@example.com",
             committer_name="Test",
@@ -496,7 +510,7 @@ class TestSymbolsAPI:
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
             repository_id=saved_repo.id,
-            commit_hash=CommitHash("symbols" + "0" * 34),
+            commit_hash=make_test_commit_hash("symbols"),
             author_name="Test",
             author_email="test@example.com",
             committer_name="Test",
@@ -953,7 +967,7 @@ class TestFilesAPI:
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
             repository_id=saved_repo.id,
-            commit_hash=CommitHash("filesym" + "0" * 34),
+            commit_hash=make_test_commit_hash("filesym"),
             author_name="Test",
             author_email="test@example.com",
             committer_name="Test",
@@ -1056,7 +1070,7 @@ class TestFilesAPI:
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
             repository_id=saved_repo.id,
-            commit_hash=CommitHash("fileref" + "0" * 34),
+            commit_hash=make_test_commit_hash("fileref"),
             author_name="Test",
             author_email="test@example.com",
             committer_name="Test",
@@ -1192,7 +1206,7 @@ class TestFilesAPI:
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
             repository_id=saved_repo.id,
-            commit_hash=CommitHash("sympath" + "0" * 33),
+            commit_hash=make_test_commit_hash("sympath"),
             author_name="Test",
             author_email="test@example.com",
             committer_name="Test",
@@ -1277,7 +1291,7 @@ class TestFilesAPI:
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
             repository_id=saved_repo.id,
-            commit_hash=CommitHash("refpath" + "0" * 33),
+            commit_hash=make_test_commit_hash("refpath"),
             author_name="Test",
             author_email="test@example.com",
             committer_name="Test",
@@ -1340,3 +1354,86 @@ class TestFilesAPI:
             )
 
         assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+class TestPathValidation:
+    """Tests for path and repo name validation in by-path endpoints."""
+
+    async def test_path_traversal_rejected(self, test_app) -> None:
+        """Test that path traversal attempts are rejected."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/by-path",
+                params={"repo": "test-repo", "path": "../../../etc/passwd"},
+            )
+
+        assert response.status_code == 400
+        assert "Path traversal" in response.json()["detail"]
+
+    async def test_absolute_path_rejected(self, test_app) -> None:
+        """Test that absolute paths are rejected."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/by-path",
+                params={"repo": "test-repo", "path": "/etc/passwd"},
+            )
+
+        assert response.status_code == 400
+        assert "Absolute paths" in response.json()["detail"]
+
+    async def test_empty_path_rejected(self, test_app) -> None:
+        """Test that empty paths are rejected."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/by-path",
+                params={"repo": "test-repo", "path": "   "},
+            )
+
+        assert response.status_code == 400
+        assert "empty" in response.json()["detail"].lower()
+
+    async def test_invalid_repo_name_rejected(self, test_app) -> None:
+        """Test that invalid repo names are rejected."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/by-path",
+                params={"repo": "test/../repo", "path": "src/main.py"},
+            )
+
+        assert response.status_code == 400
+        assert "invalid characters" in response.json()["detail"].lower()
+
+    async def test_valid_path_with_subdirs_accepted(self, test_app) -> None:
+        """Test that valid paths with subdirectories work (return 404 for not found)."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/by-path",
+                params={"repo": "valid-repo", "path": "src/components/file.tsx"},
+            )
+
+        # Should get 404 (not found) not 400 (validation error)
+        assert response.status_code == 404
+
+    async def test_path_traversal_in_middle_rejected(self, test_app) -> None:
+        """Test that path traversal in the middle of path is rejected."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/by-path/symbols",
+                params={"repo": "test-repo", "path": "src/../../../etc/passwd"},
+            )
+
+        assert response.status_code == 400
+        assert "Path traversal" in response.json()["detail"]

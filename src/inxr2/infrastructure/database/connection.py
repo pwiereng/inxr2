@@ -6,7 +6,6 @@ Provides async SQLAlchemy engine and session management for PostgreSQL.
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -22,18 +21,10 @@ class DatabaseConnection:
             database_url: PostgreSQL connection URL (async format).
                          Defaults to DATABASE_URL environment variable.
         """
-        # Ensure we have a concrete str for mypy (os.getenv returns Optional[str])
-        self.database_url = (
-            database_url
-            if database_url is not None
-            else cast(
-                str,
-                os.getenv(
-                    "DATABASE_URL",
-                    "postgresql+asyncpg://postgres:postgres@localhost:5432/inxr2_dev",
-                ),
-            )
-        )
+        # Use provided URL or fall back to environment variable with default
+        # The default ensures we always get a string, not None
+        default_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/inxr2_dev"
+        self.database_url: str = database_url or os.getenv("DATABASE_URL", default_url) or default_url
 
         # Convert postgres:// to postgresql+asyncpg:// if needed
         if self.database_url.startswith("postgres://"):
