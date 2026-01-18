@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 from ....infrastructure.dependencies import (
+    CommitAdapter,
     FileAdapter,
     ReferenceAdapter,
     SymbolAdapter,
@@ -142,18 +143,35 @@ async def get_symbols_by_name(
     name: str,
     symbol_adapter: SymbolAdapter,
     file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
     repository_id: int | None = Query(default=None, description="Filter by repository"),
+    commit: str | None = Query(
+        default=None, description="Commit hash for time travel (optional)"
+    ),
 ) -> SymbolListResponse:
     """
     Get all symbols with the exact given name.
 
     Useful for disambiguation when multiple symbols have the same name
     (e.g., save() methods in different classes).
+
+    Query parameters:
+    - repository_id: Filter by repository (optional)
+    - commit: Commit hash for time travel (optional). If provided, returns
+              symbols from that specific commit only.
     """
+    # Look up commit_id from hash if provided
+    commit_id: int | None = None
+    if commit and repository_id:
+        commit_record = await commit_adapter.find_by_hash(repository_id, commit)
+        if commit_record:
+            commit_id = commit_record.id
+
     # Find all symbols with exact name match
     symbols = await symbol_adapter.find_by_exact_name(
         name=name,
         repository_id=repository_id,
+        commit_id=commit_id,
     )
 
     # Enrich with file paths
@@ -234,10 +252,14 @@ async def get_symbol_references(
     symbol_adapter: SymbolAdapter,
     reference_adapter: ReferenceAdapter,
     file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
     by_name: bool = Query(
         default=True,
         description="If true, find all references matching the symbol name "
         "(useful when multiple symbols have the same name)",
+    ),
+    commit: str | None = Query(
+        default=None, description="Commit hash for time travel (optional)"
     ),
     limit: int = Query(default=100, ge=1, le=500, description="Max results"),
 ) -> ReferencesListResponse:
@@ -247,22 +269,34 @@ async def get_symbol_references(
     Returns list of places where this symbol is referenced (used).
     When by_name=true (default), finds all references matching the symbol name,
     which is useful when multiple symbols share the same name (e.g., save() methods).
+
+    Query parameters:
+    - by_name: If true, find all references matching the symbol name
+    - commit: Commit hash for time travel (optional). If provided, returns
+              references from that specific commit only.
     """
     # Get the symbol first
     symbol = await symbol_adapter.find_by_id(symbol_id)
     if not symbol:
         raise HTTPException(status_code=404, detail="Symbol not found")
 
+    # Look up commit_id from hash if provided
+    commit_id: int | None = None
+    if commit:
+        commit_record = await commit_adapter.find_by_hash(symbol.repository_id, commit)
+        if commit_record:
+            commit_id = commit_record.id
+
     # Get references - either by symbol ID or by name
     if by_name:
         # Find all references matching the symbol name (for disambiguation)
         references = await reference_adapter.find_references_by_text(
-            symbol.name, symbol.repository_id, limit=limit
+            symbol.name, symbol.repository_id, limit=limit, commit_id=commit_id
         )
     else:
         # Find only references pointing to this specific symbol
         references = await reference_adapter.find_references_to_symbol(
-            symbol_id, limit=limit
+            symbol_id, limit=limit, commit_id=commit_id
         )
 
     # Enrich with file paths

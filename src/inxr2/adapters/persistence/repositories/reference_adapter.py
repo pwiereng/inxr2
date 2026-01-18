@@ -60,15 +60,33 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         return self.mapper.to_domain(model) if model else None
 
     async def find_references_to_symbol(
-        self, symbol_id: int, limit: int = 100
+        self, symbol_id: int, limit: int = 100, commit_id: int | None = None
     ) -> list[Reference]:
         """Find all references TO a symbol (find usages).
 
-        Only returns references from the latest version of each file,
-        avoiding duplicates from multiple indexed commits.
+        Args:
+            symbol_id: The target symbol ID
+            limit: Maximum number of results
+            commit_id: Filter by specific commit for time travel (optional).
+                       If None, returns from latest version of each file.
         """
+        if commit_id is not None:
+            # Time travel mode: filter by specific commit
+            result = await self.session.execute(
+                select(ReferenceModel)
+                .join(FileModel, ReferenceModel.source_file_id == FileModel.id)
+                .where(
+                    ReferenceModel.target_symbol_id == symbol_id,
+                    FileModel.commit_id == commit_id,
+                )
+                .order_by(ReferenceModel.source_line)
+                .limit(limit)
+            )
+            models = result.scalars().all()
+            return [self.mapper.to_domain(model) for model in models]
+
+        # Default: get from latest version of each file
         # First get the repository_id from any reference to this symbol
-        # (needed to scope the latest files subquery)
         ref_check = await self.session.execute(
             select(ReferenceModel.repository_id)
             .where(ReferenceModel.target_symbol_id == symbol_id)
@@ -99,17 +117,37 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         return [self.mapper.to_domain(model) for model in models]
 
     async def find_references_by_text(
-        self, text: str, repository_id: int, limit: int = 100
+        self, text: str, repository_id: int, limit: int = 100, commit_id: int | None = None
     ) -> list[Reference]:
         """Find all references matching the given text.
 
         Useful for finding all calls to a symbol name when multiple
         symbols share the same name (e.g., save() methods in different classes).
 
-        Only returns references from the latest version of each file
-        (highest file ID per unique path), avoiding duplicates from
-        multiple indexed commits.
+        Args:
+            text: The reference text to match
+            repository_id: Filter by repository
+            limit: Maximum number of results
+            commit_id: Filter by specific commit for time travel (optional).
+                       If None, returns from latest version of each file.
         """
+        if commit_id is not None:
+            # Time travel mode: filter by specific commit
+            result = await self.session.execute(
+                select(ReferenceModel)
+                .join(FileModel, ReferenceModel.source_file_id == FileModel.id)
+                .where(
+                    ReferenceModel.reference_text == text,
+                    ReferenceModel.repository_id == repository_id,
+                    FileModel.commit_id == commit_id,
+                )
+                .order_by(ReferenceModel.source_file_id, ReferenceModel.source_line)
+                .limit(limit)
+            )
+            models = result.scalars().all()
+            return [self.mapper.to_domain(model) for model in models]
+
+        # Default: get from latest version of each file
         # Subquery to find the latest file ID for each path in the repository
         # (Since file IDs are auto-incrementing, max ID = latest version)
         latest_files = (

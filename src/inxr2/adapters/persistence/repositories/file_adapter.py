@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....application.ports.repositories import FileRepositoryPort
 from ....domain.entities import File
 from ..mappers import FileMapper
+from ..models.commit import CommitModel
 from ..models.file import FileModel
 
 
@@ -115,6 +116,43 @@ class PostgresFileRepository(FileRepositoryPort):
             )
             .order_by(FileModel.commit_id.desc())
             .limit(1)
+        )
+        model = result.scalar_one_or_none()
+        return self.mapper.to_domain(model) if model else None
+
+    async def list_versions_by_path(self, repository_id: int, path: str) -> list[File]:
+        """List all versions of a file across commits (for time travel).
+
+        Returns files with this path from different commits, ordered by
+        commit date descending (newest first).
+        """
+        result = await self.session.execute(
+            select(FileModel)
+            .join(CommitModel, FileModel.commit_id == CommitModel.id)
+            .where(
+                FileModel.repository_id == repository_id,
+                FileModel.path == path,
+            )
+            .order_by(CommitModel.commit_date.desc())
+        )
+        models = result.scalars().all()
+        return [self.mapper.to_domain(model) for model in models]
+
+    async def find_by_repository_path_and_commit_hash(
+        self, repository_id: int, path: str, commit_hash: str
+    ) -> File | None:
+        """Find file by repository, path, and commit hash (for time travel).
+
+        This is useful when the caller has a commit hash instead of commit_id.
+        """
+        result = await self.session.execute(
+            select(FileModel)
+            .join(CommitModel, FileModel.commit_id == CommitModel.id)
+            .where(
+                FileModel.repository_id == repository_id,
+                FileModel.path == path,
+                CommitModel.commit_hash == commit_hash,
+            )
         )
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None

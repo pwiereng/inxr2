@@ -27,6 +27,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..adapters.external.git_service import GitService
 from ..adapters.persistence.repositories.commit_adapter import PostgresCommitRepository
 from ..adapters.persistence.repositories.file_adapter import PostgresFileRepository
+from ..adapters.persistence.repositories.index_status_adapter import (
+    PostgresIndexStatusRepository,
+)
 from ..adapters.persistence.repositories.reference_adapter import (
     PostgresReferenceRepository,
 )
@@ -37,6 +40,7 @@ from ..adapters.persistence.repositories.symbol_adapter import PostgresSymbolRep
 from ..application.ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
+    IndexStatusRepositoryPort,
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
@@ -89,12 +93,20 @@ def get_reference_adapter(session: DbSession) -> ReferenceRepositoryPort:
     return PostgresReferenceRepository(session)
 
 
+def get_index_status_adapter(session: DbSession) -> IndexStatusRepositoryPort:
+    """Provide index status repository adapter."""
+    return PostgresIndexStatusRepository(session)
+
+
 # Type aliases for injected adapters
 RepositoryAdapter = Annotated[RepositoryPort, Depends(get_repository_adapter)]
 CommitAdapter = Annotated[CommitRepositoryPort, Depends(get_commit_adapter)]
 FileAdapter = Annotated[FileRepositoryPort, Depends(get_file_adapter)]
 SymbolAdapter = Annotated[SymbolRepositoryPort, Depends(get_symbol_adapter)]
 ReferenceAdapter = Annotated[ReferenceRepositoryPort, Depends(get_reference_adapter)]
+IndexStatusAdapter = Annotated[
+    IndexStatusRepositoryPort, Depends(get_index_status_adapter)
+]
 
 
 # =============================================================================

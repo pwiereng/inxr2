@@ -179,6 +179,25 @@ class InMemoryFileRepository(FileRepositoryPort):
                 return file
         return None
 
+    async def list_versions_by_path(self, repository_id: int, path: str) -> list[File]:
+        """List all versions of a file across commits (for time travel)."""
+        return [
+            f
+            for f in self._files.values()
+            if f.repository_id == repository_id and f.path == path
+        ]
+
+    async def find_by_repository_path_and_commit_hash(
+        self, repository_id: int, path: str, commit_hash: str
+    ) -> File | None:
+        """Find file by repository, path, and commit hash (for time travel)."""
+        # In-memory implementation doesn't have commit info, so just return None
+        # This is a simplified implementation for testing
+        for file in self._files.values():
+            if file.repository_id == repository_id and file.path == path:
+                return file
+        return None
+
     # Test helper methods
     def add(self, file: File) -> None:
         """Add a file for testing."""

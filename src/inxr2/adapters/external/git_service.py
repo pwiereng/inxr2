@@ -348,3 +348,140 @@ class GitService:
             return blob.hexsha
         except KeyError as e:
             raise FileNotFoundError(f"File not found: {file_path}") from e
+
+    def list_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        max_count: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """
+        List commits for a branch, from oldest to newest.
+
+        Args:
+            repo_path: Path to the git repository
+            branch: Branch name to list commits for
+            max_count: Maximum number of commits to return
+
+        Returns:
+            List of commit info dicts (oldest first), each containing:
+                - hash: Full 40-char commit hash
+                - short_hash: 7-char hash
+                - author_name, author_email, author_date
+                - committer_name, committer_email, commit_date
+                - message: Commit message
+                - parent_hashes: List of parent commit hashes
+        """
+        repo = Repo(repo_path)
+
+        try:
+            # Try local branch first
+            commits = list(repo.iter_commits(branch, max_count=max_count))
+        except Exception:
+            # Try remote tracking branch
+            try:
+                commits = list(
+                    repo.iter_commits(f"origin/{branch}", max_count=max_count)
+                )
+            except Exception as e:
+                logger.warning(f"Could not find branch {branch}: {e}")
+                return []
+
+        # iter_commits returns newest first, reverse to get oldest first
+        commits = list(reversed(commits))
+
+        return [
+            {
+                "hash": c.hexsha,
+                "short_hash": c.hexsha[:7],
+                "author_name": c.author.name,
+                "author_email": c.author.email,
+                "author_date": c.authored_datetime,
+                "committer_name": c.committer.name,
+                "committer_email": c.committer.email,
+                "commit_date": c.committed_datetime,
+                "message": c.message.strip(),
+                "parent_hashes": [p.hexsha for p in c.parents],
+            }
+            for c in commits
+        ]
+
+    def get_files_at_commit(
+        self,
+        repo_path: Path,
+        commit_hash: str,
+    ) -> set[str]:
+        """
+        Get the set of all file paths that exist at a specific commit.
+
+        Args:
+            repo_path: Path to the git repository
+            commit_hash: Commit hash
+
+        Returns:
+            Set of file paths (relative to repo root)
+        """
+        repo = Repo(repo_path)
+        commit = repo.commit(commit_hash)
+
+        files: set[str] = set()
+
+        def traverse_tree(tree: Any, prefix: str = "") -> None:
+            for item in tree:
+                path = f"{prefix}{item.name}" if prefix else item.name
+                if item.type == "blob":
+                    files.add(path)
+                elif item.type == "tree":
+                    traverse_tree(item, f"{path}/")
+
+        traverse_tree(commit.tree)
+        return files
+
+    def get_changed_files_in_commit(
+        self,
+        repo_path: Path,
+        commit_hash: str,
+    ) -> dict[str, list[str]]:
+        """
+        Get files changed in a single commit (vs its parent).
+
+        Args:
+            repo_path: Path to the git repository
+            commit_hash: Commit hash
+
+        Returns:
+            Dictionary with:
+                - added: List of added file paths
+                - modified: List of modified file paths
+                - deleted: List of deleted file paths
+        """
+        repo = Repo(repo_path)
+        commit = repo.commit(commit_hash)
+
+        added: list[str] = []
+        modified: list[str] = []
+        deleted: list[str] = []
+
+        if not commit.parents:
+            # Initial commit - all files are "added"
+            added = self.list_files(repo_path, commit_hash)
+            return {"added": added, "modified": modified, "deleted": deleted}
+
+        # Compare with first parent
+        parent = commit.parents[0]
+        diff = parent.diff(commit)
+
+        for d in diff:
+            if d.new_file and d.b_path:
+                added.append(d.b_path)
+            elif d.deleted_file and d.a_path:
+                deleted.append(d.a_path)
+            elif d.renamed_file:
+                if d.a_path:
+                    deleted.append(d.a_path)
+                if d.b_path:
+                    added.append(d.b_path)
+            elif d.b_path or d.a_path:
+                modified.append(d.b_path or d.a_path or "")
+
+        return {"added": added, "modified": modified, "deleted": deleted}

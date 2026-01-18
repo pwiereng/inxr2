@@ -25,6 +25,7 @@ class IndexStatusModel(Base, TimestampMixin):
 
     # Indexing state
     last_indexed_commit: Mapped[str | None] = mapped_column(CHAR(40), nullable=True)
+    oldest_indexed_commit: Mapped[str | None] = mapped_column(CHAR(40), nullable=True)
     last_indexed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=False), nullable=True
     )

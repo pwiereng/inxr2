@@ -24,11 +24,12 @@ import { CodeViewer } from '@/components/CodeViewer'
 import { FileTree } from '@/components/FileTree'
 import { SymbolSearch } from '@/components/SymbolSearch'
 import { ReferencesPanel } from '@/components/ReferencesPanel'
+import { VersionSelector } from '@/components/VersionSelector'
 import {
   getRepositories,
   getRepositoryByName,
   getRepositoryTreeByName,
-  getFileContentByPath,
+  getFileContentByPathAtCommit,
   getFileSymbolsByPath,
   getFileReferencesByPath,
   getSymbol,
@@ -45,11 +46,12 @@ export default function Browse() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
 
-  // Get file path from URL path (splat param) and line from query params
+  // Get file path from URL path (splat param) and line/commit from query params
   const filePath = splatPath || null
   const highlightLine = searchParams.get('line')
     ? parseInt(searchParams.get('line')!, 10)
     : undefined
+  const selectedCommit = searchParams.get('commit')
 
   // State
   const [allRepositories, setAllRepositories] = useState<Repository[]>([])
@@ -106,7 +108,7 @@ export default function Browse() {
     loadRepository()
   }, [repoName])
 
-  // Load file content when file path changes
+  // Load file content when file path or commit changes
   useEffect(() => {
     if (!filePath || !repoName) {
       setFileContent(null)
@@ -119,9 +121,9 @@ export default function Browse() {
       setFileLoading(true)
       try {
         const [content, symbols, references] = await Promise.all([
-          getFileContentByPath(repoName, filePath),
-          getFileSymbolsByPath(repoName, filePath),
-          getFileReferencesByPath(repoName, filePath),
+          getFileContentByPathAtCommit(repoName, filePath, selectedCommit || undefined),
+          getFileSymbolsByPath(repoName, filePath, selectedCommit || undefined),
+          getFileReferencesByPath(repoName, filePath, selectedCommit || undefined),
         ])
         setFileContent(content)
         setFileSymbols(symbols.symbols)
@@ -134,19 +136,25 @@ export default function Browse() {
     }
 
     loadFile()
-  }, [repoName, filePath])
+  }, [repoName, filePath, selectedCommit])
 
   // Handle file selection from tree
   const handleFileSelect = (path: string) => {
-    navigate(`/browse/${encodeURIComponent(repoName!)}/${path}`)
+    const params = new URLSearchParams()
+    // Preserve commit when navigating to a different file (same vintage)
+    if (selectedCommit) params.set('commit', selectedCommit)
+    const query = params.toString()
+    navigate(`/browse/${encodeURIComponent(repoName!)}/${path}${query ? `?${query}` : ''}`)
   }
 
   // Handle symbol selection from search
   const handleSymbolSelect = async (symbol: Symbol) => {
     if (symbol.file_path) {
-      navigate(
-        `/browse/${encodeURIComponent(repoName!)}/${symbol.file_path}?line=${symbol.start_line}`
-      )
+      const params = new URLSearchParams()
+      params.set('line', symbol.start_line.toString())
+      // Preserve commit when navigating to a symbol (same vintage)
+      if (selectedCommit) params.set('commit', selectedCommit)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${symbol.file_path}?${params}`)
     }
   }
 
@@ -195,25 +203,44 @@ export default function Browse() {
     source_line: number
   }) => {
     if (reference.source_file_path) {
-      navigate(
-        `/browse/${encodeURIComponent(repoName!)}/${reference.source_file_path}?line=${reference.source_line}`
-      )
+      const params = new URLSearchParams()
+      params.set('line', reference.source_line.toString())
+      // Preserve commit when navigating (same vintage)
+      if (selectedCommit) params.set('commit', selectedCommit)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${reference.source_file_path}?${params}`)
     }
   }
 
   // Handle click on definition in references panel
   const handleDefinitionClick = (sym: Symbol) => {
     if (sym.file_path) {
-      navigate(`/browse/${encodeURIComponent(repoName!)}/${sym.file_path}?line=${sym.start_line}`)
+      const params = new URLSearchParams()
+      params.set('line', sym.start_line.toString())
+      // Preserve commit when navigating (same vintage)
+      if (selectedCommit) params.set('commit', selectedCommit)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${sym.file_path}?${params}`)
     }
   }
 
   // Handle line click (update URL)
   const handleLineClick = (line: number) => {
     if (filePath) {
-      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?line=${line}`, {
+      const params = new URLSearchParams()
+      params.set('line', line.toString())
+      if (selectedCommit) params.set('commit', selectedCommit)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`, {
         replace: true,
       })
+    }
+  }
+
+  // Handle version change (time travel)
+  const handleVersionChange = (commitHash: string | null) => {
+    if (filePath) {
+      const params = new URLSearchParams()
+      if (highlightLine) params.set('line', highlightLine.toString())
+      if (commitHash) params.set('commit', commitHash)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
     }
   }
 
@@ -368,13 +395,22 @@ export default function Browse() {
                   flexShrink: 0,
                 }}
               >
-                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                <Typography variant="body2" sx={{ fontFamily: 'monospace', flex: 1 }}>
                   {fileContent.path}
                 </Typography>
                 {fileContent.language && <Chip label={fileContent.language} size="small" />}
                 <Typography variant="caption" color="text.secondary">
                   {fileContent.line_count} lines
                 </Typography>
+                {/* Version selector for time travel */}
+                {repoName && filePath && (
+                  <VersionSelector
+                    repoName={repoName}
+                    filePath={filePath}
+                    selectedCommit={selectedCommit}
+                    onVersionChange={handleVersionChange}
+                  />
+                )}
               </Box>
 
               {/* Code Viewer */}
@@ -426,6 +462,7 @@ export default function Browse() {
                 symbol={selectedSymbol}
                 isDirectDefinition={isDirectDefinition}
                 searchByName={searchByName}
+                selectedCommit={selectedCommit}
                 onReferenceClick={handleRefPanelClick}
                 onDefinitionClick={handleDefinitionClick}
                 onClose={() => {

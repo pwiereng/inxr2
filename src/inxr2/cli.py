@@ -40,6 +40,7 @@ def _run_single_repo_index(
     verbose: bool,
     index_func: Callable[..., Any],
     index_type: str,
+    max_history: int = 100,
 ) -> None:
     """Run indexing for a single repository path."""
     # Validate git repository
@@ -76,6 +77,7 @@ def _run_single_repo_index(
             branch=branch,
             languages=lang_list,
             console=console,
+            max_history=max_history,
         )
     except Exception as e:
         console.print(f"\n[red]Error during indexing:[/red] {e}")
@@ -92,6 +94,7 @@ def _run_config_based_index(
     verbose: bool,
     index_func: Callable[..., Any],
     index_type: str,
+    max_history_override: int | None = None,
 ) -> None:
     """Run indexing for repositories defined in config file."""
     from inxr2.adapters.config.yaml_config import YamlConfigService
@@ -175,12 +178,16 @@ def _run_config_based_index(
         console.print(f"  Branch: {branch or '(current)'}")
         console.print()
 
+        # Determine max_history (override > config)
+        max_history = max_history_override or config.indexing.max_commit_history
+
         try:
             index_func(
                 repo_path=resolved_path,
                 branch=branch,
                 languages=lang_list,
                 console=console,
+                max_history=max_history,
             )
             successful += 1
         except Exception as e:
@@ -251,6 +258,13 @@ def index() -> None:
     help="Comma-separated list of languages to index (default: from config or python,typescript)",
 )
 @click.option(
+    "--history",
+    "-H",
+    type=int,
+    default=None,
+    help="Maximum number of commits to index for time travel (default: from config or 100)",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
@@ -268,6 +282,7 @@ def index_full(
     repo: str | None,
     branch: str | None,
     languages: str | None,
+    history: int | None,
     verbose: bool,
     log_level: str,
 ) -> None:
@@ -308,6 +323,7 @@ def index_full(
             verbose=verbose,
             index_func=run_full_index,
             index_type="Full",
+            max_history_override=history,
         )
     else:
         # Single repository path-based indexing
@@ -319,6 +335,7 @@ def index_full(
             verbose=verbose,
             index_func=run_full_index,
             index_type="Full",
+            max_history=history or 100,
         )
 
 

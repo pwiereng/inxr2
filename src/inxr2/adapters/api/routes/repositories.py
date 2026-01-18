@@ -14,6 +14,7 @@ from ....infrastructure.dependencies import (
     FileAdapter,
     GetRepositoryFilesUseCaseDep,
     GetRepositoryTreeUseCaseDep,
+    IndexStatusAdapter,
     ListRepositoriesUseCaseDep,
     ReferenceAdapter,
     RepositoryAdapter,
@@ -85,6 +86,22 @@ class RepositoryStatsResponse(BaseModel):
     total_symbols: int
     total_references: int
     languages: dict[str, int]
+
+
+class BranchInfoResponse(BaseModel):
+    """Branch information response model."""
+
+    name: str
+    last_indexed_commit: str | None
+    oldest_indexed_commit: str | None
+    commit_count: int
+    last_indexed_at: str | None
+
+
+class BranchListResponse(BaseModel):
+    """List of branches response."""
+
+    branches: list[BranchInfoResponse]
 
 
 @router.get("", response_model=list[RepositoryResponse])
@@ -281,4 +298,43 @@ async def get_repository_stats(
         total_symbols=symbol_count,
         total_references=reference_count,
         languages=languages,
+    )
+
+
+@router.get("/{repository_id}/branches", response_model=BranchListResponse)
+async def get_repository_branches(
+    repository_id: int,
+    repo_adapter: RepositoryAdapter,
+    index_status_adapter: IndexStatusAdapter,
+) -> BranchListResponse:
+    """
+    Get indexed branches for a repository.
+
+    Returns information about each branch including indexing status
+    and commit range (for time travel).
+    """
+    # Verify repository exists
+    repository = await repo_adapter.find_by_id(repository_id)
+    if not repository:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    # Get index status for all branches
+    statuses = await index_status_adapter.list_by_repository(repository_id)
+
+    return BranchListResponse(
+        branches=[
+            BranchInfoResponse(
+                name=status.branch,
+                last_indexed_commit=status.last_indexed_commit,
+                oldest_indexed_commit=status.oldest_indexed_commit,
+                commit_count=status.total_commits_indexed,
+                last_indexed_at=(
+                    status.last_indexed_at.isoformat()
+                    if status.last_indexed_at
+                    else None
+                ),
+            )
+            for status in statuses
+            if status.indexing_status == "completed"
+        ]
     )
