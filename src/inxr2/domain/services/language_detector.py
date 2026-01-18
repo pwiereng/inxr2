@@ -180,8 +180,14 @@ class LanguageDetector:
         # Be inclusive - include files without extensions or unknown extensions
         # as they are often config files, READMEs, etc.
         if not extension or extension in {
-            ".lock", ".env", ".cfg", ".conf", ".properties",
-            ".editorconfig", ".prettierrc", ".eslintrc",
+            ".lock",
+            ".env",
+            ".cfg",
+            ".conf",
+            ".properties",
+            ".editorconfig",
+            ".prettierrc",
+            ".eslintrc",
         }:
             return True
 

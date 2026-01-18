@@ -2,7 +2,7 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import MetaData, engine_from_config, pool
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -23,6 +23,7 @@ config.set_main_option("sqlalchemy.url", database_url)
 
 # Import all SQLAlchemy models for autogenerate support
 # These are the ORM models in the adapters layer
+target_metadata: MetaData | None
 try:
     from inxr2.adapters.persistence.models import Base
 

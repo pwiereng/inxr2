@@ -16,7 +16,7 @@ class SearchSymbolsRequest:
     """
 
     query: str
-    repository_id: str | None = None
+    repository_id: int | None = None
     limit: int = 100
 
 

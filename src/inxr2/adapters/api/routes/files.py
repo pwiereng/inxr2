@@ -11,14 +11,14 @@ from ....adapters.persistence.repositories.commit_adapter import (
     PostgresCommitRepository,
 )
 from ....adapters.persistence.repositories.file_adapter import PostgresFileRepository
+from ....adapters.persistence.repositories.reference_adapter import (
+    PostgresReferenceRepository,
+)
 from ....adapters.persistence.repositories.repository_adapter import (
     PostgresRepositoryAdapter,
 )
 from ....adapters.persistence.repositories.symbol_adapter import (
     PostgresSymbolRepository,
-)
-from ....adapters.persistence.repositories.reference_adapter import (
-    PostgresReferenceRepository,
 )
 from ....infrastructure.database import get_db_session
 
@@ -131,11 +131,11 @@ async def get_file_content(
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-    except UnicodeDecodeError:
+    except UnicodeDecodeError as e:
         raise HTTPException(
             status_code=400,
             detail="File is binary and cannot be displayed as text",
-        )
+        ) from e
 
     # Count lines: number of newlines + 1 if file doesn't end with newline
     has_trailing_newline = content.endswith("\n") if content else True

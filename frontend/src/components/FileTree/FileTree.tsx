@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Box,
   Typography,
@@ -8,54 +8,54 @@ import {
   ListItemText,
   Collapse,
   CircularProgress,
-} from '@mui/material';
-import FolderIcon from '@mui/icons-material/Folder';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+} from '@mui/material'
+import FolderIcon from '@mui/icons-material/Folder'
+import FolderOpenIcon from '@mui/icons-material/FolderOpen'
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 
-import type { TreeNode } from '@/lib/api';
+import type { TreeNode } from '@/lib/api'
 
 // Find a file in the tree by its ID and return the path to it
 function findFilePathById(nodes: TreeNode[], fileId: number): string | null {
   for (const node of nodes) {
     if (node.file_id === fileId) {
-      return node.path;
+      return node.path
     }
     if (node.children) {
-      const found = findFilePathById(node.children, fileId);
-      if (found) return found;
+      const found = findFilePathById(node.children, fileId)
+      if (found) return found
     }
   }
-  return null;
+  return null
 }
 
 // Get all parent directory paths for a given file path
 function getParentPaths(filePath: string): string[] {
-  const parts = filePath.split('/');
-  const paths: string[] = [];
+  const parts = filePath.split('/')
+  const paths: string[] = []
   for (let i = 1; i < parts.length; i++) {
-    paths.push(parts.slice(0, i).join('/'));
+    paths.push(parts.slice(0, i).join('/'))
   }
-  return paths;
+  return paths
 }
 
 interface FileTreeProps {
-  nodes: TreeNode[];
-  selectedFileId?: number | null;
-  onFileSelect?: (fileId: number, path: string) => void;
-  loading?: boolean;
+  nodes: TreeNode[]
+  selectedFileId?: number | null
+  onFileSelect?: (fileId: number, path: string) => void
+  loading?: boolean
 }
 
 interface TreeNodeItemProps {
-  node: TreeNode;
-  level: number;
-  selectedFileId?: number | null;
-  onFileSelect?: (fileId: number, path: string) => void;
-  expandedPaths: Set<string>;
-  toggleExpanded: (path: string) => void;
-  selectedRef?: React.RefObject<HTMLDivElement>;
+  node: TreeNode
+  level: number
+  selectedFileId?: number | null
+  onFileSelect?: (fileId: number, path: string) => void
+  expandedPaths: Set<string>
+  toggleExpanded: (path: string) => void
+  selectedRef?: React.RefObject<HTMLDivElement>
 }
 
 // Get file icon color based on language
@@ -71,8 +71,8 @@ function getFileColor(language: string | null): string {
     markdown: '#083FA1',
     css: '#563D7C',
     html: '#E34F26',
-  };
-  return language ? colors[language.toLowerCase()] || '#6e7681' : '#6e7681';
+  }
+  return language ? colors[language.toLowerCase()] || '#6e7681' : '#6e7681'
 }
 
 function TreeNodeItem({
@@ -84,17 +84,17 @@ function TreeNodeItem({
   toggleExpanded,
   selectedRef,
 }: TreeNodeItemProps) {
-  const isExpanded = expandedPaths.has(node.path);
-  const isDirectory = node.type === 'directory';
-  const isSelected = node.file_id === selectedFileId;
+  const isExpanded = expandedPaths.has(node.path)
+  const isDirectory = node.type === 'directory'
+  const isSelected = node.file_id === selectedFileId
 
   const handleClick = () => {
     if (isDirectory) {
-      toggleExpanded(node.path);
+      toggleExpanded(node.path)
     } else if (node.file_id && onFileSelect) {
-      onFileSelect(node.file_id, node.path);
+      onFileSelect(node.file_id, node.path)
     }
-  };
+  }
 
   return (
     <>
@@ -138,10 +138,7 @@ function TreeNodeItem({
               <FolderIcon fontSize="small" sx={{ color: '#dcb67a' }} />
             )
           ) : (
-            <InsertDriveFileIcon
-              fontSize="small"
-              sx={{ color: getFileColor(node.language) }}
-            />
+            <InsertDriveFileIcon fontSize="small" sx={{ color: getFileColor(node.language) }} />
           )}
         </ListItemIcon>
 
@@ -181,59 +178,54 @@ function TreeNodeItem({
         </Collapse>
       )}
     </>
-  );
+  )
 }
 
-export function FileTree({
-  nodes,
-  selectedFileId,
-  onFileSelect,
-  loading = false,
-}: FileTreeProps) {
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
-  const selectedRef = useRef<HTMLDivElement>(null!);
+export function FileTree({ nodes, selectedFileId, onFileSelect, loading = false }: FileTreeProps) {
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
+  const selectedRef = useRef<HTMLDivElement>(null!)
 
   const toggleExpanded = useCallback((path: string) => {
     setExpandedPaths((prev) => {
-      const next = new Set(prev);
+      const next = new Set(prev)
       if (next.has(path)) {
-        next.delete(path);
+        next.delete(path)
       } else {
-        next.add(path);
+        next.add(path)
       }
-      return next;
-    });
-  }, []);
+      return next
+    })
+  }, [])
 
   // Auto-expand path and scroll to selected file when selectedFileId changes
   useEffect(() => {
     if (selectedFileId && nodes.length > 0) {
-      const filePath = findFilePathById(nodes, selectedFileId);
+      const filePath = findFilePathById(nodes, selectedFileId)
       if (filePath) {
-        const parentPaths = getParentPaths(filePath);
+        const parentPaths = getParentPaths(filePath)
         // Expand all parent directories
         setExpandedPaths((prev) => {
-          const next = new Set(prev);
-          parentPaths.forEach((p) => next.add(p));
-          return next;
-        });
+          const next = new Set(prev)
+          parentPaths.forEach((p) => next.add(p))
+          return next
+        })
         // Scroll into view after a short delay to allow expansion animation
         setTimeout(() => {
           selectedRef.current?.scrollIntoView({
             behavior: 'smooth',
             block: 'center',
-          });
-        }, 100);
+          })
+        }, 100)
       }
     }
-  }, [selectedFileId, nodes]);
+  }, [selectedFileId, nodes])
 
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
         <CircularProgress size={24} />
       </Box>
-    );
+    )
   }
 
   if (nodes.length === 0) {
@@ -243,7 +235,7 @@ export function FileTree({
           No files found
         </Typography>
       </Box>
-    );
+    )
   }
 
   return (
@@ -261,7 +253,7 @@ export function FileTree({
         />
       ))}
     </List>
-  );
+  )
 }
 
-export default FileTree;
+export default FileTree

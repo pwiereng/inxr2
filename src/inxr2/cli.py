@@ -7,7 +7,9 @@ Uses Click for CLI framework and Rich for beautiful progress output.
 
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -36,7 +38,7 @@ def _run_single_repo_index(
     branch: str | None,
     languages: str,
     verbose: bool,
-    index_func: callable,
+    index_func: Callable[..., Any],
     index_type: str,
 ) -> None:
     """Run indexing for a single repository path."""
@@ -88,7 +90,7 @@ def _run_config_based_index(
     branch_override: str | None,
     languages_override: str | None,
     verbose: bool,
-    index_func: callable,
+    index_func: Callable[..., Any],
     index_type: str,
 ) -> None:
     """Run indexing for repositories defined in config file."""
@@ -191,7 +193,7 @@ def _run_config_based_index(
         console.print()
 
     # Summary
-    console.print(f"[bold]Indexing Summary:[/bold]")
+    console.print("[bold]Indexing Summary:[/bold]")
     console.print(f"  Successful: [green]{successful}[/green]")
     if failed > 0:
         console.print(f"  Failed: [red]{failed}[/red]")
@@ -309,6 +311,7 @@ def index_full(
         )
     else:
         # Single repository path-based indexing
+        assert path is not None
         _run_single_repo_index(
             path=path,
             branch=branch,
@@ -413,6 +416,7 @@ def index_incremental(
         )
     else:
         # Single repository path-based indexing
+        assert path is not None
         _run_single_repo_index(
             path=path,
             branch=branch,

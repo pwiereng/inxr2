@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react'
 import {
   Box,
   TextField,
@@ -7,50 +7,52 @@ import {
   Chip,
   CircularProgress,
   InputAdornment,
-} from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-import FunctionsIcon from '@mui/icons-material/Functions';
-import ClassIcon from '@mui/icons-material/Class';
-import CodeIcon from '@mui/icons-material/Code';
+} from '@mui/material'
+import SearchIcon from '@mui/icons-material/Search'
+import FunctionsIcon from '@mui/icons-material/Functions'
+import ClassIcon from '@mui/icons-material/Class'
+import CodeIcon from '@mui/icons-material/Code'
 
-import { searchSymbols, type Symbol } from '@/lib/api';
+import { searchSymbols, type Symbol } from '@/lib/api'
 
 interface SymbolSearchProps {
-  repositoryId?: number;
-  onSymbolSelect?: (symbol: Symbol) => void;
-  placeholder?: string;
+  repositoryId?: number
+  onSymbolSelect?: (symbol: Symbol) => void
+  placeholder?: string
 }
 
 // Get icon for symbol kind
 function getSymbolIcon(kind: string) {
   switch (kind.toLowerCase()) {
     case 'class':
-      return <ClassIcon fontSize="small" sx={{ color: '#4ec9b0' }} />;
+      return <ClassIcon fontSize="small" sx={{ color: '#4ec9b0' }} />
     case 'function':
     case 'method':
-      return <FunctionsIcon fontSize="small" sx={{ color: '#dcdcaa' }} />;
+      return <FunctionsIcon fontSize="small" sx={{ color: '#dcdcaa' }} />
     case 'interface':
     case 'type':
-      return <CodeIcon fontSize="small" sx={{ color: '#4fc1ff' }} />;
+      return <CodeIcon fontSize="small" sx={{ color: '#4fc1ff' }} />
     default:
-      return <CodeIcon fontSize="small" sx={{ color: '#9cdcfe' }} />;
+      return <CodeIcon fontSize="small" sx={{ color: '#9cdcfe' }} />
   }
 }
 
 // Get chip color for symbol kind
-function getKindColor(kind: string): 'primary' | 'secondary' | 'success' | 'warning' | 'info' | 'default' {
+function getKindColor(
+  kind: string
+): 'primary' | 'secondary' | 'success' | 'warning' | 'info' | 'default' {
   switch (kind.toLowerCase()) {
     case 'class':
-      return 'success';
+      return 'success'
     case 'function':
-      return 'primary';
+      return 'primary'
     case 'method':
-      return 'info';
+      return 'info'
     case 'interface':
     case 'type':
-      return 'secondary';
+      return 'secondary'
     default:
-      return 'default';
+      return 'default'
   }
 }
 
@@ -59,44 +61,44 @@ export function SymbolSearch({
   onSymbolSelect,
   placeholder = 'Search symbols...',
 }: SymbolSearchProps) {
-  const [inputValue, setInputValue] = useState('');
-  const [options, setOptions] = useState<Symbol[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [inputValue, setInputValue] = useState('')
+  const [options, setOptions] = useState<Symbol[]>([])
+  const [loading, setLoading] = useState(false)
 
   // Debounced search
   const searchDebounced = useCallback(
     async (query: string) => {
       if (!query || query.length < 2) {
-        setOptions([]);
-        return;
+        setOptions([])
+        return
       }
 
-      setLoading(true);
+      setLoading(true)
       try {
         const result = await searchSymbols({
           q: query,
           repository_id: repositoryId,
           limit: 20,
-        });
-        setOptions(result.items);
+        })
+        setOptions(result.items)
       } catch (error) {
-        console.error('Search failed:', error);
-        setOptions([]);
+        console.error('Search failed:', error)
+        setOptions([])
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     },
     [repositoryId]
-  );
+  )
 
   // Debounce effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      searchDebounced(inputValue);
-    }, 300);
+      searchDebounced(inputValue)
+    }, 300)
 
-    return () => clearTimeout(timer);
-  }, [inputValue, searchDebounced]);
+    return () => clearTimeout(timer)
+  }, [inputValue, searchDebounced])
 
   return (
     <Autocomplete
@@ -107,7 +109,7 @@ export function SymbolSearch({
       onInputChange={(_, value) => setInputValue(value)}
       onChange={(_, value) => {
         if (value && typeof value !== 'string') {
-          onSymbolSelect?.(value);
+          onSymbolSelect?.(value)
         }
       }}
       getOptionLabel={(option) => (typeof option === 'string' ? option : option.name)}
@@ -178,7 +180,7 @@ export function SymbolSearch({
       )}
       sx={{ width: '100%', maxWidth: 400 }}
     />
-  );
+  )
 }
 
-export default SymbolSearch;
+export default SymbolSearch

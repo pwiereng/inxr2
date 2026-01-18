@@ -220,9 +220,7 @@ class TestEnvironmentVariableExpansion:
         result = config_service._expand_env_vars(content)
         assert result == "path: /subdir"
 
-    def test_expand_multiple_env_vars(
-        self, config_service: YamlConfigService
-    ) -> None:
+    def test_expand_multiple_env_vars(self, config_service: YamlConfigService) -> None:
         """Test expanding multiple env vars in same string."""
         os.environ["VAR1"] = "value1"
         os.environ["VAR2"] = "value2"
@@ -266,9 +264,7 @@ repositories:
         errors = config_service.validate(config_path)
         assert errors == []
 
-    def test_validate_nonexistent_file(
-        self, config_service: YamlConfigService
-    ) -> None:
+    def test_validate_nonexistent_file(self, config_service: YamlConfigService) -> None:
         """Test validating nonexistent file returns error."""
         errors = config_service.validate(Path("/nonexistent/config.yaml"))
         assert len(errors) == 1
@@ -296,7 +292,9 @@ class TestRepositoryConfigModel:
 
     def test_repository_requires_path_or_url(self) -> None:
         """Test that either path or url must be provided."""
-        with pytest.raises(ValueError, match="Either 'path' or 'url' must be specified"):
+        with pytest.raises(
+            ValueError, match="Either 'path' or 'url' must be specified"
+        ):
             RepositoryConfig(name="test")
 
     def test_repository_with_path(self) -> None:

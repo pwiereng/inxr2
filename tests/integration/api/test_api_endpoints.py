@@ -534,9 +534,7 @@ class TestSymbolsAPI:
         assert data["items"][0]["name"] == "test_function"
         assert data["items"][0]["kind"] == "function"
 
-    async def test_get_symbol_by_id(
-        self, test_app, db_session: AsyncSession
-    ) -> None:
+    async def test_get_symbol_by_id(self, test_app, db_session: AsyncSession) -> None:
         """Test getting a specific symbol by ID."""
         from inxr2.adapters.persistence.repositories.symbol_adapter import (
             PostgresSymbolRepository,
@@ -827,9 +825,7 @@ class TestSymbolsAPI:
 class TestFilesAPI:
     """Tests for /api/files endpoints."""
 
-    async def test_get_file_symbols(
-        self, test_app, db_session: AsyncSession
-    ) -> None:
+    async def test_get_file_symbols(self, test_app, db_session: AsyncSession) -> None:
         """Test getting symbols for a specific file."""
         from inxr2.adapters.persistence.repositories.symbol_adapter import (
             PostgresSymbolRepository,

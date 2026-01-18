@@ -13,11 +13,11 @@ from inxr2.adapters.persistence.repositories.commit_adapter import (
     PostgresCommitRepository,
 )
 from inxr2.adapters.persistence.repositories.file_adapter import PostgresFileRepository
-from inxr2.adapters.persistence.repositories.repository_adapter import (
-    PostgresRepositoryAdapter,
-)
 from inxr2.adapters.persistence.repositories.reference_adapter import (
     PostgresReferenceRepository,
+)
+from inxr2.adapters.persistence.repositories.repository_adapter import (
+    PostgresRepositoryAdapter,
 )
 from inxr2.adapters.persistence.repositories.symbol_adapter import (
     PostgresSymbolRepository,
@@ -601,9 +601,7 @@ class TestPostgresSymbolRepository:
         assert "FileRepository.save" in qualified_names
         assert "CommitRepository.save" in qualified_names
 
-    async def test_find_by_exact_name_no_match(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_find_by_exact_name_no_match(self, db_session: AsyncSession) -> None:
         """Test finding symbols with a name that doesn't exist."""
         # Arrange
         repo, commit, file1, _ = await self._create_test_data(db_session)

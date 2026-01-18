@@ -132,7 +132,7 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
             delete(SymbolModel).where(SymbolModel.file_id == file_id)
         )
         await self.session.flush()
-        return result.rowcount  # type: ignore[return-value]
+        return result.rowcount or 0  # type: ignore[attr-defined]
 
     async def count_by_repository(self, repository_id: int) -> int:
         """Count symbols for a repository."""

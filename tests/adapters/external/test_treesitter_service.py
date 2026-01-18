@@ -315,13 +315,13 @@ class TestPythonNewSymbolTypes:
         self, parser_service: TreeSitterService
     ) -> None:
         """Test parsing instance variables from __init__."""
-        code = '''
+        code = """
 class User:
     def __init__(self, name, email):
         self.name = name
         self.email = email
         self._password = None
-'''
+"""
         symbols, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
@@ -343,12 +343,12 @@ class User:
         self, parser_service: TreeSitterService
     ) -> None:
         """Test parsing class variables."""
-        code = '''
+        code = """
 class Config:
     default_timeout: int = 30
     max_retries = 3
     enabled = True
-'''
+"""
         symbols, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
@@ -366,12 +366,12 @@ class Config:
         self, parser_service: TreeSitterService
     ) -> None:
         """Test parsing class constants (UPPER_CASE class variables)."""
-        code = '''
+        code = """
 class Constants:
     MAX_SIZE = 1024
     DEFAULT_NAME = "test"
     TIMEOUT = 30
-'''
+"""
         symbols, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
@@ -385,11 +385,9 @@ class Constants:
         assert "TIMEOUT" in const_names
 
     @pytest.mark.asyncio
-    async def test_parse_properties(
-        self, parser_service: TreeSitterService
-    ) -> None:
+    async def test_parse_properties(self, parser_service: TreeSitterService) -> None:
         """Test parsing @property decorators."""
-        code = '''
+        code = """
 class Rectangle:
     def __init__(self, width, height):
         self._width = width
@@ -406,7 +404,7 @@ class Rectangle:
     @property
     def area(self):
         return self._width * self._height
-'''
+"""
         symbols, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
@@ -420,11 +418,9 @@ class Rectangle:
         assert "area" in prop_names
 
     @pytest.mark.asyncio
-    async def test_parse_staticmethod(
-        self, parser_service: TreeSitterService
-    ) -> None:
+    async def test_parse_staticmethod(self, parser_service: TreeSitterService) -> None:
         """Test parsing @staticmethod decorators."""
-        code = '''
+        code = """
 class MathUtils:
     @staticmethod
     def add(a, b):
@@ -433,7 +429,7 @@ class MathUtils:
     @staticmethod
     def multiply(a, b):
         return a * b
-'''
+"""
         symbols, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
@@ -446,11 +442,9 @@ class MathUtils:
         assert "multiply" in method_names
 
     @pytest.mark.asyncio
-    async def test_parse_classmethod(
-        self, parser_service: TreeSitterService
-    ) -> None:
+    async def test_parse_classmethod(self, parser_service: TreeSitterService) -> None:
         """Test parsing @classmethod decorators."""
-        code = '''
+        code = """
 class Factory:
     @classmethod
     def create(cls, name):
@@ -459,7 +453,7 @@ class Factory:
     @classmethod
     def from_dict(cls, data):
         return cls(**data)
-'''
+"""
         symbols, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
@@ -569,9 +563,7 @@ enum Status {
         assert "Pending" in member_names
 
     @pytest.mark.asyncio
-    async def test_parse_class_fields(
-        self, parser_service: TreeSitterService
-    ) -> None:
+    async def test_parse_class_fields(self, parser_service: TreeSitterService) -> None:
         """Test parsing class field definitions."""
         code = """
 class Service {
