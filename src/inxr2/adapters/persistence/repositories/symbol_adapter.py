@@ -102,21 +102,29 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         self,
         name: str,
         repository_id: int | None = None,
+        commit_id: int | None = None,
     ) -> list[Symbol]:
         """Find all symbols with the exact given name.
 
         Useful for disambiguation when multiple symbols have the same name
         (e.g., save() methods in different classes).
 
-        Only returns symbols from the latest version of each file,
-        avoiding duplicates from multiple indexed commits.
+        Args:
+            name: The exact symbol name to match
+            repository_id: Filter by repository (optional)
+            commit_id: Filter by specific commit for time travel (optional).
+                       If not provided, returns symbols from latest file versions.
         """
         query = select(SymbolModel).where(SymbolModel.name == name)
 
         if repository_id is not None:
             query = query.where(SymbolModel.repository_id == repository_id)
 
-            # Filter to only symbols from latest file versions
+        if commit_id is not None:
+            # Time travel mode: filter to specific commit
+            query = query.where(SymbolModel.commit_id == commit_id)
+        elif repository_id is not None:
+            # Default mode: filter to only symbols from latest file versions
             latest_files = (
                 select(func.max(FileModel.id).label("latest_id"))
                 .where(FileModel.repository_id == repository_id)

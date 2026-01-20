@@ -94,11 +94,20 @@ def run_full_index(
     branch: str | None,
     languages: list[str],
     console: Console,
+    max_history: int | None = 100,
 ) -> None:
     """
-    Run full indexing of a repository.
+    Run full indexing of a repository with time travel support.
 
-    This performs a complete index from scratch, clearing any existing data.
+    This performs a complete index from scratch, indexing multiple commits
+    to enable time travel functionality.
+
+    Args:
+        repo_path: Path to the git repository
+        branch: Branch to index (uses current branch if None)
+        languages: List of languages to index
+        console: Rich console for output
+        max_history: Maximum number of commits to index (None = all commits)
     """
     # Run the async indexing in an event loop
     asyncio.run(
@@ -107,6 +116,7 @@ def run_full_index(
             branch=branch,
             languages=languages,
             console=console,
+            max_history=max_history,
         )
     )
 
@@ -116,8 +126,9 @@ async def _run_full_index_async(
     branch: str | None,
     languages: list[str],
     console: Console,
+    max_history: int | None = 100,
 ) -> None:
-    """Async implementation of full indexing."""
+    """Async implementation of full indexing with multi-commit support."""
     from inxr2.adapters.external.git_service import GitService
     from inxr2.adapters.external.treesitter import TreeSitterService
     from inxr2.adapters.persistence.repositories import (
@@ -142,30 +153,24 @@ async def _run_full_index_async(
     console.print("[dim]Analyzing repository...[/dim]")
     repo_info = git_service.get_repository_info(repo_path)
     current_branch = branch or repo_info.get("current_branch", "main")
-    commit_hash = git_service.get_current_commit(repo_path, current_branch)
-    commit_info = git_service.get_commit_info(repo_path, commit_hash)
 
-    console.print(f"  Commit: [cyan]{commit_hash[:8]}[/cyan]")
-    console.print(f"  Branch: [cyan]{current_branch}[/cyan]")
-    console.print()
+    # Get list of commits for time travel (oldest first)
+    history_msg = f"max {max_history}" if max_history else "all"
+    console.print(f"[dim]Loading commit history ({history_msg} commits)...[/dim]")
+    commits_to_index = git_service.list_commits(repo_path, current_branch, max_history)
 
-    # Get list of files to index
-    console.print("[dim]Collecting files...[/dim]")
-    all_files = git_service.list_files(repo_path, commit_hash)
-
-    # Filter by supported languages
-    files_to_index = _filter_files_by_language(all_files, languages)
-    stats.files_total = len(files_to_index)
-    stats.files_skipped = len(all_files) - len(files_to_index)
-
-    console.print(f"  Total files: {len(all_files)}")
-    console.print(f"  Files to index: [green]{stats.files_total}[/green]")
-    console.print(f"  Files skipped: [dim]{stats.files_skipped}[/dim]")
-    console.print()
-
-    if stats.files_total == 0:
-        console.print("[yellow]No files to index for the specified languages.[/yellow]")
+    if not commits_to_index:
+        console.print("[yellow]No commits found for this branch.[/yellow]")
         return
+
+    oldest_commit = commits_to_index[0]
+    newest_commit = commits_to_index[-1]
+
+    console.print(f"  Branch: [cyan]{current_branch}[/cyan]")
+    console.print(f"  Commits to index: [green]{len(commits_to_index)}[/green]")
+    console.print(f"  Oldest commit: [dim]{oldest_commit['short_hash']}[/dim]")
+    console.print(f"  Newest commit: [cyan]{newest_commit['short_hash']}[/cyan]")
+    console.print()
 
     # Set up database connection
     console.print("[dim]Connecting to database...[/dim]")
@@ -205,32 +210,6 @@ async def _run_full_index_async(
                 raise RuntimeError("Repository record missing database ID after save")
             repo_id = db_repo.id
 
-            # Get or create commit record
-            db_commit = await commit_repository.find_by_hash(repo_id, commit_hash)
-            if db_commit is None:
-                db_commit = await commit_repository.save(
-                    Commit(
-                        repository_id=repo_id,
-                        commit_hash=CommitHash(value=commit_hash),
-                        short_hash=commit_hash[:7],
-                        parent_hashes=commit_info.get("parent_hashes", []),
-                        branch=current_branch,
-                        author_name=commit_info.get("author_name", "unknown"),
-                        author_email=commit_info.get("author_email", ""),
-                        committer_name=commit_info.get("committer_name", "unknown"),
-                        committer_email=commit_info.get("committer_email", ""),
-                        author_date=_to_naive_utc(commit_info.get("author_date"))
-                        or _utc_now(),
-                        commit_date=_to_naive_utc(commit_info.get("commit_date"))
-                        or _utc_now(),
-                        message=commit_info.get("message", ""),
-                    )
-                )
-                console.print(f"  Created commit: [cyan]{commit_hash[:8]}[/cyan]")
-            if db_commit.id is None:
-                raise RuntimeError("Commit record missing database ID after save")
-            commit_id = db_commit.id
-
             # Update index status to in_progress
             index_status = await index_status_repository.find_by_repository_and_branch(
                 repo_id, current_branch
@@ -252,6 +231,7 @@ async def _run_full_index_async(
                     indexing_status="in_progress",
                     indexing_started_at=_utc_now(),
                     last_indexed_commit=index_status.last_indexed_commit,
+                    oldest_indexed_commit=index_status.oldest_indexed_commit,
                     last_indexed_at=index_status.last_indexed_at,
                     total_commits_indexed=index_status.total_commits_indexed,
                     total_files_indexed=0,  # Reset for full index
@@ -264,11 +244,11 @@ async def _run_full_index_async(
 
             console.print()
 
-            # Index files with progress
+            # Index each commit from oldest to newest
             with create_progress() as progress:
-                main_task = progress.add_task(
-                    "[green]Indexing files...",
-                    total=stats.files_total,
+                commit_task = progress.add_task(
+                    "[green]Indexing commits...",
+                    total=len(commits_to_index),
                 )
                 file_task = progress.add_task(
                     "[dim]Preparing...",
@@ -276,44 +256,84 @@ async def _run_full_index_async(
                     visible=True,
                 )
 
-                for file_path in files_to_index:
-                    short_path = _shorten_path(file_path, max_len=50)
+                for commit_info in commits_to_index:
+                    commit_hash = commit_info["hash"]
+                    short_hash = commit_info["short_hash"]
+
                     progress.update(
-                        file_task, description=f"[cyan]{short_path}[/cyan]", completed=0
+                        file_task,
+                        description=f"[cyan]Commit {short_hash}[/cyan]",
+                        completed=0,
                     )
 
-                    try:
-                        # Check if file already exists for this commit
-                        existing_file = await file_repository.find_by_path(
-                            repo_id, commit_id, file_path
-                        )
-                        progress.update(file_task, completed=10)
-
-                        # Get file content
-                        content = git_service.get_file_content(
-                            repo_path, commit_hash, file_path
-                        )
-                        progress.update(file_task, completed=20)
-
-                        # Calculate content hash
-                        content_hash = hashlib.sha1(content.encode("utf-8")).hexdigest()
-                        progress.update(file_task, completed=25)
-
-                        # Detect language
-                        language = _detect_language(file_path)
-                        progress.update(file_task, completed=30)
-
-                        # If file exists, delete old symbols/references first
-                        if existing_file:
-                            if existing_file.id is None:
-                                raise RuntimeError(
-                                    "Existing file record missing database ID"
+                    # Get or create commit record
+                    db_commit = await commit_repository.find_by_hash(
+                        repo_id, commit_hash
+                    )
+                    if db_commit is None:
+                        db_commit = await commit_repository.save(
+                            Commit(
+                                repository_id=repo_id,
+                                commit_hash=CommitHash(value=commit_hash),
+                                short_hash=short_hash,
+                                parent_hashes=commit_info.get("parent_hashes", []),
+                                branch=current_branch,
+                                author_name=commit_info.get("author_name", "unknown"),
+                                author_email=commit_info.get("author_email", ""),
+                                committer_name=commit_info.get(
+                                    "committer_name", "unknown"
+                                ),
+                                committer_email=commit_info.get("committer_email", ""),
+                                author_date=_to_naive_utc(
+                                    commit_info.get("author_date")
                                 )
-                            await symbol_repository.delete_by_file(existing_file.id)
-                            await reference_repository.delete_by_file(existing_file.id)
-                            # Reuse existing file record
-                            db_file = existing_file
-                        else:
+                                or _utc_now(),
+                                commit_date=_to_naive_utc(
+                                    commit_info.get("commit_date")
+                                )
+                                or _utc_now(),
+                                message=commit_info.get("message", ""),
+                            )
+                        )
+                    if db_commit.id is None:
+                        raise RuntimeError(
+                            "Commit record missing database ID after save"
+                        )
+                    commit_id = db_commit.id
+
+                    progress.update(file_task, completed=10)
+
+                    # Get files at this commit
+                    all_files = git_service.list_files(repo_path, commit_hash)
+                    files_to_index = _filter_files_by_language(all_files, languages)
+
+                    progress.update(file_task, completed=20)
+
+                    # Index each file at this commit
+                    for file_path in files_to_index:
+                        try:
+                            # Check if file already exists for this commit
+                            existing_file = await file_repository.find_by_path(
+                                repo_id, commit_id, file_path
+                            )
+
+                            if existing_file:
+                                # Skip - already indexed
+                                continue
+
+                            # Get file content
+                            content = git_service.get_file_content(
+                                repo_path, commit_hash, file_path
+                            )
+
+                            # Calculate content hash
+                            content_hash = hashlib.sha1(
+                                content.encode("utf-8")
+                            ).hexdigest()
+
+                            # Detect language
+                            language = _detect_language(file_path)
+
                             # Create new file record
                             db_file = await file_repository.save(
                                 File(
@@ -326,67 +346,68 @@ async def _run_full_index_async(
                                     line_count=content.count("\n") + 1,
                                 )
                             )
-                        if db_file.id is None:
-                            raise RuntimeError(
-                                "File record missing database ID after save"
-                            )
-                        file_id = db_file.id
-                        progress.update(file_task, completed=40)
+                            if db_file.id is None:
+                                raise RuntimeError(
+                                    "File record missing database ID after save"
+                                )
+                            file_id = db_file.id
 
-                        # Parse file and extract symbols
-                        if language and parser_service.supports_language(language):
-                            symbol_dicts, ref_dicts = await parser_service.parse_file(
-                                content=content,
-                                language=language,
-                                file_path=file_path,
-                            )
-                            progress.update(file_task, completed=60)
-
-                            # Convert and save symbols
-                            if symbol_dicts:
-                                symbols = [
-                                    _dict_to_symbol(
-                                        s,
-                                        file_id=file_id,
-                                        repository_id=db_repo.id,
-                                        commit_id=commit_id,
+                            # Parse file and extract symbols
+                            if language and parser_service.supports_language(language):
+                                symbol_dicts, ref_dicts = (
+                                    await parser_service.parse_file(
+                                        content=content,
+                                        language=language,
+                                        file_path=file_path,
                                     )
-                                    for s in symbol_dicts
-                                ]
-                                await symbol_repository.save_many(symbols)
-                                stats.symbols_found += len(symbols)
-                            progress.update(file_task, completed=80)
+                                )
 
-                            # Convert and save references
-                            if ref_dicts:
-                                references = [
-                                    _dict_to_reference(
-                                        r,
-                                        source_file_id=file_id,
-                                        repository_id=repo_id,
-                                        commit_id=commit_id,
-                                    )
-                                    for r in ref_dicts
-                                ]
-                                await reference_repository.save_many(references)
-                                stats.references_found += len(references)
-                            progress.update(file_task, completed=100)
+                                # Convert and save symbols
+                                if symbol_dicts:
+                                    symbols = [
+                                        _dict_to_symbol(
+                                            s,
+                                            file_id=file_id,
+                                            repository_id=db_repo.id,
+                                            commit_id=commit_id,
+                                        )
+                                        for s in symbol_dicts
+                                    ]
+                                    await symbol_repository.save_many(symbols)
+                                    stats.symbols_found += len(symbols)
 
-                        stats.files_processed += 1
+                                # Convert and save references
+                                if ref_dicts:
+                                    references = [
+                                        _dict_to_reference(
+                                            r,
+                                            source_file_id=file_id,
+                                            repository_id=repo_id,
+                                            commit_id=commit_id,
+                                        )
+                                        for r in ref_dicts
+                                    ]
+                                    await reference_repository.save_many(references)
+                                    stats.references_found += len(references)
 
-                    except Exception as e:
-                        stats.files_failed += 1
-                        stats.errors.append(f"{file_path}: {str(e)}")
-                        logger.warning(f"Failed to index {file_path}: {e}")
+                            stats.files_processed += 1
 
-                    progress.update(main_task, advance=1)
+                        except Exception as e:
+                            stats.files_failed += 1
+                            stats.errors.append(f"{file_path}@{short_hash}: {str(e)}")
+                            logger.warning(
+                                f"Failed to index {file_path}@{short_hash}: {e}"
+                            )
+
+                    progress.update(file_task, completed=100)
+                    progress.update(commit_task, advance=1)
 
                 progress.update(
                     file_task, description="[green]Complete[/green]", completed=100
                 )
 
-            # Resolve references to symbols
-            stats.references_resolved = await resolve_references(
+            # Resolve references to symbols (commit-aware)
+            stats.references_resolved = await resolve_references_commit_aware(
                 repo_id, session, console
             )
 
@@ -396,10 +417,11 @@ async def _run_full_index_async(
                 repository_id=repo_id,
                 branch=current_branch,
                 indexing_status="completed",
-                last_indexed_commit=commit_hash,
+                last_indexed_commit=newest_commit["hash"],
+                oldest_indexed_commit=oldest_commit["hash"],
                 last_indexed_at=_utc_now(),
                 indexing_started_at=index_status.indexing_started_at,
-                total_commits_indexed=1,
+                total_commits_indexed=len(commits_to_index),
                 total_files_indexed=stats.files_succeeded,
                 total_symbols_indexed=stats.symbols_found,
                 total_references_indexed=stats.references_found,
@@ -412,8 +434,8 @@ async def _run_full_index_async(
     finally:
         await db.close()
 
-    # Print summary
-    _print_summary(console, stats)
+    # Print summary with commit info
+    _print_summary(console, stats, commits_indexed=len(commits_to_index))
 
 
 def run_incremental_index(
@@ -421,11 +443,14 @@ def run_incremental_index(
     branch: str | None,
     languages: list[str],
     console: Console,
+    max_history: int = 1,  # Ignored for incremental - only indexes since last commit
 ) -> None:
     """
     Run incremental indexing of a repository.
 
     Only indexes files that have changed since the last index.
+    The max_history parameter is accepted for API compatibility but ignored
+    (incremental always indexes from the last indexed commit to HEAD).
     """
     asyncio.run(
         _run_incremental_index_async(
@@ -899,7 +924,10 @@ def _shorten_path(path: str, max_len: int = 50) -> str:
 
 
 def _print_summary(
-    console: Console, stats: IndexingStats, is_incremental: bool = False
+    console: Console,
+    stats: IndexingStats,
+    is_incremental: bool = False,
+    commits_indexed: int | None = None,
 ) -> None:
     """Print indexing summary."""
     console.print()
@@ -911,6 +939,8 @@ def _print_summary(
     table.add_column("Metric", style="dim")
     table.add_column("Value", justify="right")
 
+    if commits_indexed is not None:
+        table.add_row("Commits Indexed", f"[magenta]{commits_indexed}[/magenta]")
     table.add_row("Files Processed", f"[green]{stats.files_succeeded}[/green]")
     if stats.files_skipped > 0:
         table.add_row("Files Skipped", f"[dim]{stats.files_skipped}[/dim]")
@@ -1041,6 +1071,54 @@ async def resolve_references(
             FROM symbols s
             WHERE r.repository_id = :repo_id
               AND s.repository_id = :repo_id
+              AND r.reference_text = s.name
+              AND r.target_symbol_id IS NULL
+        """
+        ),
+        {"repo_id": repository_id},
+    )
+    await session.commit()
+
+    resolved_count = result.rowcount or 0
+    console.print(f"[green]Resolved {resolved_count} references to symbols[/green]")
+
+    return resolved_count
+
+
+async def resolve_references_commit_aware(
+    repository_id: int,
+    session: Any,
+    console: Console,
+) -> int:
+    """
+    Resolve references to their target symbols with commit awareness.
+
+    For time travel support, references are matched to symbols from the same
+    commit, ensuring that navigation stays within the same version of the code.
+
+    Args:
+        repository_id: The repository ID to resolve references for
+        session: Database session
+        console: Rich console for output
+
+    Returns:
+        Number of references resolved
+    """
+    from sqlalchemy import text
+
+    console.print("[cyan]Resolving references (commit-aware)...[/cyan]")
+
+    # Update references where reference_text matches a symbol name
+    # in the same repository AND same commit (for time travel consistency)
+    result = await session.execute(
+        text(
+            """
+            UPDATE "references" r
+            SET target_symbol_id = s.id
+            FROM symbols s
+            WHERE r.repository_id = :repo_id
+              AND s.repository_id = :repo_id
+              AND r.commit_id = s.commit_id
               AND r.reference_text = s.name
               AND r.target_symbol_id IS NULL
         """

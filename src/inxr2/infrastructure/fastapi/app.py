@@ -40,12 +40,13 @@ def create_app() -> FastAPI:
     init_database()
 
     # Register routers
-    from ...adapters.api.routes import files, indexing, repositories, symbols
+    from ...adapters.api.routes import commits, files, indexing, repositories, symbols
 
     app.include_router(repositories.router, prefix="/api")
     app.include_router(indexing.router, prefix="/api")
     app.include_router(symbols.router, prefix="/api")
     app.include_router(files.router, prefix="/api")
+    app.include_router(commits.router, prefix="/api")
 
     # Health check endpoint
     @app.get("/api/health")

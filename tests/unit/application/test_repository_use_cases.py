@@ -576,3 +576,156 @@ class TestGetRepositoryTreeUseCase:
         """Test that request requires either repository_id or repository_name."""
         with pytest.raises(ValueError, match="Either repository_id or repository_name"):
             GetRepositoryTreeRequest()
+
+    @pytest.mark.asyncio
+    async def test_get_tree_at_specific_commit(self) -> None:
+        """Test getting tree at a specific commit (time travel)."""
+        repo_repository = InMemoryRepositoryRepository()
+        file_repository = InMemoryFileRepository()
+        commit_repository = InMemoryCommitRepository()
+
+        repo = await repo_repository.save(
+            Repository(name="test-repo", url="https://example.com/repo.git")
+        )
+
+        # Create two commits
+        commit1 = await commit_repository.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=CommitHash("aaa111" + "0" * 34),
+                short_hash="aaa111",
+                parent_hashes=[],
+                branch="main",
+                author_name="Test",
+                author_email="test@example.com",
+                committer_name="Test",
+                committer_email="test@example.com",
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+                message="First commit",
+            )
+        )
+        commit2 = await commit_repository.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=CommitHash("bbb222" + "0" * 34),
+                short_hash="bbb222",
+                parent_hashes=["aaa111" + "0" * 34],
+                branch="main",
+                author_name="Test",
+                author_email="test@example.com",
+                committer_name="Test",
+                committer_email="test@example.com",
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+                message="Second commit",
+            )
+        )
+
+        # Files at commit 1: only app.py exists
+        await file_repository.save(
+            File(
+                repository_id=repo.id,
+                commit_id=commit1.id,
+                path="app.py",
+                content_hash="hash1",
+                size_bytes=100,
+            )
+        )
+
+        # Files at commit 2: app.py and new_feature.py exist
+        await file_repository.save(
+            File(
+                repository_id=repo.id,
+                commit_id=commit2.id,
+                path="app.py",
+                content_hash="hash1_v2",
+                size_bytes=150,
+            )
+        )
+        await file_repository.save(
+            File(
+                repository_id=repo.id,
+                commit_id=commit2.id,
+                path="new_feature.py",
+                content_hash="hash2",
+                size_bytes=200,
+            )
+        )
+
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+            commit_repo=commit_repository,
+        )
+
+        # Get tree at commit 1 - should only have app.py
+        result1 = await use_case.execute(
+            GetRepositoryTreeRequest(
+                repository_id=repo.id,
+                commit_hash="aaa111" + "0" * 34,
+            )
+        )
+        assert result1.total_files == 1
+        assert result1.root[0].name == "app.py"
+
+        # Get tree at commit 2 - should have both files
+        result2 = await use_case.execute(
+            GetRepositoryTreeRequest(
+                repository_id=repo.id,
+                commit_hash="bbb222" + "0" * 34,
+            )
+        )
+        assert result2.total_files == 2
+        file_names = {node.name for node in result2.root}
+        assert file_names == {"app.py", "new_feature.py"}
+
+    @pytest.mark.asyncio
+    async def test_get_tree_with_invalid_commit(self) -> None:
+        """Test that getting tree with invalid commit raises error."""
+        repo_repository = InMemoryRepositoryRepository()
+        file_repository = InMemoryFileRepository()
+        commit_repository = InMemoryCommitRepository()
+
+        repo = await repo_repository.save(
+            Repository(name="test-repo", url="https://example.com/repo.git")
+        )
+
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+            commit_repo=commit_repository,
+        )
+
+        with pytest.raises(ValueError, match="Commit not found"):
+            await use_case.execute(
+                GetRepositoryTreeRequest(
+                    repository_id=repo.id,
+                    commit_hash="nonexistent" + "0" * 30,
+                )
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_tree_with_commit_hash_but_no_commit_repo(self) -> None:
+        """Test that commit_hash without commit_repo raises informative error."""
+        repo_repository = InMemoryRepositoryRepository()
+        file_repository = InMemoryFileRepository()
+
+        repo = await repo_repository.save(
+            Repository(name="test-repo", url="https://example.com/repo.git")
+        )
+
+        # Create use case WITHOUT commit_repo
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+            commit_repo=None,  # No commit repo provided
+        )
+
+        with pytest.raises(ValueError, match="Time travel requires commit repository"):
+            await use_case.execute(
+                GetRepositoryTreeRequest(
+                    repository_id=repo.id,
+                    commit_hash="abc123" + "0" * 34,  # commit_hash provided
+                )
+            )

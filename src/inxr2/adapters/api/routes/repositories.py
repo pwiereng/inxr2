@@ -14,6 +14,7 @@ from ....infrastructure.dependencies import (
     FileAdapter,
     GetRepositoryFilesUseCaseDep,
     GetRepositoryTreeUseCaseDep,
+    IndexStatusAdapter,
     ListRepositoriesUseCaseDep,
     ReferenceAdapter,
     RepositoryAdapter,
@@ -87,6 +88,22 @@ class RepositoryStatsResponse(BaseModel):
     languages: dict[str, int]
 
 
+class BranchInfoResponse(BaseModel):
+    """Branch information response model."""
+
+    name: str
+    last_indexed_commit: str | None
+    oldest_indexed_commit: str | None
+    commit_count: int
+    last_indexed_at: str | None
+
+
+class BranchListResponse(BaseModel):
+    """List of branches response."""
+
+    branches: list[BranchInfoResponse]
+
+
 @router.get("", response_model=list[RepositoryResponse])
 async def list_repositories(
     use_case: ListRepositoriesUseCaseDep,
@@ -151,11 +168,17 @@ def _tree_node_to_response(node: TreeNode) -> TreeNodeResponse:
 async def get_repository_tree_by_name(
     name: str,
     use_case: GetRepositoryTreeUseCaseDep,
+    commit: str | None = None,
 ) -> TreeResponse:
-    """Get the file tree structure for a repository by name."""
+    """Get the file tree structure for a repository by name.
+
+    Query parameters:
+    - commit: Commit hash for time travel (optional). If provided, returns
+              the tree as it existed at that specific commit.
+    """
     try:
         response = await use_case.execute(
-            GetRepositoryTreeRequest(repository_name=name)
+            GetRepositoryTreeRequest(repository_name=name, commit_hash=commit)
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -223,15 +246,20 @@ async def get_repository_files(
 async def get_repository_tree(
     repository_id: int,
     use_case: GetRepositoryTreeUseCaseDep,
+    commit: str | None = None,
 ) -> TreeResponse:
     """
     Get the file tree structure for a repository.
 
     Returns a hierarchical tree of directories and files.
+
+    Query parameters:
+    - commit: Commit hash for time travel (optional). If provided, returns
+              the tree as it existed at that specific commit.
     """
     try:
         response = await use_case.execute(
-            GetRepositoryTreeRequest(repository_id=repository_id)
+            GetRepositoryTreeRequest(repository_id=repository_id, commit_hash=commit)
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -281,4 +309,43 @@ async def get_repository_stats(
         total_symbols=symbol_count,
         total_references=reference_count,
         languages=languages,
+    )
+
+
+@router.get("/{repository_id}/branches", response_model=BranchListResponse)
+async def get_repository_branches(
+    repository_id: int,
+    repo_adapter: RepositoryAdapter,
+    index_status_adapter: IndexStatusAdapter,
+) -> BranchListResponse:
+    """
+    Get indexed branches for a repository.
+
+    Returns information about each branch including indexing status
+    and commit range (for time travel).
+    """
+    # Verify repository exists
+    repository = await repo_adapter.find_by_id(repository_id)
+    if not repository:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    # Get index status for all branches
+    statuses = await index_status_adapter.list_by_repository(repository_id)
+
+    return BranchListResponse(
+        branches=[
+            BranchInfoResponse(
+                name=status.branch,
+                last_indexed_commit=status.last_indexed_commit,
+                oldest_indexed_commit=status.oldest_indexed_commit,
+                commit_count=status.total_commits_indexed,
+                last_indexed_at=(
+                    status.last_indexed_at.isoformat()
+                    if status.last_indexed_at
+                    else None
+                ),
+            )
+            for status in statuses
+            if status.indexing_status == "completed"
+        ]
     )

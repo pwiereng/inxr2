@@ -77,6 +77,26 @@ class FileReferencesResponse(BaseModel):
     total: int
 
 
+class FileVersionResponse(BaseModel):
+    """A single version of a file."""
+
+    commit_id: int
+    commit_hash: str
+    short_hash: str
+    commit_date: str
+    message: str
+    content_hash: str
+
+
+class FileHistoryResponse(BaseModel):
+    """File version history response."""
+
+    path: str
+    repository_name: str
+    versions: list[FileVersionResponse]
+    total: int
+
+
 @router.get("/by-path", response_model=FileContentResponse)
 async def get_file_content_by_path(
     repo: str,
@@ -85,6 +105,7 @@ async def get_file_content_by_path(
     file_adapter: FileAdapter,
     commit_adapter: CommitAdapter,
     git_service: GitServiceDep,
+    commit: str | None = None,
 ) -> FileContentResponse:
     """
     Get file content by repository name and file path.
@@ -92,6 +113,7 @@ async def get_file_content_by_path(
     Query parameters:
     - repo: Repository name
     - path: File path within the repository
+    - commit: Commit hash (optional, defaults to latest version for time travel)
     """
     # Validate inputs to prevent path traversal and injection
     repo = validate_repo_name(repo)
@@ -104,14 +126,26 @@ async def get_file_content_by_path(
 
     repository_id = repository.id if repository.id is not None else 0
 
-    # Get file by repository and path
-    file = await file_adapter.find_by_repository_and_path(repository_id, path)
-    if not file:
-        raise HTTPException(status_code=404, detail="File not found")
+    # Get file by repository and path (and optionally commit)
+    if commit:
+        # Time travel mode: get file at specific commit
+        file = await file_adapter.find_by_repository_path_and_commit_hash(
+            repository_id, path, commit
+        )
+        if not file:
+            raise HTTPException(
+                status_code=404,
+                detail=f"File not found at commit {commit}",
+            )
+    else:
+        # Default: get latest version
+        file = await file_adapter.find_by_repository_and_path(repository_id, path)
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
 
     # Get commit info to get the hash
-    commit = await commit_adapter.find_by_id(file.commit_id)
-    if not commit:
+    commit_record = await commit_adapter.find_by_id(file.commit_id)
+    if not commit_record:
         raise HTTPException(status_code=404, detail="Commit not found")
 
     # The repository URL is the local path for indexed repos
@@ -126,7 +160,7 @@ async def get_file_content_by_path(
     try:
         content = git_service.get_file_content(
             repo_path=repo_path,
-            commit_hash=commit.commit_hash.value,
+            commit_hash=commit_record.commit_hash.value,
             file_path=file.path,
         )
     except FileNotFoundError as e:
@@ -151,6 +185,70 @@ async def get_file_content_by_path(
     )
 
 
+@router.get("/history", response_model=FileHistoryResponse)
+async def get_file_history(
+    repo: str,
+    path: str,
+    repo_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+) -> FileHistoryResponse:
+    """
+    Get the version history of a file (for time travel).
+
+    Query parameters:
+    - repo: Repository name
+    - path: File path within the repository
+
+    Returns all indexed versions of the file, ordered by commit date (newest first).
+    """
+    # Validate inputs
+    repo = validate_repo_name(repo)
+    path = validate_path(path)
+
+    # Get repository by name
+    repository = await repo_adapter.find_by_name(repo)
+    if not repository:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    repository_id = repository.id if repository.id is not None else 0
+
+    # Get all versions of this file
+    files = await file_adapter.list_versions_by_path(repository_id, path)
+    if not files:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Get commit info for each version
+    versions = []
+    for file in files:
+        commit_record = await commit_adapter.find_by_id(file.commit_id)
+        if commit_record:
+            versions.append(
+                FileVersionResponse(
+                    commit_id=commit_record.id or 0,
+                    commit_hash=commit_record.commit_hash.value,
+                    short_hash=commit_record.short_hash
+                    or commit_record.commit_hash.value[:7],
+                    commit_date=(
+                        commit_record.commit_date.isoformat()
+                        if commit_record.commit_date
+                        else ""
+                    ),
+                    message=(
+                        commit_record.message[:100] if commit_record.message else ""
+                    ),
+                    content_hash=file.content_hash or "",
+                )
+            )
+
+    return FileHistoryResponse(
+        path=path,
+        repository_name=repository.name,
+        versions=versions,
+        total=len(versions),
+    )
+
+
 @router.get("/by-path/symbols", response_model=FileSymbolsResponse)
 async def get_file_symbols_by_path(
     repo: str,
@@ -158,9 +256,15 @@ async def get_file_symbols_by_path(
     repo_adapter: RepositoryAdapter,
     file_adapter: FileAdapter,
     symbol_adapter: SymbolAdapter,
+    commit: str | None = None,
 ) -> FileSymbolsResponse:
     """
     Get symbols for a file by repository name and file path.
+
+    Query parameters:
+    - repo: Repository name
+    - path: File path within the repository
+    - commit: Commit hash (optional, defaults to latest version for time travel)
     """
     # Validate inputs to prevent path traversal and injection
     repo = validate_repo_name(repo)
@@ -173,10 +277,22 @@ async def get_file_symbols_by_path(
 
     repository_id = repository.id if repository.id is not None else 0
 
-    # Get file by repository and path
-    file = await file_adapter.find_by_repository_and_path(repository_id, path)
-    if not file:
-        raise HTTPException(status_code=404, detail="File not found")
+    # Get file by repository and path (and optionally commit)
+    if commit:
+        # Time travel mode: get file at specific commit
+        file = await file_adapter.find_by_repository_path_and_commit_hash(
+            repository_id, path, commit
+        )
+        if not file:
+            raise HTTPException(
+                status_code=404,
+                detail=f"File not found at commit {commit}",
+            )
+    else:
+        # Default: get latest version
+        file = await file_adapter.find_by_repository_and_path(repository_id, path)
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
 
     file_id = file.id or 0
 
@@ -211,9 +327,15 @@ async def get_file_references_by_path(
     repo_adapter: RepositoryAdapter,
     file_adapter: FileAdapter,
     ref_adapter: ReferenceAdapter,
+    commit: str | None = None,
 ) -> FileReferencesResponse:
     """
     Get references from a file by repository name and file path.
+
+    Query parameters:
+    - repo: Repository name
+    - path: File path within the repository
+    - commit: Commit hash (optional, defaults to latest version for time travel)
     """
     # Validate inputs to prevent path traversal and injection
     repo = validate_repo_name(repo)
@@ -226,10 +348,22 @@ async def get_file_references_by_path(
 
     repository_id = repository.id if repository.id is not None else 0
 
-    # Get file by repository and path
-    file = await file_adapter.find_by_repository_and_path(repository_id, path)
-    if not file:
-        raise HTTPException(status_code=404, detail="File not found")
+    # Get file by repository and path (and optionally commit)
+    if commit:
+        # Time travel mode: get file at specific commit
+        file = await file_adapter.find_by_repository_path_and_commit_hash(
+            repository_id, path, commit
+        )
+        if not file:
+            raise HTTPException(
+                status_code=404,
+                detail=f"File not found at commit {commit}",
+            )
+    else:
+        # Default: get latest version
+        file = await file_adapter.find_by_repository_and_path(repository_id, path)
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
 
     file_id = file.id or 0
 

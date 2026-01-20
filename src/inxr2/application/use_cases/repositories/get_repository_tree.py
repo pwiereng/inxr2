@@ -2,7 +2,11 @@
 
 from dataclasses import dataclass, field
 
-from ...ports.repositories import FileRepositoryPort, RepositoryPort
+from ...ports.repositories import (
+    CommitRepositoryPort,
+    FileRepositoryPort,
+    RepositoryPort,
+)
 
 
 @dataclass
@@ -23,6 +27,7 @@ class GetRepositoryTreeRequest:
 
     repository_id: int | None = None
     repository_name: str | None = None
+    commit_hash: str | None = None  # For time travel: get tree at specific commit
 
     def __post_init__(self) -> None:
         if self.repository_id is None and self.repository_name is None:
@@ -47,6 +52,7 @@ class GetRepositoryTreeUseCase:
         self,
         repository_repo: RepositoryPort,
         file_repo: FileRepositoryPort,
+        commit_repo: CommitRepositoryPort | None = None,
     ) -> None:
         """
         Initialize use case.
@@ -54,9 +60,11 @@ class GetRepositoryTreeUseCase:
         Args:
             repository_repo: Repository for accessing repository entities
             file_repo: Repository for accessing file entities
+            commit_repo: Repository for accessing commit entities (for time travel)
         """
         self._repository_repo = repository_repo
         self._file_repo = file_repo
+        self._commit_repo = commit_repo
 
     async def execute(
         self, request: GetRepositoryTreeRequest
@@ -65,7 +73,7 @@ class GetRepositoryTreeUseCase:
         Execute repository tree retrieval.
 
         Args:
-            request: Request with repository identifier
+            request: Request with repository identifier and optional commit_hash
 
         Returns:
             Tree structure of files and directories
@@ -86,8 +94,24 @@ class GetRepositoryTreeUseCase:
 
         repository_id = repository.id if repository.id is not None else 0
 
-        # Get all files
-        files = await self._file_repo.list_by_repository(repository_id)
+        # Get files - either at specific commit (time travel) or latest
+        if request.commit_hash:
+            # Time travel requested - commit_repo is required
+            if not self._commit_repo:
+                raise ValueError(
+                    "Time travel requires commit repository. "
+                    "commit_hash was provided but commit_repo is not available."
+                )
+            # Get files at specific commit
+            commit = await self._commit_repo.find_by_hash(
+                repository_id, request.commit_hash
+            )
+            if not commit or commit.id is None:
+                raise ValueError(f"Commit not found: {request.commit_hash}")
+            files = await self._file_repo.list_by_commit(commit.id)
+        else:
+            # Default: get latest files
+            files = await self._file_repo.list_by_repository(repository_id)
 
         # Build tree structure
         tree_dict: dict[str, TreeNode] = {}

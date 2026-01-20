@@ -117,6 +117,25 @@ class FileRepositoryPort(ABC):
         """Find file by repository and path (latest version for now)."""
         pass
 
+    @abstractmethod
+    async def list_versions_by_path(self, repository_id: int, path: str) -> list[File]:
+        """List all versions of a file across commits (for time travel).
+
+        Returns files with this path from different commits, ordered by
+        commit date descending (newest first).
+        """
+        pass
+
+    @abstractmethod
+    async def find_by_repository_path_and_commit_hash(
+        self, repository_id: int, path: str, commit_hash: str
+    ) -> File | None:
+        """Find file by repository, path, and commit hash (for time travel).
+
+        This is useful when the caller has a commit hash instead of commit_id.
+        """
+        pass
+
 
 class SymbolRepositoryPort(ABC):
     """Port for symbol entity operations."""
@@ -161,9 +180,18 @@ class SymbolRepositoryPort(ABC):
 
     @abstractmethod
     async def find_by_exact_name(
-        self, name: str, repository_id: int | None = None
+        self,
+        name: str,
+        repository_id: int | None = None,
+        commit_id: int | None = None,
     ) -> list[Symbol]:
-        """Find all symbols with exact name match."""
+        """Find all symbols with exact name match.
+
+        Args:
+            name: The exact symbol name to match
+            repository_id: Filter by repository (optional)
+            commit_id: Filter by specific commit for time travel (optional)
+        """
         pass
 
     @abstractmethod
@@ -197,9 +225,16 @@ class ReferenceRepositoryPort(ABC):
 
     @abstractmethod
     async def find_references_to_symbol(
-        self, symbol_id: int, limit: int = 100
+        self, symbol_id: int, limit: int = 100, commit_id: int | None = None
     ) -> list[Reference]:
-        """Find all references TO a symbol (find usages)."""
+        """Find all references TO a symbol (find usages).
+
+        Args:
+            symbol_id: The target symbol ID
+            limit: Maximum number of results
+            commit_id: Filter by specific commit for time travel (optional).
+                       If None, returns from latest version of each file.
+        """
         pass
 
     @abstractmethod
@@ -209,9 +244,21 @@ class ReferenceRepositoryPort(ABC):
 
     @abstractmethod
     async def find_references_by_text(
-        self, text: str, repository_id: int, limit: int = 100
+        self,
+        text: str,
+        repository_id: int,
+        limit: int = 100,
+        commit_id: int | None = None,
     ) -> list[Reference]:
-        """Find all references matching the given text."""
+        """Find all references matching the given text.
+
+        Args:
+            text: The reference text to match
+            repository_id: Filter by repository
+            limit: Maximum number of results
+            commit_id: Filter by specific commit for time travel (optional).
+                       If None, returns from latest version of each file.
+        """
         pass
 
     @abstractmethod

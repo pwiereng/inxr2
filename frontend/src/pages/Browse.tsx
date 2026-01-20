@@ -14,42 +14,53 @@ import {
   Select,
   MenuItem,
   FormControl,
+  Tooltip,
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import HomeIcon from '@mui/icons-material/Home'
 import FolderIcon from '@mui/icons-material/Folder'
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
+import CloseIcon from '@mui/icons-material/Close'
+import EditIcon from '@mui/icons-material/Edit'
 
 import { CodeViewer } from '@/components/CodeViewer'
+import { DiffCodeViewer } from '@/components/DiffCodeViewer'
 import { FileTree } from '@/components/FileTree'
 import { SymbolSearch } from '@/components/SymbolSearch'
 import { ReferencesPanel } from '@/components/ReferencesPanel'
+import { VersionSelector } from '@/components/VersionSelector'
 import {
   getRepositories,
   getRepositoryByName,
   getRepositoryTreeByName,
-  getFileContentByPath,
+  getFileContentByPathAtCommit,
   getFileSymbolsByPath,
   getFileReferencesByPath,
   getSymbol,
+  getFileHistory,
   type Repository,
   type TreeNode,
   type FileContent,
   type FileSymbol,
   type FileReference,
   type Symbol,
+  type FileVersion,
 } from '@/lib/api'
+import { formatCommitDate } from '@/lib/dateUtils'
 
 export default function Browse() {
   const { repoName, '*': splatPath } = useParams<{ repoName: string; '*': string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
 
-  // Get file path from URL path (splat param) and line from query params
+  // Get file path from URL path (splat param) and line/commit/diff from query params
   const filePath = splatPath || null
   const highlightLine = searchParams.get('line')
     ? parseInt(searchParams.get('line')!, 10)
     : undefined
+  const selectedCommit = searchParams.get('commit')
+  const diffCommitFromUrl = searchParams.get('diff')
 
   // State
   const [allRepositories, setAllRepositories] = useState<Repository[]>([])
@@ -64,13 +75,33 @@ export default function Browse() {
     null
   )
 
+  // Diff mode state - derived from URL
+  const diffMode = !!diffCommitFromUrl
+  const diffCommit = diffCommitFromUrl
+  const [diffContent, setDiffContent] = useState<FileContent | null>(null)
+  const [diffSymbols, setDiffSymbols] = useState<FileSymbol[]>([])
+  const [diffReferences, setDiffReferences] = useState<FileReference[]>([])
+  const [activePanel, setActivePanel] = useState<'left' | 'right'>('left')
+  const [fileVersions, setFileVersions] = useState<FileVersion[]>([])
+  const [treePanel, setTreePanel] = useState<'left' | 'right'>('left')
+  const [refPanel, setRefPanel] = useState<'left' | 'right'>('left')
+
   // UI state
   const [drawerOpen, setDrawerOpen] = useState(true)
   const [refsPanelOpen, setRefsPanelOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [fileLoading, setFileLoading] = useState(false)
+  const [diffLoading, setDiffLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+
+  // The commit that the file tree is showing (based on selected panel in diff mode)
+  const leftCommit = selectedCommit || fileVersions[0]?.commit_hash
+  const rightCommit = diffCommit
+  const treeCommit = diffMode ? (treePanel === 'left' ? leftCommit : rightCommit) : selectedCommit
+
+  // The commit for the references panel
+  const refCommit = diffMode ? (refPanel === 'left' ? leftCommit : rightCommit) : selectedCommit
 
   // Load all repositories (for selector dropdown)
   useEffect(() => {
@@ -82,7 +113,7 @@ export default function Browse() {
     navigate(`/browse/${encodeURIComponent(newRepoName)}`)
   }
 
-  // Load repository and tree by name
+  // Load repository by name (only when repo changes)
   useEffect(() => {
     if (!repoName) return
 
@@ -90,12 +121,8 @@ export default function Browse() {
       setLoading(true)
       setError(null)
       try {
-        const [repo, tree] = await Promise.all([
-          getRepositoryByName(repoName),
-          getRepositoryTreeByName(repoName),
-        ])
+        const repo = await getRepositoryByName(repoName)
         setRepository(repo)
-        setTreeNodes(tree.root)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load repository')
       } finally {
@@ -106,7 +133,35 @@ export default function Browse() {
     loadRepository()
   }, [repoName])
 
-  // Load file content when file path changes
+  // Load tree (commit-aware for time travel) - separate from repository loading
+  useEffect(() => {
+    if (!repoName) return
+
+    const loadTree = async () => {
+      try {
+        const tree = await getRepositoryTreeByName(repoName, treeCommit || undefined)
+        setTreeNodes(tree.root)
+      } catch (err) {
+        console.error('Failed to load tree:', err)
+      }
+    }
+
+    loadTree()
+  }, [repoName, treeCommit])
+
+  // Load file versions when file changes
+  useEffect(() => {
+    if (!filePath || !repoName) {
+      setFileVersions([])
+      return
+    }
+
+    getFileHistory(repoName, filePath)
+      .then((response) => setFileVersions(response.versions))
+      .catch(() => setFileVersions([]))
+  }, [repoName, filePath])
+
+  // Load file content when file path or commit changes
   useEffect(() => {
     if (!filePath || !repoName) {
       setFileContent(null)
@@ -119,9 +174,9 @@ export default function Browse() {
       setFileLoading(true)
       try {
         const [content, symbols, references] = await Promise.all([
-          getFileContentByPath(repoName, filePath),
-          getFileSymbolsByPath(repoName, filePath),
-          getFileReferencesByPath(repoName, filePath),
+          getFileContentByPathAtCommit(repoName, filePath, selectedCommit || undefined),
+          getFileSymbolsByPath(repoName, filePath, selectedCommit || undefined),
+          getFileReferencesByPath(repoName, filePath, selectedCommit || undefined),
         ])
         setFileContent(content)
         setFileSymbols(symbols.symbols)
@@ -134,19 +189,60 @@ export default function Browse() {
     }
 
     loadFile()
-  }, [repoName, filePath])
+  }, [repoName, filePath, selectedCommit])
+
+  // Load diff content when diff commit changes
+  useEffect(() => {
+    if (!diffMode || !diffCommit || !filePath || !repoName) {
+      setDiffContent(null)
+      setDiffSymbols([])
+      setDiffReferences([])
+      return
+    }
+
+    const loadDiffFile = async () => {
+      setDiffLoading(true)
+      try {
+        const [content, symbols, references] = await Promise.all([
+          getFileContentByPathAtCommit(repoName, filePath, diffCommit),
+          getFileSymbolsByPath(repoName, filePath, diffCommit),
+          getFileReferencesByPath(repoName, filePath, diffCommit),
+        ])
+        setDiffContent(content)
+        setDiffSymbols(symbols.symbols)
+        setDiffReferences(references.references)
+      } catch (err) {
+        console.error('Failed to load diff file:', err)
+        setDiffContent(null)
+        setDiffSymbols([])
+        setDiffReferences([])
+      } finally {
+        setDiffLoading(false)
+      }
+    }
+
+    loadDiffFile()
+  }, [repoName, filePath, diffMode, diffCommit])
 
   // Handle file selection from tree
   const handleFileSelect = (path: string) => {
-    navigate(`/browse/${encodeURIComponent(repoName!)}/${path}`)
+    const params = new URLSearchParams()
+    // Preserve commit when navigating to a different file (same vintage)
+    if (selectedCommit) params.set('commit', selectedCommit)
+    // Exit diff mode when selecting a new file (don't include diff param)
+    const query = params.toString()
+    navigate(`/browse/${encodeURIComponent(repoName!)}/${path}${query ? `?${query}` : ''}`)
   }
 
   // Handle symbol selection from search
   const handleSymbolSelect = async (symbol: Symbol) => {
     if (symbol.file_path) {
-      navigate(
-        `/browse/${encodeURIComponent(repoName!)}/${symbol.file_path}?line=${symbol.start_line}`
-      )
+      const params = new URLSearchParams()
+      params.set('line', symbol.start_line.toString())
+      // Preserve commit when navigating to a symbol (same vintage)
+      if (selectedCommit) params.set('commit', selectedCommit)
+      // Exit diff mode when selecting a symbol (don't include diff param)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${symbol.file_path}?${params}`)
     }
   }
 
@@ -156,12 +252,19 @@ export default function Browse() {
       const symbol = await getSymbol(fileSymbol.id)
       setSelectedSymbol(symbol)
       setSearchByName(null)
-      setIsDirectDefinition(true) // We clicked directly on the definition
+      setIsDirectDefinition(true)
       setRefsPanelOpen(true)
       setSearchQuery(symbol.name)
     } catch (err) {
       console.error('Failed to get symbol:', err)
     }
+  }
+
+  // Handle symbol click in diff mode
+  const handleDiffSymbolClick = async (fileSymbol: FileSymbol, panel: 'left' | 'right') => {
+    setActivePanel(panel)
+    setRefPanel(panel) // Sync refs panel to show references for the clicked panel's version
+    await handleSymbolClick(fileSymbol)
   }
 
   // Handle reference click in code viewer (clicking on a usage/reference)
@@ -181,12 +284,19 @@ export default function Browse() {
       const symbol = await getSymbol(ref.target_symbol_id)
       setSelectedSymbol(symbol)
       setSearchByName(null)
-      setIsDirectDefinition(false) // We clicked on a reference, show all possible definitions
+      setIsDirectDefinition(false)
       setRefsPanelOpen(true)
       setSearchQuery(symbol.name)
     } catch (err) {
       console.error('Failed to get symbol for reference:', err)
     }
+  }
+
+  // Handle reference click in diff mode
+  const handleDiffReferenceClick = async (ref: FileReference, panel: 'left' | 'right') => {
+    setActivePanel(panel)
+    setRefPanel(panel) // Sync refs panel to show references for the clicked panel's version
+    await handleCodeReferenceClick(ref)
   }
 
   // Handle click in references panel (jump to reference location)
@@ -195,27 +305,176 @@ export default function Browse() {
     source_line: number
   }) => {
     if (reference.source_file_path) {
-      navigate(
-        `/browse/${encodeURIComponent(repoName!)}/${reference.source_file_path}?line=${reference.source_line}`
-      )
+      const params = new URLSearchParams()
+      params.set('line', reference.source_line.toString())
+      // Use the commit from the active panel in diff mode
+      const commitToUse = diffMode && activePanel === 'right' ? diffCommit : selectedCommit
+      if (commitToUse) params.set('commit', commitToUse)
+      // Exit diff mode when navigating (don't include diff param)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${reference.source_file_path}?${params}`)
     }
   }
 
   // Handle click on definition in references panel
   const handleDefinitionClick = (sym: Symbol) => {
     if (sym.file_path) {
-      navigate(`/browse/${encodeURIComponent(repoName!)}/${sym.file_path}?line=${sym.start_line}`)
+      const params = new URLSearchParams()
+      params.set('line', sym.start_line.toString())
+      // Use the commit from the active panel in diff mode
+      const commitToUse = diffMode && activePanel === 'right' ? diffCommit : selectedCommit
+      if (commitToUse) params.set('commit', commitToUse)
+      // Exit diff mode when navigating (don't include diff param)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${sym.file_path}?${params}`)
     }
   }
 
   // Handle line click (update URL)
   const handleLineClick = (line: number) => {
     if (filePath) {
-      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?line=${line}`, {
+      const params = new URLSearchParams()
+      params.set('line', line.toString())
+      if (selectedCommit) params.set('commit', selectedCommit)
+      // Preserve diff mode
+      if (diffCommit) params.set('diff', diffCommit)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`, {
         replace: true,
       })
     }
   }
+
+  // Handle line click in diff mode
+  const handleDiffLineClick = (line: number, panel: 'left' | 'right') => {
+    setActivePanel(panel)
+    handleLineClick(line)
+  }
+
+  // Handle version change (time travel)
+  const handleVersionChange = (commitHash: string | null) => {
+    if (filePath) {
+      // Close references panel since it may refer to a different version
+      setRefsPanelOpen(false)
+      setSelectedSymbol(null)
+      setSearchByName(null)
+
+      const params = new URLSearchParams()
+      if (highlightLine) params.set('line', highlightLine.toString())
+      if (commitHash) params.set('commit', commitHash)
+      // Preserve diff mode if active
+      if (diffCommit) params.set('diff', diffCommit)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
+    }
+  }
+
+  // Enter diff mode - update URL with diff param
+  const handleEnterDiffMode = () => {
+    if (!filePath) return
+
+    // Default to comparing with the previous version if available
+    const currentIndex = fileVersions.findIndex(
+      (v) => v.commit_hash === (selectedCommit || fileVersions[0]?.commit_hash)
+    )
+    let diffTarget: string | null = null
+    if (currentIndex >= 0 && currentIndex < fileVersions.length - 1) {
+      diffTarget = fileVersions[currentIndex + 1]?.commit_hash || null
+    } else if (fileVersions.length > 1) {
+      // Default to second version
+      diffTarget = fileVersions[1]?.commit_hash || null
+    }
+
+    if (diffTarget) {
+      const params = new URLSearchParams()
+      if (highlightLine) params.set('line', highlightLine.toString())
+      if (selectedCommit) params.set('commit', selectedCommit)
+      params.set('diff', diffTarget)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
+    }
+  }
+
+  // Exit diff mode - remove diff param from URL
+  const handleExitDiffMode = () => {
+    if (!filePath) return
+
+    setDiffContent(null)
+    setDiffSymbols([])
+    setDiffReferences([])
+    setTreePanel('left')
+    setRefPanel('left')
+
+    const params = new URLSearchParams()
+    if (highlightLine) params.set('line', highlightLine.toString())
+    if (selectedCommit) params.set('commit', selectedCommit)
+    // Don't include diff param - this exits diff mode
+    navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
+  }
+
+  // Handle closing a panel in diff view
+  const handleClosePanel = (panel: 'left' | 'right') => {
+    if (!filePath) return
+
+    if (panel === 'left') {
+      // Keep the right panel's version as the main version
+      if (diffCommit) {
+        const params = new URLSearchParams()
+        if (highlightLine) params.set('line', highlightLine.toString())
+        params.set('commit', diffCommit)
+        // No diff param - exit diff mode with right panel's version as main
+        navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
+        return
+      }
+    }
+    // Closing right panel just exits diff mode keeping current version
+    handleExitDiffMode()
+  }
+
+  // Handle diff version change - update URL
+  const handleDiffVersionChange = (commitHash: string | null) => {
+    if (!filePath) return
+
+    // Close references panel since it may refer to a different version
+    setRefsPanelOpen(false)
+    setSelectedSymbol(null)
+    setSearchByName(null)
+
+    const params = new URLSearchParams()
+    if (highlightLine) params.set('line', highlightLine.toString())
+    if (selectedCommit) params.set('commit', selectedCommit)
+    if (commitHash) params.set('diff', commitHash)
+    navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
+  }
+
+  // Handle refs panel version change (in diff mode)
+  // Keep the panel open but switch to search-by-name mode to find the symbol at the new version
+  const handleRefPanelChange = (panel: 'left' | 'right') => {
+    // Get the symbol name to search for at the new version
+    const symbolName = selectedSymbol?.name || searchByName?.name
+
+    if (symbolName && repository?.id) {
+      // Switch to search-by-name mode - this will find the symbol at the new commit
+      setSelectedSymbol(null)
+      setSearchByName({ name: symbolName, repositoryId: repository.id })
+      setIsDirectDefinition(false)
+    }
+
+    setRefPanel(panel)
+  }
+
+  // Get short hash for display
+  const getShortHash = (hash: string | null | undefined) => {
+    if (!hash) return 'latest'
+    return hash.substring(0, 7)
+  }
+
+  // All commit dates for formatting (used by formatCommitDate to detect same-day commits)
+  const allCommitDates = fileVersions.map((v) => v.commit_date)
+
+  // Check if a version has content changes from the previous version
+  const hasContentChange = (version: FileVersion, index: number): boolean => {
+    const prevVersion = fileVersions[index + 1]
+    return !prevVersion || version.content_hash !== prevVersion.content_hash
+  }
+
+  // Get the current commit hash (selected or latest)
+  const currentCommitHash = selectedCommit || fileVersions[0]?.commit_hash
 
   if (loading) {
     return (
@@ -323,18 +582,79 @@ export default function Browse() {
               minWidth: 150,
               maxWidth: 350,
               height: '100%',
-              overflow: 'auto',
+              overflow: 'hidden',
               borderRight: 1,
               borderColor: 'divider',
               flexShrink: 0,
               resize: 'horizontal',
+              display: 'flex',
+              flexDirection: 'column',
             }}
           >
-            <FileTree
-              nodes={treeNodes}
-              selectedFileId={fileContent?.id ?? null}
-              onFileSelect={handleFileSelect}
-            />
+            {/* Tree version indicator / selector */}
+            {(treeCommit || diffMode) && (
+              <Box
+                sx={{
+                  px: 1,
+                  py: 0.5,
+                  bgcolor: 'action.selected',
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                }}
+              >
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Tree @
+                </Typography>
+                {diffMode ? (
+                  <FormControl size="small" sx={{ minWidth: 80 }}>
+                    <Select
+                      value={treePanel}
+                      onChange={(e) => setTreePanel(e.target.value as 'left' | 'right')}
+                      sx={{
+                        '& .MuiSelect-select': {
+                          py: 0,
+                          px: 0.5,
+                          fontSize: '0.75rem',
+                          fontFamily: 'monospace',
+                        },
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          border: 'none',
+                        },
+                      }}
+                    >
+                      <MenuItem value="left">
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                          {getShortHash(leftCommit)} (left)
+                        </Typography>
+                      </MenuItem>
+                      <MenuItem value="right">
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                          {getShortHash(rightCommit)} (right)
+                        </Typography>
+                      </MenuItem>
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <Typography
+                    variant="caption"
+                    sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                  >
+                    {getShortHash(treeCommit)}
+                  </Typography>
+                )}
+              </Box>
+            )}
+            <Box sx={{ flex: 1, overflow: 'auto' }}>
+              <FileTree
+                nodes={treeNodes}
+                selectedFileId={fileContent?.id ?? null}
+                onFileSelect={handleFileSelect}
+              />
+            </Box>
           </Box>
         )}
 
@@ -366,29 +686,171 @@ export default function Browse() {
                   alignItems: 'center',
                   gap: 1,
                   flexShrink: 0,
+                  flexWrap: 'wrap',
                 }}
               >
-                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                <Typography variant="body2" sx={{ fontFamily: 'monospace', flex: 1 }}>
                   {fileContent.path}
                 </Typography>
                 {fileContent.language && <Chip label={fileContent.language} size="small" />}
                 <Typography variant="caption" color="text.secondary">
                   {fileContent.line_count} lines
                 </Typography>
+
+                {/* Version selector and diff controls */}
+                {repoName && filePath && (
+                  <>
+                    <VersionSelector
+                      repoName={repoName}
+                      filePath={filePath}
+                      selectedCommit={selectedCommit}
+                      onVersionChange={handleVersionChange}
+                    />
+
+                    {/* Diff controls */}
+                    {!diffMode ? (
+                      <Tooltip title="Compare versions">
+                        <IconButton
+                          size="small"
+                          onClick={handleEnterDiffMode}
+                          disabled={fileVersions.length < 2}
+                          sx={{ ml: 0.5 }}
+                        >
+                          <CompareArrowsIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    ) : (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          vs
+                        </Typography>
+                        <FormControl size="small">
+                          <Select
+                            value={diffCommit || ''}
+                            onChange={(e) => handleDiffVersionChange(e.target.value || null)}
+                            displayEmpty
+                            sx={{
+                              minWidth: 180,
+                              '& .MuiSelect-select': {
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 0.5,
+                                py: 0.5,
+                                fontSize: '0.875rem',
+                              },
+                            }}
+                          >
+                            {fileVersions
+                              .filter((v) => v.commit_hash !== currentCommitHash)
+                              .map((version) => {
+                                const originalIndex = fileVersions.findIndex(
+                                  (v) => v.commit_hash === version.commit_hash
+                                )
+                                const hasChange = hasContentChange(version, originalIndex)
+                                const isSelected = version.commit_hash === diffCommit
+
+                                return (
+                                  <MenuItem
+                                    key={version.commit_hash}
+                                    value={version.commit_hash}
+                                    sx={{
+                                      bgcolor: isSelected ? 'action.selected' : 'transparent',
+                                      borderLeft: isSelected ? 3 : 0,
+                                      borderColor: 'primary.main',
+                                      '&.Mui-selected': {
+                                        bgcolor: 'action.selected',
+                                      },
+                                    }}
+                                  >
+                                    <Tooltip title={version.message} placement="left">
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        {hasChange && (
+                                          <EditIcon
+                                            sx={{ fontSize: '0.9rem', color: 'warning.main' }}
+                                          />
+                                        )}
+                                        <Typography
+                                          component="span"
+                                          sx={{
+                                            fontFamily: 'monospace',
+                                            fontSize: '0.8rem',
+                                            fontWeight: isSelected ? 600 : 400,
+                                            color: isSelected ? 'primary.main' : 'text.primary',
+                                          }}
+                                        >
+                                          {version.short_hash}
+                                        </Typography>
+                                        <Typography
+                                          component="span"
+                                          variant="caption"
+                                          color="text.secondary"
+                                        >
+                                          {formatCommitDate(version.commit_date, allCommitDates)}
+                                        </Typography>
+                                      </Box>
+                                    </Tooltip>
+                                  </MenuItem>
+                                )
+                              })}
+                          </Select>
+                        </FormControl>
+                        <Tooltip title="Exit compare mode">
+                          <IconButton size="small" onClick={handleExitDiffMode}>
+                            <CloseIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    )}
+                  </>
+                )}
               </Box>
 
-              {/* Code Viewer */}
-              <Box sx={{ flex: 1, overflow: 'auto' }}>
-                <CodeViewer
-                  content={fileContent.content}
-                  language={fileContent.language}
-                  symbols={fileSymbols}
-                  references={fileReferences}
-                  highlightLine={highlightLine}
-                  onSymbolClick={handleSymbolClick}
-                  onReferenceClick={handleCodeReferenceClick}
-                  onLineClick={handleLineClick}
-                />
+              {/* Code Viewer or Diff Viewer */}
+              <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+                {diffMode && diffContent ? (
+                  <DiffCodeViewer
+                    leftContent={fileContent.content}
+                    rightContent={diffContent.content}
+                    leftLabel={`${getShortHash(selectedCommit || fileVersions[0]?.commit_hash)} (current)`}
+                    rightLabel={`${getShortHash(diffCommit)} (compare)`}
+                    language={fileContent.language}
+                    leftSymbols={fileSymbols}
+                    rightSymbols={diffSymbols}
+                    leftReferences={fileReferences}
+                    rightReferences={diffReferences}
+                    highlightLine={highlightLine}
+                    activePanel={activePanel}
+                    onPanelClick={setActivePanel}
+                    onSymbolClick={handleDiffSymbolClick}
+                    onReferenceClick={handleDiffReferenceClick}
+                    onLineClick={handleDiffLineClick}
+                    onClosePanel={handleClosePanel}
+                  />
+                ) : diffMode && diffLoading ? (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      flex: 1,
+                    }}
+                  >
+                    <CircularProgress />
+                  </Box>
+                ) : (
+                  <Box sx={{ flex: 1, overflow: 'auto' }}>
+                    <CodeViewer
+                      content={fileContent.content}
+                      language={fileContent.language}
+                      symbols={fileSymbols}
+                      references={fileReferences}
+                      highlightLine={highlightLine}
+                      onSymbolClick={handleSymbolClick}
+                      onReferenceClick={handleCodeReferenceClick}
+                      onLineClick={handleLineClick}
+                    />
+                  </Box>
+                )}
               </Box>
             </>
           ) : (
@@ -419,22 +881,76 @@ export default function Browse() {
               flexShrink: 0,
               resize: 'horizontal',
               direction: 'rtl' /* Makes resize handle appear on left */,
+              display: 'flex',
+              flexDirection: 'column',
             }}
           >
-            <Box sx={{ direction: 'ltr', height: '100%' }}>
-              <ReferencesPanel
-                symbol={selectedSymbol}
-                isDirectDefinition={isDirectDefinition}
-                searchByName={searchByName}
-                onReferenceClick={handleRefPanelClick}
-                onDefinitionClick={handleDefinitionClick}
-                onClose={() => {
-                  setRefsPanelOpen(false)
-                  setSelectedSymbol(null)
-                  setIsDirectDefinition(false)
-                  setSearchByName(null)
-                }}
-              />
+            <Box
+              sx={{ direction: 'ltr', height: '100%', display: 'flex', flexDirection: 'column' }}
+            >
+              {/* Version selector for references in diff mode */}
+              {diffMode && (
+                <Box
+                  sx={{
+                    px: 1,
+                    py: 0.5,
+                    bgcolor: 'action.selected',
+                    borderBottom: 1,
+                    borderColor: 'divider',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                  }}
+                >
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    Refs @
+                  </Typography>
+                  <FormControl size="small" sx={{ minWidth: 80 }}>
+                    <Select
+                      value={refPanel}
+                      onChange={(e) => handleRefPanelChange(e.target.value as 'left' | 'right')}
+                      sx={{
+                        '& .MuiSelect-select': {
+                          py: 0,
+                          px: 0.5,
+                          fontSize: '0.75rem',
+                          fontFamily: 'monospace',
+                        },
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          border: 'none',
+                        },
+                      }}
+                    >
+                      <MenuItem value="left">
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                          {getShortHash(leftCommit)} (left)
+                        </Typography>
+                      </MenuItem>
+                      <MenuItem value="right">
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                          {getShortHash(rightCommit)} (right)
+                        </Typography>
+                      </MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              )}
+              <Box sx={{ flex: 1, overflow: 'hidden' }}>
+                <ReferencesPanel
+                  symbol={selectedSymbol}
+                  isDirectDefinition={isDirectDefinition}
+                  searchByName={searchByName}
+                  selectedCommit={refCommit}
+                  onReferenceClick={handleRefPanelClick}
+                  onDefinitionClick={handleDefinitionClick}
+                  onClose={() => {
+                    setRefsPanelOpen(false)
+                    setSelectedSymbol(null)
+                    setIsDirectDefinition(false)
+                    setSearchByName(null)
+                  }}
+                />
+              </Box>
             </Box>
           </Box>
         )}

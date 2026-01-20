@@ -17,7 +17,8 @@ class IndexStatus:
         branch: Branch being indexed
         indexing_status: Current status (pending, in_progress, completed, failed)
         id: Database ID (None for new entities)
-        last_indexed_commit: SHA-1 of last successfully indexed commit
+        last_indexed_commit: SHA-1 of most recent (newest) indexed commit
+        oldest_indexed_commit: SHA-1 of oldest indexed commit (for time travel)
         last_indexed_at: When indexing completed
         indexing_started_at: When current/last indexing started
         total_commits_indexed: Count of indexed commits
@@ -37,6 +38,7 @@ class IndexStatus:
     indexing_status: str = "pending"
     id: int | None = None
     last_indexed_commit: str | None = None
+    oldest_indexed_commit: str | None = None
     last_indexed_at: datetime | None = None
     indexing_started_at: datetime | None = None
     total_commits_indexed: int = 0

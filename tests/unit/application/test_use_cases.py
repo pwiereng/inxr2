@@ -121,7 +121,10 @@ class FakeSymbolRepository(SymbolRepositoryPort):
         return len(to_delete)
 
     async def find_by_exact_name(
-        self, name: str, repository_id: int | None = None
+        self,
+        name: str,
+        repository_id: int | None = None,
+        commit_id: int | None = None,
     ) -> list[Symbol]:
         """Find all symbols with exact name match."""
         return [
@@ -129,6 +132,7 @@ class FakeSymbolRepository(SymbolRepositoryPort):
             for symbol in self._symbols.values()
             if symbol.name == name
             and (repository_id is None or symbol.repository_id == repository_id)
+            and (commit_id is None or symbol.commit_id == commit_id)
         ]
 
     async def count_by_repository(self, repository_id: int) -> int:

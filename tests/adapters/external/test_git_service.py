@@ -175,3 +175,127 @@ class TestGitServiceChangedFiles:
             assert isinstance(changed["added"], list)
             assert isinstance(changed["modified"], list)
             assert isinstance(changed["deleted"], list)
+
+
+class TestGitServiceTimeTravel:
+    """Tests for time travel functionality (multi-commit support)."""
+
+    @pytest.fixture
+    def git_service(self) -> GitService:
+        """Create a GitService instance."""
+        return GitService()
+
+    @pytest.fixture
+    def repo_path(self) -> Path:
+        """Get the INXR2 repository path."""
+        return Path(__file__).parent.parent.parent.parent
+
+    def test_list_commits(self, git_service: GitService, repo_path: Path) -> None:
+        """Test listing commits for a branch."""
+        commits = git_service.list_commits(repo_path, "main", max_count=10)
+
+        # Should return commits
+        assert len(commits) > 0
+        assert len(commits) <= 10
+
+        # First commit should be oldest (list is sorted oldest first)
+        first = commits[0]
+        last = commits[-1]
+
+        # Each commit should have required fields
+        for commit in commits:
+            assert "hash" in commit
+            assert len(commit["hash"]) == 40
+            assert "short_hash" in commit
+            assert len(commit["short_hash"]) == 7
+            assert "author_name" in commit
+            assert "author_email" in commit
+            assert "commit_date" in commit
+            assert "message" in commit
+            assert "parent_hashes" in commit
+
+        # Oldest commit should be first (chronological order)
+        if len(commits) > 1:
+            assert first["commit_date"] <= last["commit_date"]
+
+    def test_list_commits_limit(self, git_service: GitService, repo_path: Path) -> None:
+        """Test that max_count limits results."""
+        commits_5 = git_service.list_commits(repo_path, "main", max_count=5)
+        commits_10 = git_service.list_commits(repo_path, "main", max_count=10)
+
+        assert len(commits_5) <= 5
+        assert len(commits_10) <= 10
+        assert len(commits_10) >= len(commits_5)
+
+    def test_list_commits_invalid_branch(
+        self, git_service: GitService, repo_path: Path
+    ) -> None:
+        """Test listing commits for non-existent branch returns empty list."""
+        commits = git_service.list_commits(
+            repo_path, "non-existent-branch-xyz", max_count=10
+        )
+        assert commits == []
+
+    def test_get_files_at_commit(
+        self, git_service: GitService, repo_path: Path
+    ) -> None:
+        """Test getting all files at a specific commit."""
+        commit_hash = git_service.get_current_commit(repo_path)
+        files = git_service.get_files_at_commit(repo_path, commit_hash)
+
+        # Should return a set of file paths
+        assert isinstance(files, set)
+        assert len(files) > 0
+
+        # Should contain expected files
+        assert "pyproject.toml" in files
+        assert "README.md" in files
+
+        # Should not contain directories
+        for f in files:
+            assert not f.endswith("/")
+
+    def test_get_changed_files_in_commit(
+        self, git_service: GitService, repo_path: Path
+    ) -> None:
+        """Test getting files changed in a single commit."""
+        # Get a recent commit with a parent
+        current = git_service.get_current_commit(repo_path)
+        info = git_service.get_commit_info(repo_path, current)
+        parent_hashes = info.get("parent_hashes", [])
+
+        if parent_hashes:
+            changed = git_service.get_changed_files_in_commit(repo_path, current)
+
+            # Should have the three categories
+            assert "added" in changed
+            assert "modified" in changed
+            assert "deleted" in changed
+            assert isinstance(changed["added"], list)
+            assert isinstance(changed["modified"], list)
+            assert isinstance(changed["deleted"], list)
+
+            # At least one file should be changed
+            total_changes = (
+                len(changed["added"])
+                + len(changed["modified"])
+                + len(changed["deleted"])
+            )
+            assert total_changes > 0
+
+    def test_get_changed_files_initial_commit(
+        self, git_service: GitService, repo_path: Path
+    ) -> None:
+        """Test getting changed files for initial commit (no parent)."""
+        # Get the initial commit (oldest)
+        commits = git_service.list_commits(repo_path, "main", max_count=100)
+        if commits:
+            initial_commit = commits[0]["hash"]
+            changed = git_service.get_changed_files_in_commit(repo_path, initial_commit)
+
+            # Initial commit should have only "added" files
+            assert "added" in changed
+            assert len(changed["added"]) > 0
+            # No modified or deleted in initial commit
+            assert len(changed["modified"]) == 0
+            assert len(changed["deleted"]) == 0

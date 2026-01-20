@@ -136,6 +136,51 @@ export interface RepositoryStats {
   languages: Record<string, number>
 }
 
+// Time Travel types
+export interface CommitInfo {
+  id: number
+  hash: string
+  short_hash: string
+  branch: string | null
+  message: string
+  author_name: string
+  author_email: string
+  commit_date: string
+}
+
+export interface CommitListResponse {
+  commits: CommitInfo[]
+  total: number
+}
+
+export interface BranchInfo {
+  name: string
+  last_indexed_commit: string | null
+  oldest_indexed_commit: string | null
+  commit_count: number
+  last_indexed_at: string | null
+}
+
+export interface BranchListResponse {
+  branches: BranchInfo[]
+}
+
+export interface FileVersion {
+  commit_id: number
+  commit_hash: string
+  short_hash: string
+  commit_date: string
+  message: string
+  content_hash: string
+}
+
+export interface FileHistoryResponse {
+  path: string
+  repository_name: string
+  versions: FileVersion[]
+  total: number
+}
+
 // API functions
 async function fetchApi<T>(endpoint: string): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`)
@@ -159,8 +204,11 @@ export async function getRepositoryFiles(id: number): Promise<FileInfo[]> {
   return fetchApi<FileInfo[]>(`/repositories/${id}/files`)
 }
 
-export async function getRepositoryTree(id: number): Promise<TreeResponse> {
-  return fetchApi<TreeResponse>(`/repositories/${id}/tree`)
+export async function getRepositoryTree(id: number, commit?: string): Promise<TreeResponse> {
+  const params = new URLSearchParams()
+  if (commit) params.set('commit', commit)
+  const query = params.toString()
+  return fetchApi<TreeResponse>(`/repositories/${id}/tree${query ? `?${query}` : ''}`)
 }
 
 export async function getRepositoryStats(id: number): Promise<RepositoryStats> {
@@ -171,8 +219,16 @@ export async function getRepositoryByName(name: string): Promise<Repository> {
   return fetchApi<Repository>(`/repositories/by-name/${encodeURIComponent(name)}`)
 }
 
-export async function getRepositoryTreeByName(name: string): Promise<TreeResponse> {
-  return fetchApi<TreeResponse>(`/repositories/by-name/${encodeURIComponent(name)}/tree`)
+export async function getRepositoryTreeByName(
+  name: string,
+  commit?: string
+): Promise<TreeResponse> {
+  const params = new URLSearchParams()
+  if (commit) params.set('commit', commit)
+  const query = params.toString()
+  return fetchApi<TreeResponse>(
+    `/repositories/by-name/${encodeURIComponent(name)}/tree${query ? `?${query}` : ''}`
+  )
 }
 
 // Symbols
@@ -200,10 +256,12 @@ export async function getSymbol(id: number): Promise<Symbol> {
 
 export async function getSymbolsByName(
   name: string,
-  repositoryId?: number
+  repositoryId?: number,
+  commit?: string
 ): Promise<SymbolListResponse> {
   const params = new URLSearchParams()
   if (repositoryId) params.set('repository_id', repositoryId.toString())
+  if (commit) params.set('commit', commit)
   const query = params.toString()
   return fetchApi<SymbolListResponse>(
     `/symbols/by-name/${encodeURIComponent(name)}${query ? `?${query}` : ''}`
@@ -212,9 +270,13 @@ export async function getSymbolsByName(
 
 export async function getSymbolReferences(
   id: number,
-  limit = 100
+  limit = 100,
+  commit?: string
 ): Promise<ReferencesListResponse> {
-  return fetchApi<ReferencesListResponse>(`/symbols/${id}/references?limit=${limit}`)
+  const params = new URLSearchParams()
+  params.set('limit', limit.toString())
+  if (commit) params.set('commit', commit)
+  return fetchApi<ReferencesListResponse>(`/symbols/${id}/references?${params}`)
 }
 
 // Files
@@ -237,16 +299,51 @@ export async function getFileContentByPath(repo: string, path: string): Promise<
 
 export async function getFileSymbolsByPath(
   repo: string,
-  path: string
+  path: string,
+  commit?: string
 ): Promise<FileSymbolsResponse> {
   const params = new URLSearchParams({ repo, path })
+  if (commit) params.set('commit', commit)
   return fetchApi<FileSymbolsResponse>(`/files/by-path/symbols?${params}`)
 }
 
 export async function getFileReferencesByPath(
   repo: string,
-  path: string
+  path: string,
+  commit?: string
 ): Promise<FileReferencesResponse> {
   const params = new URLSearchParams({ repo, path })
+  if (commit) params.set('commit', commit)
   return fetchApi<FileReferencesResponse>(`/files/by-path/references?${params}`)
+}
+
+// Time Travel functions
+export async function getCommits(
+  repoName: string,
+  branch?: string,
+  limit = 50
+): Promise<CommitListResponse> {
+  const params = new URLSearchParams({ repo: repoName })
+  if (branch) params.set('branch', branch)
+  params.set('limit', limit.toString())
+  return fetchApi<CommitListResponse>(`/commits?${params}`)
+}
+
+export async function getRepositoryBranches(repoId: number): Promise<BranchListResponse> {
+  return fetchApi<BranchListResponse>(`/repositories/${repoId}/branches`)
+}
+
+export async function getFileHistory(repo: string, path: string): Promise<FileHistoryResponse> {
+  const params = new URLSearchParams({ repo, path })
+  return fetchApi<FileHistoryResponse>(`/files/history?${params}`)
+}
+
+export async function getFileContentByPathAtCommit(
+  repo: string,
+  path: string,
+  commit?: string
+): Promise<FileContent> {
+  const params = new URLSearchParams({ repo, path })
+  if (commit) params.set('commit', commit)
+  return fetchApi<FileContent>(`/files/by-path?${params}`)
 }

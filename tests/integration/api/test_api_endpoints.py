@@ -1502,3 +1502,340 @@ class TestPathValidation:
 
         # Should get 404 (not found) not 400 (validation error)
         assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+class TestCommitsAPI:
+    """Tests for /api/commits endpoints (time travel)."""
+
+    async def test_list_commits_empty(self, test_app, db_session: AsyncSession) -> None:
+        """Test listing commits for a repository with no commits."""
+        # Arrange - create repository without commits
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="commits-empty-repo",
+            url="https://github.com/test/empty.git",
+        )
+        await repo_adapter.save(repository)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/commits",
+                params={"repo": "commits-empty-repo"},
+            )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["commits"] == []
+        assert data["total"] == 0
+
+    async def test_list_commits_with_data(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test listing commits for a repository with commits."""
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="commits-data-repo",
+            url="https://github.com/test/commits.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commits = [
+            Commit(
+                repository_id=saved_repo.id,
+                commit_hash=make_test_commit_hash("commit1"),
+                branch="main",
+                author_name="Test Author",
+                author_email="test@example.com",
+                committer_name="Test Author",
+                committer_email="test@example.com",
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+                message="First commit",
+            ),
+            Commit(
+                repository_id=saved_repo.id,
+                commit_hash=make_test_commit_hash("commit2"),
+                branch="main",
+                author_name="Test Author",
+                author_email="test@example.com",
+                committer_name="Test Author",
+                committer_email="test@example.com",
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+                message="Second commit",
+            ),
+        ]
+        for c in commits:
+            await commit_adapter.save(c)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/commits",
+                params={"repo": "commits-data-repo"},
+            )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        assert len(data["commits"]) == 2
+
+        # Verify commit structure
+        commit = data["commits"][0]
+        assert "id" in commit
+        assert "hash" in commit
+        assert "short_hash" in commit
+        assert "message" in commit
+        assert "author_name" in commit
+        assert "commit_date" in commit
+
+    async def test_list_commits_with_branch_filter(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test filtering commits by branch."""
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="commits-branch-repo",
+            url="https://github.com/test/branch.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commits = [
+            Commit(
+                repository_id=saved_repo.id,
+                commit_hash=make_test_commit_hash("maincom"),
+                branch="main",
+                author_name="Test",
+                author_email="test@example.com",
+                committer_name="Test",
+                committer_email="test@example.com",
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+                message="Main commit",
+            ),
+            Commit(
+                repository_id=saved_repo.id,
+                commit_hash=make_test_commit_hash("devcom"),
+                branch="dev",
+                author_name="Test",
+                author_email="test@example.com",
+                committer_name="Test",
+                committer_email="test@example.com",
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+                message="Dev commit",
+            ),
+        ]
+        for c in commits:
+            await commit_adapter.save(c)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/commits",
+                params={"repo": "commits-branch-repo", "branch": "main"},
+            )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["commits"][0]["branch"] == "main"
+
+    async def test_list_commits_repo_not_found(self, test_app) -> None:
+        """Test listing commits for non-existent repository."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/commits",
+                params={"repo": "nonexistent-repo"},
+            )
+
+        assert response.status_code == 404
+
+    async def test_get_commit_by_id(self, test_app, db_session: AsyncSession) -> None:
+        """Test getting a specific commit by ID."""
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="commit-detail-repo",
+            url="https://github.com/test/detail.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=make_test_commit_hash("detail1"),
+            branch="main",
+            author_name="Test Author",
+            author_email="test@example.com",
+            committer_name="Test Committer",
+            committer_email="committer@example.com",
+            author_date=datetime(2025, 1, 1, 10, 30),
+            commit_date=datetime(2025, 1, 1, 12, 0),
+            message="Detailed commit message",
+            parent_hashes=["parent123" + "0" * 31],
+        )
+        saved_commit = await commit_adapter.save(commit)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(f"/api/commits/{saved_commit.id}")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == saved_commit.id
+        assert data["hash"] == commit.commit_hash.value
+        assert data["short_hash"] == "detail1"
+        assert data["message"] == "Detailed commit message"
+        assert data["author_name"] == "Test Author"
+        assert data["committer_name"] == "Test Committer"
+        assert len(data["parent_hashes"]) == 1
+
+    async def test_get_commit_not_found(self, test_app) -> None:
+        """Test getting a non-existent commit."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/commits/99999")
+
+        assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+class TestFileHistoryAPI:
+    """Tests for /api/files/history endpoint (time travel)."""
+
+    async def test_get_file_history(self, test_app, db_session: AsyncSession) -> None:
+        """Test getting file version history."""
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="file-history-repo",
+            url="https://github.com/test/history.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit1 = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=make_test_commit_hash("hist1"),
+            branch="main",
+            author_name="Test",
+            author_email="test@example.com",
+            committer_name="Test",
+            committer_email="test@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="First version",
+        )
+        commit2 = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=make_test_commit_hash("hist2"),
+            branch="main",
+            author_name="Test",
+            author_email="test@example.com",
+            committer_name="Test",
+            committer_email="test@example.com",
+            author_date=datetime(2025, 1, 2),
+            commit_date=datetime(2025, 1, 2),
+            message="Second version",
+        )
+        saved_commit1 = await commit_adapter.save(commit1)
+        saved_commit2 = await commit_adapter.save(commit2)
+
+        file_adapter = PostgresFileRepository(db_session)
+        files = [
+            File(
+                repository_id=saved_repo.id,
+                commit_id=saved_commit1.id,
+                path="src/main.py",
+                content_hash="hash_v1",
+                size_bytes=100,
+                language="python",
+            ),
+            File(
+                repository_id=saved_repo.id,
+                commit_id=saved_commit2.id,
+                path="src/main.py",
+                content_hash="hash_v2",  # Different hash = file changed
+                size_bytes=150,
+                language="python",
+            ),
+        ]
+        await file_adapter.save_many(files)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/history",
+                params={"repo": "file-history-repo", "path": "src/main.py"},
+            )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["path"] == "src/main.py"
+        assert data["repository_name"] == "file-history-repo"
+        assert data["total"] == 2
+        assert len(data["versions"]) == 2
+
+        # Verify version structure
+        version = data["versions"][0]
+        assert "commit_id" in version
+        assert "commit_hash" in version
+        assert "short_hash" in version
+        assert "commit_date" in version
+        assert "message" in version
+        assert "content_hash" in version
+
+        # Versions should have different content hashes
+        content_hashes = {v["content_hash"] for v in data["versions"]}
+        assert len(content_hashes) == 2
+
+    async def test_get_file_history_not_found(self, test_app) -> None:
+        """Test file history for non-existent file."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/history",
+                params={"repo": "nonexistent", "path": "not/found.py"},
+            )
+
+        assert response.status_code == 404
+
+    async def test_get_file_history_repo_not_found(
+        self, test_app, db_session: AsyncSession
+    ) -> None:
+        """Test file history when repository doesn't exist."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/files/history",
+                params={"repo": "nonexistent-repo", "path": "src/main.py"},
+            )
+
+        assert response.status_code == 404

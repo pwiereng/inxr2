@@ -71,6 +71,8 @@ interface ReferencesPanelProps {
   isDirectDefinition?: boolean
   /** Search for symbols by name (used when clicking unresolved references) */
   searchByName?: { name: string; repositoryId: number } | null
+  /** Selected commit hash for time travel (filters definitions to this commit) */
+  selectedCommit?: string | null
   onReferenceClick?: (reference: Reference) => void
   onDefinitionClick?: (symbol: Symbol) => void
   onClose?: () => void
@@ -80,6 +82,7 @@ export function ReferencesPanel({
   symbol,
   isDirectDefinition = false,
   searchByName = null,
+  selectedCommit = null,
   onReferenceClick,
   onDefinitionClick,
   onClose,
@@ -99,7 +102,12 @@ export function ReferencesPanel({
         setLoading(true)
         setError(null)
         try {
-          const defsResult = await getSymbolsByName(searchByName.name, searchByName.repositoryId)
+          // Pass selectedCommit to filter definitions to current commit (time travel)
+          const defsResult = await getSymbolsByName(
+            searchByName.name,
+            searchByName.repositoryId,
+            selectedCommit || undefined
+          )
           setAllDefinitions(defsResult.items)
           setReferences([]) // No references without a specific symbol
         } catch (err) {
@@ -123,8 +131,8 @@ export function ReferencesPanel({
       setLoading(true)
       setError(null)
       try {
-        // Always fetch references for this symbol
-        const refsResult = await getSymbolReferences(symbol.id)
+        // Always fetch references for this symbol (pass commit for time travel)
+        const refsResult = await getSymbolReferences(symbol.id, 100, selectedCommit || undefined)
         setReferences(refsResult.items)
 
         // Only search for other definitions if this wasn't a direct definition click
@@ -133,7 +141,12 @@ export function ReferencesPanel({
           setAllDefinitions([symbol])
         } else {
           // Clicked on a reference or search result - show all possible definitions
-          const defsResult = await getSymbolsByName(symbol.name, symbol.repository_id)
+          // Pass selectedCommit to filter definitions to current commit (time travel)
+          const defsResult = await getSymbolsByName(
+            symbol.name,
+            symbol.repository_id,
+            selectedCommit || undefined
+          )
           setAllDefinitions(defsResult.items)
         }
       } catch (err) {
@@ -146,7 +159,7 @@ export function ReferencesPanel({
     }
 
     fetchData()
-  }, [symbol, isDirectDefinition, searchByName])
+  }, [symbol, isDirectDefinition, searchByName, selectedCommit])
 
   if (!symbol && !searchByName) {
     return (
