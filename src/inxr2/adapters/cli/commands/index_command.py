@@ -94,7 +94,7 @@ def run_full_index(
     branch: str | None,
     languages: list[str],
     console: Console,
-    max_history: int = 100,
+    max_history: int | None = 100,
 ) -> None:
     """
     Run full indexing of a repository with time travel support.
@@ -107,7 +107,7 @@ def run_full_index(
         branch: Branch to index (uses current branch if None)
         languages: List of languages to index
         console: Rich console for output
-        max_history: Maximum number of commits to index (default: 100)
+        max_history: Maximum number of commits to index (None = all commits)
     """
     # Run the async indexing in an event loop
     asyncio.run(
@@ -126,7 +126,7 @@ async def _run_full_index_async(
     branch: str | None,
     languages: list[str],
     console: Console,
-    max_history: int = 100,
+    max_history: int | None = 100,
 ) -> None:
     """Async implementation of full indexing with multi-commit support."""
     from inxr2.adapters.external.git_service import GitService
@@ -155,7 +155,8 @@ async def _run_full_index_async(
     current_branch = branch or repo_info.get("current_branch", "main")
 
     # Get list of commits for time travel (oldest first)
-    console.print(f"[dim]Loading commit history (max {max_history} commits)...[/dim]")
+    history_msg = f"max {max_history}" if max_history else "all"
+    console.print(f"[dim]Loading commit history ({history_msg} commits)...[/dim]")
     commits_to_index = git_service.list_commits(repo_path, current_branch, max_history)
 
     if not commits_to_index:

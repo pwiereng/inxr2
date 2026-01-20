@@ -173,8 +173,14 @@ export function DiffCodeViewer({
     return indices
   }, [diffLines])
 
-  // Track current change index
+  // Track current change index (use ref to avoid stale closures in keyboard handler)
   const [currentChangeIndex, setCurrentChangeIndex] = useState(0)
+  const currentChangeIndexRef = useRef(currentChangeIndex)
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    currentChangeIndexRef.current = currentChangeIndex
+  }, [currentChangeIndex])
 
   // Scroll to a specific change
   const scrollToChange = useCallback(
@@ -197,17 +203,17 @@ export function DiffCodeViewer({
     [changeIndices]
   )
 
-  // Navigate to previous change
+  // Navigate to previous change (use ref to always get current value)
   const goToPreviousChange = useCallback(() => {
-    const newIndex = Math.max(0, currentChangeIndex - 1)
+    const newIndex = Math.max(0, currentChangeIndexRef.current - 1)
     scrollToChange(newIndex)
-  }, [currentChangeIndex, scrollToChange])
+  }, [scrollToChange])
 
-  // Navigate to next change
+  // Navigate to next change (use ref to always get current value)
   const goToNextChange = useCallback(() => {
-    const newIndex = Math.min(changeIndices.length - 1, currentChangeIndex + 1)
+    const newIndex = Math.min(changeIndices.length - 1, currentChangeIndexRef.current + 1)
     scrollToChange(newIndex)
-  }, [currentChangeIndex, changeIndices.length, scrollToChange])
+  }, [changeIndices.length, scrollToChange])
 
   // Keyboard navigation for diff changes
   useEffect(() => {

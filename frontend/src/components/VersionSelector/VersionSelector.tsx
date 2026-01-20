@@ -11,50 +11,13 @@ import {
 import HistoryIcon from '@mui/icons-material/History'
 import EditIcon from '@mui/icons-material/Edit'
 import { getFileHistory, type FileVersion } from '@/lib/api'
+import { formatCommitDate } from '@/lib/dateUtils'
 
 interface VersionSelectorProps {
   repoName: string
   filePath: string
   selectedCommit: string | null
   onVersionChange: (commitHash: string | null) => void
-}
-
-function parseAsUTC(dateString: string): Date {
-  // If no timezone indicator, treat as UTC by appending Z
-  if (!dateString.endsWith('Z') && !dateString.includes('+') && !dateString.includes('-', 10)) {
-    return new Date(dateString + 'Z')
-  }
-  return new Date(dateString)
-}
-
-function formatCommitDate(dateString: string, allDates: string[]): string {
-  // Parse as UTC since git commit dates are stored in UTC
-  const date = parseAsUTC(dateString)
-
-  // Format as yyyymmdd in UTC
-  const year = date.getUTCFullYear()
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const day = String(date.getUTCDate()).padStart(2, '0')
-  const dateStr = `${year}${month}${day}`
-
-  // Check if there are other commits on the same day (in UTC)
-  const sameDayCount = allDates.filter((d) => {
-    const other = parseAsUTC(d)
-    return (
-      other.getUTCFullYear() === date.getUTCFullYear() &&
-      other.getUTCMonth() === date.getUTCMonth() &&
-      other.getUTCDate() === date.getUTCDate()
-    )
-  }).length
-
-  // If multiple commits on same day, add time with UTC indicator
-  if (sameDayCount > 1) {
-    const hours = String(date.getUTCHours()).padStart(2, '0')
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0')
-    return `${dateStr} ${hours}:${minutes} UTC`
-  }
-
-  return dateStr
 }
 
 export function VersionSelector({

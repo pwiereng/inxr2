@@ -353,7 +353,7 @@ class GitService:
         self,
         repo_path: Path,
         branch: str,
-        max_count: int = 1000,
+        max_count: int | None = 1000,
     ) -> list[dict[str, Any]]:
         """
         List commits for a branch, from oldest to newest.
@@ -361,7 +361,7 @@ class GitService:
         Args:
             repo_path: Path to the git repository
             branch: Branch name to list commits for
-            max_count: Maximum number of commits to return
+            max_count: Maximum number of commits to return (None = all commits)
 
         Returns:
             List of commit info dicts (oldest first), each containing:
@@ -374,15 +374,18 @@ class GitService:
         """
         repo = Repo(repo_path)
 
+        # Build kwargs for iter_commits - only include max_count if specified
+        iter_kwargs: dict[str, Any] = {}
+        if max_count is not None:
+            iter_kwargs["max_count"] = max_count
+
         try:
             # Try local branch first
-            commits = list(repo.iter_commits(branch, max_count=max_count))
+            commits = list(repo.iter_commits(branch, **iter_kwargs))
         except Exception:
             # Try remote tracking branch
             try:
-                commits = list(
-                    repo.iter_commits(f"origin/{branch}", max_count=max_count)
-                )
+                commits = list(repo.iter_commits(f"origin/{branch}", **iter_kwargs))
             except Exception as e:
                 logger.warning(f"Could not find branch {branch}: {e}")
                 return []

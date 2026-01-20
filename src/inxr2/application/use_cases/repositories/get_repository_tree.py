@@ -95,8 +95,14 @@ class GetRepositoryTreeUseCase:
         repository_id = repository.id if repository.id is not None else 0
 
         # Get files - either at specific commit (time travel) or latest
-        if request.commit_hash and self._commit_repo:
-            # Time travel: get files at specific commit
+        if request.commit_hash:
+            # Time travel requested - commit_repo is required
+            if not self._commit_repo:
+                raise ValueError(
+                    "Time travel requires commit repository. "
+                    "commit_hash was provided but commit_repo is not available."
+                )
+            # Get files at specific commit
             commit = await self._commit_repo.find_by_hash(
                 repository_id, request.commit_hash
             )

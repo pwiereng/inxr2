@@ -106,12 +106,22 @@ class InMemoryFileRepository(FileRepositoryPort):
         repo = InMemoryFileRepository()
         repo.add(File(...))
         file = await repo.find_by_id("file-1")
+
+    For time travel testing, pass a commit repository:
+        commit_repo = InMemoryCommitRepository()
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
     """
 
-    def __init__(self) -> None:
-        """Initialize with empty storage."""
+    def __init__(self, commit_repo: "InMemoryCommitRepository | None" = None) -> None:
+        """Initialize with empty storage.
+
+        Args:
+            commit_repo: Optional commit repository for commit hash lookups
+                         (required for find_by_repository_path_and_commit_hash)
+        """
         self._files: dict[int, File] = {}
         self._next_id = 1
+        self._commit_repo = commit_repo
 
     async def save(self, file: File) -> File:
         """Save file to in-memory storage."""
@@ -190,11 +200,29 @@ class InMemoryFileRepository(FileRepositoryPort):
     async def find_by_repository_path_and_commit_hash(
         self, repository_id: int, path: str, commit_hash: str
     ) -> File | None:
-        """Find file by repository, path, and commit hash (for time travel)."""
-        # In-memory implementation doesn't have commit info, so just return None
-        # This is a simplified implementation for testing
+        """Find file by repository, path, and commit hash (for time travel).
+
+        Requires commit_repo to be set for proper commit hash lookups.
+        """
+        if self._commit_repo is None:
+            # No commit repo - fall back to simple path matching (legacy behavior)
+            for file in self._files.values():
+                if file.repository_id == repository_id and file.path == path:
+                    return file
+            return None
+
+        # Look up commit by hash
+        commit = await self._commit_repo.find_by_hash(repository_id, commit_hash)
+        if commit is None or commit.id is None:
+            return None
+
+        # Find file matching repository, path, and commit_id
         for file in self._files.values():
-            if file.repository_id == repository_id and file.path == path:
+            if (
+                file.repository_id == repository_id
+                and file.path == path
+                and file.commit_id == commit.id
+            ):
                 return file
         return None
 

@@ -704,3 +704,28 @@ class TestGetRepositoryTreeUseCase:
                     commit_hash="nonexistent" + "0" * 30,
                 )
             )
+
+    @pytest.mark.asyncio
+    async def test_get_tree_with_commit_hash_but_no_commit_repo(self) -> None:
+        """Test that commit_hash without commit_repo raises informative error."""
+        repo_repository = InMemoryRepositoryRepository()
+        file_repository = InMemoryFileRepository()
+
+        repo = await repo_repository.save(
+            Repository(name="test-repo", url="https://example.com/repo.git")
+        )
+
+        # Create use case WITHOUT commit_repo
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+            commit_repo=None,  # No commit repo provided
+        )
+
+        with pytest.raises(ValueError, match="Time travel requires commit repository"):
+            await use_case.execute(
+                GetRepositoryTreeRequest(
+                    repository_id=repo.id,
+                    commit_hash="abc123" + "0" * 34,  # commit_hash provided
+                )
+            )

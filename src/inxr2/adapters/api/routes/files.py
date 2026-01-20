@@ -135,7 +135,7 @@ async def get_file_content_by_path(
         if not file:
             raise HTTPException(
                 status_code=404,
-                detail=f"File not found at commit {commit[:8]}",
+                detail=f"File not found at commit {commit}",
             )
     else:
         # Default: get latest version
@@ -286,7 +286,7 @@ async def get_file_symbols_by_path(
         if not file:
             raise HTTPException(
                 status_code=404,
-                detail=f"File not found at commit {commit[:8]}",
+                detail=f"File not found at commit {commit}",
             )
     else:
         # Default: get latest version
@@ -357,7 +357,7 @@ async def get_file_references_by_path(
         if not file:
             raise HTTPException(
                 status_code=404,
-                detail=f"File not found at commit {commit[:8]}",
+                detail=f"File not found at commit {commit}",
             )
     else:
         # Default: get latest version

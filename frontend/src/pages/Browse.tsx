@@ -47,18 +47,20 @@ import {
   type Symbol,
   type FileVersion,
 } from '@/lib/api'
+import { formatCommitDate } from '@/lib/dateUtils'
 
 export default function Browse() {
   const { repoName, '*': splatPath } = useParams<{ repoName: string; '*': string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
 
-  // Get file path from URL path (splat param) and line/commit from query params
+  // Get file path from URL path (splat param) and line/commit/diff from query params
   const filePath = splatPath || null
   const highlightLine = searchParams.get('line')
     ? parseInt(searchParams.get('line')!, 10)
     : undefined
   const selectedCommit = searchParams.get('commit')
+  const diffCommitFromUrl = searchParams.get('diff')
 
   // State
   const [allRepositories, setAllRepositories] = useState<Repository[]>([])
@@ -73,9 +75,9 @@ export default function Browse() {
     null
   )
 
-  // Diff mode state
-  const [diffMode, setDiffMode] = useState(false)
-  const [diffCommit, setDiffCommit] = useState<string | null>(null)
+  // Diff mode state - derived from URL
+  const diffMode = !!diffCommitFromUrl
+  const diffCommit = diffCommitFromUrl
   const [diffContent, setDiffContent] = useState<FileContent | null>(null)
   const [diffSymbols, setDiffSymbols] = useState<FileSymbol[]>([])
   const [diffReferences, setDiffReferences] = useState<FileReference[]>([])
@@ -227,10 +229,8 @@ export default function Browse() {
     const params = new URLSearchParams()
     // Preserve commit when navigating to a different file (same vintage)
     if (selectedCommit) params.set('commit', selectedCommit)
+    // Exit diff mode when selecting a new file (don't include diff param)
     const query = params.toString()
-    // Exit diff mode when selecting a new file
-    setDiffMode(false)
-    setDiffCommit(null)
     navigate(`/browse/${encodeURIComponent(repoName!)}/${path}${query ? `?${query}` : ''}`)
   }
 
@@ -241,9 +241,7 @@ export default function Browse() {
       params.set('line', symbol.start_line.toString())
       // Preserve commit when navigating to a symbol (same vintage)
       if (selectedCommit) params.set('commit', selectedCommit)
-      // Exit diff mode when selecting a symbol
-      setDiffMode(false)
-      setDiffCommit(null)
+      // Exit diff mode when selecting a symbol (don't include diff param)
       navigate(`/browse/${encodeURIComponent(repoName!)}/${symbol.file_path}?${params}`)
     }
   }
@@ -312,9 +310,7 @@ export default function Browse() {
       // Use the commit from the active panel in diff mode
       const commitToUse = diffMode && activePanel === 'right' ? diffCommit : selectedCommit
       if (commitToUse) params.set('commit', commitToUse)
-      // Exit diff mode when navigating
-      setDiffMode(false)
-      setDiffCommit(null)
+      // Exit diff mode when navigating (don't include diff param)
       navigate(`/browse/${encodeURIComponent(repoName!)}/${reference.source_file_path}?${params}`)
     }
   }
@@ -327,9 +323,7 @@ export default function Browse() {
       // Use the commit from the active panel in diff mode
       const commitToUse = diffMode && activePanel === 'right' ? diffCommit : selectedCommit
       if (commitToUse) params.set('commit', commitToUse)
-      // Exit diff mode when navigating
-      setDiffMode(false)
-      setDiffCommit(null)
+      // Exit diff mode when navigating (don't include diff param)
       navigate(`/browse/${encodeURIComponent(repoName!)}/${sym.file_path}?${params}`)
     }
   }
@@ -340,6 +334,8 @@ export default function Browse() {
       const params = new URLSearchParams()
       params.set('line', line.toString())
       if (selectedCommit) params.set('commit', selectedCommit)
+      // Preserve diff mode
+      if (diffCommit) params.set('diff', diffCommit)
       navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`, {
         replace: true,
       })
@@ -355,57 +351,111 @@ export default function Browse() {
   // Handle version change (time travel)
   const handleVersionChange = (commitHash: string | null) => {
     if (filePath) {
+      // Close references panel since it may refer to a different version
+      setRefsPanelOpen(false)
+      setSelectedSymbol(null)
+      setSearchByName(null)
+
       const params = new URLSearchParams()
       if (highlightLine) params.set('line', highlightLine.toString())
       if (commitHash) params.set('commit', commitHash)
+      // Preserve diff mode if active
+      if (diffCommit) params.set('diff', diffCommit)
       navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
     }
   }
 
-  // Enter diff mode
+  // Enter diff mode - update URL with diff param
   const handleEnterDiffMode = () => {
-    setDiffMode(true)
+    if (!filePath) return
+
     // Default to comparing with the previous version if available
     const currentIndex = fileVersions.findIndex(
       (v) => v.commit_hash === (selectedCommit || fileVersions[0]?.commit_hash)
     )
+    let diffTarget: string | null = null
     if (currentIndex >= 0 && currentIndex < fileVersions.length - 1) {
-      setDiffCommit(fileVersions[currentIndex + 1]?.commit_hash || null)
+      diffTarget = fileVersions[currentIndex + 1]?.commit_hash || null
     } else if (fileVersions.length > 1) {
       // Default to second version
-      setDiffCommit(fileVersions[1]?.commit_hash || null)
+      diffTarget = fileVersions[1]?.commit_hash || null
+    }
+
+    if (diffTarget) {
+      const params = new URLSearchParams()
+      if (highlightLine) params.set('line', highlightLine.toString())
+      if (selectedCommit) params.set('commit', selectedCommit)
+      params.set('diff', diffTarget)
+      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
     }
   }
 
-  // Exit diff mode
+  // Exit diff mode - remove diff param from URL
   const handleExitDiffMode = () => {
-    setDiffMode(false)
-    setDiffCommit(null)
+    if (!filePath) return
+
     setDiffContent(null)
     setDiffSymbols([])
     setDiffReferences([])
     setTreePanel('left')
     setRefPanel('left')
+
+    const params = new URLSearchParams()
+    if (highlightLine) params.set('line', highlightLine.toString())
+    if (selectedCommit) params.set('commit', selectedCommit)
+    // Don't include diff param - this exits diff mode
+    navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
   }
 
   // Handle closing a panel in diff view
   const handleClosePanel = (panel: 'left' | 'right') => {
+    if (!filePath) return
+
     if (panel === 'left') {
-      // Keep the right panel's version
+      // Keep the right panel's version as the main version
       if (diffCommit) {
         const params = new URLSearchParams()
         if (highlightLine) params.set('line', highlightLine.toString())
         params.set('commit', diffCommit)
+        // No diff param - exit diff mode with right panel's version as main
         navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
+        return
       }
     }
     // Closing right panel just exits diff mode keeping current version
     handleExitDiffMode()
   }
 
-  // Handle diff version change
+  // Handle diff version change - update URL
   const handleDiffVersionChange = (commitHash: string | null) => {
-    setDiffCommit(commitHash)
+    if (!filePath) return
+
+    // Close references panel since it may refer to a different version
+    setRefsPanelOpen(false)
+    setSelectedSymbol(null)
+    setSearchByName(null)
+
+    const params = new URLSearchParams()
+    if (highlightLine) params.set('line', highlightLine.toString())
+    if (selectedCommit) params.set('commit', selectedCommit)
+    if (commitHash) params.set('diff', commitHash)
+    navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
+  }
+
+  // Handle refs panel version change (in diff mode)
+  // Keep the panel open but switch to search-by-name mode to find the symbol at the new version
+  const handleRefPanelChange = (panel: 'left' | 'right') => {
+    // Get the symbol name to search for at the new version
+    const symbolName = selectedSymbol?.name || searchByName?.name
+
+    if (symbolName && repository?.id) {
+      // Switch to search-by-name mode - this will find the symbol at the new commit
+      setSelectedSymbol(null)
+      setSearchByName({ name: symbolName, repositoryId: repository.id })
+      setIsDirectDefinition(false)
+    }
+
+    setRefPanel(panel)
   }
 
   // Get short hash for display
@@ -414,41 +464,8 @@ export default function Browse() {
     return hash.substring(0, 7)
   }
 
-  // Parse date as UTC
-  const parseAsUTC = (dateString: string): Date => {
-    if (!dateString.endsWith('Z') && !dateString.includes('+') && !dateString.includes('-', 10)) {
-      return new Date(dateString + 'Z')
-    }
-    return new Date(dateString)
-  }
-
-  // Format commit date for display
-  const formatCommitDate = (dateString: string): string => {
-    const date = parseAsUTC(dateString)
-    const year = date.getUTCFullYear()
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0')
-    const day = String(date.getUTCDate()).padStart(2, '0')
-    const dateStr = `${year}${month}${day}`
-
-    // Check if there are other commits on the same day
-    const allDates = fileVersions.map((v) => v.commit_date)
-    const sameDayCount = allDates.filter((d) => {
-      const other = parseAsUTC(d)
-      return (
-        other.getUTCFullYear() === date.getUTCFullYear() &&
-        other.getUTCMonth() === date.getUTCMonth() &&
-        other.getUTCDate() === date.getUTCDate()
-      )
-    }).length
-
-    if (sameDayCount > 1) {
-      const hours = String(date.getUTCHours()).padStart(2, '0')
-      const minutes = String(date.getUTCMinutes()).padStart(2, '0')
-      return `${dateStr} ${hours}:${minutes} UTC`
-    }
-
-    return dateStr
-  }
+  // All commit dates for formatting (used by formatCommitDate to detect same-day commits)
+  const allCommitDates = fileVersions.map((v) => v.commit_date)
 
   // Check if a version has content changes from the previous version
   const hasContentChange = (version: FileVersion, index: number): boolean => {
@@ -768,7 +785,7 @@ export default function Browse() {
                                           variant="caption"
                                           color="text.secondary"
                                         >
-                                          {formatCommitDate(version.commit_date)}
+                                          {formatCommitDate(version.commit_date, allCommitDates)}
                                         </Typography>
                                       </Box>
                                     </Tooltip>
@@ -891,7 +908,7 @@ export default function Browse() {
                   <FormControl size="small" sx={{ minWidth: 80 }}>
                     <Select
                       value={refPanel}
-                      onChange={(e) => setRefPanel(e.target.value as 'left' | 'right')}
+                      onChange={(e) => handleRefPanelChange(e.target.value as 'left' | 'right')}
                       sx={{
                         '& .MuiSelect-select': {
                           py: 0,
