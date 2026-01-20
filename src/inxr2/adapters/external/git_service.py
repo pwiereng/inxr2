@@ -206,7 +206,9 @@ class GitService:
                 if d.b_path:
                     added.append(d.b_path)
             elif d.b_path or d.a_path:
-                modified.append(d.b_path or d.a_path or "")
+                path = d.b_path or d.a_path
+                if path:
+                    modified.append(path)
 
         return {
             "added": added,
@@ -485,6 +487,8 @@ class GitService:
                 if d.b_path:
                     added.append(d.b_path)
             elif d.b_path or d.a_path:
-                modified.append(d.b_path or d.a_path or "")
+                path = d.b_path or d.a_path
+                if path:
+                    modified.append(path)
 
         return {"added": added, "modified": modified, "deleted": deleted}

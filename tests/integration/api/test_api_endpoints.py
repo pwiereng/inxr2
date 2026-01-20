@@ -1688,7 +1688,7 @@ class TestCommitsAPI:
             committer_name="Test Committer",
             committer_email="committer@example.com",
             author_date=datetime(2025, 1, 1, 10, 30),
-            commit_date=datetime(2025, 1, 1, 12, 00),
+            commit_date=datetime(2025, 1, 1, 12, 0),
             message="Detailed commit message",
             parent_hashes=["parent123" + "0" * 31],
         )
