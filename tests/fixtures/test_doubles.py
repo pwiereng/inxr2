@@ -70,33 +70,128 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
 
     def __init__(self) -> None:
         """Initialize with empty storage."""
-        self._symbols: dict[str, Symbol] = {}
+        self._symbols: dict[int, Symbol] = {}
+        self._next_id = 1
 
     async def save(self, symbol: Symbol) -> Symbol:
         """Save symbol to in-memory storage."""
-        self._symbols[symbol.id] = symbol
+        if symbol.id is not None:
+            self._symbols[symbol.id] = symbol
         return symbol
 
-    async def find_by_id(self, symbol_id: str) -> Symbol | None:
+    async def find_by_id(self, symbol_id: int) -> Symbol | None:
         """Find symbol by ID."""
         return self._symbols.get(symbol_id)
 
     async def find_by_name(
-        self, name: str, repository_id: str | None = None
+        self, name: str, repository_id: int | None = None
     ) -> list[Symbol]:
         """Find symbols by name (case-insensitive)."""
         results = []
         for symbol in self._symbols.values():
             if name.lower() in symbol.name.lower():
                 # Filter by repository if specified
-                if repository_id is None or symbol.file_id.startswith(repository_id):
+                if repository_id is None or symbol.repository_id == repository_id:
                     results.append(symbol)
         return results
 
+    async def save_many(self, symbols: list[Symbol]) -> list[Symbol]:
+        """Bulk save symbols."""
+        result = []
+        for symbol in symbols:
+            saved = await self.save(symbol)
+            result.append(saved)
+        return result
+
+    async def search_by_name(
+        self,
+        name: str,
+        repository_id: int | None = None,
+        commit_id: int | None = None,
+        limit: int = 100,
+    ) -> list[Symbol]:
+        """Search symbols by name with optional filters."""
+        results = []
+        for symbol in self._symbols.values():
+            if name.lower() in symbol.name.lower():
+                if repository_id is not None and symbol.repository_id != repository_id:
+                    continue
+                if commit_id is not None and symbol.commit_id != commit_id:
+                    continue
+                results.append(symbol)
+        return results[:limit]
+
+    async def find_by_qualified_name(
+        self, repository_id: int, qualified_name: str
+    ) -> list[Symbol]:
+        """Find symbols by qualified name."""
+        return [
+            s
+            for s in self._symbols.values()
+            if s.repository_id == repository_id and s.qualified_name == qualified_name
+        ]
+
+    async def list_by_file(self, file_id: int) -> list[Symbol]:
+        """List all symbols in a file."""
+        return [s for s in self._symbols.values() if s.file_id == file_id]
+
+    async def find_by_exact_name(
+        self,
+        name: str,
+        repository_id: int | None = None,
+        commit_id: int | None = None,
+        limit: int = 100,
+    ) -> list[Symbol]:
+        """Find symbols by exact name."""
+        results = []
+        for symbol in self._symbols.values():
+            if symbol.name == name:
+                if repository_id is not None and symbol.repository_id != repository_id:
+                    continue
+                if commit_id is not None and symbol.commit_id != commit_id:
+                    continue
+                results.append(symbol)
+        return results[:limit]
+
+    async def count_by_repository(self, repository_id: int) -> int:
+        """Count symbols in a repository."""
+        return len(
+            [s for s in self._symbols.values() if s.repository_id == repository_id]
+        )
+
+    async def delete_by_file(self, file_id: int) -> int:
+        """Delete all symbols for a file."""
+        to_delete = [sid for sid, s in self._symbols.items() if s.file_id == file_id]
+        for sid in to_delete:
+            del self._symbols[sid]
+        return len(to_delete)
+
     # Test helper methods
-    def add(self, symbol: Symbol) -> None:
+    def add(self, symbol: Symbol) -> Symbol:
         """Add a symbol for testing (convenience method)."""
+        if symbol.id is None:
+            symbol = Symbol(
+                id=self._next_id,
+                file_id=symbol.file_id,
+                repository_id=symbol.repository_id,
+                commit_id=symbol.commit_id,
+                name=symbol.name,
+                kind=symbol.kind,
+                start_line=symbol.start_line,
+                start_column=symbol.start_column,
+                end_line=symbol.end_line,
+                end_column=symbol.end_column,
+                qualified_name=symbol.qualified_name,
+                parent_symbol_id=symbol.parent_symbol_id,
+                scope=symbol.scope,
+                signature=symbol.signature,
+                docstring=symbol.docstring,
+                metadata=symbol.metadata,
+                indexed_at=symbol.indexed_at,
+            )
+            self._next_id += 1
         self._symbols[symbol.id] = symbol
+        return symbol
 
     def clear(self) -> None:
         """Clear all symbols (for test isolation)."""

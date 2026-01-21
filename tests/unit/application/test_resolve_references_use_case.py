@@ -8,51 +8,19 @@ from inxr2.application.use_cases.indexing import (
 )
 from inxr2.domain.entities import Reference, Symbol
 from inxr2.domain.value_objects import ReferenceType, SymbolKind
-from tests.fixtures.test_doubles import InMemoryReferenceRepository
-
-
-class FakeSymbolRepository:
-    """Minimal fake symbol repository for resolve references testing.
-
-    This is a simplified version that provides just what InMemoryReferenceRepository
-    needs to resolve references.
-    """
-
-    def __init__(self) -> None:
-        self._symbols: dict[int, Symbol] = {}
-        self._next_id = 1
-
-    def add(self, symbol: Symbol) -> Symbol:
-        """Add a symbol for testing."""
-        if symbol.id is None:
-            symbol = Symbol(
-                id=self._next_id,
-                file_id=symbol.file_id,
-                repository_id=symbol.repository_id,
-                commit_id=symbol.commit_id,
-                name=symbol.name,
-                kind=symbol.kind,
-                start_line=symbol.start_line,
-                start_column=symbol.start_column,
-                end_line=symbol.end_line,
-                end_column=symbol.end_column,
-            )
-            self._next_id += 1
-        self._symbols[symbol.id] = symbol
-        return symbol
-
-    def get_all_symbols(self) -> list[Symbol]:
-        """Get all symbols (for testing and internal use)."""
-        return list(self._symbols.values())
+from tests.fixtures.test_doubles import (
+    InMemoryReferenceRepository,
+    InMemorySymbolRepository,
+)
 
 
 class TestResolveReferencesUseCase:
     """Tests for ResolveReferencesUseCase."""
 
     @pytest.fixture
-    def symbol_repo(self) -> FakeSymbolRepository:
+    def symbol_repo(self) -> InMemorySymbolRepository:
         """Create a symbol repository with test symbols."""
-        repo = FakeSymbolRepository()
+        repo = InMemorySymbolRepository()
 
         # Add test symbols
         repo.add(
@@ -103,7 +71,7 @@ class TestResolveReferencesUseCase:
 
     @pytest.fixture
     def reference_repo(
-        self, symbol_repo: FakeSymbolRepository
+        self, symbol_repo: InMemorySymbolRepository
     ) -> InMemoryReferenceRepository:
         """Create a reference repository with test references."""
         repo = InMemoryReferenceRepository(symbol_repo=symbol_repo)
@@ -293,7 +261,7 @@ class TestResolveReferencesUseCase:
 
     @pytest.mark.asyncio
     async def test_resolve_references_empty_repository(
-        self, symbol_repo: FakeSymbolRepository
+        self, symbol_repo: InMemorySymbolRepository
     ) -> None:
         """Test resolving references when there are no references."""
         # Arrange

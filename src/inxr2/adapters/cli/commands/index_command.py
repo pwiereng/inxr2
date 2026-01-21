@@ -26,6 +26,14 @@ from rich.progress import (
 )
 from rich.table import Table
 
+from inxr2.application.use_cases.indexing import (
+    GetIndexStatusRequest,
+    GetIndexStatusUseCase,
+    ResolveReferencesRequest,
+    ResolveReferencesUseCase,
+)
+from inxr2.infrastructure.database.connection import DatabaseConnection
+
 logger = logging.getLogger(__name__)
 
 # Indexer version for tracking
@@ -141,7 +149,6 @@ async def _run_full_index_async(
     )
     from inxr2.domain.entities import Commit, File, IndexStatus
     from inxr2.domain.value_objects import CommitHash
-    from inxr2.infrastructure.database.connection import DatabaseConnection
 
     stats = IndexingStats()
 
@@ -407,11 +414,6 @@ async def _run_full_index_async(
                 )
 
             # Resolve references to symbols (commit-aware for time travel consistency)
-            from inxr2.application.use_cases.indexing import (
-                ResolveReferencesRequest,
-                ResolveReferencesUseCase,
-            )
-
             console.print("[cyan]Resolving references (commit-aware)...[/cyan]")
             resolve_use_case = ResolveReferencesUseCase(
                 reference_repository=reference_repository
@@ -494,7 +496,6 @@ async def _run_incremental_index_async(
     )
     from inxr2.domain.entities import Commit, File, IndexStatus
     from inxr2.domain.value_objects import CommitHash
-    from inxr2.infrastructure.database.connection import DatabaseConnection
 
     stats = IndexingStats()
 
@@ -758,11 +759,6 @@ async def _run_incremental_index_async(
                     )
 
             # Resolve references to symbols (cross-commit for incremental indexing)
-            from inxr2.application.use_cases.indexing import (
-                ResolveReferencesRequest,
-                ResolveReferencesUseCase,
-            )
-
             console.print("[cyan]Resolving references...[/cyan]")
             resolve_use_case = ResolveReferencesUseCase(
                 reference_repository=reference_repository
@@ -818,11 +814,6 @@ async def _show_index_status_async(repo_path: Path, console: Console) -> None:
         PostgresIndexStatusRepository,
         PostgresRepositoryAdapter,
     )
-    from inxr2.application.use_cases.indexing import (
-        GetIndexStatusRequest,
-        GetIndexStatusUseCase,
-    )
-    from inxr2.infrastructure.database.connection import DatabaseConnection
 
     git_service = GitService()
 
