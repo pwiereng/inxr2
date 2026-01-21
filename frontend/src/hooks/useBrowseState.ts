@@ -371,7 +371,7 @@ export function useBrowseState() {
   )
 
   const navigateToSymbol = useCallback(
-    async (symbol: Symbol) => {
+    (symbol: Symbol) => {
       if (symbol.file_path) {
         const params = new URLSearchParams()
         params.set('line', symbol.start_line.toString())
