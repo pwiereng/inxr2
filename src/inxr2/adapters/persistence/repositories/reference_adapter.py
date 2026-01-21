@@ -1,6 +1,6 @@
 """PostgreSQL reference repository adapter."""
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import ReferenceRepositoryPort
@@ -200,3 +200,57 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
             )
         )
         return result.scalar() or 0
+
+    async def resolve_unlinked_references(
+        self, repository_id: int, commit_aware: bool = False
+    ) -> int:
+        """Resolve references to their target symbols.
+
+        After indexing, this method matches reference_text to symbol names
+        and updates the target_symbol_id for each reference.
+
+        Args:
+            repository_id: The repository ID to resolve references for
+            commit_aware: If True, only match references to symbols from the
+                         same commit (for time travel consistency). If False,
+                         match across all commits in the repository.
+
+        Returns:
+            Number of references resolved
+        """
+        if commit_aware:
+            # Time travel mode: only match references to symbols from same commit
+            result = await self.session.execute(
+                text(
+                    """
+                    UPDATE "references" r
+                    SET target_symbol_id = s.id
+                    FROM symbols s
+                    WHERE r.repository_id = :repo_id
+                      AND s.repository_id = :repo_id
+                      AND r.commit_id = s.commit_id
+                      AND r.reference_text = s.name
+                      AND r.target_symbol_id IS NULL
+                """
+                ),
+                {"repo_id": repository_id},
+            )
+        else:
+            # Cross-commit mode: match references to any symbol in repository
+            result = await self.session.execute(
+                text(
+                    """
+                    UPDATE "references" r
+                    SET target_symbol_id = s.id
+                    FROM symbols s
+                    WHERE r.repository_id = :repo_id
+                      AND s.repository_id = :repo_id
+                      AND r.reference_text = s.name
+                      AND r.target_symbol_id IS NULL
+                """
+                ),
+                {"repo_id": repository_id},
+            )
+
+        await self.session.commit()
+        return result.rowcount or 0  # type: ignore[attr-defined]

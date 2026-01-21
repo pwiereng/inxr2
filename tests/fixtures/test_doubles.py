@@ -35,11 +35,20 @@ from pathlib import Path
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
+    IndexStatusRepositoryPort,
+    ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
 )
 from inxr2.application.ports.services import GitServicePort, ParserServicePort
-from inxr2.domain.entities import Commit, File, Repository, Symbol
+from inxr2.domain.entities import (
+    Commit,
+    File,
+    IndexStatus,
+    Reference,
+    Repository,
+    Symbol,
+)
 
 # ============================================================================
 # Repository Test Doubles
@@ -370,6 +379,297 @@ class InMemoryCommitRepository(CommitRepositoryPort):
     def clear(self) -> None:
         """Clear all commits."""
         self._commits.clear()
+
+
+class InMemoryReferenceRepository(ReferenceRepositoryPort):
+    """In-memory implementation of ReferenceRepositoryPort for testing.
+
+    For resolve_unlinked_references, this fake requires a symbol_repository
+    to be provided so it can match references to symbols.
+
+    Example:
+        symbol_repo = InMemorySymbolRepository()
+        ref_repo = InMemoryReferenceRepository(symbol_repo=symbol_repo)
+        ref_repo.add(Reference(...))
+        count = await ref_repo.resolve_unlinked_references(repository_id=1)
+    """
+
+    def __init__(self, symbol_repo: "InMemorySymbolRepository | None" = None) -> None:
+        """Initialize with empty storage.
+
+        Args:
+            symbol_repo: Optional symbol repository for resolving references.
+                        Required for resolve_unlinked_references to work properly.
+        """
+        self._references: dict[int, Reference] = {}
+        self._next_id = 1
+        self._symbol_repo = symbol_repo
+
+    async def save(self, reference: Reference) -> Reference:
+        """Save reference to in-memory storage."""
+        if reference.id is None:
+            # Create a new reference with an assigned ID
+            # Since Reference is frozen, we need to create a new instance
+            reference = Reference(
+                id=self._next_id,
+                repository_id=reference.repository_id,
+                commit_id=reference.commit_id,
+                source_file_id=reference.source_file_id,
+                source_line=reference.source_line,
+                source_column=reference.source_column,
+                source_end_column=reference.source_end_column,
+                reference_text=reference.reference_text,
+                reference_type=reference.reference_type,
+                target_symbol_id=reference.target_symbol_id,
+                target_repository_id=reference.target_repository_id,
+                is_definition=reference.is_definition,
+                is_write=reference.is_write,
+                resolution_confidence=reference.resolution_confidence,
+                metadata=reference.metadata,
+                indexed_at=reference.indexed_at,
+            )
+            self._next_id += 1
+        self._references[reference.id] = reference
+        return reference
+
+    async def save_many(self, references: list[Reference]) -> list[Reference]:
+        """Bulk save references."""
+        result = []
+        for ref in references:
+            saved = await self.save(ref)
+            result.append(saved)
+        return result
+
+    async def find_by_id(self, reference_id: int) -> Reference | None:
+        """Find reference by ID."""
+        return self._references.get(reference_id)
+
+    async def find_references_to_symbol(
+        self, symbol_id: int, limit: int = 100, commit_id: int | None = None
+    ) -> list[Reference]:
+        """Find all references to a symbol."""
+        refs = [r for r in self._references.values() if r.target_symbol_id == symbol_id]
+        if commit_id is not None:
+            refs = [r for r in refs if r.commit_id == commit_id]
+        refs.sort(key=lambda r: (r.source_file_id, r.source_line))
+        return refs[:limit]
+
+    async def list_by_file(self, file_id: int) -> list[Reference]:
+        """List all references in a file."""
+        refs = [r for r in self._references.values() if r.source_file_id == file_id]
+        refs.sort(key=lambda r: (r.source_line, r.source_column))
+        return refs
+
+    async def find_references_by_text(
+        self,
+        text: str,
+        repository_id: int,
+        limit: int = 100,
+        commit_id: int | None = None,
+    ) -> list[Reference]:
+        """Find references by text."""
+        refs = [
+            r
+            for r in self._references.values()
+            if r.reference_text == text and r.repository_id == repository_id
+        ]
+        if commit_id is not None:
+            refs = [r for r in refs if r.commit_id == commit_id]
+        refs.sort(key=lambda r: (r.source_file_id, r.source_line))
+        return refs[:limit]
+
+    async def count_by_repository(self, repository_id: int) -> int:
+        """Count references for a repository."""
+        return len(
+            [r for r in self._references.values() if r.repository_id == repository_id]
+        )
+
+    async def delete_by_file(self, file_id: int) -> int:
+        """Delete all references for a file."""
+        to_delete = [
+            ref_id
+            for ref_id, ref in self._references.items()
+            if ref.source_file_id == file_id
+        ]
+        for ref_id in to_delete:
+            del self._references[ref_id]
+        return len(to_delete)
+
+    async def resolve_unlinked_references(
+        self, repository_id: int, commit_aware: bool = False
+    ) -> int:
+        """Resolve references to their target symbols.
+
+        This fake implementation matches references to symbols by name.
+        Requires symbol_repo to be set for proper functionality.
+        """
+        if self._symbol_repo is None:
+            # Without a symbol repo, we can't resolve anything
+            return 0
+
+        resolved_count = 0
+        updated_refs: dict[int, Reference] = {}
+
+        for ref_id, ref in self._references.items():
+            # Skip if already resolved or wrong repository
+            if ref.target_symbol_id is not None or ref.repository_id != repository_id:
+                continue
+
+            # Find matching symbol
+            matching_symbol = None
+            for symbol in self._symbol_repo._symbols.values():
+                if (
+                    symbol.repository_id == repository_id
+                    and symbol.name == ref.reference_text
+                ):
+                    if commit_aware:
+                        # Only match if same commit
+                        if symbol.commit_id == ref.commit_id:
+                            matching_symbol = symbol
+                            break
+                    else:
+                        matching_symbol = symbol
+                        break
+
+            if matching_symbol is not None and matching_symbol.id is not None:
+                # Create updated reference with target_symbol_id set
+                updated_refs[ref_id] = Reference(
+                    id=ref.id,
+                    repository_id=ref.repository_id,
+                    commit_id=ref.commit_id,
+                    source_file_id=ref.source_file_id,
+                    source_line=ref.source_line,
+                    source_column=ref.source_column,
+                    source_end_column=ref.source_end_column,
+                    reference_text=ref.reference_text,
+                    reference_type=ref.reference_type,
+                    target_symbol_id=matching_symbol.id,
+                    target_repository_id=ref.target_repository_id,
+                    is_definition=ref.is_definition,
+                    is_write=ref.is_write,
+                    resolution_confidence=ref.resolution_confidence,
+                    metadata=ref.metadata,
+                    indexed_at=ref.indexed_at,
+                )
+                resolved_count += 1
+
+        # Apply updates
+        self._references.update(updated_refs)
+        return resolved_count
+
+    # Test helper methods
+    def add(self, reference: Reference) -> None:
+        """Add a reference for testing."""
+        if reference.id is not None:
+            self._references[reference.id] = reference
+        else:
+            # Auto-assign ID
+            new_ref = Reference(
+                id=self._next_id,
+                repository_id=reference.repository_id,
+                commit_id=reference.commit_id,
+                source_file_id=reference.source_file_id,
+                source_line=reference.source_line,
+                source_column=reference.source_column,
+                source_end_column=reference.source_end_column,
+                reference_text=reference.reference_text,
+                reference_type=reference.reference_type,
+                target_symbol_id=reference.target_symbol_id,
+                target_repository_id=reference.target_repository_id,
+                is_definition=reference.is_definition,
+                is_write=reference.is_write,
+                resolution_confidence=reference.resolution_confidence,
+                metadata=reference.metadata,
+                indexed_at=reference.indexed_at,
+            )
+            self._references[self._next_id] = new_ref
+            self._next_id += 1
+
+    def clear(self) -> None:
+        """Clear all references."""
+        self._references.clear()
+
+
+class InMemoryIndexStatusRepository(IndexStatusRepositoryPort):
+    """In-memory implementation of IndexStatusRepositoryPort for testing."""
+
+    def __init__(self) -> None:
+        """Initialize with empty storage."""
+        self._statuses: dict[int, IndexStatus] = {}
+        self._next_id = 1
+
+    async def save(self, status: IndexStatus) -> IndexStatus:
+        """Save index status to in-memory storage."""
+        if status.id is None:
+            status = IndexStatus(
+                id=self._next_id,
+                repository_id=status.repository_id,
+                branch=status.branch,
+                indexing_status=status.indexing_status,
+                last_indexed_commit=status.last_indexed_commit,
+                oldest_indexed_commit=status.oldest_indexed_commit,
+                last_indexed_at=status.last_indexed_at,
+                indexing_started_at=status.indexing_started_at,
+                total_commits_indexed=status.total_commits_indexed,
+                total_files_indexed=status.total_files_indexed,
+                total_symbols_indexed=status.total_symbols_indexed,
+                total_references_indexed=status.total_references_indexed,
+                error_message=status.error_message,
+                error_count=status.error_count,
+                indexer_version=status.indexer_version,
+                metadata=status.metadata,
+                created_at=status.created_at,
+                updated_at=status.updated_at,
+            )
+            self._next_id += 1
+        self._statuses[status.id] = status
+        return status
+
+    async def find_by_repository_and_branch(
+        self, repository_id: int, branch: str
+    ) -> IndexStatus | None:
+        """Find index status for a repository/branch combination."""
+        for status in self._statuses.values():
+            if status.repository_id == repository_id and status.branch == branch:
+                return status
+        return None
+
+    async def list_by_repository(self, repository_id: int) -> list[IndexStatus]:
+        """List all index statuses for a repository (all branches)."""
+        return [s for s in self._statuses.values() if s.repository_id == repository_id]
+
+    # Test helper methods
+    def add(self, status: IndexStatus) -> None:
+        """Add an index status for testing."""
+        if status.id is not None:
+            self._statuses[status.id] = status
+        else:
+            new_status = IndexStatus(
+                id=self._next_id,
+                repository_id=status.repository_id,
+                branch=status.branch,
+                indexing_status=status.indexing_status,
+                last_indexed_commit=status.last_indexed_commit,
+                oldest_indexed_commit=status.oldest_indexed_commit,
+                last_indexed_at=status.last_indexed_at,
+                indexing_started_at=status.indexing_started_at,
+                total_commits_indexed=status.total_commits_indexed,
+                total_files_indexed=status.total_files_indexed,
+                total_symbols_indexed=status.total_symbols_indexed,
+                total_references_indexed=status.total_references_indexed,
+                error_message=status.error_message,
+                error_count=status.error_count,
+                indexer_version=status.indexer_version,
+                metadata=status.metadata,
+                created_at=status.created_at,
+                updated_at=status.updated_at,
+            )
+            self._statuses[self._next_id] = new_status
+            self._next_id += 1
+
+    def clear(self) -> None:
+        """Clear all statuses."""
+        self._statuses.clear()
 
 
 # ============================================================================
