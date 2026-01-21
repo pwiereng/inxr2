@@ -252,5 +252,5 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                 {"repo_id": repository_id},
             )
 
-        await self.session.commit()
+        await self.session.flush()
         return result.rowcount or 0  # type: ignore[attr-defined]
