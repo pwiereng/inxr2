@@ -26,6 +26,14 @@ from rich.progress import (
 )
 from rich.table import Table
 
+from inxr2.application.use_cases.indexing import (
+    GetIndexStatusRequest,
+    GetIndexStatusUseCase,
+    ResolveReferencesRequest,
+    ResolveReferencesUseCase,
+)
+from inxr2.infrastructure.database.connection import DatabaseConnection
+
 logger = logging.getLogger(__name__)
 
 # Indexer version for tracking
@@ -141,7 +149,6 @@ async def _run_full_index_async(
     )
     from inxr2.domain.entities import Commit, File, IndexStatus
     from inxr2.domain.value_objects import CommitHash
-    from inxr2.infrastructure.database.connection import DatabaseConnection
 
     stats = IndexingStats()
 
@@ -406,9 +413,17 @@ async def _run_full_index_async(
                     file_task, description="[green]Complete[/green]", completed=100
                 )
 
-            # Resolve references to symbols (commit-aware)
-            stats.references_resolved = await resolve_references_commit_aware(
-                repo_id, session, console
+            # Resolve references to symbols (commit-aware for time travel consistency)
+            console.print("[cyan]Resolving references (commit-aware)...[/cyan]")
+            resolve_use_case = ResolveReferencesUseCase(
+                reference_repository=reference_repository
+            )
+            resolve_result = await resolve_use_case.execute(
+                ResolveReferencesRequest(repository_id=repo_id, commit_aware=True)
+            )
+            stats.references_resolved = resolve_result.resolved_count
+            console.print(
+                f"[green]Resolved {stats.references_resolved} references to symbols[/green]"
             )
 
             # Update index status to completed
@@ -481,7 +496,6 @@ async def _run_incremental_index_async(
     )
     from inxr2.domain.entities import Commit, File, IndexStatus
     from inxr2.domain.value_objects import CommitHash
-    from inxr2.infrastructure.database.connection import DatabaseConnection
 
     stats = IndexingStats()
 
@@ -744,9 +758,17 @@ async def _run_incremental_index_async(
                         file_task, description="[green]Complete[/green]", completed=100
                     )
 
-            # Resolve references to symbols
-            stats.references_resolved = await resolve_references(
-                repo_id, session, console
+            # Resolve references to symbols (cross-commit for incremental indexing)
+            console.print("[cyan]Resolving references...[/cyan]")
+            resolve_use_case = ResolveReferencesUseCase(
+                reference_repository=reference_repository
+            )
+            resolve_result = await resolve_use_case.execute(
+                ResolveReferencesRequest(repository_id=repo_id, commit_aware=False)
+            )
+            stats.references_resolved = resolve_result.resolved_count
+            console.print(
+                f"[green]Resolved {stats.references_resolved} references to symbols[/green]"
             )
 
             # Update index status to completed
@@ -783,85 +805,83 @@ def show_index_status(repo_path: Path, console: Console) -> None:
 
 
 async def _show_index_status_async(repo_path: Path, console: Console) -> None:
-    """Async implementation of index status."""
+    """Async implementation of index status.
+
+    Uses GetIndexStatusUseCase for business logic, handles presentation here.
+    """
     from inxr2.adapters.external.git_service import GitService
     from inxr2.adapters.persistence.repositories import (
         PostgresIndexStatusRepository,
         PostgresRepositoryAdapter,
     )
-    from inxr2.infrastructure.database.connection import DatabaseConnection
 
     git_service = GitService()
 
-    # Get repository info
+    # Get repository info from git (external service)
     repo_info = git_service.get_repository_info(repo_path)
     current_branch = repo_info.get("current_branch", "unknown")
     current_commit = git_service.get_current_commit(repo_path, current_branch)
+    repo_name = repo_info.get("name", repo_path.name)
 
-    # Connect to database
+    # Connect to database and execute use case
     db = DatabaseConnection()
 
     try:
         async with db.session() as session:
-            repo_repository = PostgresRepositoryAdapter(session)
-            index_status_repository = PostgresIndexStatusRepository(session)
+            # Create use case with dependencies
+            use_case = GetIndexStatusUseCase(
+                repository_repo=PostgresRepositoryAdapter(session),
+                index_status_repo=PostgresIndexStatusRepository(session),
+            )
 
-            # Find repository
-            repo_name = repo_info.get("name", repo_path.name)
-            db_repo = await repo_repository.find_by_name(repo_name)
+            # Execute use case
+            status = await use_case.execute(
+                GetIndexStatusRequest(
+                    repository_name=repo_name,
+                    branch=current_branch,
+                    current_commit_hash=current_commit,
+                )
+            )
 
-            # Create status table
+            # Presentation: Create status table
             table = Table(show_header=False, box=None)
             table.add_column("Property", style="dim")
             table.add_column("Value")
 
-            table.add_row("Repository", repo_info.get("name", str(repo_path)))
+            table.add_row("Repository", repo_name)
             table.add_row("Current Branch", current_branch)
             table.add_row(
                 "Current Commit", current_commit[:8] if current_commit else "unknown"
             )
             table.add_row("", "")
 
-            if db_repo:
-                if db_repo.id is None:
-                    index_status = None
-                else:
-                    repo_id = db_repo.id
-                    index_status = (
-                        await index_status_repository.find_by_repository_and_branch(
-                            repo_id, current_branch
-                        )
-                    )
+            if status.is_indexed:
+                table.add_row(
+                    "Last Indexed Commit",
+                    (
+                        status.last_indexed_commit[:8]
+                        if status.last_indexed_commit
+                        else "unknown"
+                    ),
+                )
+                table.add_row(
+                    "Last Indexed At",
+                    (
+                        status.last_indexed_at.isoformat()
+                        if status.last_indexed_at
+                        else "unknown"
+                    ),
+                )
+                table.add_row("Files Indexed", str(status.total_files_indexed))
+                table.add_row("Symbols Indexed", str(status.total_symbols_indexed))
+                table.add_row(
+                    "References Indexed", str(status.total_references_indexed)
+                )
 
-                if index_status and index_status.last_indexed_commit:
-                    table.add_row(
-                        "Last Indexed Commit", index_status.last_indexed_commit[:8]
-                    )
-                    table.add_row(
-                        "Last Indexed At",
-                        (
-                            index_status.last_indexed_at.isoformat()
-                            if index_status.last_indexed_at
-                            else "unknown"
-                        ),
-                    )
-                    table.add_row(
-                        "Files Indexed", str(index_status.total_files_indexed)
-                    )
-                    table.add_row(
-                        "Symbols Indexed", str(index_status.total_symbols_indexed)
-                    )
-                    table.add_row(
-                        "References Indexed",
-                        str(index_status.total_references_indexed),
-                    )
-
-                    if index_status.last_indexed_commit == current_commit:
-                        table.add_row("Status", "[green]Up to date[/green]")
-                    else:
-                        table.add_row("Status", "[yellow]Updates available[/yellow]")
+                if status.is_up_to_date:
+                    table.add_row("Status", "[green]Up to date[/green]")
                 else:
-                    table.add_row("Status", "[red]Not indexed[/red]")
+                    table.add_row("Status", "[yellow]Updates available[/yellow]")
             else:
                 table.add_row("Status", "[red]Not indexed[/red]")
 
@@ -1036,98 +1056,3 @@ def _dict_to_reference(
             {"from_module": d.get("from_module")} if d.get("from_module") else None
         ),
     )
-
-
-async def resolve_references(
-    repository_id: int,
-    session: Any,
-    console: Console,
-) -> int:
-    """
-    Resolve references to their target symbols.
-
-    After indexing, this function matches reference_text to symbol names
-    and updates the target_symbol_id for each reference.
-
-    Args:
-        repository_id: The repository ID to resolve references for
-        session: Database session
-        console: Rich console for output
-
-    Returns:
-        Number of references resolved
-    """
-    from sqlalchemy import text
-
-    console.print("[cyan]Resolving references...[/cyan]")
-
-    # Update references where reference_text matches a symbol name
-    # in the same repository (function calls, class instantiations, etc.)
-    result = await session.execute(
-        text(
-            """
-            UPDATE "references" r
-            SET target_symbol_id = s.id
-            FROM symbols s
-            WHERE r.repository_id = :repo_id
-              AND s.repository_id = :repo_id
-              AND r.reference_text = s.name
-              AND r.target_symbol_id IS NULL
-        """
-        ),
-        {"repo_id": repository_id},
-    )
-    await session.commit()
-
-    resolved_count = result.rowcount or 0
-    console.print(f"[green]Resolved {resolved_count} references to symbols[/green]")
-
-    return resolved_count
-
-
-async def resolve_references_commit_aware(
-    repository_id: int,
-    session: Any,
-    console: Console,
-) -> int:
-    """
-    Resolve references to their target symbols with commit awareness.
-
-    For time travel support, references are matched to symbols from the same
-    commit, ensuring that navigation stays within the same version of the code.
-
-    Args:
-        repository_id: The repository ID to resolve references for
-        session: Database session
-        console: Rich console for output
-
-    Returns:
-        Number of references resolved
-    """
-    from sqlalchemy import text
-
-    console.print("[cyan]Resolving references (commit-aware)...[/cyan]")
-
-    # Update references where reference_text matches a symbol name
-    # in the same repository AND same commit (for time travel consistency)
-    result = await session.execute(
-        text(
-            """
-            UPDATE "references" r
-            SET target_symbol_id = s.id
-            FROM symbols s
-            WHERE r.repository_id = :repo_id
-              AND s.repository_id = :repo_id
-              AND r.commit_id = s.commit_id
-              AND r.reference_text = s.name
-              AND r.target_symbol_id IS NULL
-        """
-        ),
-        {"repo_id": repository_id},
-    )
-    await session.commit()
-
-    resolved_count = result.rowcount or 0
-    console.print(f"[green]Resolved {resolved_count} references to symbols[/green]")
-
-    return resolved_count

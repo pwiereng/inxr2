@@ -271,6 +271,26 @@ class ReferenceRepositoryPort(ABC):
         """Delete all references for a file (for re-indexing). Returns count deleted."""
         pass
 
+    @abstractmethod
+    async def resolve_unlinked_references(
+        self, repository_id: int, commit_aware: bool = False
+    ) -> int:
+        """Resolve references to their target symbols.
+
+        After indexing, this method matches reference_text to symbol names
+        and updates the target_symbol_id for each reference.
+
+        Args:
+            repository_id: The repository ID to resolve references for
+            commit_aware: If True, only match references to symbols from the
+                         same commit (for time travel consistency). If False,
+                         match across all commits in the repository.
+
+        Returns:
+            Number of references resolved
+        """
+        pass
+
 
 class IndexStatusRepositoryPort(ABC):
     """Port for index status operations."""
