@@ -23,11 +23,13 @@ class TestGetIndexStatusUseCase:
         """Create a repository repo with test data."""
         repo = InMemoryRepositoryRepository()
         # Add a test repository
-        repo._repositories[1] = Repository(
-            id=1,
-            name="test-repo",
-            url="/path/to/test-repo",
-            description="Test repository",
+        repo.add(
+            Repository(
+                id=1,
+                name="test-repo",
+                url="/path/to/test-repo",
+                description="Test repository",
+            )
         )
         return repo
 

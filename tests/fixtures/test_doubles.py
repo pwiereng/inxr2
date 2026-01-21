@@ -106,6 +106,10 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         """Get total symbol count (for assertions)."""
         return len(self._symbols)
 
+    def get_all_symbols(self) -> list[Symbol]:
+        """Get all symbols (for testing and internal use)."""
+        return list(self._symbols.values())
+
 
 class InMemoryFileRepository(FileRepositoryPort):
     """
@@ -302,6 +306,25 @@ class InMemoryRepositoryRepository(RepositoryPort):
     def clear(self) -> None:
         """Clear all repositories."""
         self._repositories.clear()
+
+    def add(self, repository: Repository) -> None:
+        """Add a repository for testing (convenience method)."""
+        if repository.id is not None:
+            self._repositories[repository.id] = repository
+        else:
+            # Auto-assign ID
+            new_repo = Repository(
+                id=self._next_id,
+                name=repository.name,
+                url=repository.url,
+                description=repository.description,
+                default_branch=repository.default_branch,
+                config=repository.config,
+                created_at=repository.created_at,
+                updated_at=repository.updated_at,
+            )
+            self._repositories[self._next_id] = new_repo
+            self._next_id += 1
 
 
 class InMemoryCommitRepository(CommitRepositoryPort):
@@ -517,7 +540,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
 
             # Find matching symbol
             matching_symbol = None
-            for symbol in self._symbol_repo._symbols.values():
+            for symbol in self._symbol_repo.get_all_symbols():
                 if (
                     symbol.repository_id == repository_id
                     and symbol.name == ref.reference_text

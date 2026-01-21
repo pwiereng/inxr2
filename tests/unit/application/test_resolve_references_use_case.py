@@ -41,6 +41,10 @@ class FakeSymbolRepository:
         self._symbols[symbol.id] = symbol
         return symbol
 
+    def get_all_symbols(self) -> list[Symbol]:
+        """Get all symbols (for testing and internal use)."""
+        return list(self._symbols.values())
+
 
 class TestResolveReferencesUseCase:
     """Tests for ResolveReferencesUseCase."""
