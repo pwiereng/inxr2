@@ -417,7 +417,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         count = await ref_repo.resolve_unlinked_references(repository_id=1)
     """
 
-    def __init__(self, symbol_repo: "InMemorySymbolRepository | None" = None) -> None:
+    def __init__(self, symbol_repo: InMemorySymbolRepository | None = None) -> None:
         """Initialize with empty storage.
 
         Args:
