@@ -668,11 +668,23 @@ export function useBrowseState() {
 
   const handleDiffSymbolClick = useCallback(
     async (fileSymbol: FileSymbol, panel: 'left' | 'right') => {
-      setActivePanel(panel)
-      setRefPanel(panel)
-      await handleSymbolClick(fileSymbol)
+      try {
+        const symbol = await getSymbol(fileSymbol.id)
+        setSelectedSymbol(symbol)
+        setSearchByName(null)
+        setIsDirectDefinition(true)
+        // Update all URL params in a single call to avoid race conditions
+        updateUrlParams({
+          refs: '1',
+          q: symbol.name,
+          ap: panel === 'right' ? 'r' : null,
+          rp: panel === 'right' ? 'r' : null,
+        })
+      } catch (err) {
+        console.error('Failed to get symbol:', err)
+      }
     },
-    [handleSymbolClick, setActivePanel, setRefPanel]
+    [updateUrlParams]
   )
 
   const handleCodeReferenceClick = useCallback(
@@ -695,11 +707,37 @@ export function useBrowseState() {
 
   const handleDiffReferenceClick = useCallback(
     async (ref: FileReference, panel: 'left' | 'right') => {
-      setActivePanel(panel)
-      setRefPanel(panel)
-      await handleCodeReferenceClick(ref)
+      if (!ref.target_symbol_id) {
+        // Unresolved reference - search by name
+        if (repository?.id) {
+          setSelectedSymbol(null)
+          setSearchByName({ name: ref.reference_text, repositoryId: repository.id })
+          setIsDirectDefinition(false)
+          updateUrlParams({
+            refs: '1',
+            q: ref.reference_text,
+            ap: panel === 'right' ? 'r' : null,
+            rp: panel === 'right' ? 'r' : null,
+          })
+        }
+        return
+      }
+      try {
+        const symbol = await getSymbol(ref.target_symbol_id)
+        setSelectedSymbol(symbol)
+        setSearchByName(null)
+        setIsDirectDefinition(false)
+        updateUrlParams({
+          refs: '1',
+          q: symbol.name,
+          ap: panel === 'right' ? 'r' : null,
+          rp: panel === 'right' ? 'r' : null,
+        })
+      } catch (err) {
+        console.error('Failed to get symbol for reference:', err)
+      }
     },
-    [handleCodeReferenceClick, setActivePanel, setRefPanel]
+    [repository, updateUrlParams]
   )
 
   const handleRefPanelClick = useCallback(
