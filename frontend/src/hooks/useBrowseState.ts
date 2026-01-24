@@ -52,6 +52,15 @@ function encodeFilePath(path: string): string {
 // Types
 // ============================================================================
 
+/**
+ * State derived from URL parameters for bookmarkability.
+ *
+ * URL params: line, commit, diff, q, drawer, refs, tp, rp, ap
+ *
+ * Note: We use `q` (search query) for refs panel state instead of symbol IDs
+ * because symbol IDs can change between indexing runs, making name-based
+ * search more robust for bookmarks.
+ */
 export interface BrowseUrlState {
   repoName: string | undefined
   filePath: string | null
@@ -59,13 +68,13 @@ export interface BrowseUrlState {
   selectedCommit: string | null
   diffCommit: string | null
   diffMode: boolean
-  // URL-persisted UI state
-  searchQuery: string
-  drawerOpen: boolean
-  refsPanelOpen: boolean
-  treePanel: 'left' | 'right'
-  refPanel: 'left' | 'right'
-  activePanel: 'left' | 'right'
+  // URL-persisted UI state (q, drawer, refs, tp, rp, ap)
+  searchQuery: string // q param - used for both search and refs panel restoration
+  drawerOpen: boolean // drawer param (0 = closed, absent = open)
+  refsPanelOpen: boolean // refs param (1 = open, absent = closed)
+  treePanel: 'left' | 'right' // tp param (r = right, absent = left)
+  refPanel: 'left' | 'right' // rp param (r = right, absent = left)
+  activePanel: 'left' | 'right' // ap param (r = right, absent = left)
 }
 
 export interface BrowseDataState {
@@ -433,12 +442,22 @@ export function useBrowseState() {
 
   // ========== Restore refs panel search state from URL ==========
   // When loading a bookmarked URL with refs=1 and q=symbolName, initialize
-  // the search-by-name state so the refs panel shows the correct results
+  // the search-by-name state so the refs panel shows the correct results.
+  //
+  // Design note: We use `q` (search query) for bookmarkability instead of storing
+  // symbol IDs in the URL. This is intentional because:
+  // - Symbol IDs can change between indexing runs
+  // - Name-based search is more robust for bookmarks across time
+  // - It simplifies URL structure while still achieving bookmarkability
+  //
+  // The selectedSymbol and searchByName dependencies ensure we don't override
+  // state that was set by user actions (e.g., clicking a symbol).
   useEffect(() => {
     if (!urlState.refsPanelOpen || !urlState.searchQuery || !repository?.id) {
       return
     }
-    // Only restore if we don't already have a symbol or search set
+    // Only restore if we don't already have a symbol or search set (prevents
+    // overriding user actions like symbol clicks)
     if (selectedSymbol || searchByName) {
       return
     }
