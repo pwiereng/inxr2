@@ -45,8 +45,6 @@ export interface BrowseUrlState {
   diffMode: boolean
   // URL-persisted UI state
   searchQuery: string
-  symbolId: number | null
-  symbolName: string | null
   drawerOpen: boolean
   refsPanelOpen: boolean
   treePanel: 'left' | 'right'
@@ -157,11 +155,8 @@ export function useBrowseState() {
     const selectedCommit = searchParams.get('commit')
     const diffCommit = searchParams.get('diff')
 
-    // Parse new URL-persisted UI state
+    // Parse URL-persisted UI state
     const searchQuery = searchParams.get('q') || ''
-    const symbolIdParam = searchParams.get('symbol')
-    const symbolId = symbolIdParam ? parseInt(symbolIdParam, 10) : null
-    const symbolName = searchParams.get('symbolName')
     const drawerOpen = searchParams.get('drawer') !== '0' // default true
     const refsPanelOpen = searchParams.get('refs') === '1' // default false
     const treePanel = searchParams.get('tp') === 'r' ? 'right' : 'left'
@@ -176,8 +171,6 @@ export function useBrowseState() {
       diffCommit,
       diffMode: !!diffCommit,
       searchQuery,
-      symbolId,
-      symbolName,
       drawerOpen,
       refsPanelOpen,
       treePanel,
@@ -784,10 +777,26 @@ export function useBrowseState() {
 
   const handleDiffLineClick = useCallback(
     (line: number, panel: 'left' | 'right') => {
-      setActivePanel(panel)
-      navigateToLine(line)
+      if (urlState.filePath) {
+        const params = new URLSearchParams()
+        params.set('line', line.toString())
+        if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
+        if (urlState.diffCommit) params.set('diff', urlState.diffCommit)
+        // Preserve UI state
+        if (!urlState.drawerOpen) params.set('drawer', '0')
+        if (urlState.refsPanelOpen) params.set('refs', '1')
+        if (urlState.searchQuery) params.set('q', urlState.searchQuery)
+        // Set diff mode panel states including the clicked panel
+        if (urlState.treePanel === 'right') params.set('tp', 'r')
+        if (urlState.refPanel === 'right') params.set('rp', 'r')
+        if (panel === 'right') params.set('ap', 'r')
+        navigate(
+          `/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`,
+          { replace: true }
+        )
+      }
     },
-    [navigateToLine, setActivePanel]
+    [navigate, urlState]
   )
 
   // ========== Return state and actions ==========
