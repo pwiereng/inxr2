@@ -415,12 +415,28 @@ export function useBrowseState() {
     loadDiffFile()
   }, [urlState.repoName, urlState.filePath, urlState.diffMode, urlState.diffCommit])
 
+  // ========== Restore refs panel search state from URL ==========
+  // When loading a bookmarked URL with refs=1 and q=symbolName, initialize
+  // the search-by-name state so the refs panel shows the correct results
+  useEffect(() => {
+    if (!urlState.refsPanelOpen || !urlState.searchQuery || !repository?.id) {
+      return
+    }
+    // Only restore if we don't already have a symbol or search set
+    if (selectedSymbol || searchByName) {
+      return
+    }
+    setSearchByName({ name: urlState.searchQuery, repositoryId: repository.id })
+  }, [urlState.refsPanelOpen, urlState.searchQuery, repository?.id, selectedSymbol, searchByName])
+
   // ========== Helper: Reset refs panel state ==========
+  // Note: This only resets React state. Callers (changeVersion, changeDiffVersion)
+  // are responsible for URL updates via their navigate() calls.
   const resetRefsPanel = useCallback(() => {
     setSelectedSymbol(null)
     setSearchByName(null)
-    updateUrlParams({ refs: null })
-  }, [updateUrlParams])
+    setIsDirectDefinition(false)
+  }, [])
 
   // ========== Navigation Actions ==========
 
@@ -524,8 +540,7 @@ export function useBrowseState() {
     setDiffContent(null)
     setDiffSymbols([])
     setDiffReferences([])
-    setTreePanel('left')
-    setRefPanel('left')
+    // Note: tp/rp/ap params are not set, so they default to 'left' when URL is parsed
 
     const params = new URLSearchParams()
     if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
@@ -535,7 +550,7 @@ export function useBrowseState() {
     if (urlState.refsPanelOpen) params.set('refs', '1')
     if (urlState.searchQuery) params.set('q', urlState.searchQuery)
     navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`)
-  }, [navigate, urlState, setTreePanel, setRefPanel])
+  }, [navigate, urlState])
 
   const closePanel = useCallback(
     (panel: 'left' | 'right') => {
@@ -789,7 +804,9 @@ export function useBrowseState() {
         // Set diff mode panel states including the clicked panel
         if (urlState.treePanel === 'right') params.set('tp', 'r')
         if (urlState.refPanel === 'right') params.set('rp', 'r')
+        // Explicitly set active panel (left = no param, right = 'r')
         if (panel === 'right') params.set('ap', 'r')
+        // Note: for left panel, we don't set 'ap' at all, which defaults to 'left'
         navigate(
           `/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`,
           { replace: true }
