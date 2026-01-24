@@ -393,7 +393,7 @@ describe('useBrowseState', () => {
       expect(mockNavigate).not.toHaveBeenCalled()
     })
 
-    it('should preserve UI state when entering diff mode', async () => {
+    it('should preserve drawer state but clear search context when entering diff mode', async () => {
       mockSearchParams = new URLSearchParams('drawer=0&refs=1&q=TestQuery&line=42')
       mockGetFileHistory.mockResolvedValue({
         versions: mockVersions,
@@ -412,18 +412,17 @@ describe('useBrowseState', () => {
         result.current.actions.enterDiffMode()
       })
 
+      // Drawer state and line should be preserved
       expect(mockNavigate).toHaveBeenCalledWith(
         expect.stringMatching(/drawer=0.*|.*drawer=0/)
       )
       expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringMatching(/refs=1.*|.*refs=1/)
-      )
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringMatching(/q=TestQuery.*|.*q=TestQuery/)
-      )
-      expect(mockNavigate).toHaveBeenCalledWith(
         expect.stringMatching(/line=42.*|.*line=42/)
       )
+      // Search context should be cleared (not preserved)
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).not.toContain('refs=')
+      expect(navigatedUrl).not.toContain('q=')
     })
 
     it('should exit diff mode and clear diff params', async () => {
@@ -495,7 +494,7 @@ describe('useBrowseState', () => {
       )
     })
 
-    it('should preserve UI state when changing version', async () => {
+    it('should preserve drawer state but clear search context when changing version', async () => {
       mockSearchParams = new URLSearchParams('drawer=0&q=TestQuery')
       mockGetFileHistory.mockResolvedValue({
         versions: mockVersions,
@@ -514,12 +513,13 @@ describe('useBrowseState', () => {
         result.current.actions.changeVersion('def456')
       })
 
+      // Drawer state should be preserved
       expect(mockNavigate).toHaveBeenCalledWith(
         expect.stringMatching(/drawer=0.*|.*drawer=0/)
       )
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringMatching(/q=TestQuery.*|.*q=TestQuery/)
-      )
+      // Search context should be cleared (not preserved)
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).not.toContain('q=')
     })
 
     it('should clear commit param when changing to null (latest)', async () => {
@@ -894,6 +894,81 @@ describe('useBrowseState', () => {
       // Should preserve drawer=0 in navigation
       expect(mockNavigate).toHaveBeenCalledWith(
         expect.stringContaining('drawer=0')
+      )
+    })
+  })
+
+  describe('file path encoding', () => {
+    it('should encode special characters in file paths when navigating to file', () => {
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.navigateToFile('src/my file.ts')
+      })
+
+      // Space should be encoded as %20
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('src/my%20file.ts')
+      )
+    })
+
+    it('should encode hash and question mark in file paths', () => {
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.navigateToFile('src/file#1.ts')
+      })
+
+      // Hash should be encoded as %23
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('src/file%231.ts')
+      )
+    })
+
+    it('should preserve directory separators when encoding file paths', () => {
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.navigateToFile('src/components/MyComponent.tsx')
+      })
+
+      // Slashes should NOT be encoded
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('src/components/MyComponent.tsx')
+      )
+      // Should not contain encoded slashes
+      expect(mockNavigate).not.toHaveBeenCalledWith(
+        expect.stringContaining('%2F')
+      )
+    })
+
+    it('should encode special characters in symbol file paths', () => {
+      const symbolWithSpecialPath = {
+        id: 123,
+        name: 'TestSymbol',
+        qualified_name: 'module.TestSymbol',
+        kind: 'function',
+        file_id: 1,
+        file_path: 'src/my file.py',
+        repository_id: 1,
+        commit_id: 1,
+        start_line: 10,
+        start_column: 0,
+        end_line: 20,
+        end_column: 0,
+        signature: null,
+        docstring: null,
+      }
+
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.navigateToSymbol(symbolWithSpecialPath)
+      })
+
+      // Space should be encoded
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('src/my%20file.py')
       )
     })
   })

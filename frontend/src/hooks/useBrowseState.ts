@@ -467,11 +467,9 @@ export function useBrowseState() {
     (path: string) => {
       const params = new URLSearchParams()
       if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
-      // Preserve UI state
+      // Preserve drawer state only - new file means new context, so clear search and refs
       if (!urlState.drawerOpen) params.set('drawer', '0')
-      if (urlState.refsPanelOpen) params.set('refs', '1')
-      if (urlState.searchQuery) params.set('q', urlState.searchQuery)
-      // Don't preserve symbol - new file means new context
+      // Don't preserve refs, searchQuery - new file means new context
       // Exit diff mode when navigating to a new file (don't preserve diff, tp, rp, ap params)
       const query = params.toString()
       navigate(
@@ -529,7 +527,7 @@ export function useBrowseState() {
         if (urlState.refPanel === 'right') params.set('rp', 'r')
         if (urlState.activePanel === 'right') params.set('ap', 'r')
         navigate(
-          `/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`,
+          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`,
           {
             replace: true,
           }
@@ -559,10 +557,9 @@ export function useBrowseState() {
       if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
       if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
       params.set('diff', diffTarget)
-      // Preserve UI state
+      // Preserve drawer state only - entering diff mode clears search context
       if (!urlState.drawerOpen) params.set('drawer', '0')
-      if (urlState.refsPanelOpen) params.set('refs', '1')
-      if (urlState.searchQuery) params.set('q', urlState.searchQuery)
+      // Don't preserve refs, searchQuery - diff mode is a new context
       navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
     }
   }, [navigate, urlState, fileVersions])
@@ -578,10 +575,9 @@ export function useBrowseState() {
     const params = new URLSearchParams()
     if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
     if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
-    // Preserve UI state (but not diff mode panel states since we're exiting diff mode)
+    // Preserve drawer state only - exiting diff mode clears search context
     if (!urlState.drawerOpen) params.set('drawer', '0')
-    if (urlState.refsPanelOpen) params.set('refs', '1')
-    if (urlState.searchQuery) params.set('q', urlState.searchQuery)
+    // Don't preserve refs, searchQuery - exiting diff mode is a context change
     navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
   }, [navigate, urlState])
 
@@ -593,10 +589,9 @@ export function useBrowseState() {
         const params = new URLSearchParams()
         if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
         params.set('commit', urlState.diffCommit)
-        // Preserve UI state
+        // Preserve drawer state only - closing panel clears search context
         if (!urlState.drawerOpen) params.set('drawer', '0')
-        if (urlState.refsPanelOpen) params.set('refs', '1')
-        if (urlState.searchQuery) params.set('q', urlState.searchQuery)
+        // Don't preserve refs, searchQuery - closing panel is a context change
         navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
         return
       }
@@ -615,9 +610,9 @@ export function useBrowseState() {
         if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
         if (commitHash) params.set('commit', commitHash)
         if (urlState.diffCommit) params.set('diff', urlState.diffCommit)
-        // Preserve UI state (note: resetRefsPanel clears refs)
+        // Preserve drawer state only - version change means new context, clear search and refs
         if (!urlState.drawerOpen) params.set('drawer', '0')
-        if (urlState.searchQuery) params.set('q', urlState.searchQuery)
+        // Don't preserve searchQuery - version change invalidates search context
         // Preserve diff mode panel states
         if (urlState.treePanel === 'right') params.set('tp', 'r')
         if (urlState.refPanel === 'right') params.set('rp', 'r')
@@ -636,9 +631,9 @@ export function useBrowseState() {
       if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
       if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
       if (commitHash) params.set('diff', commitHash)
-      // Preserve UI state (note: resetRefsPanel clears refs)
+      // Preserve drawer state only - version change means new context, clear search and refs
       if (!urlState.drawerOpen) params.set('drawer', '0')
-      if (urlState.searchQuery) params.set('q', urlState.searchQuery)
+      // Don't preserve searchQuery - version change invalidates search context
       // Preserve diff mode panel states
       if (urlState.treePanel === 'right') params.set('tp', 'r')
       if (urlState.refPanel === 'right') params.set('rp', 'r')
@@ -791,10 +786,9 @@ export function useBrowseState() {
             ? urlState.diffCommit
             : urlState.selectedCommit
         if (commitToUse) params.set('commit', commitToUse)
-        // Preserve UI state
+        // Preserve drawer state only - navigating to reference clears search context
         if (!urlState.drawerOpen) params.set('drawer', '0')
-        if (urlState.refsPanelOpen) params.set('refs', '1')
-        if (urlState.searchQuery) params.set('q', urlState.searchQuery)
+        // Don't preserve refs, searchQuery - navigating to a different file is a context change
         navigate(
           `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(reference.source_file_path)}?${params}`
         )
@@ -813,10 +807,9 @@ export function useBrowseState() {
             ? urlState.diffCommit
             : urlState.selectedCommit
         if (commitToUse) params.set('commit', commitToUse)
-        // Preserve UI state
+        // Preserve drawer state only - navigating to definition clears search context
         if (!urlState.drawerOpen) params.set('drawer', '0')
-        if (urlState.refsPanelOpen) params.set('refs', '1')
-        if (urlState.searchQuery) params.set('q', urlState.searchQuery)
+        // Don't preserve refs, searchQuery - navigating to a definition is a context change
         navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(sym.file_path)}?${params}`)
       }
     },
@@ -846,7 +839,7 @@ export function useBrowseState() {
           params.delete('ap')
         }
         navigate(
-          `/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`,
+          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`,
           { replace: true }
         )
       }
