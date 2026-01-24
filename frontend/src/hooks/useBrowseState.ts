@@ -33,6 +33,22 @@ import {
 } from '@/lib/api'
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Encode a file path for use in URLs, preserving directory separators.
+ * Each path segment is encoded individually to handle special characters
+ * (spaces, #, ?, %, etc.) while keeping slashes as path separators.
+ */
+function encodeFilePath(path: string): string {
+  return path
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -459,7 +475,7 @@ export function useBrowseState() {
       // Exit diff mode when navigating to a new file (don't preserve diff, tp, rp, ap params)
       const query = params.toString()
       navigate(
-        `/browse/${encodeURIComponent(urlState.repoName!)}/${path}${query ? `?${query}` : ''}`
+        `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(path)}${query ? `?${query}` : ''}`
       )
     },
     [navigate, urlState]
@@ -488,7 +504,7 @@ export function useBrowseState() {
         // Open refs panel with the symbol name
         params.set('refs', '1')
         params.set('q', symbol.name)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName)}/${symbol.file_path}?${params}`)
+        navigate(`/browse/${encodeURIComponent(urlState.repoName)}/${encodeFilePath(symbol.file_path)}?${params}`)
       } else {
         // Symbol has no file_path - just open refs panel to show references
         updateUrlParams({ refs: '1', q: symbol.name })
@@ -547,7 +563,7 @@ export function useBrowseState() {
       if (!urlState.drawerOpen) params.set('drawer', '0')
       if (urlState.refsPanelOpen) params.set('refs', '1')
       if (urlState.searchQuery) params.set('q', urlState.searchQuery)
-      navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`)
+      navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
     }
   }, [navigate, urlState, fileVersions])
 
@@ -566,7 +582,7 @@ export function useBrowseState() {
     if (!urlState.drawerOpen) params.set('drawer', '0')
     if (urlState.refsPanelOpen) params.set('refs', '1')
     if (urlState.searchQuery) params.set('q', urlState.searchQuery)
-    navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`)
+    navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
   }, [navigate, urlState])
 
   const closePanel = useCallback(
@@ -581,7 +597,7 @@ export function useBrowseState() {
         if (!urlState.drawerOpen) params.set('drawer', '0')
         if (urlState.refsPanelOpen) params.set('refs', '1')
         if (urlState.searchQuery) params.set('q', urlState.searchQuery)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`)
+        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
         return
       }
       exitDiffMode()
@@ -606,7 +622,7 @@ export function useBrowseState() {
         if (urlState.treePanel === 'right') params.set('tp', 'r')
         if (urlState.refPanel === 'right') params.set('rp', 'r')
         if (urlState.activePanel === 'right') params.set('ap', 'r')
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`)
+        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
       }
     },
     [navigate, urlState, resetRefsPanel]
@@ -627,7 +643,7 @@ export function useBrowseState() {
       if (urlState.treePanel === 'right') params.set('tp', 'r')
       if (urlState.refPanel === 'right') params.set('rp', 'r')
       if (urlState.activePanel === 'right') params.set('ap', 'r')
-      navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`)
+      navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
     },
     [navigate, urlState, resetRefsPanel]
   )
@@ -780,7 +796,7 @@ export function useBrowseState() {
         if (urlState.refsPanelOpen) params.set('refs', '1')
         if (urlState.searchQuery) params.set('q', urlState.searchQuery)
         navigate(
-          `/browse/${encodeURIComponent(urlState.repoName!)}/${reference.source_file_path}?${params}`
+          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(reference.source_file_path)}?${params}`
         )
       }
     },
@@ -801,7 +817,7 @@ export function useBrowseState() {
         if (!urlState.drawerOpen) params.set('drawer', '0')
         if (urlState.refsPanelOpen) params.set('refs', '1')
         if (urlState.searchQuery) params.set('q', urlState.searchQuery)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${sym.file_path}?${params}`)
+        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(sym.file_path)}?${params}`)
       }
     },
     [navigate, urlState]
