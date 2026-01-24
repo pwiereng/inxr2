@@ -33,9 +33,34 @@ import {
 } from '@/lib/api'
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Encode a file path for use in URLs, preserving directory separators.
+ * Each path segment is encoded individually to handle special characters
+ * (spaces, #, ?, %, etc.) while keeping slashes as path separators.
+ */
+function encodeFilePath(path: string): string {
+  return path
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
+/**
+ * State derived from URL parameters for bookmarkability.
+ *
+ * URL params: line, commit, diff, q, drawer, refs, tp, rp, ap
+ *
+ * Note: We use `q` (search query) for refs panel state instead of symbol IDs
+ * because symbol IDs can change between indexing runs, making name-based
+ * search more robust for bookmarks.
+ */
 export interface BrowseUrlState {
   repoName: string | undefined
   filePath: string | null
@@ -43,6 +68,13 @@ export interface BrowseUrlState {
   selectedCommit: string | null
   diffCommit: string | null
   diffMode: boolean
+  // URL-persisted UI state (q, drawer, refs, tp, rp, ap)
+  searchQuery: string // q param - used for both search and refs panel restoration
+  drawerOpen: boolean // drawer param (0 = closed, absent = open)
+  refsPanelOpen: boolean // refs param (1 = open, absent = closed)
+  treePanel: 'left' | 'right' // tp param (r = right, absent = left)
+  refPanel: 'left' | 'right' // rp param (r = right, absent = left)
+  activePanel: 'left' | 'right' // ap param (r = right, absent = left)
 }
 
 export interface BrowseDataState {
@@ -92,6 +124,7 @@ export interface BrowseActions {
   exitDiffMode: () => void
   closePanel: (panel: 'left' | 'right') => void
   setActivePanel: (panel: 'left' | 'right') => void
+  setTreePanel: (panel: 'left' | 'right') => void
 
   // Version changes
   changeVersion: (commitHash: string | null) => void
@@ -135,7 +168,7 @@ export interface BrowseComputedState {
 
 export function useBrowseState() {
   const { repoName, '*': splatPath } = useParams<{ repoName: string; '*': string }>()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
 
   // ========== URL-derived state ==========
@@ -146,6 +179,15 @@ export function useBrowseState() {
       : undefined
     const selectedCommit = searchParams.get('commit')
     const diffCommit = searchParams.get('diff')
+
+    // Parse URL-persisted UI state
+    const searchQuery = searchParams.get('q') || ''
+    const drawerOpen = searchParams.get('drawer') !== '0' // default true
+    const refsPanelOpen = searchParams.get('refs') === '1' // default false
+    const treePanel = searchParams.get('tp') === 'r' ? 'right' : 'left'
+    const refPanel = searchParams.get('rp') === 'r' ? 'right' : 'left'
+    const activePanel = searchParams.get('ap') === 'r' ? 'right' : 'left'
+
     return {
       repoName,
       filePath,
@@ -153,8 +195,66 @@ export function useBrowseState() {
       selectedCommit,
       diffCommit,
       diffMode: !!diffCommit,
+      searchQuery,
+      drawerOpen,
+      refsPanelOpen,
+      treePanel,
+      refPanel,
+      activePanel,
     }
   }, [repoName, splatPath, searchParams])
+
+  // ========== URL Update Helper ==========
+  const updateUrlParams = useCallback(
+    (updates: Record<string, string | null>, options?: { replace?: boolean }) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev)
+          for (const [key, value] of Object.entries(updates)) {
+            if (value === null || value === '') {
+              params.delete(key)
+            } else {
+              params.set(key, value)
+            }
+          }
+          return params
+        },
+        { replace: options?.replace ?? true }
+      )
+    },
+    [setSearchParams]
+  )
+
+  // ========== URL-synced setters ==========
+  const setSearchQuery = useCallback(
+    (query: string) => updateUrlParams({ q: query || null }),
+    [updateUrlParams]
+  )
+
+  const setDrawerOpen = useCallback(
+    (open: boolean) => updateUrlParams({ drawer: open ? null : '0' }),
+    [updateUrlParams]
+  )
+
+  const toggleDrawer = useCallback(
+    () => updateUrlParams({ drawer: urlState.drawerOpen ? '0' : null }),
+    [updateUrlParams, urlState.drawerOpen]
+  )
+
+  const setTreePanel = useCallback(
+    (panel: 'left' | 'right') => updateUrlParams({ tp: panel === 'right' ? 'r' : null }),
+    [updateUrlParams]
+  )
+
+  const setRefPanel = useCallback(
+    (panel: 'left' | 'right') => updateUrlParams({ rp: panel === 'right' ? 'r' : null }),
+    [updateUrlParams]
+  )
+
+  const setActivePanel = useCallback(
+    (panel: 'left' | 'right') => updateUrlParams({ ap: panel === 'right' ? 'r' : null }),
+    [updateUrlParams]
+  )
 
   // ========== Data state ==========
   const [allRepositories, setAllRepositories] = useState<Repository[]>([])
@@ -169,18 +269,12 @@ export function useBrowseState() {
   const [diffContent, setDiffContent] = useState<FileContent | null>(null)
   const [diffSymbols, setDiffSymbols] = useState<FileSymbol[]>([])
   const [diffReferences, setDiffReferences] = useState<FileReference[]>([])
-  const [activePanel, setActivePanel] = useState<'left' | 'right'>('left')
-  const [treePanel, setTreePanel] = useState<'left' | 'right'>('left')
-  const [refPanel, setRefPanel] = useState<'left' | 'right'>('left')
 
-  // ========== UI state ==========
-  const [drawerOpen, setDrawerOpen] = useState(true)
-  const [refsPanelOpen, setRefsPanelOpen] = useState(false)
+  // ========== UI state (loading/error only - rest is URL-driven) ==========
   const [loading, setLoading] = useState(true)
   const [fileLoading, setFileLoading] = useState(false)
   const [diffLoading, setDiffLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
 
   // ========== References state ==========
   const [selectedSymbol, setSelectedSymbol] = useState<Symbol | null>(null)
@@ -195,19 +289,19 @@ export function useBrowseState() {
     const leftCommit = urlState.selectedCommit || fileVersions[0]?.commit_hash
     const rightCommit = urlState.diffCommit
     const treeCommit = urlState.diffMode
-      ? treePanel === 'left'
+      ? urlState.treePanel === 'left'
         ? leftCommit
         : rightCommit
       : urlState.selectedCommit
     const refCommit = urlState.diffMode
-      ? refPanel === 'left'
+      ? urlState.refPanel === 'left'
         ? leftCommit
         : rightCommit
       : urlState.selectedCommit
     const currentCommitHash = urlState.selectedCommit || fileVersions[0]?.commit_hash
 
     return { leftCommit, rightCommit, treeCommit, refCommit, currentCommitHash }
-  }, [urlState, fileVersions, treePanel, refPanel])
+  }, [urlState, fileVersions])
 
   // ========== Data Loading Effects ==========
 
@@ -322,7 +416,11 @@ export function useBrowseState() {
       setDiffLoading(true)
       try {
         const [content, symbols, references] = await Promise.all([
-          getFileContentByPathAtCommit(urlState.repoName!, urlState.filePath!, urlState.diffCommit!),
+          getFileContentByPathAtCommit(
+            urlState.repoName!,
+            urlState.filePath!,
+            urlState.diffCommit!
+          ),
           getFileSymbolsByPath(urlState.repoName!, urlState.filePath!, urlState.diffCommit!),
           getFileReferencesByPath(urlState.repoName!, urlState.filePath!, urlState.diffCommit!),
         ])
@@ -342,11 +440,37 @@ export function useBrowseState() {
     loadDiffFile()
   }, [urlState.repoName, urlState.filePath, urlState.diffMode, urlState.diffCommit])
 
+  // ========== Restore refs panel search state from URL ==========
+  // When loading a bookmarked URL with refs=1 and q=symbolName, initialize
+  // the search-by-name state so the refs panel shows the correct results.
+  //
+  // Design note: We use `q` (search query) for bookmarkability instead of storing
+  // symbol IDs in the URL. This is intentional because:
+  // - Symbol IDs can change between indexing runs
+  // - Name-based search is more robust for bookmarks across time
+  // - It simplifies URL structure while still achieving bookmarkability
+  //
+  // The selectedSymbol and searchByName dependencies ensure we don't override
+  // state that was set by user actions (e.g., clicking a symbol).
+  useEffect(() => {
+    if (!urlState.refsPanelOpen || !urlState.searchQuery || !repository?.id) {
+      return
+    }
+    // Only restore if we don't already have a symbol or search set (prevents
+    // overriding user actions like symbol clicks)
+    if (selectedSymbol || searchByName) {
+      return
+    }
+    setSearchByName({ name: urlState.searchQuery, repositoryId: repository.id })
+  }, [urlState.refsPanelOpen, urlState.searchQuery, repository?.id, selectedSymbol, searchByName])
+
   // ========== Helper: Reset refs panel state ==========
+  // Note: This only resets React state. Callers (changeVersion, changeDiffVersion)
+  // are responsible for URL updates via their navigate() calls.
   const resetRefsPanel = useCallback(() => {
-    setRefsPanelOpen(false)
     setSelectedSymbol(null)
     setSearchByName(null)
+    setIsDirectDefinition(false)
   }, [])
 
   // ========== Navigation Actions ==========
@@ -362,24 +486,48 @@ export function useBrowseState() {
     (path: string) => {
       const params = new URLSearchParams()
       if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
+      // Preserve drawer state only - new file means new context, so clear search and refs
+      if (!urlState.drawerOpen) params.set('drawer', '0')
+      // Don't preserve refs, searchQuery - new file means new context
+      // Exit diff mode when navigating to a new file (don't preserve diff, tp, rp, ap params)
       const query = params.toString()
       navigate(
-        `/browse/${encodeURIComponent(urlState.repoName!)}/${path}${query ? `?${query}` : ''}`
+        `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(path)}${query ? `?${query}` : ''}`
       )
     },
-    [navigate, urlState.repoName, urlState.selectedCommit]
+    [navigate, urlState]
   )
 
   const navigateToSymbol = useCallback(
     (symbol: Symbol) => {
+      if (!urlState.repoName) {
+        return
+      }
+
+      // Set up refs panel state for the selected symbol
+      setSelectedSymbol(symbol)
+      setSearchByName(null)
+      setIsDirectDefinition(true)
+
       if (symbol.file_path) {
+        // Navigate to the symbol's location AND open refs panel
         const params = new URLSearchParams()
         params.set('line', symbol.start_line.toString())
-        if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${symbol.file_path}?${params}`)
+        // Note: Don't preserve selectedCommit - symbol search returns symbols from
+        // the latest indexed commit, so we should view the latest version.
+        // Exit diff mode when navigating to a symbol (don't preserve diff, tp, rp, ap params)
+        // Preserve drawer state
+        if (!urlState.drawerOpen) params.set('drawer', '0')
+        // Open refs panel with the symbol name
+        params.set('refs', '1')
+        params.set('q', symbol.name)
+        navigate(`/browse/${encodeURIComponent(urlState.repoName)}/${encodeFilePath(symbol.file_path)}?${params}`)
+      } else {
+        // Symbol has no file_path - just open refs panel to show references
+        updateUrlParams({ refs: '1', q: symbol.name })
       }
     },
-    [navigate, urlState.repoName, urlState.selectedCommit]
+    [navigate, urlState, updateUrlParams]
   )
 
   const navigateToLine = useCallback(
@@ -389,9 +537,20 @@ export function useBrowseState() {
         params.set('line', line.toString())
         if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
         if (urlState.diffCommit) params.set('diff', urlState.diffCommit)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`, {
-          replace: true,
-        })
+        // Preserve UI state
+        if (!urlState.drawerOpen) params.set('drawer', '0')
+        if (urlState.refsPanelOpen) params.set('refs', '1')
+        if (urlState.searchQuery) params.set('q', urlState.searchQuery)
+        // Preserve diff mode panel states
+        if (urlState.treePanel === 'right') params.set('tp', 'r')
+        if (urlState.refPanel === 'right') params.set('rp', 'r')
+        if (urlState.activePanel === 'right') params.set('ap', 'r')
+        navigate(
+          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`,
+          {
+            replace: true,
+          }
+        )
       }
     },
     [navigate, urlState]
@@ -417,7 +576,10 @@ export function useBrowseState() {
       if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
       if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
       params.set('diff', diffTarget)
-      navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`)
+      // Preserve drawer state only - entering diff mode clears search context
+      if (!urlState.drawerOpen) params.set('drawer', '0')
+      // Don't preserve refs, searchQuery - diff mode is a new context
+      navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
     }
   }, [navigate, urlState, fileVersions])
 
@@ -427,13 +589,15 @@ export function useBrowseState() {
     setDiffContent(null)
     setDiffSymbols([])
     setDiffReferences([])
-    setTreePanel('left')
-    setRefPanel('left')
+    // Note: tp/rp/ap params are not set, so they default to 'left' when URL is parsed
 
     const params = new URLSearchParams()
     if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
     if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
-    navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`)
+    // Preserve drawer state only - exiting diff mode clears search context
+    if (!urlState.drawerOpen) params.set('drawer', '0')
+    // Don't preserve refs, searchQuery - exiting diff mode is a context change
+    navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
   }, [navigate, urlState])
 
   const closePanel = useCallback(
@@ -444,7 +608,10 @@ export function useBrowseState() {
         const params = new URLSearchParams()
         if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
         params.set('commit', urlState.diffCommit)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`)
+        // Preserve drawer state only - closing panel clears search context
+        if (!urlState.drawerOpen) params.set('drawer', '0')
+        // Don't preserve refs, searchQuery - closing panel is a context change
+        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
         return
       }
       exitDiffMode()
@@ -462,7 +629,14 @@ export function useBrowseState() {
         if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
         if (commitHash) params.set('commit', commitHash)
         if (urlState.diffCommit) params.set('diff', urlState.diffCommit)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`)
+        // Preserve drawer state only - version change means new context, clear search and refs
+        if (!urlState.drawerOpen) params.set('drawer', '0')
+        // Don't preserve searchQuery - version change invalidates search context
+        // Preserve diff mode panel states
+        if (urlState.treePanel === 'right') params.set('tp', 'r')
+        if (urlState.refPanel === 'right') params.set('rp', 'r')
+        if (urlState.activePanel === 'right') params.set('ap', 'r')
+        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
       }
     },
     [navigate, urlState, resetRefsPanel]
@@ -476,36 +650,49 @@ export function useBrowseState() {
       if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
       if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
       if (commitHash) params.set('diff', commitHash)
-      navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`)
+      // Preserve drawer state only - version change means new context, clear search and refs
+      if (!urlState.drawerOpen) params.set('drawer', '0')
+      // Don't preserve searchQuery - version change invalidates search context
+      // Preserve diff mode panel states
+      if (urlState.treePanel === 'right') params.set('tp', 'r')
+      if (urlState.refPanel === 'right') params.set('rp', 'r')
+      if (urlState.activePanel === 'right') params.set('ap', 'r')
+      navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
     },
     [navigate, urlState, resetRefsPanel]
   )
 
   // ========== References Panel Actions ==========
 
-  const openRefsPanel = useCallback((symbol: Symbol, isDirect: boolean) => {
-    setSelectedSymbol(symbol)
-    setSearchByName(null)
-    setIsDirectDefinition(isDirect)
-    setRefsPanelOpen(true)
-    setSearchQuery(symbol.name)
-  }, [])
+  const openRefsPanel = useCallback(
+    (symbol: Symbol, isDirect: boolean) => {
+      setSelectedSymbol(symbol)
+      setSearchByName(null)
+      setIsDirectDefinition(isDirect)
+      // Update both refs and search query in a single URL update to avoid race conditions
+      updateUrlParams({ refs: '1', q: symbol.name })
+    },
+    [updateUrlParams]
+  )
 
-  const openRefsPanelByName = useCallback((name: string, repositoryId: number) => {
-    setSelectedSymbol(null)
-    setSearchByName({ name, repositoryId })
-    setIsDirectDefinition(false)
-    setRefsPanelOpen(true)
-    setSearchQuery(name)
-  }, [])
+  const openRefsPanelByName = useCallback(
+    (name: string, repositoryId: number) => {
+      setSelectedSymbol(null)
+      setSearchByName({ name, repositoryId })
+      setIsDirectDefinition(false)
+      // Update both refs and search query in a single URL update to avoid race conditions
+      updateUrlParams({ refs: '1', q: name })
+    },
+    [updateUrlParams]
+  )
 
   const closeRefsPanel = useCallback(() => {
-    setRefsPanelOpen(false)
     setSelectedSymbol(null)
     setSearchByName(null)
     setIsDirectDefinition(false)
-    setSearchQuery('')
-  }, [])
+    // Close refs panel but preserve search query (search is independent of refs panel)
+    updateUrlParams({ refs: null })
+  }, [updateUrlParams])
 
   const handleRefPanelChange = useCallback(
     (panel: 'left' | 'right') => {
@@ -517,7 +704,7 @@ export function useBrowseState() {
       }
       setRefPanel(panel)
     },
-    [selectedSymbol, searchByName, repository]
+    [selectedSymbol, searchByName, repository, setRefPanel]
   )
 
   // ========== Click Handlers ==========
@@ -536,11 +723,23 @@ export function useBrowseState() {
 
   const handleDiffSymbolClick = useCallback(
     async (fileSymbol: FileSymbol, panel: 'left' | 'right') => {
-      setActivePanel(panel)
-      setRefPanel(panel)
-      await handleSymbolClick(fileSymbol)
+      try {
+        const symbol = await getSymbol(fileSymbol.id)
+        setSelectedSymbol(symbol)
+        setSearchByName(null)
+        setIsDirectDefinition(true)
+        // Update all URL params in a single call to avoid race conditions
+        updateUrlParams({
+          refs: '1',
+          q: symbol.name,
+          ap: panel === 'right' ? 'r' : null,
+          rp: panel === 'right' ? 'r' : null,
+        })
+      } catch (err) {
+        console.error('Failed to get symbol:', err)
+      }
     },
-    [handleSymbolClick]
+    [updateUrlParams]
   )
 
   const handleCodeReferenceClick = useCallback(
@@ -563,11 +762,37 @@ export function useBrowseState() {
 
   const handleDiffReferenceClick = useCallback(
     async (ref: FileReference, panel: 'left' | 'right') => {
-      setActivePanel(panel)
-      setRefPanel(panel)
-      await handleCodeReferenceClick(ref)
+      if (!ref.target_symbol_id) {
+        // Unresolved reference - search by name
+        if (repository?.id) {
+          setSelectedSymbol(null)
+          setSearchByName({ name: ref.reference_text, repositoryId: repository.id })
+          setIsDirectDefinition(false)
+          updateUrlParams({
+            refs: '1',
+            q: ref.reference_text,
+            ap: panel === 'right' ? 'r' : null,
+            rp: panel === 'right' ? 'r' : null,
+          })
+        }
+        return
+      }
+      try {
+        const symbol = await getSymbol(ref.target_symbol_id)
+        setSelectedSymbol(symbol)
+        setSearchByName(null)
+        setIsDirectDefinition(false)
+        updateUrlParams({
+          refs: '1',
+          q: symbol.name,
+          ap: panel === 'right' ? 'r' : null,
+          rp: panel === 'right' ? 'r' : null,
+        })
+      } catch (err) {
+        console.error('Failed to get symbol for reference:', err)
+      }
     },
-    [handleCodeReferenceClick]
+    [repository, updateUrlParams]
   )
 
   const handleRefPanelClick = useCallback(
@@ -576,16 +801,19 @@ export function useBrowseState() {
         const params = new URLSearchParams()
         params.set('line', reference.source_line.toString())
         const commitToUse =
-          urlState.diffMode && activePanel === 'right'
+          urlState.diffMode && urlState.activePanel === 'right'
             ? urlState.diffCommit
             : urlState.selectedCommit
         if (commitToUse) params.set('commit', commitToUse)
+        // Preserve drawer state only - navigating to reference clears search context
+        if (!urlState.drawerOpen) params.set('drawer', '0')
+        // Don't preserve refs, searchQuery - navigating to a different file is a context change
         navigate(
-          `/browse/${encodeURIComponent(urlState.repoName!)}/${reference.source_file_path}?${params}`
+          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(reference.source_file_path)}?${params}`
         )
       }
     },
-    [navigate, urlState, activePanel]
+    [navigate, urlState]
   )
 
   const handleDefinitionClick = useCallback(
@@ -594,22 +822,48 @@ export function useBrowseState() {
         const params = new URLSearchParams()
         params.set('line', sym.start_line.toString())
         const commitToUse =
-          urlState.diffMode && activePanel === 'right'
+          urlState.diffMode && urlState.activePanel === 'right'
             ? urlState.diffCommit
             : urlState.selectedCommit
         if (commitToUse) params.set('commit', commitToUse)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${sym.file_path}?${params}`)
+        // Preserve drawer state only - navigating to definition clears search context
+        if (!urlState.drawerOpen) params.set('drawer', '0')
+        // Don't preserve refs, searchQuery - navigating to a definition is a context change
+        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(sym.file_path)}?${params}`)
       }
     },
-    [navigate, urlState, activePanel]
+    [navigate, urlState]
   )
 
   const handleDiffLineClick = useCallback(
     (line: number, panel: 'left' | 'right') => {
-      setActivePanel(panel)
-      navigateToLine(line)
+      if (urlState.filePath) {
+        const params = new URLSearchParams()
+        params.set('line', line.toString())
+        if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
+        if (urlState.diffCommit) params.set('diff', urlState.diffCommit)
+        // Preserve UI state
+        if (!urlState.drawerOpen) params.set('drawer', '0')
+        if (urlState.refsPanelOpen) params.set('refs', '1')
+        if (urlState.searchQuery) params.set('q', urlState.searchQuery)
+        // Set diff mode panel states including the clicked panel
+        if (urlState.treePanel === 'right') params.set('tp', 'r')
+        if (urlState.refPanel === 'right') params.set('rp', 'r')
+        // Explicitly handle active panel:
+        // - right panel: set 'ap=r'
+        // - left panel: ensure 'ap' is not present (left is default)
+        if (panel === 'right') {
+          params.set('ap', 'r')
+        } else {
+          params.delete('ap')
+        }
+        navigate(
+          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`,
+          { replace: true }
+        )
+      }
     },
-    [navigateToLine]
+    [navigate, urlState]
   )
 
   // ========== Return state and actions ==========
@@ -628,19 +882,19 @@ export function useBrowseState() {
     diffContent,
     diffSymbols,
     diffReferences,
-    activePanel,
-    treePanel,
-    refPanel,
+    activePanel: urlState.activePanel,
+    treePanel: urlState.treePanel,
+    refPanel: urlState.refPanel,
   }
 
   const uiState: BrowseUIState = {
-    drawerOpen,
-    refsPanelOpen,
+    drawerOpen: urlState.drawerOpen,
+    refsPanelOpen: urlState.refsPanelOpen,
     loading,
     fileLoading,
     diffLoading,
     error,
-    searchQuery,
+    searchQuery: urlState.searchQuery,
   }
 
   const refsState: BrowseRefsState = {
@@ -661,13 +915,14 @@ export function useBrowseState() {
     exitDiffMode,
     closePanel,
     setActivePanel,
+    setTreePanel,
 
     // Version changes
     changeVersion,
     changeDiffVersion,
 
     // UI toggles
-    toggleDrawer: () => setDrawerOpen((prev) => !prev),
+    toggleDrawer,
     setDrawerOpen,
 
     // References panel

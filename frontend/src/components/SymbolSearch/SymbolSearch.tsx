@@ -120,16 +120,26 @@ export function SymbolSearch({
       options={options}
       loading={loading}
       inputValue={inputValue}
-      onInputChange={(_, value) => setInputValue(value)}
+      onInputChange={(_, value, reason) => {
+        // Only update for user input, not for option selection (which uses 'reset')
+        // This prevents the race condition where selecting a symbol would trigger
+        // setSearchQuery via onValueChange, which would call setSearchParams and
+        // overwrite the navigate() call from onSymbolSelect
+        if (reason === 'input') {
+          setInputValue(value)
+        }
+      }}
       onChange={(_, value) => {
         if (value && typeof value !== 'string') {
           onSymbolSelect?.(value)
         }
       }}
       getOptionLabel={(option) => (typeof option === 'string' ? option : option.name)}
+      isOptionEqualToValue={(option, value) => option.id === value.id}
       filterOptions={(x) => x} // Disable client-side filtering
-      renderOption={(props, option) => (
+      renderOption={({ key, ...props }, option) => (
         <Box
+          key={option.id ?? key}
           component="li"
           {...props}
           sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}

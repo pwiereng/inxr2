@@ -1,5 +1,3 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
   AppBar,
@@ -30,433 +28,29 @@ import { FileTree } from '@/components/FileTree'
 import { SymbolSearch } from '@/components/SymbolSearch'
 import { ReferencesPanel } from '@/components/ReferencesPanel'
 import { VersionSelector } from '@/components/VersionSelector'
-import {
-  getRepositories,
-  getRepositoryByName,
-  getRepositoryTreeByName,
-  getFileContentByPathAtCommit,
-  getFileSymbolsByPath,
-  getFileReferencesByPath,
-  getSymbol,
-  getFileHistory,
-  type Repository,
-  type TreeNode,
-  type FileContent,
-  type FileSymbol,
-  type FileReference,
-  type Symbol,
-  type FileVersion,
-} from '@/lib/api'
+import { useBrowseState } from '@/hooks/useBrowseState'
 import { formatCommitDate } from '@/lib/dateUtils'
 
 export default function Browse() {
-  const { repoName, '*': splatPath } = useParams<{ repoName: string; '*': string }>()
-  const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
+  const { urlState, dataState, diffState, uiState, refsState, computedState, actions } =
+    useBrowseState()
 
-  // Get file path from URL path (splat param) and line/commit/diff from query params
-  const filePath = splatPath || null
-  const highlightLine = searchParams.get('line')
-    ? parseInt(searchParams.get('line')!, 10)
-    : undefined
-  const selectedCommit = searchParams.get('commit')
-  const diffCommitFromUrl = searchParams.get('diff')
-
-  // State
-  const [allRepositories, setAllRepositories] = useState<Repository[]>([])
-  const [repository, setRepository] = useState<Repository | null>(null)
-  const [treeNodes, setTreeNodes] = useState<TreeNode[]>([])
-  const [fileContent, setFileContent] = useState<FileContent | null>(null)
-  const [fileSymbols, setFileSymbols] = useState<FileSymbol[]>([])
-  const [fileReferences, setFileReferences] = useState<FileReference[]>([])
-  const [selectedSymbol, setSelectedSymbol] = useState<Symbol | null>(null)
-  const [isDirectDefinition, setIsDirectDefinition] = useState(false)
-  const [searchByName, setSearchByName] = useState<{ name: string; repositoryId: number } | null>(
-    null
-  )
-
-  // Diff mode state - derived from URL
-  const diffMode = !!diffCommitFromUrl
-  const diffCommit = diffCommitFromUrl
-  const [diffContent, setDiffContent] = useState<FileContent | null>(null)
-  const [diffSymbols, setDiffSymbols] = useState<FileSymbol[]>([])
-  const [diffReferences, setDiffReferences] = useState<FileReference[]>([])
-  const [activePanel, setActivePanel] = useState<'left' | 'right'>('left')
-  const [fileVersions, setFileVersions] = useState<FileVersion[]>([])
-  const [treePanel, setTreePanel] = useState<'left' | 'right'>('left')
-  const [refPanel, setRefPanel] = useState<'left' | 'right'>('left')
-
-  // UI state
-  const [drawerOpen, setDrawerOpen] = useState(true)
-  const [refsPanelOpen, setRefsPanelOpen] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [fileLoading, setFileLoading] = useState(false)
-  const [diffLoading, setDiffLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-
-  // The commit that the file tree is showing (based on selected panel in diff mode)
-  const leftCommit = selectedCommit || fileVersions[0]?.commit_hash
-  const rightCommit = diffCommit
-  const treeCommit = diffMode ? (treePanel === 'left' ? leftCommit : rightCommit) : selectedCommit
-
-  // The commit for the references panel
-  const refCommit = diffMode ? (refPanel === 'left' ? leftCommit : rightCommit) : selectedCommit
-
-  // Load all repositories (for selector dropdown)
-  useEffect(() => {
-    getRepositories().then(setAllRepositories).catch(console.error)
-  }, [])
-
-  // Handle repository switch
-  const handleRepositoryChange = (newRepoName: string) => {
-    navigate(`/browse/${encodeURIComponent(newRepoName)}`)
-  }
-
-  // Load repository by name (only when repo changes)
-  useEffect(() => {
-    if (!repoName) return
-
-    const loadRepository = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const repo = await getRepositoryByName(repoName)
-        setRepository(repo)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load repository')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadRepository()
-  }, [repoName])
-
-  // Load tree (commit-aware for time travel) - separate from repository loading
-  useEffect(() => {
-    if (!repoName) return
-
-    const loadTree = async () => {
-      try {
-        const tree = await getRepositoryTreeByName(repoName, treeCommit || undefined)
-        setTreeNodes(tree.root)
-      } catch (err) {
-        console.error('Failed to load tree:', err)
-      }
-    }
-
-    loadTree()
-  }, [repoName, treeCommit])
-
-  // Load file versions when file changes
-  useEffect(() => {
-    if (!filePath || !repoName) {
-      setFileVersions([])
-      return
-    }
-
-    getFileHistory(repoName, filePath)
-      .then((response) => setFileVersions(response.versions))
-      .catch(() => setFileVersions([]))
-  }, [repoName, filePath])
-
-  // Load file content when file path or commit changes
-  useEffect(() => {
-    if (!filePath || !repoName) {
-      setFileContent(null)
-      setFileSymbols([])
-      setFileReferences([])
-      return
-    }
-
-    const loadFile = async () => {
-      setFileLoading(true)
-      try {
-        const [content, symbols, references] = await Promise.all([
-          getFileContentByPathAtCommit(repoName, filePath, selectedCommit || undefined),
-          getFileSymbolsByPath(repoName, filePath, selectedCommit || undefined),
-          getFileReferencesByPath(repoName, filePath, selectedCommit || undefined),
-        ])
-        setFileContent(content)
-        setFileSymbols(symbols.symbols)
-        setFileReferences(references.references)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load file')
-      } finally {
-        setFileLoading(false)
-      }
-    }
-
-    loadFile()
-  }, [repoName, filePath, selectedCommit])
-
-  // Load diff content when diff commit changes
-  useEffect(() => {
-    if (!diffMode || !diffCommit || !filePath || !repoName) {
-      setDiffContent(null)
-      setDiffSymbols([])
-      setDiffReferences([])
-      return
-    }
-
-    const loadDiffFile = async () => {
-      setDiffLoading(true)
-      try {
-        const [content, symbols, references] = await Promise.all([
-          getFileContentByPathAtCommit(repoName, filePath, diffCommit),
-          getFileSymbolsByPath(repoName, filePath, diffCommit),
-          getFileReferencesByPath(repoName, filePath, diffCommit),
-        ])
-        setDiffContent(content)
-        setDiffSymbols(symbols.symbols)
-        setDiffReferences(references.references)
-      } catch (err) {
-        console.error('Failed to load diff file:', err)
-        setDiffContent(null)
-        setDiffSymbols([])
-        setDiffReferences([])
-      } finally {
-        setDiffLoading(false)
-      }
-    }
-
-    loadDiffFile()
-  }, [repoName, filePath, diffMode, diffCommit])
-
-  // Handle file selection from tree
-  const handleFileSelect = (path: string) => {
-    const params = new URLSearchParams()
-    // Preserve commit when navigating to a different file (same vintage)
-    if (selectedCommit) params.set('commit', selectedCommit)
-    // Exit diff mode when selecting a new file (don't include diff param)
-    const query = params.toString()
-    navigate(`/browse/${encodeURIComponent(repoName!)}/${path}${query ? `?${query}` : ''}`)
-  }
-
-  // Handle symbol selection from search
-  const handleSymbolSelect = async (symbol: Symbol) => {
-    if (symbol.file_path) {
-      const params = new URLSearchParams()
-      params.set('line', symbol.start_line.toString())
-      // Preserve commit when navigating to a symbol (same vintage)
-      if (selectedCommit) params.set('commit', selectedCommit)
-      // Exit diff mode when selecting a symbol (don't include diff param)
-      navigate(`/browse/${encodeURIComponent(repoName!)}/${symbol.file_path}?${params}`)
-    }
-  }
-
-  // Handle symbol click in code viewer (clicking on a definition)
-  const handleSymbolClick = async (fileSymbol: FileSymbol) => {
-    try {
-      const symbol = await getSymbol(fileSymbol.id)
-      setSelectedSymbol(symbol)
-      setSearchByName(null)
-      setIsDirectDefinition(true)
-      setRefsPanelOpen(true)
-      setSearchQuery(symbol.name)
-    } catch (err) {
-      console.error('Failed to get symbol:', err)
-    }
-  }
-
-  // Handle symbol click in diff mode
-  const handleDiffSymbolClick = async (fileSymbol: FileSymbol, panel: 'left' | 'right') => {
-    setActivePanel(panel)
-    setRefPanel(panel) // Sync refs panel to show references for the clicked panel's version
-    await handleSymbolClick(fileSymbol)
-  }
-
-  // Handle reference click in code viewer (clicking on a usage/reference)
-  const handleCodeReferenceClick = async (ref: FileReference) => {
-    if (!ref.target_symbol_id) {
-      // Unresolved reference - search by name to find possible definitions
-      if (repository?.id) {
-        setSelectedSymbol(null)
-        setSearchByName({ name: ref.reference_text, repositoryId: repository.id })
-        setIsDirectDefinition(false)
-        setRefsPanelOpen(true)
-        setSearchQuery(ref.reference_text)
-      }
-      return
-    }
-    try {
-      const symbol = await getSymbol(ref.target_symbol_id)
-      setSelectedSymbol(symbol)
-      setSearchByName(null)
-      setIsDirectDefinition(false)
-      setRefsPanelOpen(true)
-      setSearchQuery(symbol.name)
-    } catch (err) {
-      console.error('Failed to get symbol for reference:', err)
-    }
-  }
-
-  // Handle reference click in diff mode
-  const handleDiffReferenceClick = async (ref: FileReference, panel: 'left' | 'right') => {
-    setActivePanel(panel)
-    setRefPanel(panel) // Sync refs panel to show references for the clicked panel's version
-    await handleCodeReferenceClick(ref)
-  }
-
-  // Handle click in references panel (jump to reference location)
-  const handleRefPanelClick = (reference: {
-    source_file_path: string | null
-    source_line: number
-  }) => {
-    if (reference.source_file_path) {
-      const params = new URLSearchParams()
-      params.set('line', reference.source_line.toString())
-      // Use the commit from the active panel in diff mode
-      const commitToUse = diffMode && activePanel === 'right' ? diffCommit : selectedCommit
-      if (commitToUse) params.set('commit', commitToUse)
-      // Exit diff mode when navigating (don't include diff param)
-      navigate(`/browse/${encodeURIComponent(repoName!)}/${reference.source_file_path}?${params}`)
-    }
-  }
-
-  // Handle click on definition in references panel
-  const handleDefinitionClick = (sym: Symbol) => {
-    if (sym.file_path) {
-      const params = new URLSearchParams()
-      params.set('line', sym.start_line.toString())
-      // Use the commit from the active panel in diff mode
-      const commitToUse = diffMode && activePanel === 'right' ? diffCommit : selectedCommit
-      if (commitToUse) params.set('commit', commitToUse)
-      // Exit diff mode when navigating (don't include diff param)
-      navigate(`/browse/${encodeURIComponent(repoName!)}/${sym.file_path}?${params}`)
-    }
-  }
-
-  // Handle line click (update URL)
-  const handleLineClick = (line: number) => {
-    if (filePath) {
-      const params = new URLSearchParams()
-      params.set('line', line.toString())
-      if (selectedCommit) params.set('commit', selectedCommit)
-      // Preserve diff mode
-      if (diffCommit) params.set('diff', diffCommit)
-      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`, {
-        replace: true,
-      })
-    }
-  }
-
-  // Handle line click in diff mode
-  const handleDiffLineClick = (line: number, panel: 'left' | 'right') => {
-    setActivePanel(panel)
-    handleLineClick(line)
-  }
-
-  // Handle version change (time travel)
-  const handleVersionChange = (commitHash: string | null) => {
-    if (filePath) {
-      // Close references panel since it may refer to a different version
-      setRefsPanelOpen(false)
-      setSelectedSymbol(null)
-      setSearchByName(null)
-
-      const params = new URLSearchParams()
-      if (highlightLine) params.set('line', highlightLine.toString())
-      if (commitHash) params.set('commit', commitHash)
-      // Preserve diff mode if active
-      if (diffCommit) params.set('diff', diffCommit)
-      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
-    }
-  }
-
-  // Enter diff mode - update URL with diff param
-  const handleEnterDiffMode = () => {
-    if (!filePath) return
-
-    // Default to comparing with the previous version if available
-    const currentIndex = fileVersions.findIndex(
-      (v) => v.commit_hash === (selectedCommit || fileVersions[0]?.commit_hash)
-    )
-    let diffTarget: string | null = null
-    if (currentIndex >= 0 && currentIndex < fileVersions.length - 1) {
-      diffTarget = fileVersions[currentIndex + 1]?.commit_hash || null
-    } else if (fileVersions.length > 1) {
-      // Default to second version
-      diffTarget = fileVersions[1]?.commit_hash || null
-    }
-
-    if (diffTarget) {
-      const params = new URLSearchParams()
-      if (highlightLine) params.set('line', highlightLine.toString())
-      if (selectedCommit) params.set('commit', selectedCommit)
-      params.set('diff', diffTarget)
-      navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
-    }
-  }
-
-  // Exit diff mode - remove diff param from URL
-  const handleExitDiffMode = () => {
-    if (!filePath) return
-
-    setDiffContent(null)
-    setDiffSymbols([])
-    setDiffReferences([])
-    setTreePanel('left')
-    setRefPanel('left')
-
-    const params = new URLSearchParams()
-    if (highlightLine) params.set('line', highlightLine.toString())
-    if (selectedCommit) params.set('commit', selectedCommit)
-    // Don't include diff param - this exits diff mode
-    navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
-  }
-
-  // Handle closing a panel in diff view
-  const handleClosePanel = (panel: 'left' | 'right') => {
-    if (!filePath) return
-
-    if (panel === 'left') {
-      // Keep the right panel's version as the main version
-      if (diffCommit) {
-        const params = new URLSearchParams()
-        if (highlightLine) params.set('line', highlightLine.toString())
-        params.set('commit', diffCommit)
-        // No diff param - exit diff mode with right panel's version as main
-        navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
-        return
-      }
-    }
-    // Closing right panel just exits diff mode keeping current version
-    handleExitDiffMode()
-  }
-
-  // Handle diff version change - update URL
-  const handleDiffVersionChange = (commitHash: string | null) => {
-    if (!filePath) return
-
-    // Close references panel since it may refer to a different version
-    setRefsPanelOpen(false)
-    setSelectedSymbol(null)
-    setSearchByName(null)
-
-    const params = new URLSearchParams()
-    if (highlightLine) params.set('line', highlightLine.toString())
-    if (selectedCommit) params.set('commit', selectedCommit)
-    if (commitHash) params.set('diff', commitHash)
-    navigate(`/browse/${encodeURIComponent(repoName!)}/${filePath}?${params}`)
-  }
-
-  // Handle refs panel version change (in diff mode)
-  // Keep the panel open but switch to search-by-name mode to find the symbol at the new version
-  const handleRefPanelChange = (panel: 'left' | 'right') => {
-    // Get the symbol name to search for at the new version
-    const symbolName = selectedSymbol?.name || searchByName?.name
-
-    if (symbolName && repository?.id) {
-      // Switch to search-by-name mode - this will find the symbol at the new commit
-      setSelectedSymbol(null)
-      setSearchByName({ name: symbolName, repositoryId: repository.id })
-      setIsDirectDefinition(false)
-    }
-
-    setRefPanel(panel)
-  }
+  // Destructure for convenience
+  const { repoName, filePath, highlightLine, diffMode, diffCommit } = urlState
+  const {
+    allRepositories,
+    repository,
+    treeNodes,
+    fileContent,
+    fileSymbols,
+    fileReferences,
+    fileVersions,
+  } = dataState
+  const { diffContent, diffSymbols, diffReferences, activePanel, treePanel, refPanel } = diffState
+  const { drawerOpen, refsPanelOpen, loading, fileLoading, diffLoading, error, searchQuery } =
+    uiState
+  const { selectedSymbol, isDirectDefinition, searchByName } = refsState
+  const { leftCommit, rightCommit, currentCommitHash } = computedState
 
   // Get short hash for display
   const getShortHash = (hash: string | null | undefined) => {
@@ -468,13 +62,10 @@ export default function Browse() {
   const allCommitDates = fileVersions.map((v) => v.commit_date)
 
   // Check if a version has content changes from the previous version
-  const hasContentChange = (version: FileVersion, index: number): boolean => {
+  const hasContentChange = (version: { content_hash: string }, index: number): boolean => {
     const prevVersion = fileVersions[index + 1]
     return !prevVersion || version.content_hash !== prevVersion.content_hash
   }
-
-  // Get the current commit hash (selected or latest)
-  const currentCommitHash = selectedCommit || fileVersions[0]?.commit_hash
 
   if (loading) {
     return (
@@ -507,7 +98,7 @@ export default function Browse() {
         elevation={0}
       >
         <Toolbar sx={{ gap: 2 }}>
-          <IconButton edge="start" color="inherit" onClick={() => setDrawerOpen(!drawerOpen)}>
+          <IconButton edge="start" color="inherit" onClick={actions.toggleDrawer}>
             {drawerOpen ? <ChevronLeftIcon /> : <MenuIcon />}
           </IconButton>
 
@@ -516,7 +107,7 @@ export default function Browse() {
             <FormControl size="small" sx={{ minWidth: 150 }}>
               <Select
                 value={repoName || ''}
-                onChange={(e) => handleRepositoryChange(e.target.value as string)}
+                onChange={(e) => actions.navigateToRepository(e.target.value as string)}
                 displayEmpty
                 sx={{
                   '& .MuiSelect-select': {
@@ -565,9 +156,9 @@ export default function Browse() {
           {/* Symbol Search */}
           <SymbolSearch
             repositoryId={repository?.id}
-            onSymbolSelect={handleSymbolSelect}
+            onSymbolSelect={actions.navigateToSymbol}
             value={searchQuery}
-            onValueChange={setSearchQuery}
+            onValueChange={actions.setSearchQuery}
           />
         </Toolbar>
       </AppBar>
@@ -592,7 +183,7 @@ export default function Browse() {
             }}
           >
             {/* Tree version indicator / selector */}
-            {(treeCommit || diffMode) && (
+            {(computedState.treeCommit || diffMode) && (
               <Box
                 sx={{
                   px: 1,
@@ -613,7 +204,7 @@ export default function Browse() {
                   <FormControl size="small" sx={{ minWidth: 80 }}>
                     <Select
                       value={treePanel}
-                      onChange={(e) => setTreePanel(e.target.value as 'left' | 'right')}
+                      onChange={(e) => actions.setTreePanel(e.target.value as 'left' | 'right')}
                       sx={{
                         '& .MuiSelect-select': {
                           py: 0,
@@ -643,7 +234,7 @@ export default function Browse() {
                     variant="caption"
                     sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
                   >
-                    {getShortHash(treeCommit)}
+                    {getShortHash(computedState.treeCommit)}
                   </Typography>
                 )}
               </Box>
@@ -652,7 +243,7 @@ export default function Browse() {
               <FileTree
                 nodes={treeNodes}
                 selectedFileId={fileContent?.id ?? null}
-                onFileSelect={handleFileSelect}
+                onFileSelect={actions.navigateToFile}
               />
             </Box>
           </Box>
@@ -703,8 +294,8 @@ export default function Browse() {
                     <VersionSelector
                       repoName={repoName}
                       filePath={filePath}
-                      selectedCommit={selectedCommit}
-                      onVersionChange={handleVersionChange}
+                      selectedCommit={urlState.selectedCommit}
+                      onVersionChange={actions.changeVersion}
                     />
 
                     {/* Diff controls */}
@@ -712,7 +303,7 @@ export default function Browse() {
                       <Tooltip title="Compare versions">
                         <IconButton
                           size="small"
-                          onClick={handleEnterDiffMode}
+                          onClick={actions.enterDiffMode}
                           disabled={fileVersions.length < 2}
                           sx={{ ml: 0.5 }}
                         >
@@ -727,7 +318,7 @@ export default function Browse() {
                         <FormControl size="small">
                           <Select
                             value={diffCommit || ''}
-                            onChange={(e) => handleDiffVersionChange(e.target.value || null)}
+                            onChange={(e) => actions.changeDiffVersion(e.target.value || null)}
                             displayEmpty
                             sx={{
                               minWidth: 180,
@@ -795,7 +386,7 @@ export default function Browse() {
                           </Select>
                         </FormControl>
                         <Tooltip title="Exit compare mode">
-                          <IconButton size="small" onClick={handleExitDiffMode}>
+                          <IconButton size="small" onClick={actions.exitDiffMode}>
                             <CloseIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
@@ -811,7 +402,7 @@ export default function Browse() {
                   <DiffCodeViewer
                     leftContent={fileContent.content}
                     rightContent={diffContent.content}
-                    leftLabel={`${getShortHash(selectedCommit || fileVersions[0]?.commit_hash)} (current)`}
+                    leftLabel={`${getShortHash(urlState.selectedCommit || fileVersions[0]?.commit_hash)} (current)`}
                     rightLabel={`${getShortHash(diffCommit)} (compare)`}
                     language={fileContent.language}
                     leftSymbols={fileSymbols}
@@ -820,11 +411,11 @@ export default function Browse() {
                     rightReferences={diffReferences}
                     highlightLine={highlightLine}
                     activePanel={activePanel}
-                    onPanelClick={setActivePanel}
-                    onSymbolClick={handleDiffSymbolClick}
-                    onReferenceClick={handleDiffReferenceClick}
-                    onLineClick={handleDiffLineClick}
-                    onClosePanel={handleClosePanel}
+                    onPanelClick={actions.setActivePanel}
+                    onSymbolClick={actions.handleDiffSymbolClick}
+                    onReferenceClick={actions.handleDiffReferenceClick}
+                    onLineClick={actions.handleDiffLineClick}
+                    onClosePanel={actions.closePanel}
                   />
                 ) : diffMode && diffLoading ? (
                   <Box
@@ -845,9 +436,9 @@ export default function Browse() {
                       symbols={fileSymbols}
                       references={fileReferences}
                       highlightLine={highlightLine}
-                      onSymbolClick={handleSymbolClick}
-                      onReferenceClick={handleCodeReferenceClick}
-                      onLineClick={handleLineClick}
+                      onSymbolClick={actions.handleSymbolClick}
+                      onReferenceClick={actions.handleCodeReferenceClick}
+                      onLineClick={actions.navigateToLine}
                     />
                   </Box>
                 )}
@@ -908,7 +499,9 @@ export default function Browse() {
                   <FormControl size="small" sx={{ minWidth: 80 }}>
                     <Select
                       value={refPanel}
-                      onChange={(e) => handleRefPanelChange(e.target.value as 'left' | 'right')}
+                      onChange={(e) =>
+                        actions.handleRefPanelChange(e.target.value as 'left' | 'right')
+                      }
                       sx={{
                         '& .MuiSelect-select': {
                           py: 0,
@@ -940,15 +533,10 @@ export default function Browse() {
                   symbol={selectedSymbol}
                   isDirectDefinition={isDirectDefinition}
                   searchByName={searchByName}
-                  selectedCommit={refCommit}
-                  onReferenceClick={handleRefPanelClick}
-                  onDefinitionClick={handleDefinitionClick}
-                  onClose={() => {
-                    setRefsPanelOpen(false)
-                    setSelectedSymbol(null)
-                    setIsDirectDefinition(false)
-                    setSearchByName(null)
-                  }}
+                  selectedCommit={computedState.refCommit}
+                  onReferenceClick={actions.handleRefPanelClick}
+                  onDefinitionClick={actions.handleDefinitionClick}
+                  onClose={actions.closeRefsPanel}
                 />
               </Box>
             </Box>
