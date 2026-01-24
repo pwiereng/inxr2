@@ -660,4 +660,241 @@ describe('useBrowseState', () => {
       expect(mockSetSearchParams).not.toHaveBeenCalled()
     })
   })
+
+  describe('closeRefsPanel action', () => {
+    it('should clear refs panel React state', async () => {
+      mockSearchParams = new URLSearchParams('refs=1&q=TestSymbol')
+
+      const { result } = renderHook(() => useBrowseState())
+
+      // Wait for initial load
+      await vi.waitFor(() => {
+        expect(result.current.urlState.refsPanelOpen).toBe(true)
+      })
+
+      act(() => {
+        result.current.actions.closeRefsPanel()
+      })
+
+      // Should clear React state
+      expect(result.current.refsState.selectedSymbol).toBeNull()
+      expect(result.current.refsState.searchByName).toBeNull()
+      expect(result.current.refsState.isDirectDefinition).toBe(false)
+    })
+
+    it('should remove refs param from URL', async () => {
+      mockSearchParams = new URLSearchParams('refs=1&q=TestSymbol')
+
+      const { result } = renderHook(() => useBrowseState())
+
+      await vi.waitFor(() => {
+        expect(result.current.urlState.refsPanelOpen).toBe(true)
+      })
+
+      act(() => {
+        result.current.actions.closeRefsPanel()
+      })
+
+      // Should have called setSearchParams to remove refs
+      expect(mockSetSearchParams).toHaveBeenCalled()
+      expect(mockSearchParams.has('refs')).toBe(false)
+    })
+
+    it('should preserve search query when closing refs panel', async () => {
+      mockSearchParams = new URLSearchParams('refs=1&q=TestSymbol')
+
+      const { result } = renderHook(() => useBrowseState())
+
+      await vi.waitFor(() => {
+        expect(result.current.urlState.refsPanelOpen).toBe(true)
+        expect(result.current.urlState.searchQuery).toBe('TestSymbol')
+      })
+
+      act(() => {
+        result.current.actions.closeRefsPanel()
+      })
+
+      // Should preserve q param (search query is independent of refs panel)
+      expect(mockSearchParams.get('q')).toBe('TestSymbol')
+    })
+  })
+
+  describe('refs panel restoration from URL', () => {
+    it('should initialize searchByName from URL when refs panel is open', async () => {
+      mockSearchParams = new URLSearchParams('refs=1&q=TestSymbol')
+
+      const { result } = renderHook(() => useBrowseState())
+
+      // Wait for repository to load and restoration effect to run
+      await vi.waitFor(() => {
+        expect(result.current.dataState.repository).not.toBeNull()
+      })
+
+      // The restoration effect should have set searchByName
+      await vi.waitFor(() => {
+        expect(result.current.refsState.searchByName).toEqual({
+          name: 'TestSymbol',
+          repositoryId: 1,
+        })
+      })
+    })
+
+    it('should not restore if refs panel is closed', async () => {
+      // refs=0 or no refs param means closed
+      mockSearchParams = new URLSearchParams('q=TestSymbol')
+
+      const { result } = renderHook(() => useBrowseState())
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.repository).not.toBeNull()
+      })
+
+      // Give time for any effects to run
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      // Should NOT set searchByName since refs panel is closed
+      expect(result.current.refsState.searchByName).toBeNull()
+    })
+
+    it('should not restore if no search query in URL', async () => {
+      mockSearchParams = new URLSearchParams('refs=1')
+
+      const { result } = renderHook(() => useBrowseState())
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.repository).not.toBeNull()
+      })
+
+      // Give time for any effects to run
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      // Should NOT set searchByName since there's no query
+      expect(result.current.refsState.searchByName).toBeNull()
+    })
+
+    it('should not restore if searchByName is already set', async () => {
+      mockSearchParams = new URLSearchParams('refs=1&q=TestSymbol')
+
+      const { result } = renderHook(() => useBrowseState())
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.repository).not.toBeNull()
+      })
+
+      // First restoration happens
+      await vi.waitFor(() => {
+        expect(result.current.refsState.searchByName).toEqual({
+          name: 'TestSymbol',
+          repositoryId: 1,
+        })
+      })
+
+      // Manually set a different searchByName
+      act(() => {
+        result.current.actions.openRefsPanelByName('DifferentSymbol', 1)
+      })
+
+      // Should have the new value, not reverted to URL value
+      expect(result.current.refsState.searchByName).toEqual({
+        name: 'DifferentSymbol',
+        repositoryId: 1,
+      })
+    })
+  })
+
+  describe('navigateToSymbol action', () => {
+    const mockSymbol = {
+      id: 123,
+      name: '__init__',
+      qualified_name: 'MyClass.__init__',
+      kind: 'method',
+      file_id: 1,
+      file_path: 'src/myclass.py',
+      repository_id: 1,
+      commit_id: 1,
+      start_line: 42,
+      start_column: 4,
+      end_line: 50,
+      end_column: 0,
+      signature: 'def __init__(self)',
+      docstring: null,
+    }
+
+    it('should navigate to symbol file and open refs panel', () => {
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.navigateToSymbol(mockSymbol)
+      })
+
+      // Should navigate to the symbol's file with line number
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('src/myclass.py')
+      )
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('line=42')
+      )
+
+      // Should open refs panel (refs=1 in URL)
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('refs=1')
+      )
+
+      // Should include symbol name in search query
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('q=__init__')
+      )
+    })
+
+    it('should set refs panel state when navigating to symbol', () => {
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.navigateToSymbol(mockSymbol)
+      })
+
+      // Should set selectedSymbol
+      expect(result.current.refsState.selectedSymbol).toEqual(mockSymbol)
+      // Should clear searchByName (using full symbol instead)
+      expect(result.current.refsState.searchByName).toBeNull()
+      // Should mark as direct definition
+      expect(result.current.refsState.isDirectDefinition).toBe(true)
+    })
+
+    it('should open refs panel by name when symbol has no file_path', () => {
+      const symbolWithoutPath = {
+        ...mockSymbol,
+        file_path: null,
+      }
+
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.navigateToSymbol(symbolWithoutPath)
+      })
+
+      // Should NOT navigate (no file_path)
+      expect(mockNavigate).not.toHaveBeenCalled()
+
+      // Should use updateUrlParams to open refs panel
+      expect(mockSetSearchParams).toHaveBeenCalled()
+      expect(mockSearchParams.get('refs')).toBe('1')
+      expect(mockSearchParams.get('q')).toBe('__init__')
+    })
+
+    it('should preserve drawer state when navigating', () => {
+      mockSearchParams = new URLSearchParams('drawer=0')
+
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.navigateToSymbol(mockSymbol)
+      })
+
+      // Should preserve drawer=0 in navigation
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('drawer=0')
+      )
+    })
+  })
 })

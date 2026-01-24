@@ -466,18 +466,33 @@ export function useBrowseState() {
 
   const navigateToSymbol = useCallback(
     (symbol: Symbol) => {
+      if (!urlState.repoName) {
+        return
+      }
+
+      // Set up refs panel state for the selected symbol
+      setSelectedSymbol(symbol)
+      setSearchByName(null)
+      setIsDirectDefinition(true)
+
       if (symbol.file_path) {
+        // Navigate to the symbol's location AND open refs panel
         const params = new URLSearchParams()
         params.set('line', symbol.start_line.toString())
-        if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
-        // Preserve UI state
+        // Note: Don't preserve selectedCommit - symbol search returns symbols from
+        // the latest indexed commit, so we should view the latest version
+        // Preserve drawer state
         if (!urlState.drawerOpen) params.set('drawer', '0')
-        if (urlState.refsPanelOpen) params.set('refs', '1')
-        if (urlState.searchQuery) params.set('q', urlState.searchQuery)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${symbol.file_path}?${params}`)
+        // Open refs panel with the symbol name
+        params.set('refs', '1')
+        params.set('q', symbol.name)
+        navigate(`/browse/${encodeURIComponent(urlState.repoName)}/${symbol.file_path}?${params}`)
+      } else {
+        // Symbol has no file_path - just open refs panel to show references
+        updateUrlParams({ refs: '1', q: symbol.name })
       }
     },
-    [navigate, urlState]
+    [navigate, urlState, updateUrlParams]
   )
 
   const navigateToLine = useCallback(
@@ -643,8 +658,8 @@ export function useBrowseState() {
     setSelectedSymbol(null)
     setSearchByName(null)
     setIsDirectDefinition(false)
-    // Update both refs and search query in a single URL update
-    updateUrlParams({ refs: null, q: null })
+    // Close refs panel but preserve search query (search is independent of refs panel)
+    updateUrlParams({ refs: null })
   }, [updateUrlParams])
 
   const handleRefPanelChange = useCallback(
@@ -804,9 +819,14 @@ export function useBrowseState() {
         // Set diff mode panel states including the clicked panel
         if (urlState.treePanel === 'right') params.set('tp', 'r')
         if (urlState.refPanel === 'right') params.set('rp', 'r')
-        // Explicitly set active panel (left = no param, right = 'r')
-        if (panel === 'right') params.set('ap', 'r')
-        // Note: for left panel, we don't set 'ap' at all, which defaults to 'left'
+        // Explicitly handle active panel:
+        // - right panel: set 'ap=r'
+        // - left panel: ensure 'ap' is not present (left is default)
+        if (panel === 'right') {
+          params.set('ap', 'r')
+        } else {
+          params.delete('ap')
+        }
         navigate(
           `/browse/${encodeURIComponent(urlState.repoName!)}/${urlState.filePath}?${params}`,
           { replace: true }
