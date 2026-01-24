@@ -127,8 +127,8 @@ describe('SymbolSearch', () => {
       // would update the input value to the symbol name, triggering setSearchQuery which
       // would call setSearchParams and overwrite the navigate() call from onSymbolSelect.
       //
-      // The fix sets isSelecting=true during selection, which prevents setInputValue from
-      // updating the input. This test verifies that behavior in uncontrolled mode.
+      // The fix checks the reason parameter in onInputChange, only updating the input value
+      // when reason === 'input', which prevents updates during selection (reason === 'reset').
       const { searchSymbols } = await import('@/lib/api')
       const mockSymbol = {
         id: 2,
@@ -180,7 +180,7 @@ describe('SymbolSearch', () => {
       expect(onSymbolSelect).toHaveBeenCalledWith(mockSymbol)
 
       // Input should still have the original typed value, NOT the symbol name
-      // (because isSelecting prevents the input from being updated during selection)
+      // (because onInputChange only updates when reason === 'input', not during selection)
       expect(input).toHaveValue('MySy')
     })
   })

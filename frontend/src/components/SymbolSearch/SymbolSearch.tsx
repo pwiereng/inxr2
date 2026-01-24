@@ -137,10 +137,9 @@ export function SymbolSearch({
       getOptionLabel={(option) => (typeof option === 'string' ? option : option.name)}
       isOptionEqualToValue={(option, value) => option.id === value.id}
       filterOptions={(x) => x} // Disable client-side filtering
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       renderOption={({ key, ...props }, option) => (
         <Box
-          key={option.id}
+          key={option.id ?? key}
           component="li"
           {...props}
           sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}

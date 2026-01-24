@@ -456,6 +456,7 @@ export function useBrowseState() {
       if (urlState.refsPanelOpen) params.set('refs', '1')
       if (urlState.searchQuery) params.set('q', urlState.searchQuery)
       // Don't preserve symbol - new file means new context
+      // Exit diff mode when navigating to a new file (don't preserve diff, tp, rp, ap params)
       const query = params.toString()
       navigate(
         `/browse/${encodeURIComponent(urlState.repoName!)}/${path}${query ? `?${query}` : ''}`
@@ -480,7 +481,8 @@ export function useBrowseState() {
         const params = new URLSearchParams()
         params.set('line', symbol.start_line.toString())
         // Note: Don't preserve selectedCommit - symbol search returns symbols from
-        // the latest indexed commit, so we should view the latest version
+        // the latest indexed commit, so we should view the latest version.
+        // Exit diff mode when navigating to a symbol (don't preserve diff, tp, rp, ap params)
         // Preserve drawer state
         if (!urlState.drawerOpen) params.set('drawer', '0')
         // Open refs panel with the symbol name
