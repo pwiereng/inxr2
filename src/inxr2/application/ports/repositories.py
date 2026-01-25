@@ -59,17 +59,54 @@ class CommitRepositoryPort(ABC):
 
     @abstractmethod
     async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
-        """Find commit by repository and hash."""
+        """Find commit by repository and hash.
+
+        Commits are unique per (repository_id, commit_hash) - the same commit
+        hash represents the same commit regardless of which branches it's on.
+        """
         pass
 
     @abstractmethod
-    async def find_by_hash_and_branch(
-        self, repository_id: int, commit_hash: str, branch: str
-    ) -> Commit | None:
-        """Find commit by repository, hash, and branch.
+    async def link_commit_to_branch(
+        self, repository_id: int, commit_id: int, branch: str
+    ) -> None:
+        """Link an existing commit to a branch.
 
-        This allows the same commit hash to exist for different branches,
-        which is necessary because branches share commit history.
+        Creates an entry in the branch_commits junction table.
+        Idempotent - if the link already exists, does nothing.
+
+        Args:
+            repository_id: The repository ID
+            commit_id: The commit database ID
+            branch: The branch name to link
+        """
+        pass
+
+    @abstractmethod
+    async def link_commit_to_branches(
+        self, repository_id: int, commit_id: int, branches: list[str]
+    ) -> None:
+        """Link an existing commit to multiple branches.
+
+        Bulk version of link_commit_to_branch for efficiency.
+        Idempotent - existing links are ignored.
+
+        Args:
+            repository_id: The repository ID
+            commit_id: The commit database ID
+            branches: List of branch names to link
+        """
+        pass
+
+    @abstractmethod
+    async def get_branches_for_commit(self, commit_id: int) -> list[str]:
+        """Get all branches that contain a specific commit.
+
+        Args:
+            commit_id: The commit database ID
+
+        Returns:
+            List of branch names the commit is on
         """
         pass
 
@@ -77,7 +114,11 @@ class CommitRepositoryPort(ABC):
     async def list_by_repository(
         self, repository_id: int, branch: str | None = None, limit: int = 100
     ) -> list[Commit]:
-        """List commits for a repository, optionally filtered by branch."""
+        """List commits for a repository, optionally filtered by branch.
+
+        If branch is specified, only returns commits linked to that branch
+        via the branch_commits junction table.
+        """
         pass
 
     @abstractmethod
@@ -85,6 +126,9 @@ class CommitRepositoryPort(ABC):
         self, repository_id: int, branch: str
     ) -> Commit | None:
         """Find the latest indexed commit for a specific branch.
+
+        Queries via the branch_commits junction table to find commits
+        on the specified branch, returning the most recent by commit_date.
 
         Args:
             repository_id: The repository ID

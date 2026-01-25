@@ -96,7 +96,7 @@ export function ReferencesPanel({
   const displayName = symbol?.name || searchByName?.name || ''
 
   useEffect(() => {
-    // Handle search-by-name mode (unresolved references)
+    // Handle search-by-name mode (unresolved references or panel switch in diff mode)
     if (!symbol && searchByName) {
       const fetchByName = async () => {
         setLoading(true)
@@ -109,10 +109,24 @@ export function ReferencesPanel({
             selectedCommit || undefined
           )
           setAllDefinitions(defsResult.items)
-          setReferences([]) // No references without a specific symbol
+
+          // If we found definitions, fetch references for the first one
+          // This handles the case where we switched panels in diff mode
+          if (defsResult.items.length > 0) {
+            const firstDef = defsResult.items[0]!
+            const refsResult = await getSymbolReferences(
+              firstDef.id,
+              100,
+              selectedCommit || undefined
+            )
+            setReferences(refsResult.items)
+          } else {
+            setReferences([])
+          }
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Failed to load definitions')
           setAllDefinitions([])
+          setReferences([])
         } finally {
           setLoading(false)
         }

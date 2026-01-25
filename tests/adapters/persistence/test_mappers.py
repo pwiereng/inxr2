@@ -108,7 +108,6 @@ class TestCommitMapper:
             author_date=datetime.utcnow(),
             commit_date=datetime.utcnow(),
             message="Test commit",
-            branch="main",
         )
 
         entity = CommitMapper.to_domain(model)

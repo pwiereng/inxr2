@@ -132,6 +132,10 @@ export function SymbolSearch({
       onChange={(_, value) => {
         if (value && typeof value !== 'string') {
           onSymbolSelect?.(value)
+          // Clear the search box after selection - the search box is just for input,
+          // not for displaying current state
+          setInputValue('')
+          setOptions([])
         }
       }}
       getOptionLabel={(option) => (typeof option === 'string' ? option : option.name)}

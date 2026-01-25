@@ -128,7 +128,6 @@ class TestPostgresCommitRepository:
             commit_hash=CommitHash("abc123" + "0" * 34),
             short_hash="abc123",
             parent_hashes=None,
-            branch="main",
             author_name="Test Author",
             author_email="test@example.com",
             committer_name="Test Author",
@@ -228,11 +227,14 @@ class TestPostgresCommitRepository:
                 author_date=datetime(2025, 1, i + 1),
                 commit_date=datetime(2025, 1, i + 1),
                 message=f"Commit {i}",
-                branch="main",
             )
             for i in range(5)
         ]
-        await commit_adapter.save_many(commits)
+        saved_commits = await commit_adapter.save_many(commits)
+
+        # Link all commits to main branch
+        for c in saved_commits:
+            await commit_adapter.link_commit_to_branch(saved_repo.id, c.id, "main")
 
         # Act
         found_commits = await commit_adapter.list_by_repository(

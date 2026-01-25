@@ -247,10 +247,13 @@ class TestIndexLocalDirectoryUseCase:
 
         commit = commits[0]
         assert commit.repository_id == result.repository_id
-        assert commit.branch == "local"
         assert commit.author_name == "local"
         assert commit.message == "Local directory index"
         assert commit.parent_hashes is None or commit.parent_hashes == []
+
+        # Verify commit is linked to "local" branch
+        branches = await commit_repo.get_branches_for_commit(commit.id)
+        assert "local" in branches
 
     @pytest.mark.asyncio
     async def test_index_calculates_content_hash(self, tmp_path: Path) -> None:

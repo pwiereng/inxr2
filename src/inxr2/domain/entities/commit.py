@@ -13,6 +13,9 @@ class Commit:
 
     Domain entity (framework-agnostic). Separate from SQLAlchemy ORM model.
 
+    Note: Branch information is stored separately in the branch_commits table,
+    not on the commit itself. A commit can exist on multiple branches.
+
     Attributes:
         commit_hash: Full 40-character SHA-1 hash
         repository_id: ID of repository this commit belongs to
@@ -26,7 +29,6 @@ class Commit:
         id: Database ID (None for new entities)
         short_hash: 7-character short hash for display
         parent_hashes: List of parent commit hashes (for merge commits)
-        branch: Branch name (None for detached commits)
         indexed_at: When this commit was indexed
     """
 
@@ -42,7 +44,6 @@ class Commit:
     id: int | None = None
     short_hash: str | None = None
     parent_hashes: list[str] | None = None
-    branch: str | None = None
     indexed_at: datetime | None = None
 
     def __post_init__(self) -> None:

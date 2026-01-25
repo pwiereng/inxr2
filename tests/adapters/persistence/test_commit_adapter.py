@@ -30,14 +30,12 @@ class TestPostgresCommitRepository:
         commit = CommitFactory.create(
             repository_id=repo.id,
             commit_hash="a" * 40,
-            branch="main",
         )
 
         saved = await adapter.save(commit)
 
         assert saved.id is not None
         assert saved.commit_hash.value == "a" * 40
-        assert saved.branch == "main"
 
     async def test_find_by_hash_returns_commit(self, db_session):
         """Test finding a commit by hash."""
@@ -48,7 +46,6 @@ class TestPostgresCommitRepository:
         commit = CommitFactory.create(
             repository_id=repo.id,
             commit_hash="b" * 40,
-            branch="main",
         )
         await adapter.save(commit)
 
@@ -56,6 +53,48 @@ class TestPostgresCommitRepository:
 
         assert found is not None
         assert found.commit_hash.value == "b" * 40
+
+    async def test_link_commit_to_branch_creates_association(self, db_session):
+        """Test that link_commit_to_branch creates a branch-commit association."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="link-branch-repo")
+        )
+
+        adapter = PostgresCommitRepository(db_session)
+        commit = CommitFactory.create(
+            repository_id=repo.id,
+            commit_hash="c" * 40,
+        )
+        saved = await adapter.save(commit)
+
+        # Link to a branch
+        await adapter.link_commit_to_branch(repo.id, saved.id, "main")
+
+        # Verify via get_branches_for_commit
+        branches = await adapter.get_branches_for_commit(saved.id)
+        assert "main" in branches
+
+    async def test_link_commit_to_multiple_branches(self, db_session):
+        """Test that a commit can be linked to multiple branches."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="multi-branch-repo")
+        )
+
+        adapter = PostgresCommitRepository(db_session)
+        commit = CommitFactory.create(
+            repository_id=repo.id,
+            commit_hash="d" * 40,
+        )
+        saved = await adapter.save(commit)
+
+        # Link to multiple branches
+        await adapter.link_commit_to_branches(repo.id, saved.id, ["main", "develop"])
+
+        # Verify both branches
+        branches = await adapter.get_branches_for_commit(saved.id)
+        assert set(branches) == {"main", "develop"}
 
     async def test_find_latest_by_branch_returns_latest_commit(self, db_session):
         """Test that find_latest_by_branch returns the most recent commit."""
@@ -71,25 +110,27 @@ class TestPostgresCommitRepository:
         older_commit = CommitFactory.create(
             repository_id=repo.id,
             commit_hash="c" * 40,
-            branch="main",
             commit_date=now - timedelta(hours=2),
         )
         newer_commit = CommitFactory.create(
             repository_id=repo.id,
             commit_hash="d" * 40,
-            branch="main",
             commit_date=now - timedelta(hours=1),
         )
         newest_commit = CommitFactory.create(
             repository_id=repo.id,
             commit_hash="e" * 40,
-            branch="main",
             commit_date=now,
         )
 
-        await adapter.save(older_commit)
-        await adapter.save(newer_commit)
-        await adapter.save(newest_commit)
+        saved_older = await adapter.save(older_commit)
+        saved_newer = await adapter.save(newer_commit)
+        saved_newest = await adapter.save(newest_commit)
+
+        # Link all commits to main branch
+        await adapter.link_commit_to_branch(repo.id, saved_older.id, "main")
+        await adapter.link_commit_to_branch(repo.id, saved_newer.id, "main")
+        await adapter.link_commit_to_branch(repo.id, saved_newest.id, "main")
 
         # Find latest by branch
         latest = await adapter.find_latest_by_branch(repo.id, "main")
@@ -111,19 +152,21 @@ class TestPostgresCommitRepository:
         main_commit = CommitFactory.create(
             repository_id=repo.id,
             commit_hash="f" * 40,
-            branch="main",
             commit_date=now - timedelta(hours=2),
         )
         # Feature branch has newer commit
         feature_commit = CommitFactory.create(
             repository_id=repo.id,
             commit_hash="1" * 40,
-            branch="feature",
             commit_date=now,
         )
 
-        await adapter.save(main_commit)
-        await adapter.save(feature_commit)
+        saved_main = await adapter.save(main_commit)
+        saved_feature = await adapter.save(feature_commit)
+
+        # Link to respective branches
+        await adapter.link_commit_to_branch(repo.id, saved_main.id, "main")
+        await adapter.link_commit_to_branch(repo.id, saved_feature.id, "feature")
 
         # Latest for main should be main_commit even though feature is newer
         latest_main = await adapter.find_latest_by_branch(repo.id, "main")
@@ -146,9 +189,9 @@ class TestPostgresCommitRepository:
         commit = CommitFactory.create(
             repository_id=repo.id,
             commit_hash="2" * 40,
-            branch="main",
         )
-        await adapter.save(commit)
+        saved = await adapter.save(commit)
+        await adapter.link_commit_to_branch(repo.id, saved.id, "main")
 
         # Try to find non-existent branch
         result = await adapter.find_latest_by_branch(repo.id, "nonexistent")
@@ -167,16 +210,18 @@ class TestPostgresCommitRepository:
         main_commit = CommitFactory.create(
             repository_id=repo.id,
             commit_hash="3" * 40,
-            branch="main",
         )
         develop_commit = CommitFactory.create(
             repository_id=repo.id,
             commit_hash="4" * 40,
-            branch="develop",
         )
 
-        await adapter.save(main_commit)
-        await adapter.save(develop_commit)
+        saved_main = await adapter.save(main_commit)
+        saved_develop = await adapter.save(develop_commit)
+
+        # Link to respective branches
+        await adapter.link_commit_to_branch(repo.id, saved_main.id, "main")
+        await adapter.link_commit_to_branch(repo.id, saved_develop.id, "develop")
 
         # List all commits
         all_commits = await adapter.list_by_repository(repo.id)
@@ -185,9 +230,63 @@ class TestPostgresCommitRepository:
         # List only main branch
         main_commits = await adapter.list_by_repository(repo.id, branch="main")
         assert len(main_commits) == 1
-        assert main_commits[0].branch == "main"
+        assert main_commits[0].commit_hash.value == "3" * 40
 
         # List only develop branch
         develop_commits = await adapter.list_by_repository(repo.id, branch="develop")
         assert len(develop_commits) == 1
-        assert develop_commits[0].branch == "develop"
+        assert develop_commits[0].commit_hash.value == "4" * 40
+
+    async def test_commit_on_multiple_branches_appears_in_both(self, db_session):
+        """Test that a commit linked to multiple branches appears when filtering by either."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="shared-commit-repo")
+        )
+
+        adapter = PostgresCommitRepository(db_session)
+
+        # Create a shared commit (like a merge base)
+        shared_commit = CommitFactory.create(
+            repository_id=repo.id,
+            commit_hash="5" * 40,
+        )
+        saved_shared = await adapter.save(shared_commit)
+
+        # Link to both main and feature branches
+        await adapter.link_commit_to_branches(
+            repo.id, saved_shared.id, ["main", "feature"]
+        )
+
+        # Should appear in both branch listings
+        main_commits = await adapter.list_by_repository(repo.id, branch="main")
+        feature_commits = await adapter.list_by_repository(repo.id, branch="feature")
+
+        assert len(main_commits) == 1
+        assert len(feature_commits) == 1
+        assert main_commits[0].commit_hash.value == "5" * 40
+        assert feature_commits[0].commit_hash.value == "5" * 40
+
+    async def test_link_commit_to_branch_is_idempotent(self, db_session):
+        """Test that linking the same commit to the same branch multiple times is idempotent."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="idempotent-link-repo")
+        )
+
+        adapter = PostgresCommitRepository(db_session)
+
+        commit = CommitFactory.create(
+            repository_id=repo.id,
+            commit_hash="6" * 40,
+        )
+        saved = await adapter.save(commit)
+
+        # Link multiple times
+        await adapter.link_commit_to_branch(repo.id, saved.id, "main")
+        await adapter.link_commit_to_branch(repo.id, saved.id, "main")
+        await adapter.link_commit_to_branch(repo.id, saved.id, "main")
+
+        # Should still only have one association
+        branches = await adapter.get_branches_for_commit(saved.id)
+        assert branches == ["main"]

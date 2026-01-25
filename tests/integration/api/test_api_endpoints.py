@@ -1550,7 +1550,6 @@ class TestCommitsAPI:
             Commit(
                 repository_id=saved_repo.id,
                 commit_hash=make_test_commit_hash("commit1"),
-                branch="main",
                 author_name="Test Author",
                 author_email="test@example.com",
                 committer_name="Test Author",
@@ -1562,7 +1561,6 @@ class TestCommitsAPI:
             Commit(
                 repository_id=saved_repo.id,
                 commit_hash=make_test_commit_hash("commit2"),
-                branch="main",
                 author_name="Test Author",
                 author_email="test@example.com",
                 committer_name="Test Author",
@@ -1612,34 +1610,35 @@ class TestCommitsAPI:
         saved_repo = await repo_adapter.save(repository)
 
         commit_adapter = PostgresCommitRepository(db_session)
-        commits = [
-            Commit(
-                repository_id=saved_repo.id,
-                commit_hash=make_test_commit_hash("maincom"),
-                branch="main",
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
-                author_date=datetime(2025, 1, 1),
-                commit_date=datetime(2025, 1, 1),
-                message="Main commit",
-            ),
-            Commit(
-                repository_id=saved_repo.id,
-                commit_hash=make_test_commit_hash("devcom"),
-                branch="dev",
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
-                author_date=datetime(2025, 1, 2),
-                commit_date=datetime(2025, 1, 2),
-                message="Dev commit",
-            ),
-        ]
-        for c in commits:
-            await commit_adapter.save(c)
+        main_commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=make_test_commit_hash("maincom"),
+            author_name="Test",
+            author_email="test@example.com",
+            committer_name="Test",
+            committer_email="test@example.com",
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+            message="Main commit",
+        )
+        dev_commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=make_test_commit_hash("devcom"),
+            author_name="Test",
+            author_email="test@example.com",
+            committer_name="Test",
+            committer_email="test@example.com",
+            author_date=datetime(2025, 1, 2),
+            commit_date=datetime(2025, 1, 2),
+            message="Dev commit",
+        )
+
+        saved_main = await commit_adapter.save(main_commit)
+        saved_dev = await commit_adapter.save(dev_commit)
+
+        # Link commits to their respective branches
+        await commit_adapter.link_commit_to_branch(saved_repo.id, saved_main.id, "main")
+        await commit_adapter.link_commit_to_branch(saved_repo.id, saved_dev.id, "dev")
 
         # Act
         async with AsyncClient(
@@ -1654,7 +1653,7 @@ class TestCommitsAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
-        assert data["commits"][0]["branch"] == "main"
+        assert data["commits"][0]["message"] == "Main commit"
 
     async def test_list_commits_repo_not_found(self, test_app) -> None:
         """Test listing commits for non-existent repository."""
@@ -1682,7 +1681,6 @@ class TestCommitsAPI:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("detail1"),
-            branch="main",
             author_name="Test Author",
             author_email="test@example.com",
             committer_name="Test Committer",
@@ -1739,7 +1737,6 @@ class TestFileHistoryAPI:
         commit1 = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("hist1"),
-            branch="main",
             author_name="Test",
             author_email="test@example.com",
             committer_name="Test",
@@ -1751,7 +1748,6 @@ class TestFileHistoryAPI:
         commit2 = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("hist2"),
-            branch="main",
             author_name="Test",
             author_email="test@example.com",
             committer_name="Test",

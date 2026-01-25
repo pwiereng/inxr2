@@ -36,26 +36,28 @@ class TestPostgresFileRepositoryVersions:
             CommitFactory.create(
                 repository_id=repo.id,
                 commit_hash="a" * 40,
-                branch="main",
                 commit_date=now - timedelta(hours=2),
             )
         )
+        await commit_adapter.link_commit_to_branch(repo.id, commit1.id, "main")
+
         commit2 = await commit_adapter.save(
             CommitFactory.create(
                 repository_id=repo.id,
                 commit_hash="b" * 40,
-                branch="main",
                 commit_date=now - timedelta(hours=1),
             )
         )
+        await commit_adapter.link_commit_to_branch(repo.id, commit2.id, "main")
+
         commit3 = await commit_adapter.save(
             CommitFactory.create(
                 repository_id=repo.id,
                 commit_hash="c" * 40,
-                branch="main",
                 commit_date=now,
             )
         )
+        await commit_adapter.link_commit_to_branch(repo.id, commit3.id, "main")
 
         # Create file at each commit
         await file_adapter.save(
@@ -108,17 +110,20 @@ class TestPostgresFileRepositoryVersions:
             CommitFactory.create(
                 repository_id=repo.id,
                 commit_hash="d" * 40,
-                branch="main",
                 commit_date=now - timedelta(hours=1),
             )
         )
+        await commit_adapter.link_commit_to_branch(repo.id, main_commit.id, "main")
+
         feature_commit = await commit_adapter.save(
             CommitFactory.create(
                 repository_id=repo.id,
                 commit_hash="e" * 40,
-                branch="feature",
                 commit_date=now,
             )
+        )
+        await commit_adapter.link_commit_to_branch(
+            repo.id, feature_commit.id, "feature"
         )
 
         # Create same file on both branches
@@ -173,9 +178,9 @@ class TestPostgresFileRepositoryVersions:
             CommitFactory.create(
                 repository_id=repo.id,
                 commit_hash="f" * 40,
-                branch="main",
             )
         )
+        await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
 
         await file_adapter.save(
             FileFactory.create(
@@ -210,10 +215,10 @@ class TestPostgresFileRepositoryVersions:
                 CommitFactory.create(
                     repository_id=repo.id,
                     commit_hash=str(i) * 40,
-                    branch="main",
                     commit_date=now - timedelta(hours=3 - i),
                 )
             )
+            await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
             commits.append(commit)
 
         # Create files in different order than commits

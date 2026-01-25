@@ -58,12 +58,10 @@ class TestCommit:
             author_date=timestamp,
             commit_date=timestamp,
             message="Initial commit",
-            branch="main",
         )
 
         assert commit.commit_hash == commit_hash
         assert commit.repository_id == 1
-        assert commit.branch == "main"
         assert commit.author_date == timestamp
         assert commit.author_name == "Test Author"
         assert commit.message == "Initial commit"

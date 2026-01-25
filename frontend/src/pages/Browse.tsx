@@ -41,8 +41,7 @@ export default function Browse() {
   const { allRepositories, repository, treeNodes, fileContent, fileSymbols, fileReferences } =
     dataState
   const { diffContent, diffSymbols, diffReferences, activePanel, treePanel, refPanel } = diffState
-  const { drawerOpen, refsPanelOpen, loading, fileLoading, diffLoading, error, searchQuery } =
-    uiState
+  const { drawerOpen, refsPanelOpen, loading, fileLoading, diffLoading, error } = uiState
   const { selectedSymbol, isDirectDefinition, searchByName } = refsState
   const { leftCommit, rightCommit } = computedState
 
@@ -50,6 +49,16 @@ export default function Browse() {
   const getShortHash = (hash: string | null | undefined) => {
     if (!hash) return 'latest'
     return hash.substring(0, 7)
+  }
+
+  // Get display text for left panel version in refs dropdown
+  const getLeftVersionDisplay = () => {
+    return leftCommit ? leftCommit.substring(0, 7) : '...'
+  }
+
+  // Get display text for right panel version in refs dropdown
+  const getRightVersionDisplay = () => {
+    return rightCommit ? rightCommit.substring(0, 7) : '...'
   }
 
   if (loading) {
@@ -138,13 +147,8 @@ export default function Browse() {
             )}
           </Breadcrumbs>
 
-          {/* Symbol Search */}
-          <SymbolSearch
-            repositoryId={repository?.id}
-            onSymbolSelect={actions.navigateToSymbol}
-            value={searchQuery}
-            onValueChange={actions.setSearchQuery}
-          />
+          {/* Symbol Search - uncontrolled, just triggers navigation */}
+          <SymbolSearch repositoryId={repository?.id} onSymbolSelect={actions.navigateToSymbol} />
         </Toolbar>
       </AppBar>
 
@@ -204,12 +208,12 @@ export default function Browse() {
                     >
                       <MenuItem value="left">
                         <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                          {getShortHash(leftCommit)} (left)
+                          {getLeftVersionDisplay()} (left)
                         </Typography>
                       </MenuItem>
                       <MenuItem value="right">
                         <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                          {getShortHash(rightCommit)} (right)
+                          {getRightVersionDisplay()} (right)
                         </Typography>
                       </MenuItem>
                     </Select>
@@ -293,6 +297,7 @@ export default function Browse() {
                       selectedCommit={urlState.selectedCommit}
                       onVersionChange={actions.changeVersion}
                       selectedBranch={selectedBranch}
+                      defaultBranch={repository.default_branch}
                     />
                     <Tooltip title="Compare versions or branches">
                       <IconButton size="small" onClick={actions.enterDiffMode}>
@@ -332,6 +337,7 @@ export default function Browse() {
                           selectedCommit={urlState.selectedCommit}
                           onVersionChange={actions.changeVersion}
                           selectedBranch={selectedBranch}
+                          defaultBranch={repository.default_branch}
                         />
                       </>
                     }
@@ -349,6 +355,7 @@ export default function Browse() {
                           selectedCommit={diffCommit}
                           onVersionChange={actions.changeDiffVersion}
                           selectedBranch={diffBranch || selectedBranch}
+                          defaultBranch={repository.default_branch}
                         />
                       </>
                     }
@@ -414,6 +421,7 @@ export default function Browse() {
                           selectedCommit={urlState.selectedCommit}
                           onVersionChange={actions.changeVersion}
                           selectedBranch={selectedBranch}
+                          defaultBranch={repository.default_branch}
                         />
                       </Box>
                       <Box sx={{ flex: 1, overflow: 'auto' }}>
@@ -462,6 +470,7 @@ export default function Browse() {
                           selectedCommit={diffCommit}
                           onVersionChange={actions.changeDiffVersion}
                           selectedBranch={diffBranch || selectedBranch}
+                          defaultBranch={repository.default_branch}
                         />
                       </Box>
                       <Box
@@ -571,12 +580,12 @@ export default function Browse() {
                     >
                       <MenuItem value="left">
                         <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                          {getShortHash(leftCommit)} (left)
+                          {getLeftVersionDisplay()} (left)
                         </Typography>
                       </MenuItem>
                       <MenuItem value="right">
                         <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                          {getShortHash(rightCommit)} (right)
+                          {getRightVersionDisplay()} (right)
                         </Typography>
                       </MenuItem>
                     </Select>

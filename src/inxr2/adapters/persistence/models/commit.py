@@ -3,13 +3,22 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CHAR, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    CHAR,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
 from .types import StringArray
 
 if TYPE_CHECKING:
+    from .branch_commit import BranchCommitModel
     from .file import FileModel
     from .reference import ReferenceModel
     from .repository import RepositoryModel
@@ -17,7 +26,12 @@ if TYPE_CHECKING:
 
 
 class CommitModel(Base):
-    """SQLAlchemy ORM model for commits table."""
+    """
+    SQLAlchemy ORM model for commits table.
+
+    Note: Branch information is stored in the branch_commits junction table,
+    not directly on this model. A commit can exist on multiple branches.
+    """
 
     __tablename__ = "commits"
 
@@ -28,7 +42,6 @@ class CommitModel(Base):
     commit_hash: Mapped[str] = mapped_column(CHAR(40), nullable=False, index=True)
     short_hash: Mapped[str] = mapped_column(CHAR(7), nullable=False)
     parent_hashes: Mapped[list[str] | None] = mapped_column(StringArray, nullable=True)
-    branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
     author_name: Mapped[str] = mapped_column(String(255), nullable=False)
     author_email: Mapped[str] = mapped_column(String(255), nullable=False)
     committer_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -44,6 +57,11 @@ class CommitModel(Base):
         DateTime(timezone=False), nullable=False, server_default="now()"
     )
 
+    # Unique constraint: commit hash is unique per repository
+    __table_args__ = (
+        UniqueConstraint("repository_id", "commit_hash", name="uq_repo_commit_hash"),
+    )
+
     # Relationships
     repository: Mapped["RepositoryModel"] = relationship(
         "RepositoryModel", back_populates="commits"
@@ -56,6 +74,9 @@ class CommitModel(Base):
     )
     references: Mapped[list["ReferenceModel"]] = relationship(
         "ReferenceModel", back_populates="commit", cascade="all, delete-orphan"
+    )
+    branch_commits: Mapped[list["BranchCommitModel"]] = relationship(
+        "BranchCommitModel", back_populates="commit", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

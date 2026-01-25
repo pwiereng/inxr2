@@ -19,6 +19,7 @@ interface VersionSelectorProps {
   selectedCommit: string | null
   onVersionChange: (commitHash: string | null) => void
   selectedBranch?: string | null
+  defaultBranch?: string | null
 }
 
 export function VersionSelector({
@@ -27,6 +28,7 @@ export function VersionSelector({
   selectedCommit,
   onVersionChange,
   selectedBranch,
+  defaultBranch,
 }: VersionSelectorProps) {
   const [versions, setVersions] = useState<FileVersion[]>([])
   const [loading, setLoading] = useState(false)
@@ -180,7 +182,10 @@ export function VersionSelector({
                   </Typography>
                   <Typography component="span" variant="caption" color="text.secondary">
                     {formatCommitDate(version.commit_date, allDates)}
-                    {index === 0 && ' (latest)'}
+                    {/* Only show "(latest)" for head of default branch */}
+                    {index === 0 &&
+                      (!selectedBranch || selectedBranch === defaultBranch) &&
+                      ' (latest)'}
                   </Typography>
                 </Box>
               </Tooltip>

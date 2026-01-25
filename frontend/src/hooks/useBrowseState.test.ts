@@ -365,9 +365,7 @@ describe('useBrowseState', () => {
       })
 
       // Should navigate with diff param set to the next version
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('diff=def456')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('diff=def456'))
     })
 
     it('should enter cross-branch diff mode when only one version exists', async () => {
@@ -416,12 +414,8 @@ describe('useBrowseState', () => {
       })
 
       // Drawer state and line should be preserved
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringMatching(/drawer=0.*|.*drawer=0/)
-      )
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringMatching(/line=42.*|.*line=42/)
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringMatching(/drawer=0.*|.*drawer=0/))
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringMatching(/line=42.*|.*line=42/))
       // Search context should be cleared (not preserved)
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
       expect(navigatedUrl).not.toContain('refs=')
@@ -450,6 +444,65 @@ describe('useBrowseState', () => {
       // Should navigate without diff param
       expect(mockNavigate).toHaveBeenCalled()
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).not.toContain('diff=')
+    })
+
+    it('should switch to right panel version when closing left panel', async () => {
+      // In diff mode with left=abc123 (main) and right=def456 (feature branch)
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&diffBranch=feature')
+      mockGetFileHistory.mockResolvedValue({
+        versions: mockVersions,
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 3,
+      })
+
+      const { result } = renderHook(() => useBrowseState())
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(3)
+      })
+
+      act(() => {
+        result.current.actions.closePanel('left')
+      })
+
+      // Should navigate to the right panel's version and branch
+      expect(mockNavigate).toHaveBeenCalled()
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).toContain('commit=def456')
+      expect(navigatedUrl).toContain('branch=feature')
+      // Should not have diff params
+      expect(navigatedUrl).not.toContain('diff=')
+      expect(navigatedUrl).not.toContain('diffBranch=')
+    })
+
+    it('should switch to left panel version when closing right panel', async () => {
+      // In diff mode with left=abc123 (main) and right=def456 (feature branch)
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=main')
+      mockGetFileHistory.mockResolvedValue({
+        versions: mockVersions,
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 3,
+      })
+
+      const { result } = renderHook(() => useBrowseState())
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(3)
+      })
+
+      act(() => {
+        result.current.actions.closePanel('right')
+      })
+
+      // Should keep the left panel's version (exit diff mode)
+      expect(mockNavigate).toHaveBeenCalled()
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).toContain('commit=abc123')
+      expect(navigatedUrl).toContain('branch=main')
+      // Should not have diff params
       expect(navigatedUrl).not.toContain('diff=')
     })
   })
@@ -492,9 +545,7 @@ describe('useBrowseState', () => {
         result.current.actions.changeVersion('def456')
       })
 
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('commit=def456')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=def456'))
     })
 
     it('should preserve drawer state but clear search context when changing version', async () => {
@@ -517,9 +568,7 @@ describe('useBrowseState', () => {
       })
 
       // Drawer state should be preserved
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringMatching(/drawer=0.*|.*drawer=0/)
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringMatching(/drawer=0.*|.*drawer=0/))
       // Search context should be cleared (not preserved)
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
       expect(navigatedUrl).not.toContain('q=')
@@ -567,9 +616,7 @@ describe('useBrowseState', () => {
         result.current.actions.changeDiffVersion('ghi789')
       })
 
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('diff=ghi789')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('diff=ghi789'))
     })
 
     it('should clear refs panel state when changing version', async () => {
@@ -831,22 +878,14 @@ describe('useBrowseState', () => {
       })
 
       // Should navigate to the symbol's file with line number
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('src/myclass.py')
-      )
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('line=42')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('src/myclass.py'))
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('line=42'))
 
       // Should open refs panel (refs=1 in URL)
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('refs=1')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('refs=1'))
 
       // Should include symbol name in search query
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('q=__init__')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('q=__init__'))
     })
 
     it('should set refs panel state when navigating to symbol', () => {
@@ -895,9 +934,7 @@ describe('useBrowseState', () => {
       })
 
       // Should preserve drawer=0 in navigation
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('drawer=0')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('drawer=0'))
     })
   })
 
@@ -929,9 +966,7 @@ describe('useBrowseState', () => {
     })
 
     it('should parse branch with other params', () => {
-      mockSearchParams = new URLSearchParams(
-        'q=MyClass&refs=1&branch=develop&commit=abc123'
-      )
+      mockSearchParams = new URLSearchParams('q=MyClass&refs=1&branch=develop&commit=abc123')
       const { result } = renderHook(() => useBrowseState())
 
       expect(result.current.urlState.selectedBranch).toBe('develop')
@@ -949,9 +984,7 @@ describe('useBrowseState', () => {
         result.current.actions.changeBranch('feature')
       })
 
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('branch=feature')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature'))
     })
 
     it('should remove branch param when changing to null (default)', async () => {
@@ -987,9 +1020,7 @@ describe('useBrowseState', () => {
         result.current.actions.changeBranch('feature')
       })
 
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('drawer=0')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('drawer=0'))
     })
 
     it('should change diffBranch by navigating with diffBranch param', async () => {
@@ -1000,9 +1031,7 @@ describe('useBrowseState', () => {
         result.current.actions.changeDiffBranch('feature')
       })
 
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('diffBranch=feature')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('diffBranch=feature'))
     })
 
     it('should remove diffBranch param when changing to null', async () => {
@@ -1027,9 +1056,7 @@ describe('useBrowseState', () => {
         result.current.actions.navigateToFile('src/other.py')
       })
 
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('branch=feature')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature'))
     })
 
     it('should preserve branch when entering diff mode', async () => {
@@ -1068,9 +1095,7 @@ describe('useBrowseState', () => {
         result.current.actions.enterDiffMode()
       })
 
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('branch=feature')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature'))
     })
 
     it('should preserve branch when changing version', async () => {
@@ -1109,9 +1134,205 @@ describe('useBrowseState', () => {
         result.current.actions.changeVersion('def456')
       })
 
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('branch=feature')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature'))
+    })
+  })
+
+  describe('handleRefPanelClick in diff mode', () => {
+    it('should use diffCommit when refPanel is right', () => {
+      // In diff mode with refs panel showing the right (diff) side
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&rp=r&refs=1')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.handleRefPanelClick({
+          source_file_path: 'src/other.py',
+          source_line: 42,
+        })
+      })
+
+      // Should navigate with diffCommit (def456), not selectedCommit
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=def456'))
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('line=42'))
+    })
+
+    it('should use selectedCommit when refPanel is left', () => {
+      // In diff mode with refs panel showing the left (selected) side
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&refs=1')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.handleRefPanelClick({
+          source_file_path: 'src/other.py',
+          source_line: 42,
+        })
+      })
+
+      // Should navigate with selectedCommit (abc123), not diffCommit
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
+    })
+
+    it('should use refPanel not activePanel to determine commit', () => {
+      // Bug regression test: activePanel is right (user last clicked right panel),
+      // but refPanel is left (references are for left panel's code).
+      // Should use left side's commit.
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&ap=r&refs=1')
+      const { result } = renderHook(() => useBrowseState())
+
+      // Verify initial state: activePanel is right, refPanel is left
+      expect(result.current.urlState.activePanel).toBe('right')
+      expect(result.current.urlState.refPanel).toBe('left')
+
+      act(() => {
+        result.current.actions.handleRefPanelClick({
+          source_file_path: 'src/other.py',
+          source_line: 42,
+        })
+      })
+
+      // Should use selectedCommit (abc123) because refPanel is 'left',
+      // even though activePanel is 'right'
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
+    })
+
+    it('should preserve diffBranch when refPanel is right', () => {
+      // Bug regression test: when viewing references for the right (diff) panel
+      // which is on a different branch, clicking should navigate to that branch
+      mockSearchParams = new URLSearchParams('commit=abc123&diffBranch=feature-branch&rp=r&refs=1')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.handleRefPanelClick({
+          source_file_path: 'src/other.py',
+          source_line: 42,
+        })
+      })
+
+      // Should navigate with diffBranch preserved
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature-branch'))
+    })
+
+    it('should preserve selectedBranch when refPanel is left', () => {
+      // When viewing references for the left panel on a specific branch
+      mockSearchParams = new URLSearchParams('branch=develop&diffBranch=feature&rp=l&refs=1')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.handleRefPanelClick({
+          source_file_path: 'src/other.py',
+          source_line: 42,
+        })
+      })
+
+      // Should navigate with selectedBranch (develop), not diffBranch
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=develop'))
+      expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('branch=feature'))
+    })
+  })
+
+  describe('handleDefinitionClick in diff mode', () => {
+    const mockSymbol = {
+      id: 123,
+      name: 'TestClass',
+      qualified_name: 'module.TestClass',
+      kind: 'class',
+      file_id: 1,
+      file_path: 'src/target.py',
+      repository_id: 1,
+      commit_id: 1,
+      start_line: 10,
+      start_column: 0,
+      end_line: 50,
+      end_column: 0,
+      signature: null,
+      docstring: null,
+    }
+
+    it('should use diffCommit when refPanel is right', () => {
+      // In diff mode with refs panel showing the right (diff) side
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&rp=r&refs=1')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.handleDefinitionClick(mockSymbol)
+      })
+
+      // Should navigate with diffCommit (def456), not selectedCommit
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=def456'))
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('line=10'))
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('src/target.py'))
+    })
+
+    it('should use selectedCommit when refPanel is left', () => {
+      // In diff mode with refs panel showing the left (selected) side
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&refs=1')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.handleDefinitionClick(mockSymbol)
+      })
+
+      // Should navigate with selectedCommit (abc123), not diffCommit
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
+    })
+
+    it('should use refPanel not activePanel to determine commit', () => {
+      // Bug regression test: activePanel is right (user last clicked right panel),
+      // but refPanel is left (references are for left panel's code).
+      // Should use left side's commit.
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&ap=r&refs=1')
+      const { result } = renderHook(() => useBrowseState())
+
+      // Verify initial state: activePanel is right, refPanel is left
+      expect(result.current.urlState.activePanel).toBe('right')
+      expect(result.current.urlState.refPanel).toBe('left')
+
+      act(() => {
+        result.current.actions.handleDefinitionClick(mockSymbol)
+      })
+
+      // Should use selectedCommit (abc123) because refPanel is 'left',
+      // even though activePanel is 'right'
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
+    })
+
+    it('should not navigate if symbol has no file_path', () => {
+      const symbolWithoutPath = { ...mockSymbol, file_path: null }
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.handleDefinitionClick(symbolWithoutPath)
+      })
+
+      expect(mockNavigate).not.toHaveBeenCalled()
+    })
+
+    it('should preserve diffBranch when refPanel is right', () => {
+      // Bug regression test: when viewing definition for the right (diff) panel
+      // which is on a different branch, clicking should navigate to that branch
+      mockSearchParams = new URLSearchParams('commit=abc123&diffBranch=feature-branch&rp=r&refs=1')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.handleDefinitionClick(mockSymbol)
+      })
+
+      // Should navigate with diffBranch preserved
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature-branch'))
+    })
+
+    it('should preserve selectedBranch when refPanel is left', () => {
+      // When viewing definition for the left panel on a specific branch
+      mockSearchParams = new URLSearchParams('branch=develop&diffBranch=feature&rp=l&refs=1')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.handleDefinitionClick(mockSymbol)
+      })
+
+      // Should navigate with selectedBranch (develop), not diffBranch
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=develop'))
+      expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('branch=feature'))
     })
   })
 
@@ -1124,9 +1345,7 @@ describe('useBrowseState', () => {
       })
 
       // Space should be encoded as %20
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('src/my%20file.ts')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('src/my%20file.ts'))
     })
 
     it('should encode hash and question mark in file paths', () => {
@@ -1137,9 +1356,7 @@ describe('useBrowseState', () => {
       })
 
       // Hash should be encoded as %23
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('src/file%231.ts')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('src/file%231.ts'))
     })
 
     it('should preserve directory separators when encoding file paths', () => {
@@ -1154,9 +1371,7 @@ describe('useBrowseState', () => {
         expect.stringContaining('src/components/MyComponent.tsx')
       )
       // Should not contain encoded slashes
-      expect(mockNavigate).not.toHaveBeenCalledWith(
-        expect.stringContaining('%2F')
-      )
+      expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('%2F'))
     })
 
     it('should encode special characters in symbol file paths', () => {
@@ -1184,9 +1399,7 @@ describe('useBrowseState', () => {
       })
 
       // Space should be encoded
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.stringContaining('src/my%20file.py')
-      )
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('src/my%20file.py'))
     })
   })
 })

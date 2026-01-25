@@ -305,7 +305,7 @@ class InMemoryFileRepository(FileRepositoryPort):
         Args:
             repository_id: The repository ID
             path: The file path
-            branch: Optional branch to filter by (requires commit_repo)
+            branch: Optional branch to filter by (requires commit_repo with branch tracking)
         """
         files = [
             f
@@ -315,14 +315,11 @@ class InMemoryFileRepository(FileRepositoryPort):
 
         # If branch filter specified and we have a commit repo, filter by branch
         if branch is not None and self._commit_repo is not None:
+            # Get commit IDs on this branch from the branch_commits mapping
             branch_commit_ids: set[int] = set()
-            for commit in self._commit_repo._commits.values():
-                if (
-                    commit.repository_id == repository_id
-                    and commit.branch == branch
-                    and commit.id is not None
-                ):
-                    branch_commit_ids.add(commit.id)
+            for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
+                if repo_id == repository_id and b == branch:
+                    branch_commit_ids.add(cid)
             files = [f for f in files if f.commit_id in branch_commit_ids]
 
         return files
@@ -445,11 +442,17 @@ class InMemoryRepositoryRepository(RepositoryPort):
 
 
 class InMemoryCommitRepository(CommitRepositoryPort):
-    """In-memory implementation of CommitRepositoryPort for testing."""
+    """In-memory implementation of CommitRepositoryPort for testing.
+
+    Branch information is stored in a separate _branch_commits dict,
+    matching the production junction table approach.
+    """
 
     def __init__(self) -> None:
         """Initialize with empty storage."""
         self._commits: dict[int, Commit] = {}
+        # branch_commits: maps (repository_id, branch, commit_id) -> True
+        self._branch_commits: dict[tuple[int, str, int], bool] = {}
         self._next_id = 1
 
     async def save(self, commit: Commit) -> Commit:
@@ -467,7 +470,6 @@ class InMemoryCommitRepository(CommitRepositoryPort):
                 ),
                 short_hash=commit.short_hash,
                 parent_hashes=commit.parent_hashes,
-                branch=commit.branch,
                 author_name=commit.author_name,
                 author_email=commit.author_email,
                 committer_name=commit.committer_name,
@@ -494,7 +496,10 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         return self._commits.get(commit_id)
 
     async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
-        """Find commit by repository and hash."""
+        """Find commit by repository and hash.
+
+        Commits are unique per (repository_id, commit_hash).
+        """
         for commit in self._commits.values():
             if (
                 commit.repository_id == repository_id
@@ -503,28 +508,46 @@ class InMemoryCommitRepository(CommitRepositoryPort):
                 return commit
         return None
 
-    async def find_by_hash_and_branch(
-        self, repository_id: int, commit_hash: str, branch: str
-    ) -> Commit | None:
-        """Find commit by repository, hash, and branch."""
-        for commit in self._commits.values():
-            if (
-                commit.repository_id == repository_id
-                and commit.commit_hash.value == commit_hash
-                and commit.branch == branch
-            ):
-                return commit
-        return None
+    async def link_commit_to_branch(
+        self, repository_id: int, commit_id: int, branch: str
+    ) -> None:
+        """Link an existing commit to a branch.
+
+        Idempotent - if the link already exists, does nothing.
+        """
+        key = (repository_id, branch, commit_id)
+        self._branch_commits[key] = True
+
+    async def link_commit_to_branches(
+        self, repository_id: int, commit_id: int, branches: list[str]
+    ) -> None:
+        """Link an existing commit to multiple branches."""
+        for branch in branches:
+            await self.link_commit_to_branch(repository_id, commit_id, branch)
+
+    async def get_branches_for_commit(self, commit_id: int) -> list[str]:
+        """Get all branches that contain a specific commit."""
+        branches = []
+        for (_repo_id, branch, cid), _ in self._branch_commits.items():
+            if cid == commit_id:
+                branches.append(branch)
+        return branches
 
     async def list_by_repository(
         self, repository_id: int, branch: str | None = None, limit: int = 100
     ) -> list[Commit]:
-        """List commits for a repository."""
+        """List commits for a repository, optionally filtered by branch."""
         commits = [
             c for c in self._commits.values() if c.repository_id == repository_id
         ]
         if branch:
-            commits = [c for c in commits if c.branch == branch]
+            # Filter by branch via the branch_commits mapping
+            branch_commit_ids = {
+                cid
+                for (repo_id, b, cid), _ in self._branch_commits.items()
+                if repo_id == repository_id and b == branch
+            }
+            commits = [c for c in commits if c.id in branch_commit_ids]
         # Sort by commit date descending
         commits.sort(key=lambda c: c.commit_date, reverse=True)
         return commits[:limit]
@@ -533,10 +556,17 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         self, repository_id: int, branch: str
     ) -> Commit | None:
         """Find the latest indexed commit for a specific branch."""
+        # Get commit IDs on this branch
+        branch_commit_ids = {
+            cid
+            for (repo_id, b, cid), _ in self._branch_commits.items()
+            if repo_id == repository_id and b == branch
+        }
+
         commits = [
             c
             for c in self._commits.values()
-            if c.repository_id == repository_id and c.branch == branch
+            if c.repository_id == repository_id and c.id in branch_commit_ids
         ]
         if not commits:
             return None
@@ -545,8 +575,9 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         return commits[0]
 
     def clear(self) -> None:
-        """Clear all commits."""
+        """Clear all commits and branch links."""
         self._commits.clear()
+        self._branch_commits.clear()
 
 
 class InMemoryReferenceRepository(ReferenceRepositoryPort):

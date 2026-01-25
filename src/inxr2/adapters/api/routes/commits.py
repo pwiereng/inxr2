@@ -14,12 +14,15 @@ router = APIRouter(prefix="/commits", tags=["commits"])
 
 # Response models
 class CommitResponse(BaseModel):
-    """Commit response model."""
+    """Commit response model.
+
+    Note: A commit can exist on multiple branches. Branch information is stored
+    in the branch_commits junction table, not on the commit itself.
+    """
 
     id: int
     hash: str
     short_hash: str
-    branch: str | None
     message: str
     author_name: str
     author_email: str
@@ -36,12 +39,15 @@ class CommitListResponse(BaseModel):
 
 
 class CommitDetailResponse(BaseModel):
-    """Detailed commit response model."""
+    """Detailed commit response model.
+
+    Note: A commit can exist on multiple branches. Branch information is stored
+    in the branch_commits junction table, not on the commit itself.
+    """
 
     id: int
     hash: str
     short_hash: str
-    branch: str | None
     message: str
     author_name: str
     author_email: str
@@ -93,7 +99,6 @@ async def list_commits(
                 id=c.id or 0,
                 hash=c.commit_hash.value,
                 short_hash=c.short_hash or c.commit_hash.value[:7],
-                branch=c.branch,
                 message=c.message[:200] if c.message else "",  # Truncate long messages
                 author_name=c.author_name,
                 author_email=c.author_email,
@@ -121,7 +126,6 @@ async def get_commit(
         id=commit.id or 0,
         hash=commit.commit_hash.value,
         short_hash=commit.short_hash or commit.commit_hash.value[:7],
-        branch=commit.branch,
         message=commit.message,
         author_name=commit.author_name,
         author_email=commit.author_email,

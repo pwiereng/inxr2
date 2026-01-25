@@ -282,6 +282,7 @@ export function useBrowseState() {
   const [diffContent, setDiffContent] = useState<FileContent | null>(null)
   const [diffSymbols, setDiffSymbols] = useState<FileSymbol[]>([])
   const [diffReferences, setDiffReferences] = useState<FileReference[]>([])
+  const [diffFileVersions, setDiffFileVersions] = useState<FileVersion[]>([])
 
   // ========== UI state (loading/error only - rest is URL-driven) ==========
   const [loading, setLoading] = useState(true)
@@ -300,7 +301,7 @@ export function useBrowseState() {
   // ========== Computed state ==========
   const computedState = useMemo<BrowseComputedState>(() => {
     const leftCommit = urlState.selectedCommit || fileVersions[0]?.commit_hash
-    const rightCommit = urlState.diffCommit
+    const rightCommit = urlState.diffCommit || diffFileVersions[0]?.commit_hash || null
     const treeCommit = urlState.diffMode
       ? urlState.treePanel === 'left'
         ? leftCommit
@@ -314,7 +315,7 @@ export function useBrowseState() {
     const currentCommitHash = urlState.selectedCommit || fileVersions[0]?.commit_hash
 
     return { leftCommit, rightCommit, treeCommit, refCommit, currentCommitHash }
-  }, [urlState, fileVersions])
+  }, [urlState, fileVersions, diffFileVersions])
 
   // ========== Data Loading Effects ==========
 
@@ -388,6 +389,26 @@ export function useBrowseState() {
       .then((response) => setFileVersions(response.versions))
       .catch(() => setFileVersions([]))
   }, [urlState.repoName, urlState.filePath, urlState.selectedBranch])
+
+  // Load diff file versions (for diff mode - either cross-branch or same-branch version comparison)
+  useEffect(() => {
+    if (!urlState.filePath || !urlState.repoName || !urlState.diffMode) {
+      setDiffFileVersions([])
+      return
+    }
+
+    // Use the same branch logic as the right panel's VersionSelector
+    const diffBranchToUse = urlState.diffBranch || urlState.selectedBranch
+    getFileHistory(urlState.repoName, urlState.filePath, diffBranchToUse || undefined)
+      .then((response) => setDiffFileVersions(response.versions))
+      .catch(() => setDiffFileVersions([]))
+  }, [
+    urlState.repoName,
+    urlState.filePath,
+    urlState.diffMode,
+    urlState.diffBranch,
+    urlState.selectedBranch,
+  ])
 
   // Load file content
   useEffect(() => {
@@ -475,8 +496,7 @@ export function useBrowseState() {
         // 404 errors are expected when file doesn't exist on the target branch/commit
         // Only log unexpected errors
         const isNotFoundError =
-          err instanceof Error &&
-          (err.message.includes('not found') || err.message.includes('404'))
+          err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))
         if (!isNotFoundError) {
           console.error('Failed to load diff file:', err)
         }
@@ -580,7 +600,9 @@ export function useBrowseState() {
         // Open refs panel with the symbol name
         params.set('refs', '1')
         params.set('q', symbol.name)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName)}/${encodeFilePath(symbol.file_path)}?${params}`)
+        navigate(
+          `/browse/${encodeURIComponent(urlState.repoName)}/${encodeFilePath(symbol.file_path)}?${params}`
+        )
       } else {
         // Symbol has no file_path - just open refs panel to show references
         updateUrlParams({ refs: '1', q: symbol.name })
@@ -672,28 +694,35 @@ export function useBrowseState() {
     // Don't preserve refs, searchQuery - exiting diff mode is a context change
     // Preserve branch state (but not diffBranch since we're exiting diff mode)
     if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
-    navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
+    navigate(
+      `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
+    )
   }, [navigate, urlState])
 
   const closePanel = useCallback(
     (panel: 'left' | 'right') => {
       if (!urlState.filePath) return
 
-      if (panel === 'left' && urlState.diffCommit) {
+      // When closing left panel, switch to the right panel's version/branch
+      if (panel === 'left') {
         const params = new URLSearchParams()
         if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
-        params.set('commit', urlState.diffCommit)
+        // Use the effective right commit (could be from diffCommit or diffFileVersions)
+        if (computedState.rightCommit) params.set('commit', computedState.rightCommit)
         // Preserve drawer state only - closing panel clears search context
         if (!urlState.drawerOpen) params.set('drawer', '0')
         // Don't preserve refs, searchQuery - closing panel is a context change
         // When closing left panel, the diff side becomes the main view - use diffBranch
         if (urlState.diffBranch) params.set('branch', urlState.diffBranch)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
+        navigate(
+          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
+        )
         return
       }
+      // Closing right panel - keep the left panel's version/branch
       exitDiffMode()
     },
-    [navigate, urlState, exitDiffMode]
+    [navigate, urlState, computedState.rightCommit, exitDiffMode]
   )
 
   // ========== Version Change Actions ==========
@@ -716,7 +745,9 @@ export function useBrowseState() {
         // Preserve branch state
         if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
         if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
+        navigate(
+          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
+        )
       }
     },
     [navigate, urlState, resetRefsPanel]
@@ -740,7 +771,9 @@ export function useBrowseState() {
       // Preserve branch state
       if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
       if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
-      navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
+      navigate(
+        `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
+      )
     },
     [navigate, urlState, resetRefsPanel]
   )
@@ -798,7 +831,9 @@ export function useBrowseState() {
       if (urlState.treePanel === 'right') params.set('tp', 'r')
       if (urlState.refPanel === 'right') params.set('rp', 'r')
       if (urlState.activePanel === 'right') params.set('ap', 'r')
-      navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`)
+      navigate(
+        `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
+      )
     },
     [navigate, urlState, resetRefsPanel]
   )
@@ -941,11 +976,13 @@ export function useBrowseState() {
       if (reference.source_file_path) {
         const params = new URLSearchParams()
         params.set('line', reference.source_line.toString())
-        const commitToUse =
-          urlState.diffMode && urlState.activePanel === 'right'
-            ? urlState.diffCommit
-            : urlState.selectedCommit
+        // Use refPanel (which side the ReferencesPanel is showing) not activePanel
+        // (which code panel was last clicked) to determine commit and branch
+        const isRightPanel = urlState.diffMode && urlState.refPanel === 'right'
+        const commitToUse = isRightPanel ? urlState.diffCommit : urlState.selectedCommit
+        const branchToUse = isRightPanel ? urlState.diffBranch : urlState.selectedBranch
         if (commitToUse) params.set('commit', commitToUse)
+        if (branchToUse) params.set('branch', branchToUse)
         // Preserve drawer state only - navigating to reference clears search context
         if (!urlState.drawerOpen) params.set('drawer', '0')
         // Don't preserve refs, searchQuery - navigating to a different file is a context change
@@ -962,15 +999,19 @@ export function useBrowseState() {
       if (sym.file_path) {
         const params = new URLSearchParams()
         params.set('line', sym.start_line.toString())
-        const commitToUse =
-          urlState.diffMode && urlState.activePanel === 'right'
-            ? urlState.diffCommit
-            : urlState.selectedCommit
+        // Use refPanel (which side the ReferencesPanel is showing) not activePanel
+        // (which code panel was last clicked) to determine commit and branch
+        const isRightPanel = urlState.diffMode && urlState.refPanel === 'right'
+        const commitToUse = isRightPanel ? urlState.diffCommit : urlState.selectedCommit
+        const branchToUse = isRightPanel ? urlState.diffBranch : urlState.selectedBranch
         if (commitToUse) params.set('commit', commitToUse)
+        if (branchToUse) params.set('branch', branchToUse)
         // Preserve drawer state only - navigating to definition clears search context
         if (!urlState.drawerOpen) params.set('drawer', '0')
         // Don't preserve refs, searchQuery - navigating to a definition is a context change
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(sym.file_path)}?${params}`)
+        navigate(
+          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(sym.file_path)}?${params}`
+        )
       }
     },
     [navigate, urlState]

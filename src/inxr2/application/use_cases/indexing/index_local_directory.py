@@ -122,10 +122,14 @@ class IndexLocalDirectoryUseCase:
             author_date=datetime.utcnow(),
             commit_date=datetime.utcnow(),
             message="Local directory index",
-            branch="local",
         )
         saved_commit = await self._commit_repo.save(commit)
         assert saved_commit.id is not None, "Commit ID must be set after save"
+
+        # Link commit to the "local" branch
+        await self._commit_repo.link_commit_to_branch(
+            saved_repo.id, saved_commit.id, "local"
+        )
 
         # 3. Walk directory and index files
         total_files = 0

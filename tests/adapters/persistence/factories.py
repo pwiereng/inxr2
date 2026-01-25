@@ -37,7 +37,11 @@ class CommitFactory:
         commit_hash: str = "a" * 40,
         **kwargs,
     ) -> Commit:
-        """Create a test commit."""
+        """Create a test commit.
+
+        Note: Branch information is no longer stored on the Commit entity.
+        Use CommitRepositoryPort.link_commit_to_branch() to associate commits with branches.
+        """
         return Commit(
             repository_id=repository_id,
             commit_hash=CommitHash(value=commit_hash),
@@ -51,7 +55,6 @@ class CommitFactory:
             id=kwargs.get("id"),
             short_hash=kwargs.get("short_hash", commit_hash[:7]),
             parent_hashes=kwargs.get("parent_hashes"),
-            branch=kwargs.get("branch", "main"),
             indexed_at=kwargs.get("indexed_at"),
         )
 
