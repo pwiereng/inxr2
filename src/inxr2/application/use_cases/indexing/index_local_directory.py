@@ -1,6 +1,7 @@
 """Index local directory use case."""
 
 import hashlib
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,6 +15,8 @@ from ...ports.repositories import (
     FileRepositoryPort,
     RepositoryPort,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -168,7 +171,7 @@ class IndexLocalDirectoryUseCase:
 
             except Exception as e:
                 # Skip files that can't be read
-                print(f"Warning: Skipping {file_path}: {e}")
+                logger.warning("Skipping %s: %s", file_path, e)
                 skipped_files += 1
                 continue
 

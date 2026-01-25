@@ -1,6 +1,7 @@
 """Tests for index_command utility functions and classes."""
 
 import tempfile
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -430,12 +431,12 @@ class TestTimeUtilities:
 
     def test_to_naive_utc_with_aware_datetime(self) -> None:
         """_to_naive_utc should convert aware datetime to naive UTC."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from inxr2.adapters.cli.commands.index_command import _to_naive_utc
 
         # Create a datetime with UTC+5 timezone
-        dt = datetime(2025, 1, 1, 17, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2025, 1, 1, 17, 0, 0, tzinfo=UTC)
         result = _to_naive_utc(dt)
         assert result is not None
         assert result.tzinfo is None
