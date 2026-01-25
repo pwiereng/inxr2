@@ -40,6 +40,42 @@ logger = logging.getLogger(__name__)
 INDEXER_VERSION = "0.1.0"
 
 
+def reset_database(console: Console) -> None:
+    """
+    Reset the entire database by truncating all tables.
+
+    This is much faster than deleting data per-repository because TRUNCATE
+    bypasses row-by-row deletion and reclaims storage immediately.
+
+    Args:
+        console: Rich console for output
+    """
+    asyncio.run(_reset_database_async(console))
+
+
+async def _reset_database_async(console: Console) -> None:
+    """Async implementation of database reset using TRUNCATE CASCADE."""
+    from sqlalchemy import text
+
+    db = DatabaseConnection()
+
+    try:
+        async with db.session() as session:
+            # TRUNCATE CASCADE is much faster than DELETE for large tables
+            # Order matters due to foreign key constraints, but CASCADE handles it
+            console.print("  Truncating all tables...")
+            await session.execute(
+                text(
+                    'TRUNCATE TABLE "references", symbols, files, commits, '
+                    "index_status, repositories CASCADE;"
+                )
+            )
+            await session.commit()
+            console.print("  [green]All tables truncated[/green]")
+    finally:
+        await db.close()
+
+
 def _utc_now() -> datetime:
     """Return current UTC time as a naive datetime.
 
@@ -103,6 +139,7 @@ def run_full_index(
     languages: list[str],
     console: Console,
     max_history: int | None = 100,
+    force: bool = False,
 ) -> None:
     """
     Run full indexing of a repository with time travel support.
@@ -116,6 +153,7 @@ def run_full_index(
         languages: List of languages to index
         console: Rich console for output
         max_history: Maximum number of commits to index (None = all commits)
+        force: If True, clear existing data for this repository before indexing
     """
     # Run the async indexing in an event loop
     asyncio.run(
@@ -125,6 +163,7 @@ def run_full_index(
             languages=languages,
             console=console,
             max_history=max_history,
+            force=force,
         )
     )
 
@@ -135,6 +174,7 @@ async def _run_full_index_async(
     languages: list[str],
     console: Console,
     max_history: int | None = 100,
+    force: bool = False,
 ) -> None:
     """Async implementation of full indexing with multi-commit support."""
     from inxr2.adapters.external.git_service import GitService
@@ -160,20 +200,40 @@ async def _run_full_index_async(
     console.print("[dim]Analyzing repository...[/dim]")
     repo_info = git_service.get_repository_info(repo_path)
     current_branch = branch or repo_info.get("current_branch", "main")
+    default_branch = repo_info.get("default_branch", "main")
 
     # Get list of commits for time travel (oldest first)
+    # For non-default branches, only index commits unique to that branch (delta)
     history_msg = f"max {max_history}" if max_history else "all"
     console.print(f"[dim]Loading commit history ({history_msg} commits)...[/dim]")
-    commits_to_index = git_service.list_commits(repo_path, current_branch, max_history)
+
+    is_default_branch = current_branch in (default_branch, "main", "master")
+    if is_default_branch:
+        # Default branch: index all commits
+        commits_to_index = git_service.list_commits(
+            repo_path, current_branch, max_history
+        )
+    else:
+        # Feature branch: only index commits unique to this branch (delta from default)
+        console.print(f"  [dim]Getting branch delta from {default_branch}...[/dim]")
+        commits_to_index = git_service.list_branch_commits(
+            repo_path, current_branch, default_branch, max_history
+        )
 
     if not commits_to_index:
         console.print("[yellow]No commits found for this branch.[/yellow]")
+        if not is_default_branch:
+            console.print(
+                f"[dim]This may mean the branch has no unique commits vs {default_branch}.[/dim]"
+            )
         return
 
     oldest_commit = commits_to_index[0]
     newest_commit = commits_to_index[-1]
 
     console.print(f"  Branch: [cyan]{current_branch}[/cyan]")
+    if not is_default_branch:
+        console.print(f"  [dim]Branch delta from: {default_branch}[/dim]")
     console.print(f"  Commits to index: [green]{len(commits_to_index)}[/green]")
     console.print(f"  Oldest commit: [dim]{oldest_commit['short_hash']}[/dim]")
     console.print(f"  Newest commit: [cyan]{newest_commit['short_hash']}[/cyan]")
@@ -217,6 +277,42 @@ async def _run_full_index_async(
                 raise RuntimeError("Repository record missing database ID after save")
             repo_id = db_repo.id
 
+            # If force flag is set, clear all existing data for this repository
+            if force:
+                console.print(
+                    "  [yellow]Force mode:[/yellow] Clearing existing data..."
+                )
+                # Use raw SQL for faster bulk deletion
+                from sqlalchemy import text
+
+                await session.execute(
+                    text('DELETE FROM "references" WHERE repository_id = :repo_id'),
+                    {"repo_id": repo_id},
+                )
+                console.print("    Cleared references")
+                await session.execute(
+                    text("DELETE FROM symbols WHERE repository_id = :repo_id"),
+                    {"repo_id": repo_id},
+                )
+                console.print("    Cleared symbols")
+                await session.execute(
+                    text("DELETE FROM files WHERE repository_id = :repo_id"),
+                    {"repo_id": repo_id},
+                )
+                console.print("    Cleared files")
+                await session.execute(
+                    text("DELETE FROM commits WHERE repository_id = :repo_id"),
+                    {"repo_id": repo_id},
+                )
+                console.print("    Cleared commits")
+                await session.execute(
+                    text("DELETE FROM index_status WHERE repository_id = :repo_id"),
+                    {"repo_id": repo_id},
+                )
+                console.print("    Cleared index status")
+                await session.flush()
+                console.print("  [green]Existing data cleared[/green]")
+
             # Update index status to in_progress
             index_status = await index_status_repository.find_by_repository_and_branch(
                 repo_id, current_branch
@@ -251,15 +347,31 @@ async def _run_full_index_async(
 
             console.print()
 
+            # Pre-calculate total files for progress tracking
+            console.print("[dim]Calculating files to index...[/dim]")
+            total_files_estimate = 0
+            for commit_info in commits_to_index:
+                all_files = git_service.list_files(repo_path, commit_info["hash"])
+                total_files_estimate += len(
+                    _filter_files_by_language(all_files, languages)
+                )
+            console.print(
+                f"  Total: [cyan]{len(commits_to_index)}[/cyan] commits, "
+                f"[cyan]{total_files_estimate}[/cyan] files"
+            )
+            console.print()
+
             # Index each commit from oldest to newest
+            files_indexed_so_far = 0
+            last_progress_pct = 0
             with create_progress() as progress:
                 commit_task = progress.add_task(
                     "[green]Indexing commits...",
                     total=len(commits_to_index),
                 )
                 file_task = progress.add_task(
-                    "[dim]Preparing...",
-                    total=100,
+                    "[cyan]Files...",
+                    total=total_files_estimate,
                     visible=True,
                 )
 
@@ -267,15 +379,11 @@ async def _run_full_index_async(
                     commit_hash = commit_info["hash"]
                     short_hash = commit_info["short_hash"]
 
-                    progress.update(
-                        file_task,
-                        description=f"[cyan]Commit {short_hash}[/cyan]",
-                        completed=0,
-                    )
-
-                    # Get or create commit record
-                    db_commit = await commit_repository.find_by_hash(
-                        repo_id, commit_hash
+                    # Get or create commit record for this branch
+                    # We use find_by_hash_and_branch because the same commit can
+                    # exist on multiple branches, and we need separate records
+                    db_commit = await commit_repository.find_by_hash_and_branch(
+                        repo_id, commit_hash, current_branch
                     )
                     if db_commit is None:
                         db_commit = await commit_repository.save(
@@ -308,13 +416,9 @@ async def _run_full_index_async(
                         )
                     commit_id = db_commit.id
 
-                    progress.update(file_task, completed=10)
-
                     # Get files at this commit
                     all_files = git_service.list_files(repo_path, commit_hash)
                     files_to_index = _filter_files_by_language(all_files, languages)
-
-                    progress.update(file_task, completed=20)
 
                     # Index each file at this commit
                     for file_path in files_to_index:
@@ -325,7 +429,11 @@ async def _run_full_index_async(
                             )
 
                             if existing_file:
-                                # Skip - already indexed
+                                # Skip - already indexed, but still count for progress
+                                files_indexed_so_far += 1
+                                progress.update(
+                                    file_task, completed=files_indexed_so_far
+                                )
                                 continue
 
                             # Get file content
@@ -406,11 +514,29 @@ async def _run_full_index_async(
                                 f"Failed to index {file_path}@{short_hash}: {e}"
                             )
 
-                    progress.update(file_task, completed=100)
+                        # Update file progress after each file
+                        files_indexed_so_far += 1
+                        progress.update(file_task, completed=files_indexed_so_far)
+
+                        # Print progress at 10% intervals
+                        if total_files_estimate > 0:
+                            current_pct = (
+                                files_indexed_so_far * 100
+                            ) // total_files_estimate
+                            if current_pct >= last_progress_pct + 10:
+                                last_progress_pct = (current_pct // 10) * 10
+                                progress.console.print(
+                                    f"  [dim]{last_progress_pct}% complete "
+                                    f"({files_indexed_so_far}/{total_files_estimate} files, "
+                                    f"{stats.symbols_found} symbols)[/dim]"
+                                )
+
                     progress.update(commit_task, advance=1)
 
                 progress.update(
-                    file_task, description="[green]Complete[/green]", completed=100
+                    file_task,
+                    description="[green]Complete[/green]",
+                    completed=total_files_estimate,
                 )
 
             # Resolve references to symbols (commit-aware for time travel consistency)
@@ -459,13 +585,14 @@ def run_incremental_index(
     languages: list[str],
     console: Console,
     max_history: int = 1,  # Ignored for incremental - only indexes since last commit
+    force: bool = False,  # Ignored for incremental - accepted for API compatibility
 ) -> None:
     """
     Run incremental indexing of a repository.
 
     Only indexes files that have changed since the last index.
-    The max_history parameter is accepted for API compatibility but ignored
-    (incremental always indexes from the last indexed commit to HEAD).
+    The max_history and force parameters are accepted for API compatibility
+    but ignored (incremental always indexes from the last indexed commit to HEAD).
     """
     asyncio.run(
         _run_incremental_index_async(

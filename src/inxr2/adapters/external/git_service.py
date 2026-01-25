@@ -411,6 +411,173 @@ class GitService:
             for c in commits
         ]
 
+    def get_merge_base(
+        self,
+        repo_path: Path,
+        branch1: str,
+        branch2: str,
+    ) -> str | None:
+        """
+        Find the merge-base (common ancestor) of two branches.
+
+        Args:
+            repo_path: Path to the git repository
+            branch1: First branch name
+            branch2: Second branch name
+
+        Returns:
+            Commit hash of the merge-base, or None if no common ancestor
+        """
+        repo = Repo(repo_path)
+
+        def resolve_branch(branch: str) -> Any:
+            """Resolve branch name to commit, trying local then remote."""
+            try:
+                return repo.commit(branch)
+            except Exception:
+                try:
+                    return repo.commit(f"origin/{branch}")
+                except Exception:
+                    return None
+
+        commit1 = resolve_branch(branch1)
+        commit2 = resolve_branch(branch2)
+
+        if commit1 is None or commit2 is None:
+            return None
+
+        try:
+            # Use git merge-base command
+            merge_bases = repo.merge_base(commit1, commit2)
+            if merge_bases:
+                return merge_bases[0].hexsha
+            return None
+        except Exception as e:
+            logger.warning(
+                f"Could not find merge-base for {branch1} and {branch2}: {e}"
+            )
+            return None
+
+    def list_branch_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        base_branch: str,
+        max_count: int | None = 1000,
+    ) -> list[dict[str, Any]]:
+        """
+        List commits that were made on a branch (from creation to merge/HEAD).
+
+        For unmerged branches: commits on branch but not on base_branch.
+        For merged branches: finds the merge commit and returns the commits
+        that were originally made on the branch.
+
+        Args:
+            repo_path: Path to the git repository
+            branch: Branch to list commits for
+            base_branch: Base branch to compare against (e.g., main)
+            max_count: Maximum number of commits to return
+
+        Returns:
+            List of commit info dicts (oldest first)
+        """
+        repo = Repo(repo_path)
+
+        def resolve_branch(b: str) -> Any:
+            try:
+                return repo.commit(b)
+            except Exception:
+                try:
+                    return repo.commit(f"origin/{b}")
+                except Exception:
+                    return None
+
+        branch_commit = resolve_branch(branch)
+        base_commit = resolve_branch(base_branch)
+
+        if branch_commit is None:
+            return []
+        if base_commit is None:
+            # No base branch, return all commits on branch
+            return self.list_commits(repo_path, branch, max_count)
+
+        # First, try simple case: commits on branch not in base
+        merge_base = self.get_merge_base(repo_path, branch, base_branch)
+        if merge_base is None:
+            return self.list_commits(repo_path, branch, max_count)
+
+        # Check if branch has unmerged commits
+        try:
+            branch_ref = branch if resolve_branch(branch) else f"origin/{branch}"
+            unmerged = list(
+                repo.iter_commits(f"{base_branch}..{branch_ref}", max_count=1)
+            )
+            if unmerged:
+                # Branch has unmerged commits - return them
+                iter_kwargs: dict[str, Any] = {}
+                if max_count is not None:
+                    iter_kwargs["max_count"] = max_count
+                commits = list(
+                    repo.iter_commits(f"{merge_base}..{branch_ref}", **iter_kwargs)
+                )
+                commits = list(reversed(commits))
+                return self._commits_to_dicts(commits)
+        except Exception:
+            pass
+
+        # Branch appears to be merged - find the merge commit and original branch commits
+        # Look for merge commits on base_branch that mention this branch
+        try:
+            # Search recent merge commits for one that merged this branch
+            for merge_candidate in repo.iter_commits(base_branch, max_count=200):
+                if len(merge_candidate.parents) == 2:
+                    # This is a merge commit - check if it merged our branch
+                    # The second parent is typically the merged branch
+                    merged_branch_head = merge_candidate.parents[1]
+
+                    # Check if this merge brought in our branch
+                    if merged_branch_head.hexsha == branch_commit.hexsha:
+                        # Found the merge! Get commits from merge-base to branch head
+                        main_before_merge = merge_candidate.parents[0]
+                        original_merge_base = repo.merge_base(
+                            main_before_merge, merged_branch_head
+                        )
+                        if original_merge_base:
+                            iter_kwargs = {}
+                            if max_count is not None:
+                                iter_kwargs["max_count"] = max_count
+                            commits = list(
+                                repo.iter_commits(
+                                    f"{original_merge_base[0].hexsha}..{merged_branch_head.hexsha}",
+                                    **iter_kwargs,
+                                )
+                            )
+                            commits = list(reversed(commits))
+                            return self._commits_to_dicts(commits)
+        except Exception as e:
+            logger.warning(f"Error finding merge commit for {branch}: {e}")
+
+        # Fallback: return empty if we can't determine branch commits
+        return []
+
+    def _commits_to_dicts(self, commits: list[Any]) -> list[dict[str, Any]]:
+        """Convert git commit objects to dictionaries."""
+        return [
+            {
+                "hash": c.hexsha,
+                "short_hash": c.hexsha[:7],
+                "author_name": c.author.name,
+                "author_email": c.author.email,
+                "author_date": c.authored_datetime,
+                "committer_name": c.committer.name,
+                "committer_email": c.committer.email,
+                "commit_date": c.committed_datetime,
+                "message": c.message.strip(),
+                "parent_hashes": [p.hexsha for p in c.parents],
+            }
+            for c in commits
+        ]
+
     def get_files_at_commit(
         self,
         repo_path: Path,
@@ -441,6 +608,71 @@ class GitService:
 
         traverse_tree(commit.tree)
         return files
+
+    def list_branches(self, repo_path: Path) -> list[str]:
+        """
+        List all branches in the repository.
+
+        Returns both local and remote tracking branches, with the default
+        branch first, followed by other branches ordered by last commit date
+        (most recently modified first).
+
+        Args:
+            repo_path: Path to the git repository
+
+        Returns:
+            List of branch names sorted with default branch first,
+            then by last commit date descending
+        """
+        repo = Repo(repo_path)
+
+        # Collect branches with their last commit dates
+        branch_dates: dict[str, int] = {}
+
+        # Get local branches with commit dates
+        for ref in repo.heads:
+            try:
+                branch_dates[ref.name] = ref.commit.committed_date
+            except Exception:
+                branch_dates[ref.name] = 0
+
+        # Get remote tracking branches (strip remote prefix like "origin/")
+        for ref in repo.remotes.origin.refs if repo.remotes else []:
+            name = ref.remote_head
+            if name and name != "HEAD" and name not in branch_dates:
+                try:
+                    branch_dates[name] = ref.commit.committed_date
+                except Exception:
+                    branch_dates[name] = 0
+
+        branch_list = list(branch_dates.keys())
+        default_branch = None
+
+        # Determine default branch (prefer main, then master)
+        for default_name in ["main", "master"]:
+            if default_name in branch_list:
+                default_branch = default_name
+                break
+
+        # If no default found, try to get from remote HEAD
+        if default_branch is None and repo.remotes:
+            try:
+                head_ref = repo.remotes.origin.refs["HEAD"]
+                # HEAD.reference points to the default branch
+                default_branch = head_ref.reference.remote_head
+            except (KeyError, AttributeError):
+                pass
+
+        # Sort: default branch first, then by last commit date descending
+        sorted_branches = sorted(
+            branch_list,
+            key=lambda b: (
+                b != default_branch,  # Default branch first
+                -branch_dates.get(b, 0),  # Then by date descending
+            ),
+        )
+
+        return sorted_branches
 
     def get_changed_files_in_commit(
         self,

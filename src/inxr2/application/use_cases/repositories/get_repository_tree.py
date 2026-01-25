@@ -28,6 +28,7 @@ class GetRepositoryTreeRequest:
     repository_id: int | None = None
     repository_name: str | None = None
     commit_hash: str | None = None  # For time travel: get tree at specific commit
+    branch: str | None = None  # For branch filtering: resolves to latest indexed commit
 
     def __post_init__(self) -> None:
         if self.repository_id is None and self.repository_name is None:
@@ -94,8 +95,31 @@ class GetRepositoryTreeUseCase:
 
         repository_id = repository.id if repository.id is not None else 0
 
+        # Resolve commit: explicit commit_hash > branch resolution > latest
+        resolved_commit_hash = request.commit_hash
+        if not resolved_commit_hash and request.branch:
+            # Resolve branch to latest indexed commit
+            if not self._commit_repo:
+                raise ValueError(
+                    "Branch resolution requires commit repository. "
+                    "branch was provided but commit_repo is not available."
+                )
+            branch_commit = await self._commit_repo.find_latest_by_branch(
+                repository_id, request.branch
+            )
+            if branch_commit:
+                resolved_commit_hash = branch_commit.commit_hash.value
+            elif request.branch != repository.default_branch:
+                # Branch has no indexed commits (e.g., merged branch with delta indexing)
+                # Fall back to default branch
+                branch_commit = await self._commit_repo.find_latest_by_branch(
+                    repository_id, repository.default_branch
+                )
+                if branch_commit:
+                    resolved_commit_hash = branch_commit.commit_hash.value
+
         # Get files - either at specific commit (time travel) or latest
-        if request.commit_hash:
+        if resolved_commit_hash:
             # Time travel requested - commit_repo is required
             if not self._commit_repo:
                 raise ValueError(
@@ -104,10 +128,10 @@ class GetRepositoryTreeUseCase:
                 )
             # Get files at specific commit
             commit = await self._commit_repo.find_by_hash(
-                repository_id, request.commit_hash
+                repository_id, resolved_commit_hash
             )
             if not commit or commit.id is None:
-                raise ValueError(f"Commit not found: {request.commit_hash}")
+                raise ValueError(f"Commit not found: {resolved_commit_hash}")
             files = await self._file_repo.list_by_commit(commit.id)
         else:
             # Default: get latest files

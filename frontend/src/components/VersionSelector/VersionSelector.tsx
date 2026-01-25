@@ -18,6 +18,7 @@ interface VersionSelectorProps {
   filePath: string
   selectedCommit: string | null
   onVersionChange: (commitHash: string | null) => void
+  selectedBranch?: string | null
 }
 
 export function VersionSelector({
@@ -25,6 +26,7 @@ export function VersionSelector({
   filePath,
   selectedCommit,
   onVersionChange,
+  selectedBranch,
 }: VersionSelectorProps) {
   const [versions, setVersions] = useState<FileVersion[]>([])
   const [loading, setLoading] = useState(false)
@@ -40,7 +42,7 @@ export function VersionSelector({
       setLoading(true)
       setError(null)
       try {
-        const response = await getFileHistory(repoName, filePath)
+        const response = await getFileHistory(repoName, filePath, selectedBranch || undefined)
         setVersions(response.versions)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load versions')
@@ -51,7 +53,7 @@ export function VersionSelector({
     }
 
     loadVersions()
-  }, [repoName, filePath])
+  }, [repoName, filePath, selectedBranch])
 
   if (loading) {
     return (
@@ -79,18 +81,26 @@ export function VersionSelector({
   const latestHash = versions[0]?.commit_hash
   const allDates = versions.map((v) => v.commit_date)
 
+  // Check if selectedCommit exists in the versions list
+  const selectedExists = selectedCommit
+    ? versions.some((v) => v.commit_hash === selectedCommit)
+    : true
+
+  // Always use the selected commit if provided - show what's actually being viewed
+  const effectiveValue = selectedCommit || latestHash || ''
+
   return (
     <FormControl size="small">
       <Select
-        value={selectedCommit || latestHash || ''}
+        value={effectiveValue}
         onChange={(e) => {
           const value = e.target.value as string
-          // If selecting the latest version, set to null (default behavior)
-          onVersionChange(value === latestHash ? null : value)
+          // Always pass the commit hash to include it in the URL
+          onVersionChange(value || null)
         }}
         displayEmpty
         sx={{
-          minWidth: 180,
+          minWidth: 120,
           '& .MuiSelect-select': {
             display: 'flex',
             alignItems: 'center',
@@ -100,6 +110,38 @@ export function VersionSelector({
           },
         }}
       >
+        {/* Show selected commit if it's not in the versions list (file unchanged at that commit) */}
+        {!selectedExists && selectedCommit && (
+          <MenuItem
+            key={selectedCommit}
+            value={selectedCommit}
+            sx={{
+              bgcolor: 'action.selected',
+              borderLeft: 3,
+              borderColor: 'primary.main',
+              '&.Mui-selected': {
+                bgcolor: 'action.selected',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography
+                component="span"
+                sx={{
+                  fontFamily: 'monospace',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  color: 'primary.main',
+                }}
+              >
+                {selectedCommit.substring(0, 7)}
+              </Typography>
+              <Typography component="span" variant="caption" color="text.secondary">
+                (unchanged)
+              </Typography>
+            </Box>
+          </MenuItem>
+        )}
         {versions.map((version, index) => {
           // Check if content changed from previous version (next in array since sorted newest first)
           const prevVersion = versions[index + 1]

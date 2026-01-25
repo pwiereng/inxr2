@@ -20,8 +20,9 @@ import HomeIcon from '@mui/icons-material/Home'
 import FolderIcon from '@mui/icons-material/Folder'
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
 import CloseIcon from '@mui/icons-material/Close'
-import EditIcon from '@mui/icons-material/Edit'
+import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop'
 
+import { BranchSelector } from '@/components/BranchSelector'
 import { CodeViewer } from '@/components/CodeViewer'
 import { DiffCodeViewer } from '@/components/DiffCodeViewer'
 import { FileTree } from '@/components/FileTree'
@@ -29,42 +30,26 @@ import { SymbolSearch } from '@/components/SymbolSearch'
 import { ReferencesPanel } from '@/components/ReferencesPanel'
 import { VersionSelector } from '@/components/VersionSelector'
 import { useBrowseState } from '@/hooks/useBrowseState'
-import { formatCommitDate } from '@/lib/dateUtils'
 
 export default function Browse() {
   const { urlState, dataState, diffState, uiState, refsState, computedState, actions } =
     useBrowseState()
 
   // Destructure for convenience
-  const { repoName, filePath, highlightLine, diffMode, diffCommit } = urlState
-  const {
-    allRepositories,
-    repository,
-    treeNodes,
-    fileContent,
-    fileSymbols,
-    fileReferences,
-    fileVersions,
-  } = dataState
+  const { repoName, filePath, highlightLine, diffMode, diffCommit, diffBranch, selectedBranch } =
+    urlState
+  const { allRepositories, repository, treeNodes, fileContent, fileSymbols, fileReferences } =
+    dataState
   const { diffContent, diffSymbols, diffReferences, activePanel, treePanel, refPanel } = diffState
   const { drawerOpen, refsPanelOpen, loading, fileLoading, diffLoading, error, searchQuery } =
     uiState
   const { selectedSymbol, isDirectDefinition, searchByName } = refsState
-  const { leftCommit, rightCommit, currentCommitHash } = computedState
+  const { leftCommit, rightCommit } = computedState
 
   // Get short hash for display
   const getShortHash = (hash: string | null | undefined) => {
     if (!hash) return 'latest'
     return hash.substring(0, 7)
-  }
-
-  // All commit dates for formatting (used by formatCommitDate to detect same-day commits)
-  const allCommitDates = fileVersions.map((v) => v.commit_date)
-
-  // Check if a version has content changes from the previous version
-  const hasContentChange = (version: { content_hash: string }, index: number): boolean => {
-    const prevVersion = fileVersions[index + 1]
-    return !prevVersion || version.content_hash !== prevVersion.content_hash
   }
 
   if (loading) {
@@ -287,123 +272,86 @@ export default function Browse() {
                 <Typography variant="caption" color="text.secondary">
                   {fileContent.line_count} lines
                 </Typography>
+                <Tooltip title="Jump to top of file">
+                  <IconButton size="small" onClick={() => actions.navigateToLine(1)}>
+                    <VerticalAlignTopIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
 
-                {/* Version selector and diff controls */}
-                {repoName && filePath && (
-                  <>
+                {/* Branch + Version controls (only when NOT in diff mode) */}
+                {repoName && filePath && repository && !diffMode && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <BranchSelector
+                      repositoryId={repository.id}
+                      selectedBranch={selectedBranch}
+                      defaultBranch={repository.default_branch}
+                      onBranchChange={actions.changeBranch}
+                    />
                     <VersionSelector
                       repoName={repoName}
                       filePath={filePath}
                       selectedCommit={urlState.selectedCommit}
                       onVersionChange={actions.changeVersion}
+                      selectedBranch={selectedBranch}
                     />
+                    <Tooltip title="Compare versions or branches">
+                      <IconButton size="small" onClick={actions.enterDiffMode}>
+                        <CompareArrowsIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                )}
 
-                    {/* Diff controls */}
-                    {!diffMode ? (
-                      <Tooltip title="Compare versions">
-                        <IconButton
-                          size="small"
-                          onClick={actions.enterDiffMode}
-                          disabled={fileVersions.length < 2}
-                          sx={{ ml: 0.5 }}
-                        >
-                          <CompareArrowsIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    ) : (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          vs
-                        </Typography>
-                        <FormControl size="small">
-                          <Select
-                            value={diffCommit || ''}
-                            onChange={(e) => actions.changeDiffVersion(e.target.value || null)}
-                            displayEmpty
-                            sx={{
-                              minWidth: 180,
-                              '& .MuiSelect-select': {
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 0.5,
-                                py: 0.5,
-                                fontSize: '0.875rem',
-                              },
-                            }}
-                          >
-                            {fileVersions
-                              .filter((v) => v.commit_hash !== currentCommitHash)
-                              .map((version) => {
-                                const originalIndex = fileVersions.findIndex(
-                                  (v) => v.commit_hash === version.commit_hash
-                                )
-                                const hasChange = hasContentChange(version, originalIndex)
-                                const isSelected = version.commit_hash === diffCommit
-
-                                return (
-                                  <MenuItem
-                                    key={version.commit_hash}
-                                    value={version.commit_hash}
-                                    sx={{
-                                      bgcolor: isSelected ? 'action.selected' : 'transparent',
-                                      borderLeft: isSelected ? 3 : 0,
-                                      borderColor: 'primary.main',
-                                      '&.Mui-selected': {
-                                        bgcolor: 'action.selected',
-                                      },
-                                    }}
-                                  >
-                                    <Tooltip title={version.message} placement="left">
-                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        {hasChange && (
-                                          <EditIcon
-                                            sx={{ fontSize: '0.9rem', color: 'warning.main' }}
-                                          />
-                                        )}
-                                        <Typography
-                                          component="span"
-                                          sx={{
-                                            fontFamily: 'monospace',
-                                            fontSize: '0.8rem',
-                                            fontWeight: isSelected ? 600 : 400,
-                                            color: isSelected ? 'primary.main' : 'text.primary',
-                                          }}
-                                        >
-                                          {version.short_hash}
-                                        </Typography>
-                                        <Typography
-                                          component="span"
-                                          variant="caption"
-                                          color="text.secondary"
-                                        >
-                                          {formatCommitDate(version.commit_date, allCommitDates)}
-                                        </Typography>
-                                      </Box>
-                                    </Tooltip>
-                                  </MenuItem>
-                                )
-                              })}
-                          </Select>
-                        </FormControl>
-                        <Tooltip title="Exit compare mode">
-                          <IconButton size="small" onClick={actions.exitDiffMode}>
-                            <CloseIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    )}
-                  </>
+                {/* Exit diff mode button (only when in diff mode) */}
+                {diffMode && (
+                  <Tooltip title="Exit compare mode">
+                    <IconButton size="small" onClick={actions.exitDiffMode}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                 )}
               </Box>
 
               {/* Code Viewer or Diff Viewer */}
               <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-                {diffMode && diffContent ? (
+                {diffMode && diffContent && repository ? (
                   <DiffCodeViewer
                     leftContent={fileContent.content}
                     rightContent={diffContent.content}
-                    leftLabel={`${getShortHash(urlState.selectedCommit || fileVersions[0]?.commit_hash)} (current)`}
-                    rightLabel={`${getShortHash(diffCommit)} (compare)`}
+                    leftHeader={
+                      <>
+                        <BranchSelector
+                          repositoryId={repository.id}
+                          selectedBranch={selectedBranch}
+                          defaultBranch={repository.default_branch}
+                          onBranchChange={actions.changeBranch}
+                        />
+                        <VersionSelector
+                          repoName={repoName!}
+                          filePath={filePath!}
+                          selectedCommit={urlState.selectedCommit}
+                          onVersionChange={actions.changeVersion}
+                          selectedBranch={selectedBranch}
+                        />
+                      </>
+                    }
+                    rightHeader={
+                      <>
+                        <BranchSelector
+                          repositoryId={repository.id}
+                          selectedBranch={diffBranch}
+                          defaultBranch={repository.default_branch}
+                          onBranchChange={actions.changeDiffBranch}
+                        />
+                        <VersionSelector
+                          repoName={repoName!}
+                          filePath={filePath!}
+                          selectedCommit={diffCommit}
+                          onVersionChange={actions.changeDiffVersion}
+                          selectedBranch={diffBranch || selectedBranch}
+                        />
+                      </>
+                    }
                     language={fileContent.language}
                     leftSymbols={fileSymbols}
                     rightSymbols={diffSymbols}
@@ -427,6 +375,113 @@ export default function Browse() {
                     }}
                   >
                     <CircularProgress />
+                  </Box>
+                ) : diffMode && !diffContent && repository ? (
+                  /* Diff mode but content failed to load - show side-by-side with error message */
+                  <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                    {/* Left pane - current file */}
+                    <Box
+                      sx={{
+                        flex: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        borderRight: 1,
+                        borderColor: 'divider',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          px: 1,
+                          py: 0.5,
+                          bgcolor: 'background.paper',
+                          borderBottom: 1,
+                          borderColor: 'divider',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                        }}
+                      >
+                        <BranchSelector
+                          repositoryId={repository.id}
+                          selectedBranch={selectedBranch}
+                          defaultBranch={repository.default_branch}
+                          onBranchChange={actions.changeBranch}
+                        />
+                        <VersionSelector
+                          repoName={repoName!}
+                          filePath={filePath!}
+                          selectedCommit={urlState.selectedCommit}
+                          onVersionChange={actions.changeVersion}
+                          selectedBranch={selectedBranch}
+                        />
+                      </Box>
+                      <Box sx={{ flex: 1, overflow: 'auto' }}>
+                        <CodeViewer
+                          content={fileContent.content}
+                          language={fileContent.language}
+                          symbols={fileSymbols}
+                          references={fileReferences}
+                          highlightLine={highlightLine}
+                          onSymbolClick={actions.handleSymbolClick}
+                          onReferenceClick={actions.handleCodeReferenceClick}
+                          onLineClick={actions.navigateToLine}
+                        />
+                      </Box>
+                    </Box>
+                    {/* Right pane - error/select prompt */}
+                    <Box
+                      sx={{
+                        flex: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          px: 1,
+                          py: 0.5,
+                          bgcolor: 'background.paper',
+                          borderBottom: 1,
+                          borderColor: 'divider',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                        }}
+                      >
+                        <BranchSelector
+                          repositoryId={repository.id}
+                          selectedBranch={diffBranch}
+                          defaultBranch={repository.default_branch}
+                          onBranchChange={actions.changeDiffBranch}
+                        />
+                        <VersionSelector
+                          repoName={repoName!}
+                          filePath={filePath!}
+                          selectedCommit={diffCommit}
+                          onVersionChange={actions.changeDiffVersion}
+                          selectedBranch={diffBranch || selectedBranch}
+                        />
+                      </Box>
+                      <Box
+                        sx={{
+                          flex: 1,
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          color: 'text.secondary',
+                          p: 2,
+                          textAlign: 'center',
+                        }}
+                      >
+                        <Typography>
+                          File not found at selected version.
+                          <br />
+                          Select a different branch or version to compare.
+                        </Typography>
+                      </Box>
+                    </Box>
                   </Box>
                 ) : (
                   <Box sx={{ flex: 1, overflow: 'auto' }}>

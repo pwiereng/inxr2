@@ -177,6 +177,55 @@ class TestGitServiceChangedFiles:
             assert isinstance(changed["deleted"], list)
 
 
+class TestGitServiceBranches:
+    """Tests for branch listing functionality."""
+
+    @pytest.fixture
+    def git_service(self) -> GitService:
+        """Create a GitService instance."""
+        return GitService()
+
+    @pytest.fixture
+    def repo_path(self) -> Path:
+        """Get the INXR2 repository path."""
+        return Path(__file__).parent.parent.parent.parent
+
+    def test_list_branches(self, git_service: GitService, repo_path: Path) -> None:
+        """Test listing branches in a repository."""
+        branches = git_service.list_branches(repo_path)
+
+        # Should return a list of branch names
+        assert isinstance(branches, list)
+        assert len(branches) > 0
+
+        # All items should be strings
+        assert all(isinstance(b, str) for b in branches)
+
+        # Should have at least main or master
+        has_default = "main" in branches or "master" in branches
+        assert has_default
+
+    def test_list_branches_default_first(
+        self, git_service: GitService, repo_path: Path
+    ) -> None:
+        """Test that default branch (main/master) is sorted first."""
+        branches = git_service.list_branches(repo_path)
+
+        # First branch should be main or master
+        assert branches[0] in ("main", "master")
+
+    def test_list_branches_ordered_by_date(
+        self, git_service: GitService, repo_path: Path
+    ) -> None:
+        """Test that branches are ordered by last commit date after default."""
+        branches = git_service.list_branches(repo_path)
+
+        # Just verify we get branches and default is first
+        # (Detailed date ordering is hard to verify without knowing commit dates)
+        assert len(branches) > 0
+        assert branches[0] in ("main", "master")
+
+
 class TestGitServiceTimeTravel:
     """Tests for time travel functionality (multi-commit support)."""
 

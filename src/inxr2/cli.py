@@ -41,6 +41,7 @@ def _run_single_repo_index(
     index_func: Callable[..., Any],
     index_type: str,
     max_history: int = 100,
+    force: bool = False,
 ) -> None:
     """Run indexing for a single repository path."""
     # Validate git repository
@@ -78,6 +79,7 @@ def _run_single_repo_index(
             languages=lang_list,
             console=console,
             max_history=max_history,
+            force=force,
         )
     except Exception as e:
         console.print(f"\n[red]Error during indexing:[/red] {e}")
@@ -95,6 +97,7 @@ def _run_config_based_index(
     index_func: Callable[..., Any],
     index_type: str,
     max_history_override: int | None = None,
+    force: bool = False,
 ) -> None:
     """Run indexing for repositories defined in config file."""
     from inxr2.adapters.config.yaml_config import YamlConfigService
@@ -152,8 +155,14 @@ def _run_config_based_index(
         # Resolve path
         resolved_path = repo.get_resolved_path()
 
-        # Determine branch (override > config > None for current)
-        branch = branch_override or (repo.branches[0] if repo.branches else None)
+        # Determine branches to index (override > all config branches > None for current)
+        branches_to_index: list[str | None]
+        if branch_override:
+            branches_to_index = [branch_override]
+        elif repo.branches:
+            branches_to_index = list(repo.branches)
+        else:
+            branches_to_index = [None]  # Will use current branch
 
         # Determine languages (override > config)
         if languages_override:
@@ -172,32 +181,35 @@ def _run_config_based_index(
             )
             continue
 
-        console.print(
-            f"[bold cyan][{idx}/{total_repos}][/bold cyan] {repo.name} ({resolved_path})"
-        )
-        console.print(f"  Branch: {branch or '(current)'}")
-        console.print()
-
-        # Determine max_history (override > config)
-        max_history = max_history_override or config.indexing.max_commit_history
-
-        try:
-            index_func(
-                repo_path=resolved_path,
-                branch=branch,
-                languages=lang_list,
-                console=console,
-                max_history=max_history,
+        # Index each branch
+        for branch in branches_to_index:
+            console.print(
+                f"[bold cyan][{idx}/{total_repos}][/bold cyan] {repo.name} ({resolved_path})"
             )
-            successful += 1
-        except Exception as e:
-            console.print(f"  [red]Error:[/red] {e}")
-            if verbose:
-                console.print_exception()
-            failed += 1
-            # Continue with next repository
+            console.print(f"  Branch: {branch or '(current)'}")
+            console.print()
 
-        console.print()
+            # Determine max_history (override > config)
+            max_history = max_history_override or config.indexing.max_commit_history
+
+            try:
+                index_func(
+                    repo_path=resolved_path,
+                    branch=branch,
+                    languages=lang_list,
+                    console=console,
+                    max_history=max_history,
+                    force=force,
+                )
+                successful += 1
+            except Exception as e:
+                console.print(f"  [red]Error:[/red] {e}")
+                if verbose:
+                    console.print_exception()
+                failed += 1
+                # Continue with next branch/repository
+
+            console.print()
 
     # Summary
     console.print("[bold]Indexing Summary:[/bold]")
@@ -276,6 +288,17 @@ def index() -> None:
     default="INFO",
     help="Set log level",
 )
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help="Force re-index by clearing existing data for the repository first",
+)
+@click.option(
+    "--reset-db",
+    is_flag=True,
+    help="Reset entire database before indexing (TRUNCATE all tables - much faster than --force for full re-index)",
+)
 def index_full(
     path: Path | None,
     config: Path | None,
@@ -285,6 +308,8 @@ def index_full(
     history: int | None,
     verbose: bool,
     log_level: str,
+    force: bool,
+    reset_db: bool,
 ) -> None:
     """
     Perform full indexing of repository/repositories.
@@ -310,6 +335,18 @@ def index_full(
         )
         sys.exit(1)
 
+    # Reset database if requested (much faster than per-repo --force)
+    if reset_db:
+        console.print("[yellow]Resetting database...[/yellow]")
+        from inxr2.adapters.cli.commands.index_command import reset_database
+
+        try:
+            reset_database(console=console)
+            console.print("[green]Database reset complete[/green]\n")
+        except Exception as e:
+            console.print(f"[red]Error resetting database:[/red] {e}")
+            sys.exit(1)
+
     # Import indexing function (lazy import to speed up CLI startup)
     from inxr2.adapters.cli.commands.index_command import run_full_index
 
@@ -324,6 +361,7 @@ def index_full(
             index_func=run_full_index,
             index_type="Full",
             max_history_override=history,
+            force=force,
         )
     else:
         # Single repository path-based indexing
@@ -336,6 +374,7 @@ def index_full(
             index_func=run_full_index,
             index_type="Full",
             max_history=history or 100,
+            force=force,
         )
 
 

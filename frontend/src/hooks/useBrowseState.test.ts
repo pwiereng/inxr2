@@ -370,7 +370,7 @@ describe('useBrowseState', () => {
       )
     })
 
-    it('should not enter diff mode when only one version exists', async () => {
+    it('should enter cross-branch diff mode when only one version exists', async () => {
       mockGetFileHistory.mockResolvedValue({
         versions: [mockVersions[0]!],
         path: 'src/main.py',
@@ -389,8 +389,11 @@ describe('useBrowseState', () => {
         result.current.actions.enterDiffMode()
       })
 
-      // Should NOT navigate since there's no other version to diff against
-      expect(mockNavigate).not.toHaveBeenCalled()
+      // Should navigate with diffBranch for cross-branch comparison
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('diffBranch='))
+      // Should NOT have a diff param (since no other version)
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).not.toMatch(/[?&]diff=/)
     })
 
     it('should preserve drawer state but clear search context when entering diff mode', async () => {
@@ -894,6 +897,220 @@ describe('useBrowseState', () => {
       // Should preserve drawer=0 in navigation
       expect(mockNavigate).toHaveBeenCalledWith(
         expect.stringContaining('drawer=0')
+      )
+    })
+  })
+
+  describe('branch URL state', () => {
+    it('should parse branch from URL', () => {
+      mockSearchParams = new URLSearchParams('branch=feature')
+      const { result } = renderHook(() => useBrowseState())
+
+      expect(result.current.urlState.selectedBranch).toBe('feature')
+    })
+
+    it('should default branch to null when not in URL', () => {
+      const { result } = renderHook(() => useBrowseState())
+
+      expect(result.current.urlState.selectedBranch).toBeNull()
+    })
+
+    it('should parse diffBranch from URL', () => {
+      mockSearchParams = new URLSearchParams('branch=main&diffBranch=feature')
+      const { result } = renderHook(() => useBrowseState())
+
+      expect(result.current.urlState.diffBranch).toBe('feature')
+    })
+
+    it('should default diffBranch to null when not in URL', () => {
+      const { result } = renderHook(() => useBrowseState())
+
+      expect(result.current.urlState.diffBranch).toBeNull()
+    })
+
+    it('should parse branch with other params', () => {
+      mockSearchParams = new URLSearchParams(
+        'q=MyClass&refs=1&branch=develop&commit=abc123'
+      )
+      const { result } = renderHook(() => useBrowseState())
+
+      expect(result.current.urlState.selectedBranch).toBe('develop')
+      expect(result.current.urlState.searchQuery).toBe('MyClass')
+      expect(result.current.urlState.refsPanelOpen).toBe(true)
+      expect(result.current.urlState.selectedCommit).toBe('abc123')
+    })
+  })
+
+  describe('branch change actions', () => {
+    it('should change branch by navigating with branch param', async () => {
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.changeBranch('feature')
+      })
+
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('branch=feature')
+      )
+    })
+
+    it('should remove branch param when changing to null (default)', async () => {
+      mockSearchParams = new URLSearchParams('branch=feature')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.changeBranch(null)
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).not.toContain('branch=')
+    })
+
+    it('should clear commit when changing branch', async () => {
+      mockSearchParams = new URLSearchParams('branch=main&commit=abc123')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.changeBranch('feature')
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).not.toContain('commit=')
+      expect(navigatedUrl).toContain('branch=feature')
+    })
+
+    it('should preserve drawer state when changing branch', async () => {
+      mockSearchParams = new URLSearchParams('drawer=0&branch=main')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.changeBranch('feature')
+      })
+
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('drawer=0')
+      )
+    })
+
+    it('should change diffBranch by navigating with diffBranch param', async () => {
+      mockSearchParams = new URLSearchParams('branch=main&diff=abc123')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.changeDiffBranch('feature')
+      })
+
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('diffBranch=feature')
+      )
+    })
+
+    it('should remove diffBranch param when changing to null', async () => {
+      mockSearchParams = new URLSearchParams('diffBranch=feature')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.changeDiffBranch(null)
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).not.toContain('diffBranch=')
+    })
+  })
+
+  describe('branch preservation in navigation', () => {
+    it('should preserve branch when navigating to file', async () => {
+      mockSearchParams = new URLSearchParams('branch=feature')
+      const { result } = renderHook(() => useBrowseState())
+
+      act(() => {
+        result.current.actions.navigateToFile('src/other.py')
+      })
+
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('branch=feature')
+      )
+    })
+
+    it('should preserve branch when entering diff mode', async () => {
+      mockSearchParams = new URLSearchParams('branch=feature')
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 1,
+            commit_hash: 'abc123',
+            short_hash: 'abc123',
+            commit_date: '2024-01-03',
+            message: 'Latest',
+            content_hash: 'hash1',
+          },
+          {
+            commit_id: 2,
+            commit_hash: 'def456',
+            short_hash: 'def456',
+            commit_date: '2024-01-02',
+            message: 'Previous',
+            content_hash: 'hash2',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 2,
+      })
+
+      const { result } = renderHook(() => useBrowseState())
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(2)
+      })
+
+      act(() => {
+        result.current.actions.enterDiffMode()
+      })
+
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('branch=feature')
+      )
+    })
+
+    it('should preserve branch when changing version', async () => {
+      mockSearchParams = new URLSearchParams('branch=feature')
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 1,
+            commit_hash: 'abc123',
+            short_hash: 'abc123',
+            commit_date: '2024-01-03',
+            message: 'Latest',
+            content_hash: 'hash1',
+          },
+          {
+            commit_id: 2,
+            commit_hash: 'def456',
+            short_hash: 'def456',
+            commit_date: '2024-01-02',
+            message: 'Previous',
+            content_hash: 'hash2',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 2,
+      })
+
+      const { result } = renderHook(() => useBrowseState())
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(2)
+      })
+
+      act(() => {
+        result.current.actions.changeVersion('def456')
+      })
+
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining('branch=feature')
       )
     })
   })
