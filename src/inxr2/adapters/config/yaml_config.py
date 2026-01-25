@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from ...application.ports.services import ConfigServicePort
 from ...domain.value_objects import AppConfig
+from .models import AppConfigModel
 
 
 class YamlConfigService(ConfigServicePort):
@@ -55,9 +56,9 @@ class YamlConfigService(ConfigServicePort):
         if not data:
             raise ValueError("Configuration file is empty")
 
-        # Parse into Pydantic model
+        # Parse into Pydantic model for validation
         try:
-            config = AppConfig(**data)
+            config_model = AppConfigModel(**data)
         except ValidationError as e:
             errors = []
             for error in e.errors():
@@ -66,6 +67,9 @@ class YamlConfigService(ConfigServicePort):
             raise ValueError(
                 "Configuration validation failed:\n" + "\n".join(errors)
             ) from e
+
+        # Convert to domain object
+        config = config_model.to_domain()
 
         # Validate paths exist for local repositories
         self._validate_paths(config, config_path.parent)
@@ -97,8 +101,9 @@ class YamlConfigService(ConfigServicePort):
             if not data:
                 return ["Configuration file is empty"]
 
-            # Try to parse
-            config = AppConfig(**data)
+            # Try to parse and convert to domain
+            config_model = AppConfigModel(**data)
+            config = config_model.to_domain()
 
             # Check paths
             for repo in config.repositories:

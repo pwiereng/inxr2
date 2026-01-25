@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from inxr2.adapters.config.models import RepositoryConfigModel
 from inxr2.adapters.config.yaml_config import YamlConfigService
 from inxr2.domain.value_objects import AppConfig, RepositoryConfig
 
@@ -53,8 +54,8 @@ indexing:
         assert len(config.repositories) == 1
         assert config.repositories[0].name == "test-repo"
         assert config.repositories[0].path == str(temp_dir)
-        assert config.repositories[0].branches == ["main"]
-        assert config.repositories[0].languages == ["python"]
+        assert config.repositories[0].branches == ("main",)
+        assert config.repositories[0].languages == ("python",)
         assert config.indexing.incremental is True
         assert config.indexing.max_commit_history == 500
 
@@ -73,12 +74,12 @@ repositories:
         config = config_service.load(config_path)
 
         # Check defaults
-        assert config.repositories[0].branches == ["main"]
-        assert config.repositories[0].languages == [
+        assert config.repositories[0].branches == ("main",)
+        assert config.repositories[0].languages == (
             "python",
             "typescript",
             "javascript",
-        ]
+        )
         assert config.indexing.incremental is True
         assert config.indexing.max_commit_history == 1000
         assert config.indexing.batch_size == 100
@@ -288,25 +289,27 @@ repositories:
 
 
 class TestRepositoryConfigModel:
-    """Tests for RepositoryConfig Pydantic model."""
+    """Tests for RepositoryConfigModel Pydantic validation model."""
 
     def test_repository_requires_path_or_url(self) -> None:
-        """Test that either path or url must be provided."""
+        """Test that either path or url must be provided (validated by Pydantic model)."""
         with pytest.raises(
             ValueError, match="Either 'path' or 'url' must be specified"
         ):
-            RepositoryConfig(name="test")
+            RepositoryConfigModel(name="test")
 
     def test_repository_with_path(self) -> None:
         """Test creating repository config with path."""
-        repo = RepositoryConfig(name="test", path="/some/path")
+        model = RepositoryConfigModel(name="test", path="/some/path")
+        repo = model.to_domain()
         assert repo.name == "test"
         assert repo.path == "/some/path"
         assert repo.url is None
 
     def test_repository_with_url(self) -> None:
         """Test creating repository config with URL."""
-        repo = RepositoryConfig(name="test", url="https://github.com/user/repo")
+        model = RepositoryConfigModel(name="test", url="https://github.com/user/repo")
+        repo = model.to_domain()
         assert repo.name == "test"
         assert repo.url == "https://github.com/user/repo"
         assert repo.path is None
@@ -326,15 +329,15 @@ class TestRepositoryConfigModel:
 
 
 class TestAppConfigModel:
-    """Tests for AppConfig Pydantic model."""
+    """Tests for AppConfig domain model."""
 
     def test_get_repository_by_name(self) -> None:
         """Test getting repository by name."""
         config = AppConfig(
-            repositories=[
+            repositories=(
                 RepositoryConfig(name="repo1", path="/path1"),
                 RepositoryConfig(name="repo2", path="/path2"),
-            ]
+            )
         )
 
         repo1 = config.get_repository("repo1")
@@ -351,10 +354,10 @@ class TestAppConfigModel:
     def test_get_repository_names(self) -> None:
         """Test getting list of repository names."""
         config = AppConfig(
-            repositories=[
+            repositories=(
                 RepositoryConfig(name="repo1", path="/path1"),
                 RepositoryConfig(name="repo2", path="/path2"),
-            ]
+            )
         )
 
         names = config.get_repository_names()
