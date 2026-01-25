@@ -1,6 +1,6 @@
 """PostgreSQL commit repository adapter."""
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import CommitRepositoryPort
@@ -64,11 +64,35 @@ class PostgresCommitRepository(CommitRepositoryPort):
         return self.mapper.to_domain(model) if model else None
 
     async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
-        """Find commit by repository and hash."""
+        """Find commit by repository and hash.
+
+        Note: Same commit hash may exist for multiple branches. We just need
+        any matching commit since the content is identical across branches.
+        """
+        result = await self.session.execute(
+            select(CommitModel)
+            .where(
+                CommitModel.repository_id == repository_id,
+                CommitModel.commit_hash == commit_hash,
+            )
+            .limit(1)
+        )
+        model = result.scalar_one_or_none()
+        return self.mapper.to_domain(model) if model else None
+
+    async def find_by_hash_and_branch(
+        self, repository_id: int, commit_hash: str, branch: str
+    ) -> Commit | None:
+        """Find commit by repository, hash, and branch.
+
+        This allows the same commit hash to exist for different branches,
+        which is necessary because branches share commit history.
+        """
         result = await self.session.execute(
             select(CommitModel).where(
                 CommitModel.repository_id == repository_id,
                 CommitModel.commit_hash == commit_hash,
+                CommitModel.branch == branch,
             )
         )
         model = result.scalar_one_or_none()
@@ -89,3 +113,27 @@ class PostgresCommitRepository(CommitRepositoryPort):
         models = result.scalars().all()
 
         return [self.mapper.to_domain(model) for model in models]
+
+    async def find_latest_by_branch(
+        self, repository_id: int, branch: str
+    ) -> Commit | None:
+        """Find the latest indexed commit for a specific branch."""
+        result = await self.session.execute(
+            select(CommitModel)
+            .where(
+                CommitModel.repository_id == repository_id,
+                CommitModel.branch == branch,
+            )
+            .order_by(CommitModel.commit_date.desc())
+            .limit(1)
+        )
+        model = result.scalar_one_or_none()
+        return self.mapper.to_domain(model) if model else None
+
+    async def delete_by_repository(self, repository_id: int) -> int:
+        """Delete all commits for a repository. Returns count deleted."""
+        result = await self.session.execute(
+            delete(CommitModel).where(CommitModel.repository_id == repository_id)
+        )
+        await self.session.flush()
+        return result.rowcount or 0  # type: ignore[attr-defined]

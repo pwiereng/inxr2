@@ -10,7 +10,7 @@ INXR2 is a modern code browser similar to LXR but designed specifically for git-
 
 **Architecture**: Clean Architecture (Hexagonal/Ports & Adapters)
 
-**Current Status**: Phase 1.8 Complete (Tree-sitter Integration)
+**Current Status**: Phase 1.11 Complete (Multi-Branch Support)
 - ✅ Phase 1.1: Project Setup (COMPLETED)
 - ✅ Phase 1.2: React Frontend and Development Infrastructure (COMPLETED)
 - ✅ Phase 1.3: Database Foundation and Environment Configuration (COMPLETED 2026-01-04)
@@ -19,10 +19,13 @@ INXR2 is a modern code browser similar to LXR but designed specifically for git-
 - ✅ Phase 1.6: Cross-Reference Code Browser UI (COMPLETED 2026-01-11)
 - ✅ Phase 1.7: Configuration System (Multi-Repository Support) (COMPLETED 2026-01-13)
 - ✅ Phase 1.8: Tree-sitter Integration (Replace Regex Extraction) (COMPLETED 2026-01-14)
-- 🔄 Phase 1.9: Remote Repository Support (Clone from URLs) ← **NEXT**
-- ⏭️  Phase 1.10: Improved Reference Resolution
+- ✅ Phase 1.9: Time Travel & Temporal Navigation (COMPLETED 2026-01-17)
+- ✅ Phase 1.10: URL State & Permalinks (COMPLETED 2026-01-20)
+- ✅ Phase 1.11: Multi-Branch Support (COMPLETED 2026-01-24)
+- 🔄 Phase 1.12: Remote Repository Support (Clone from URLs) ← **NEXT**
+- ⏭️  Phase 1.13: Improved Reference Resolution
 - ⏭️  Phase 2: Additional Language Support (Java, C#, Go, C/C++)
-- ⏭️  Phase 3: Advanced Features (Temporal Navigation, Parallel Indexing)
+- ⏭️  Phase 3: Advanced Features (Parallel Indexing, Search Improvements)
 
 ---
 
@@ -1047,7 +1050,7 @@ inxr2 index status --path /path/to/repo
 repositories:
   - name: "inxr2"
     path: "/path/to/inxr2"           # Local path (Phase 1.7)
-    # url: "https://github.com/..."  # Remote URL (Phase 1.9)
+    # url: "https://github.com/..."  # Remote URL (Phase 1.12)
     branches:
       - main
     languages:
@@ -1079,7 +1082,7 @@ server:
 class RepositoryConfig(BaseModel):
     name: str
     path: str | None = None          # Local path
-    url: str | None = None           # Remote URL (Phase 1.9)
+    url: str | None = None           # Remote URL (Phase 1.12)
     branches: list[str] = ["main"]
     languages: list[str] = ["python", "typescript", "javascript"]
     exclude_patterns: list[str] = []
@@ -1314,7 +1317,77 @@ Indexing 3 repositories from config.yaml...
 
 ---
 
-### 1.9 Remote Repository Support
+### 1.9 Time Travel & Temporal Navigation
+
+**Status:** ✅ **COMPLETED** (2026-01-17)
+
+**Objectives:**
+- Browse code at any indexed commit
+- View file history and switch between versions
+- Compare versions side-by-side
+
+**Implemented Features:**
+- [x] Version selector showing all commits that modified a file
+- [x] Commit-aware file tree (shows files at specific commit)
+- [x] Side-by-side diff viewer with syntax highlighting
+- [x] File content loading at specific commit
+- [x] Visual indicators for file changes between versions
+
+**Key Files:**
+- `frontend/src/components/VersionSelector/` - Commit picker UI
+- `frontend/src/components/DiffCodeViewer/` - Side-by-side diff
+- `src/inxr2/adapters/api/routes/files.py` - Commit-aware file endpoints
+
+---
+
+### 1.10 URL State & Permalinks
+
+**Status:** ✅ **COMPLETED** (2026-01-20)
+
+**Objectives:**
+- Make all browse state bookmarkable via URL
+- Support deep linking to specific code locations
+- Preserve state across page refreshes
+
+**Implemented Features:**
+- [x] URL parameters: `line`, `commit`, `diff`, `q`, `refs`, `drawer`, `branch`
+- [x] Click line number updates URL
+- [x] Scroll to line on page load
+- [x] Symbol search state in URL
+- [x] References panel state in URL
+- [x] Diff mode state in URL
+
+**Key Files:**
+- `frontend/src/hooks/useBrowseState.ts` - Centralized URL state management
+- `frontend/src/hooks/useBrowseState.test.ts` - Comprehensive tests
+
+---
+
+### 1.11 Multi-Branch Support
+
+**Status:** ✅ **COMPLETED** (2026-01-24)
+
+**Objectives:**
+- Browse code on different indexed branches
+- Compare code across branches
+- Branch-aware file history
+
+**Implemented Features:**
+- [x] BranchSelector component for switching branches
+- [x] Branch parameter in URL for bookmarkability
+- [x] Cross-branch diff comparison
+- [x] File history filtered by branch
+- [x] Live branch listing from git repository
+- [x] Fallback to default branch when selected branch not indexed
+
+**Key Files:**
+- `frontend/src/components/BranchSelector/` - Branch picker UI
+- `src/inxr2/adapters/external/git_service.py` - Git branch queries
+- `src/inxr2/adapters/persistence/repositories/commit_adapter.py` - Branch filtering
+
+---
+
+### 1.12 Remote Repository Support
 
 **Status:** ⏭️ PLANNED
 
@@ -1351,7 +1424,7 @@ repositories:
 
 ---
 
-### 1.10 Improved Reference Resolution
+### 1.13 Improved Reference Resolution
 
 **Status:** ⏭️ DEFERRED
 
@@ -1363,7 +1436,7 @@ repositories:
 
 **Future Improvements:**
 
-#### 1.10.1 Scope-Aware Resolution
+#### 1.13.1 Scope-Aware Resolution
 For calls like `self.save()` inside a class method, resolve to that class's `save`:
 ```python
 class FileRepository:
@@ -1377,7 +1450,7 @@ class FileRepository:
 - [ ] For `super().method()` calls, resolve to parent class's method
 - [ ] Update reference resolution to prefer same-scope matches
 
-#### 1.10.2 Receiver-Aware Extraction
+#### 1.13.2 Receiver-Aware Extraction
 Extract the receiver object for method calls and try to resolve its type:
 ```python
 repo = PostgresFileRepository()
@@ -1390,7 +1463,7 @@ repo.save(file)  # → Should resolve to PostgresFileRepository.save
 - [ ] Track parameter types from function signatures
 - [ ] Use type information during reference resolution
 
-#### 1.10.3 Import-Aware Resolution
+#### 1.13.3 Import-Aware Resolution
 Track imports and prefer symbols from imported modules:
 ```python
 from adapters.persistence import PostgresFileRepository
@@ -1834,9 +1907,9 @@ Small fixes and enhancements that can be done at any time.
 - Support diff viewing
 
 **Tasks:**
-- [ ] Create history components:
-  - [ ] Branch selector dropdown
-  - [ ] Commit selector (dropdown or timeline)
+- [x] Create history components:
+  - [x] Branch selector dropdown
+  - [x] Commit selector (dropdown or timeline) - Version selector with commit picker
   - [ ] Commit list view
   - [ ] Commit details panel
 - [ ] Build timeline UI:
@@ -1844,36 +1917,38 @@ Small fixes and enhancements that can be done at any time.
   - [ ] Visual commit markers
   - [ ] Navigate by clicking timeline
   - [ ] Show current position
-- [ ] Implement diff viewer:
-  - [ ] Side-by-side diff view
+- [x] Implement diff viewer:
+  - [x] Side-by-side diff view
   - [ ] Unified diff view (optional)
-  - [ ] Syntax highlighting in diffs
+  - [x] Syntax highlighting in diffs
   - [ ] Navigate between changes (prev/next)
   - [ ] Expand/collapse context
-- [ ] Add file history view:
-  - [ ] List all commits that modified file
-  - [ ] Show commit message and author
-  - [ ] Click to view file at that commit
-  - [ ] Quick diff from previous version
-- [ ] Create comparison UI:
-  - [ ] Select two commits to compare
-  - [ ] Show all changed files
-  - [ ] View diffs for each file
-- [ ] Update URL for temporal state:
-  - [ ] Include commit hash in URL
-  - [ ] Preserve branch selection
-  - [ ] Deep link to specific commit
-- [ ] Tests:
-  - [ ] Test temporal navigation
-  - [ ] Verify diff rendering
-  - [ ] Test URL state
-  - [ ] Component tests
+- [x] Add file history view:
+  - [x] List all commits that modified file
+  - [x] Show commit message and author
+  - [x] Click to view file at that commit
+  - [x] Quick diff from previous version
+- [x] Create comparison UI:
+  - [x] Select two commits to compare
+  - [x] Show all changed files (via diff mode)
+  - [x] View diffs for each file
+- [x] Update URL for temporal state:
+  - [x] Include commit hash in URL
+  - [x] Preserve branch selection
+  - [x] Deep link to specific commit
+- [x] Tests:
+  - [x] Test temporal navigation
+  - [x] Verify diff rendering
+  - [x] Test URL state
+  - [x] Component tests
 
 **Deliverables:**
-- Temporal navigation UI complete
-- Diff viewer functional
-- Timeline/history working
-- Tests passing
+- ✅ Temporal navigation UI complete
+- ✅ Diff viewer functional
+- Timeline/history partially complete (version selector works, full timeline UI not yet built)
+- ✅ Tests passing
+
+**Status:** ✅ **MOSTLY COMPLETE** (2026-01-24) - Core functionality done, timeline slider optional
 
 **Estimated Complexity:** High
 
@@ -1887,36 +1962,39 @@ Small fixes and enhancements that can be done at any time.
 - Enable easy sharing
 
 **Tasks:**
-- [ ] Implement URL structure:
-  - [ ] `/repo/{name}/blob/{commit}/{path}` - File view
-  - [ ] `/repo/{name}/blob/{commit}/{path}#L{line}` - Specific line
-  - [ ] `/repo/{name}/blob/{commit}/{path}#L{start}-L{end}` - Line range
-  - [ ] `/repo/{name}/symbol/{symbol-id}` - Symbol view
-  - [ ] `/repo/{name}/compare/{commit1}...{commit2}/{path}` - Diff view
-- [ ] Add line number interaction:
-  - [ ] Click line number to update URL
+- [x] Implement URL structure:
+  - [x] `/browse/{repo}/{path}?commit={hash}` - File view at commit
+  - [x] `/browse/{repo}/{path}?line={n}` - Specific line
+  - [ ] `/browse/{repo}/{path}?line={start}-{end}` - Line range (not yet)
+  - [x] `/browse/{repo}/{path}?q={symbol}&refs=1` - Symbol with references
+  - [x] `/browse/{repo}/{path}?commit={c1}&diff={c2}` - Diff view
+  - [x] `/browse/{repo}/{path}?branch={name}` - Branch view
+- [x] Add line number interaction:
+  - [x] Click line number to update URL
   - [ ] Shift+click for range selection
-  - [ ] Update hash without page reload
-  - [ ] Highlight selected lines
+  - [x] Update hash without page reload
+  - [x] Highlight selected lines
 - [ ] Create copy permalink feature:
   - [ ] Copy button in UI
   - [ ] Copy current URL to clipboard
   - [ ] Show confirmation toast
   - [ ] Keyboard shortcut (Ctrl+Shift+C)
-- [ ] Handle URL parsing:
-  - [ ] Parse line numbers from hash
-  - [ ] Scroll to line on page load
-  - [ ] Highlight line range
-  - [ ] Handle invalid line numbers
+- [x] Handle URL parsing:
+  - [x] Parse line numbers from URL params
+  - [x] Scroll to line on page load
+  - [x] Highlight line range
+  - [x] Handle invalid line numbers
 - [ ] Add sharing features:
   - [ ] Share button with copy link
   - [ ] QR code generation (optional)
   - [ ] Social media meta tags
-- [ ] Tests:
-  - [ ] Test URL generation
-  - [ ] Test URL parsing
-  - [ ] Test line selection
+- [x] Tests:
+  - [x] Test URL generation
+  - [x] Test URL parsing
+  - [x] Test line selection
   - [ ] Test copy functionality
+
+**Status:** ✅ **MOSTLY COMPLETE** (2026-01-24) - Core URL state works, copy/share features pending
 
 **Deliverables:**
 - Permalink system complete
@@ -2518,7 +2596,7 @@ Finish it off:
 - **Performance**: Monitor performance early and often
 - **Documentation**: Update documentation as you build, not at the end
 
-**Document Version**: 1.6
+**Document Version**: 1.7
 **Created**: 2025-12-29
-**Last Updated**: 2026-01-16 (Phase 1.8 Tree-sitter Integration complete)
-**Status**: Active Development - Phase 1.9 Remote Repository Support Next
+**Last Updated**: 2026-01-24 (Phase 1.11 Multi-Branch Support complete)
+**Status**: Active Development - Phase 1.12 Remote Repository Support Next

@@ -1,6 +1,6 @@
 """PostgreSQL file repository adapter."""
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import FileRepositoryPort
@@ -120,23 +120,46 @@ class PostgresFileRepository(FileRepositoryPort):
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
 
-    async def list_versions_by_path(self, repository_id: int, path: str) -> list[File]:
+    async def list_versions_by_path(
+        self, repository_id: int, path: str, branch: str | None = None
+    ) -> list[File]:
         """List all versions of a file across commits (for time travel).
 
         Returns files with this path from different commits, ordered by
-        commit date descending (newest first).
+        commit date descending (newest first). Deduplicates by content_hash
+        to avoid showing identical versions.
+
+        Args:
+            repository_id: The repository ID
+            path: The file path
+            branch: Optional branch name to filter versions by
         """
-        result = await self.session.execute(
+        query = (
             select(FileModel)
             .join(CommitModel, FileModel.commit_id == CommitModel.id)
             .where(
                 FileModel.repository_id == repository_id,
                 FileModel.path == path,
             )
-            .order_by(CommitModel.commit_date.desc())
         )
+
+        if branch:
+            query = query.where(CommitModel.branch == branch)
+
+        query = query.order_by(CommitModel.commit_date.desc())
+
+        result = await self.session.execute(query)
         models = result.scalars().all()
-        return [self.mapper.to_domain(model) for model in models]
+
+        # Deduplicate by content_hash - keep first occurrence (newest) of each unique content
+        seen_hashes: set[str] = set()
+        unique_models = []
+        for model in models:
+            if model.content_hash not in seen_hashes:
+                seen_hashes.add(model.content_hash)
+                unique_models.append(model)
+
+        return [self.mapper.to_domain(model) for model in unique_models]
 
     async def find_by_repository_path_and_commit_hash(
         self, repository_id: int, path: str, commit_hash: str
@@ -144,6 +167,8 @@ class PostgresFileRepository(FileRepositoryPort):
         """Find file by repository, path, and commit hash (for time travel).
 
         This is useful when the caller has a commit hash instead of commit_id.
+        Note: Same commit hash may exist for multiple branches, but file content
+        is identical, so we just take the first match.
         """
         result = await self.session.execute(
             select(FileModel)
@@ -153,6 +178,15 @@ class PostgresFileRepository(FileRepositoryPort):
                 FileModel.path == path,
                 CommitModel.commit_hash == commit_hash,
             )
+            .limit(1)
         )
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
+
+    async def delete_by_repository(self, repository_id: int) -> int:
+        """Delete all files for a repository. Returns count deleted."""
+        result = await self.session.execute(
+            delete(FileModel).where(FileModel.repository_id == repository_id)
+        )
+        await self.session.flush()
+        return result.rowcount or 0  # type: ignore[attr-defined]

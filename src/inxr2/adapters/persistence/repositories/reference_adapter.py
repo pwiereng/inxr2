@@ -201,6 +201,14 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         )
         return result.scalar() or 0
 
+    async def delete_by_repository(self, repository_id: int) -> int:
+        """Delete all references for a repository. Returns count deleted."""
+        result = await self.session.execute(
+            delete(ReferenceModel).where(ReferenceModel.repository_id == repository_id)
+        )
+        await self.session.flush()
+        return result.rowcount or 0  # type: ignore[attr-defined]
+
     async def resolve_unlinked_references(
         self, repository_id: int, commit_aware: bool = False
     ) -> int:

@@ -14,6 +14,7 @@ from ....infrastructure.dependencies import (
     FileAdapter,
     GetRepositoryFilesUseCaseDep,
     GetRepositoryTreeUseCaseDep,
+    GitServiceDep,
     IndexStatusAdapter,
     ListRepositoriesUseCaseDep,
     ReferenceAdapter,
@@ -168,17 +169,25 @@ def _tree_node_to_response(node: TreeNode) -> TreeNodeResponse:
 async def get_repository_tree_by_name(
     name: str,
     use_case: GetRepositoryTreeUseCaseDep,
+    repo_adapter: RepositoryAdapter,
     commit: str | None = None,
+    branch: str | None = None,
 ) -> TreeResponse:
     """Get the file tree structure for a repository by name.
 
     Query parameters:
     - commit: Commit hash for time travel (optional). If provided, returns
               the tree as it existed at that specific commit.
+    - branch: Branch name (optional). If provided, resolves to latest
+              indexed commit for that branch.
+
+    Priority: commit > branch > default (latest)
     """
     try:
         response = await use_case.execute(
-            GetRepositoryTreeRequest(repository_name=name, commit_hash=commit)
+            GetRepositoryTreeRequest(
+                repository_name=name, commit_hash=commit, branch=branch
+            )
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -247,6 +256,7 @@ async def get_repository_tree(
     repository_id: int,
     use_case: GetRepositoryTreeUseCaseDep,
     commit: str | None = None,
+    branch: str | None = None,
 ) -> TreeResponse:
     """
     Get the file tree structure for a repository.
@@ -256,10 +266,16 @@ async def get_repository_tree(
     Query parameters:
     - commit: Commit hash for time travel (optional). If provided, returns
               the tree as it existed at that specific commit.
+    - branch: Branch name (optional). If provided, resolves to latest
+              indexed commit for that branch.
+
+    Priority: commit > branch > default (latest)
     """
     try:
         response = await use_case.execute(
-            GetRepositoryTreeRequest(repository_id=repository_id, commit_hash=commit)
+            GetRepositoryTreeRequest(
+                repository_id=repository_id, commit_hash=commit, branch=branch
+            )
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -317,35 +333,56 @@ async def get_repository_branches(
     repository_id: int,
     repo_adapter: RepositoryAdapter,
     index_status_adapter: IndexStatusAdapter,
+    git_service: GitServiceDep,
 ) -> BranchListResponse:
     """
-    Get indexed branches for a repository.
+    Get all branches for a repository.
 
-    Returns information about each branch including indexing status
-    and commit range (for time travel).
+    Fetches branches live from the git repository. For each branch,
+    also includes indexing status if the branch has been indexed.
     """
+    from pathlib import Path
+
     # Verify repository exists
     repository = await repo_adapter.find_by_id(repository_id)
     if not repository:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    # Get index status for all branches
-    statuses = await index_status_adapter.list_by_repository(repository_id)
+    # Get branches live from git
+    repo_path = Path(repository.url)
+    if not repo_path.exists():
+        raise HTTPException(
+            status_code=500,
+            detail=f"Repository path not found: {repository.url}",
+        )
 
-    return BranchListResponse(
-        branches=[
+    try:
+        branch_names = git_service.list_branches(repo_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # Get index status for all branches to include indexing info
+    statuses = await index_status_adapter.list_by_repository(repository_id)
+    status_by_branch = {
+        s.branch: s for s in statuses if s.indexing_status == "completed"
+    }
+
+    # Build response with branches from git, enriched with indexing info
+    branches = []
+    for branch_name in branch_names:
+        status = status_by_branch.get(branch_name)
+        branches.append(
             BranchInfoResponse(
-                name=status.branch,
-                last_indexed_commit=status.last_indexed_commit,
-                oldest_indexed_commit=status.oldest_indexed_commit,
-                commit_count=status.total_commits_indexed,
+                name=branch_name,
+                last_indexed_commit=status.last_indexed_commit if status else None,
+                oldest_indexed_commit=status.oldest_indexed_commit if status else None,
+                commit_count=status.total_commits_indexed if status else 0,
                 last_indexed_at=(
                     status.last_indexed_at.isoformat()
-                    if status.last_indexed_at
+                    if status and status.last_indexed_at
                     else None
                 ),
             )
-            for status in statuses
-            if status.indexing_status == "completed"
-        ]
-    )
+        )
+
+    return BranchListResponse(branches=branches)

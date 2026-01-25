@@ -194,3 +194,11 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
             )
         )
         return result.scalar() or 0
+
+    async def delete_by_repository(self, repository_id: int) -> int:
+        """Delete all symbols for a repository. Returns count deleted."""
+        result = await self.session.execute(
+            delete(SymbolModel).where(SymbolModel.repository_id == repository_id)
+        )
+        await self.session.flush()
+        return result.rowcount or 0  # type: ignore[attr-defined]

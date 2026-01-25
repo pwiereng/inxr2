@@ -63,10 +63,36 @@ class CommitRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def find_by_hash_and_branch(
+        self, repository_id: int, commit_hash: str, branch: str
+    ) -> Commit | None:
+        """Find commit by repository, hash, and branch.
+
+        This allows the same commit hash to exist for different branches,
+        which is necessary because branches share commit history.
+        """
+        pass
+
+    @abstractmethod
     async def list_by_repository(
         self, repository_id: int, branch: str | None = None, limit: int = 100
     ) -> list[Commit]:
         """List commits for a repository, optionally filtered by branch."""
+        pass
+
+    @abstractmethod
+    async def find_latest_by_branch(
+        self, repository_id: int, branch: str
+    ) -> Commit | None:
+        """Find the latest indexed commit for a specific branch.
+
+        Args:
+            repository_id: The repository ID
+            branch: The branch name
+
+        Returns:
+            The latest commit for the branch, or None if no commits found
+        """
         pass
 
 
@@ -118,11 +144,18 @@ class FileRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    async def list_versions_by_path(self, repository_id: int, path: str) -> list[File]:
+    async def list_versions_by_path(
+        self, repository_id: int, path: str, branch: str | None = None
+    ) -> list[File]:
         """List all versions of a file across commits (for time travel).
 
         Returns files with this path from different commits, ordered by
         commit date descending (newest first).
+
+        Args:
+            repository_id: The repository ID
+            path: The file path
+            branch: Optional branch name to filter versions by
         """
         pass
 

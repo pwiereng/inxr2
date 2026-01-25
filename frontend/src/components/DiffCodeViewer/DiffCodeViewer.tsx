@@ -23,8 +23,8 @@ import type { FileSymbol, FileReference } from '@/lib/api'
 interface DiffCodeViewerProps {
   leftContent: string
   rightContent: string
-  leftLabel: string
-  rightLabel: string
+  leftHeader: React.ReactNode
+  rightHeader: React.ReactNode
   language: string | null
   leftSymbols?: FileSymbol[]
   rightSymbols?: FileSymbol[]
@@ -129,8 +129,8 @@ interface ClickableSegment {
 export function DiffCodeViewer({
   leftContent,
   rightContent,
-  leftLabel,
-  rightLabel,
+  leftHeader,
+  rightHeader,
   language,
   leftSymbols = [],
   rightSymbols = [],
@@ -535,7 +535,7 @@ export function DiffCodeViewer({
   // Render a panel
   const renderPanel = (
     panel: 'left' | 'right',
-    label: string,
+    header: React.ReactNode,
     containerRef: React.RefObject<HTMLDivElement | null>,
     symbols: FileSymbol[],
     references: FileReference[]
@@ -551,9 +551,9 @@ export function DiffCodeViewer({
           minWidth: 0,
           borderLeft: panel === 'right' ? 1 : 0,
           borderColor: 'divider',
-          outline: isActive ? '2px solid' : 'none',
-          outlineColor: 'primary.main',
-          outlineOffset: '-2px',
+          outline: isActive ? '1px solid' : 'none',
+          outlineColor: 'primary.light',
+          outlineOffset: '-1px',
         }}
         onClick={() => onPanelClick(panel)}
       >
@@ -562,24 +562,28 @@ export function DiffCodeViewer({
           sx={{
             px: 2,
             py: 0.5,
-            bgcolor: isActive ? 'primary.dark' : 'background.paper',
+            bgcolor: isActive ? 'action.selected' : 'background.paper',
             borderBottom: 1,
-            borderColor: 'divider',
+            borderColor: isActive ? 'primary.light' : 'divider',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            gap: 1,
           }}
         >
-          <Typography
-            variant="caption"
+          <Box
             sx={{
-              fontFamily: 'monospace',
-              fontWeight: isActive ? 600 : 400,
-              color: isActive ? 'primary.contrastText' : 'text.secondary',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              flex: 1,
+              minWidth: 0, // Allow shrinking below content size
+              overflow: 'hidden',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
-            {label}
-          </Typography>
+            {header}
+          </Box>
           <IconButton
             size="small"
             onClick={(e) => {
@@ -588,7 +592,8 @@ export function DiffCodeViewer({
             }}
             sx={{
               p: 0.25,
-              color: isActive ? 'primary.contrastText' : 'text.secondary',
+              flexShrink: 0, // Never shrink the close button
+              color: isActive ? 'primary.main' : 'text.secondary',
               '&:hover': { bgcolor: 'action.hover' },
             }}
           >
@@ -750,8 +755,8 @@ export function DiffCodeViewer({
 
       {/* Diff panels */}
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {renderPanel('left', leftLabel, leftContainerRef, leftSymbols, leftReferences)}
-        {renderPanel('right', rightLabel, rightContainerRef, rightSymbols, rightReferences)}
+        {renderPanel('left', leftHeader, leftContainerRef, leftSymbols, leftReferences)}
+        {renderPanel('right', rightHeader, rightContainerRef, rightSymbols, rightReferences)}
       </Box>
     </Box>
   )

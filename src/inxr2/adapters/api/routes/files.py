@@ -97,6 +97,46 @@ class FileHistoryResponse(BaseModel):
     total: int
 
 
+async def _resolve_commit_for_branch(
+    commit_adapter: CommitAdapter,
+    repository_id: int,
+    branch: str | None,
+    default_branch: str,
+) -> str | None:
+    """Resolve branch to its latest indexed commit hash.
+
+    Args:
+        commit_adapter: Commit repository adapter
+        repository_id: Repository ID
+        branch: Branch name to resolve, or None
+        default_branch: Repository's default branch name
+
+    Returns:
+        Commit hash if found, None otherwise
+
+    Note:
+        If the requested branch has no indexed commits (e.g., a merged branch
+        where we only index delta commits), falls back to the default branch.
+    """
+    if not branch:
+        return None
+
+    # Resolve branch to latest indexed commit
+    commit = await commit_adapter.find_latest_by_branch(repository_id, branch)
+    if commit:
+        return commit.commit_hash.value
+
+    # Branch has no indexed commits - fall back to default branch
+    # This handles merged branches where delta indexing found no unique commits
+    if branch != default_branch:
+        commit = await commit_adapter.find_latest_by_branch(
+            repository_id, default_branch
+        )
+        return commit.commit_hash.value if commit else None
+
+    return None
+
+
 @router.get("/by-path", response_model=FileContentResponse)
 async def get_file_content_by_path(
     repo: str,
@@ -106,6 +146,7 @@ async def get_file_content_by_path(
     commit_adapter: CommitAdapter,
     git_service: GitServiceDep,
     commit: str | None = None,
+    branch: str | None = None,
 ) -> FileContentResponse:
     """
     Get file content by repository name and file path.
@@ -114,6 +155,9 @@ async def get_file_content_by_path(
     - repo: Repository name
     - path: File path within the repository
     - commit: Commit hash (optional, defaults to latest version for time travel)
+    - branch: Branch name (optional, resolves to latest indexed commit for branch)
+
+    Priority: commit > branch > default (latest)
     """
     # Validate inputs to prevent path traversal and injection
     repo = validate_repo_name(repo)
@@ -126,7 +170,10 @@ async def get_file_content_by_path(
 
     repository_id = repository.id if repository.id is not None else 0
 
-    # Get file by repository and path (and optionally commit)
+    # Get file by repository and path
+    # Priority: explicit commit > branch (latest file on branch) > default (latest)
+    file = None
+
     if commit:
         # Time travel mode: get file at specific commit
         file = await file_adapter.find_by_repository_path_and_commit_hash(
@@ -137,8 +184,25 @@ async def get_file_content_by_path(
                 status_code=404,
                 detail=f"File not found at commit {commit}",
             )
+    elif branch:
+        # Branch mode: get latest version of file on this branch
+        versions = await file_adapter.list_versions_by_path(repository_id, path, branch)
+        if versions:
+            file = versions[0]  # Most recent version on this branch
+        else:
+            # Branch has no indexed data for this file
+            # Don't silently fall back - inform the user explicitly
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"File '{path}' not found on branch '{branch}'. "
+                    f"This branch may not have indexed data for this file. "
+                    f"Try the default branch '{repository.default_branch}' or "
+                    f"remove the branch parameter to use the latest indexed version."
+                ),
+            )
     else:
-        # Default: get latest version
+        # Default: get latest version across all branches
         file = await file_adapter.find_by_repository_and_path(repository_id, path)
         if not file:
             raise HTTPException(status_code=404, detail="File not found")
@@ -192,6 +256,7 @@ async def get_file_history(
     repo_adapter: RepositoryAdapter,
     file_adapter: FileAdapter,
     commit_adapter: CommitAdapter,
+    branch: str | None = None,
 ) -> FileHistoryResponse:
     """
     Get the version history of a file (for time travel).
@@ -199,6 +264,7 @@ async def get_file_history(
     Query parameters:
     - repo: Repository name
     - path: File path within the repository
+    - branch: Branch name (optional, filters history to specific branch)
 
     Returns all indexed versions of the file, ordered by commit date (newest first).
     """
@@ -213,8 +279,16 @@ async def get_file_history(
 
     repository_id = repository.id if repository.id is not None else 0
 
-    # Get all versions of this file
-    files = await file_adapter.list_versions_by_path(repository_id, path)
+    # Get all versions of this file (optionally filtered by branch)
+    files = await file_adapter.list_versions_by_path(repository_id, path, branch)
+
+    # If no files found for this branch, fall back to default branch
+    # This handles merged branches where delta indexing found no unique commits
+    if not files and branch and branch != repository.default_branch:
+        files = await file_adapter.list_versions_by_path(
+            repository_id, path, repository.default_branch
+        )
+
     if not files:
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -256,7 +330,9 @@ async def get_file_symbols_by_path(
     repo_adapter: RepositoryAdapter,
     file_adapter: FileAdapter,
     symbol_adapter: SymbolAdapter,
+    commit_adapter: CommitAdapter,
     commit: str | None = None,
+    branch: str | None = None,
 ) -> FileSymbolsResponse:
     """
     Get symbols for a file by repository name and file path.
@@ -265,6 +341,9 @@ async def get_file_symbols_by_path(
     - repo: Repository name
     - path: File path within the repository
     - commit: Commit hash (optional, defaults to latest version for time travel)
+    - branch: Branch name (optional, resolves to latest indexed commit for branch)
+
+    Priority: commit > branch > default (latest)
     """
     # Validate inputs to prevent path traversal and injection
     repo = validate_repo_name(repo)
@@ -277,7 +356,10 @@ async def get_file_symbols_by_path(
 
     repository_id = repository.id if repository.id is not None else 0
 
-    # Get file by repository and path (and optionally commit)
+    # Get file by repository and path
+    # Priority: explicit commit > branch (latest file on branch) > default (latest)
+    file = None
+
     if commit:
         # Time travel mode: get file at specific commit
         file = await file_adapter.find_by_repository_path_and_commit_hash(
@@ -288,8 +370,25 @@ async def get_file_symbols_by_path(
                 status_code=404,
                 detail=f"File not found at commit {commit}",
             )
+    elif branch:
+        # Branch mode: get latest version of file on this branch
+        versions = await file_adapter.list_versions_by_path(repository_id, path, branch)
+        if versions:
+            file = versions[0]  # Most recent version on this branch
+        else:
+            # Branch has no indexed data for this file
+            # Don't silently fall back - inform the user explicitly
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"File '{path}' not found on branch '{branch}'. "
+                    f"This branch may not have indexed data for this file. "
+                    f"Try the default branch '{repository.default_branch}' or "
+                    f"remove the branch parameter to use the latest indexed version."
+                ),
+            )
     else:
-        # Default: get latest version
+        # Default: get latest version across all branches
         file = await file_adapter.find_by_repository_and_path(repository_id, path)
         if not file:
             raise HTTPException(status_code=404, detail="File not found")
@@ -327,7 +426,9 @@ async def get_file_references_by_path(
     repo_adapter: RepositoryAdapter,
     file_adapter: FileAdapter,
     ref_adapter: ReferenceAdapter,
+    commit_adapter: CommitAdapter,
     commit: str | None = None,
+    branch: str | None = None,
 ) -> FileReferencesResponse:
     """
     Get references from a file by repository name and file path.
@@ -336,6 +437,9 @@ async def get_file_references_by_path(
     - repo: Repository name
     - path: File path within the repository
     - commit: Commit hash (optional, defaults to latest version for time travel)
+    - branch: Branch name (optional, resolves to latest indexed commit for branch)
+
+    Priority: commit > branch > default (latest)
     """
     # Validate inputs to prevent path traversal and injection
     repo = validate_repo_name(repo)
@@ -348,7 +452,10 @@ async def get_file_references_by_path(
 
     repository_id = repository.id if repository.id is not None else 0
 
-    # Get file by repository and path (and optionally commit)
+    # Get file by repository and path
+    # Priority: explicit commit > branch (latest file on branch) > default (latest)
+    file = None
+
     if commit:
         # Time travel mode: get file at specific commit
         file = await file_adapter.find_by_repository_path_and_commit_hash(
@@ -359,8 +466,25 @@ async def get_file_references_by_path(
                 status_code=404,
                 detail=f"File not found at commit {commit}",
             )
+    elif branch:
+        # Branch mode: get latest version of file on this branch
+        versions = await file_adapter.list_versions_by_path(repository_id, path, branch)
+        if versions:
+            file = versions[0]  # Most recent version on this branch
+        else:
+            # Branch has no indexed data for this file
+            # Don't silently fall back - inform the user explicitly
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"File '{path}' not found on branch '{branch}'. "
+                    f"This branch may not have indexed data for this file. "
+                    f"Try the default branch '{repository.default_branch}' or "
+                    f"remove the branch parameter to use the latest indexed version."
+                ),
+            )
     else:
-        # Default: get latest version
+        # Default: get latest version across all branches
         file = await file_adapter.find_by_repository_and_path(repository_id, path)
         if not file:
             raise HTTPException(status_code=404, detail="File not found")

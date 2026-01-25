@@ -221,10 +221,12 @@ export async function getRepositoryByName(name: string): Promise<Repository> {
 
 export async function getRepositoryTreeByName(
   name: string,
-  commit?: string
+  commit?: string,
+  branch?: string
 ): Promise<TreeResponse> {
   const params = new URLSearchParams()
   if (commit) params.set('commit', commit)
+  if (branch) params.set('branch', branch)
   const query = params.toString()
   return fetchApi<TreeResponse>(
     `/repositories/by-name/${encodeURIComponent(name)}/tree${query ? `?${query}` : ''}`
@@ -300,20 +302,24 @@ export async function getFileContentByPath(repo: string, path: string): Promise<
 export async function getFileSymbolsByPath(
   repo: string,
   path: string,
-  commit?: string
+  commit?: string,
+  branch?: string
 ): Promise<FileSymbolsResponse> {
   const params = new URLSearchParams({ repo, path })
   if (commit) params.set('commit', commit)
+  if (branch) params.set('branch', branch)
   return fetchApi<FileSymbolsResponse>(`/files/by-path/symbols?${params}`)
 }
 
 export async function getFileReferencesByPath(
   repo: string,
   path: string,
-  commit?: string
+  commit?: string,
+  branch?: string
 ): Promise<FileReferencesResponse> {
   const params = new URLSearchParams({ repo, path })
   if (commit) params.set('commit', commit)
+  if (branch) params.set('branch', branch)
   return fetchApi<FileReferencesResponse>(`/files/by-path/references?${params}`)
 }
 
@@ -333,17 +339,24 @@ export async function getRepositoryBranches(repoId: number): Promise<BranchListR
   return fetchApi<BranchListResponse>(`/repositories/${repoId}/branches`)
 }
 
-export async function getFileHistory(repo: string, path: string): Promise<FileHistoryResponse> {
+export async function getFileHistory(
+  repo: string,
+  path: string,
+  branch?: string
+): Promise<FileHistoryResponse> {
   const params = new URLSearchParams({ repo, path })
+  if (branch) params.set('branch', branch)
   return fetchApi<FileHistoryResponse>(`/files/history?${params}`)
 }
 
 export async function getFileContentByPathAtCommit(
   repo: string,
   path: string,
-  commit?: string
+  commit?: string,
+  branch?: string
 ): Promise<FileContent> {
   const params = new URLSearchParams({ repo, path })
   if (commit) params.set('commit', commit)
+  if (branch) params.set('branch', branch)
   return fetchApi<FileContent>(`/files/by-path?${params}`)
 }

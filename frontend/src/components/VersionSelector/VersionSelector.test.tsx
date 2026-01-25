@@ -169,8 +169,8 @@ describe('VersionSelector', () => {
       const options = screen.getAllByRole('option')
       fireEvent.click(options[0]!)
 
-      // Should call with null for latest version
-      expect(onVersionChange).toHaveBeenCalledWith(null)
+      // Should call with the commit hash (for URL bookmarkability)
+      expect(onVersionChange).toHaveBeenCalledWith('ccc1234567890abcdef1234567890abcdef123456')
     })
 
     it('should call onVersionChange with commit hash when selecting older version', async () => {
@@ -326,14 +326,14 @@ describe('VersionSelector', () => {
       const { rerender } = render(<VersionSelector {...defaultProps} />)
 
       await waitFor(() => {
-        expect(mockGetFileHistory).toHaveBeenCalledWith('test-repo', 'src/main.py')
+        expect(mockGetFileHistory).toHaveBeenCalledWith('test-repo', 'src/main.py', undefined)
       })
 
       // Change filePath
       rerender(<VersionSelector {...defaultProps} filePath="src/other.py" />)
 
       await waitFor(() => {
-        expect(mockGetFileHistory).toHaveBeenCalledWith('test-repo', 'src/other.py')
+        expect(mockGetFileHistory).toHaveBeenCalledWith('test-repo', 'src/other.py', undefined)
       })
 
       expect(mockGetFileHistory).toHaveBeenCalledTimes(2)

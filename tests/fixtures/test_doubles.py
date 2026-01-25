@@ -297,13 +297,35 @@ class InMemoryFileRepository(FileRepositoryPort):
                 return file
         return None
 
-    async def list_versions_by_path(self, repository_id: int, path: str) -> list[File]:
-        """List all versions of a file across commits (for time travel)."""
-        return [
+    async def list_versions_by_path(
+        self, repository_id: int, path: str, branch: str | None = None
+    ) -> list[File]:
+        """List all versions of a file across commits (for time travel).
+
+        Args:
+            repository_id: The repository ID
+            path: The file path
+            branch: Optional branch to filter by (requires commit_repo)
+        """
+        files = [
             f
             for f in self._files.values()
             if f.repository_id == repository_id and f.path == path
         ]
+
+        # If branch filter specified and we have a commit repo, filter by branch
+        if branch is not None and self._commit_repo is not None:
+            branch_commit_ids: set[int] = set()
+            for commit in self._commit_repo._commits.values():
+                if (
+                    commit.repository_id == repository_id
+                    and commit.branch == branch
+                    and commit.id is not None
+                ):
+                    branch_commit_ids.add(commit.id)
+            files = [f for f in files if f.commit_id in branch_commit_ids]
+
+        return files
 
     async def find_by_repository_path_and_commit_hash(
         self, repository_id: int, path: str, commit_hash: str
@@ -481,6 +503,19 @@ class InMemoryCommitRepository(CommitRepositoryPort):
                 return commit
         return None
 
+    async def find_by_hash_and_branch(
+        self, repository_id: int, commit_hash: str, branch: str
+    ) -> Commit | None:
+        """Find commit by repository, hash, and branch."""
+        for commit in self._commits.values():
+            if (
+                commit.repository_id == repository_id
+                and commit.commit_hash.value == commit_hash
+                and commit.branch == branch
+            ):
+                return commit
+        return None
+
     async def list_by_repository(
         self, repository_id: int, branch: str | None = None, limit: int = 100
     ) -> list[Commit]:
@@ -493,6 +528,21 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         # Sort by commit date descending
         commits.sort(key=lambda c: c.commit_date, reverse=True)
         return commits[:limit]
+
+    async def find_latest_by_branch(
+        self, repository_id: int, branch: str
+    ) -> Commit | None:
+        """Find the latest indexed commit for a specific branch."""
+        commits = [
+            c
+            for c in self._commits.values()
+            if c.repository_id == repository_id and c.branch == branch
+        ]
+        if not commits:
+            return None
+        # Sort by commit date descending and return the first (latest)
+        commits.sort(key=lambda c: c.commit_date, reverse=True)
+        return commits[0]
 
     def clear(self) -> None:
         """Clear all commits."""
