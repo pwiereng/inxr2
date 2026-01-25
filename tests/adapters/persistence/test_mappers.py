@@ -74,23 +74,25 @@ class TestRepositoryMapper:
 
 
 class TestCommitMapper:
-    """Test CommitMapper bidirectional conversion."""
+    """Test CommitMapper bidirectional conversion.
+
+    Design note: Only essential data is stored. Author info, message, and
+    parent hashes are queried from git on-demand. See ARCHITECTURAL_REVIEW.md.
+    """
 
     def test_to_model_converts_entity_to_orm_model(self):
         """Test converting Commit entity to CommitModel."""
         entity = CommitFactory.create(
             repository_id=1,
             commit_hash="a" * 40,
-            author_name="Test Author",
-            message="Test commit",
         )
 
         model = CommitMapper.to_model(entity)
 
         assert model.repository_id == entity.repository_id
         assert model.commit_hash == entity.commit_hash.value
-        assert model.author_name == entity.author_name
-        assert model.message == entity.message
+        assert model.author_date == entity.author_date
+        assert model.commit_date == entity.commit_date
 
     def test_to_domain_converts_orm_model_to_entity(self):
         """Test converting CommitModel to Commit entity."""
@@ -100,14 +102,8 @@ class TestCommitMapper:
             id=1,
             repository_id=1,
             commit_hash="a" * 40,
-            short_hash="aaaaaaa",
-            author_name="Test Author",
-            author_email="author@test.com",
-            committer_name="Test Committer",
-            committer_email="committer@test.com",
             author_date=datetime.utcnow(),
             commit_date=datetime.utcnow(),
-            message="Test commit",
         )
 
         entity = CommitMapper.to_domain(model)
@@ -115,8 +111,8 @@ class TestCommitMapper:
         assert entity.id == model.id
         assert entity.repository_id == model.repository_id
         assert entity.commit_hash.value == model.commit_hash
-        assert entity.author_name == model.author_name
-        assert entity.message == model.message
+        assert entity.author_date == model.author_date
+        assert entity.commit_date == model.commit_date
 
     def test_commit_hash_value_object_handled_correctly(self):
         """Test that CommitHash value object is properly converted."""
@@ -126,6 +122,12 @@ class TestCommitMapper:
 
         assert model.commit_hash == entity.commit_hash.value
         assert len(model.commit_hash) == 40
+
+    def test_short_hash_computed_property(self):
+        """Test that short_hash is computed from commit_hash."""
+        entity = CommitFactory.create(commit_hash="abc1234567890" + "0" * 27)
+
+        assert entity.short_hash == "abc1234"
 
 
 class TestFileMapper:

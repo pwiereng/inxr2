@@ -58,7 +58,11 @@ class RepositoryMapper:
 
 
 class CommitMapper:
-    """Maps between Commit entity and CommitModel."""
+    """Maps between Commit entity and CommitModel.
+
+    Design note: Only essential data is stored in DB. Author info, message,
+    and parent hashes are queried from git on-demand. See ARCHITECTURAL_REVIEW.md.
+    """
 
     @staticmethod
     def to_domain(model: CommitModel) -> Commit:
@@ -67,15 +71,8 @@ class CommitMapper:
             id=model.id,
             repository_id=model.repository_id,
             commit_hash=CommitHash(value=model.commit_hash),
-            short_hash=model.short_hash,
-            parent_hashes=model.parent_hashes,
-            author_name=model.author_name,
-            author_email=model.author_email,
-            committer_name=model.committer_name,
-            committer_email=model.committer_email,
             author_date=model.author_date,
             commit_date=model.commit_date,
-            message=model.message,
             indexed_at=model.indexed_at,
         )
 
@@ -86,15 +83,8 @@ class CommitMapper:
             id=entity.id,
             repository_id=entity.repository_id,
             commit_hash=entity.commit_hash.value,
-            short_hash=entity.short_hash or entity.commit_hash.short(),
-            parent_hashes=entity.parent_hashes,
-            author_name=entity.author_name,
-            author_email=entity.author_email,
-            committer_name=entity.committer_name,
-            committer_email=entity.committer_email,
             author_date=entity.author_date,
             commit_date=entity.commit_date,
-            message=entity.message,
             indexed_at=entity.indexed_at or datetime.utcnow(),
         )
 

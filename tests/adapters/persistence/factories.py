@@ -41,20 +41,16 @@ class CommitFactory:
 
         Note: Branch information is no longer stored on the Commit entity.
         Use CommitRepositoryPort.link_commit_to_branch() to associate commits with branches.
+
+        Design note: Author info, message, and parent hashes are NOT stored.
+        They are queried from git on-demand. See ARCHITECTURAL_REVIEW.md.
         """
         return Commit(
             repository_id=repository_id,
             commit_hash=CommitHash(value=commit_hash),
-            author_name=kwargs.get("author_name", "Test Author"),
-            author_email=kwargs.get("author_email", "author@test.com"),
-            committer_name=kwargs.get("committer_name", "Test Committer"),
-            committer_email=kwargs.get("committer_email", "committer@test.com"),
             author_date=kwargs.get("author_date", datetime.utcnow()),
             commit_date=kwargs.get("commit_date", datetime.utcnow()),
-            message=kwargs.get("message", "Test commit message"),
             id=kwargs.get("id"),
-            short_hash=kwargs.get("short_hash", commit_hash[:7]),
-            parent_hashes=kwargs.get("parent_hashes"),
             indexed_at=kwargs.get("indexed_at"),
         )
 

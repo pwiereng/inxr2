@@ -392,18 +392,12 @@ async def _run_full_index_async(
                         repo_id, commit_hash
                     )
                     if db_commit is None:
+                        # Note: Author info, message, parent_hashes are NOT stored.
+                        # They are queried from git on-demand. See ARCHITECTURAL_REVIEW.md.
                         db_commit = await commit_repository.save(
                             Commit(
                                 repository_id=repo_id,
                                 commit_hash=CommitHash(value=commit_hash),
-                                short_hash=short_hash,
-                                parent_hashes=commit_info.get("parent_hashes", []),
-                                author_name=commit_info.get("author_name", "unknown"),
-                                author_email=commit_info.get("author_email", ""),
-                                committer_name=commit_info.get(
-                                    "committer_name", "unknown"
-                                ),
-                                committer_email=commit_info.get("committer_email", ""),
                                 author_date=_to_naive_utc(
                                     commit_info.get("author_date")
                                 )
@@ -412,7 +406,6 @@ async def _run_full_index_async(
                                     commit_info.get("commit_date")
                                 )
                                 or _utc_now(),
-                                message=commit_info.get("message", ""),
                             )
                         )
                     if db_commit.id is None:
@@ -735,21 +728,16 @@ async def _run_incremental_index_async(
 
             db_commit = await commit_repository.find_by_hash(repo_id, current_commit)
             if db_commit is None:
+                # Note: Author info, message, parent_hashes are NOT stored.
+                # They are queried from git on-demand. See ARCHITECTURAL_REVIEW.md.
                 db_commit = await commit_repository.save(
                     Commit(
                         repository_id=repo_id,
                         commit_hash=CommitHash(value=current_commit),
-                        short_hash=current_commit[:7],
-                        parent_hashes=commit_info.get("parent_hashes", []),
-                        author_name=commit_info.get("author_name", "unknown"),
-                        author_email=commit_info.get("author_email", ""),
-                        committer_name=commit_info.get("committer_name", "unknown"),
-                        committer_email=commit_info.get("committer_email", ""),
                         author_date=_to_naive_utc(commit_info.get("author_date"))
                         or _utc_now(),
                         commit_date=_to_naive_utc(commit_info.get("commit_date"))
                         or _utc_now(),
-                        message=commit_info.get("message", ""),
                     )
                 )
 

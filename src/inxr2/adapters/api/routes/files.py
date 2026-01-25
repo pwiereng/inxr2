@@ -256,6 +256,7 @@ async def get_file_history(
     repo_adapter: RepositoryAdapter,
     file_adapter: FileAdapter,
     commit_adapter: CommitAdapter,
+    git_service: GitServiceDep,
     branch: str | None = None,
 ) -> FileHistoryResponse:
     """
@@ -267,6 +268,8 @@ async def get_file_history(
     - branch: Branch name (optional, filters history to specific branch)
 
     Returns all indexed versions of the file, ordered by commit date (newest first).
+
+    Note: Commit messages are hydrated from git on-demand.
     """
     # Validate inputs
     repo = validate_repo_name(repo)
@@ -278,6 +281,7 @@ async def get_file_history(
         raise HTTPException(status_code=404, detail="Repository not found")
 
     repository_id = repository.id if repository.id is not None else 0
+    repo_path = Path(repository.url)  # url contains local path for indexed repos
 
     # Get all versions of this file (optionally filtered by branch)
     files = await file_adapter.list_versions_by_path(repository_id, path, branch)
@@ -292,25 +296,31 @@ async def get_file_history(
     if not files:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Get commit info for each version
+    # Get commit info for each version, hydrating message from git
     versions = []
     for file in files:
         commit_record = await commit_adapter.find_by_id(file.commit_id)
         if commit_record:
+            # Hydrate message from git
+            try:
+                git_info = git_service.get_commit_info(
+                    repo_path, commit_record.commit_hash.value
+                )
+                message = git_info.get("message", "")[:100]
+            except Exception:
+                message = ""
+
             versions.append(
                 FileVersionResponse(
                     commit_id=commit_record.id or 0,
                     commit_hash=commit_record.commit_hash.value,
-                    short_hash=commit_record.short_hash
-                    or commit_record.commit_hash.value[:7],
+                    short_hash=commit_record.short_hash,
                     commit_date=(
                         commit_record.commit_date.isoformat()
                         if commit_record.commit_date
                         else ""
                     ),
-                    message=(
-                        commit_record.message[:100] if commit_record.message else ""
-                    ),
+                    message=message,
                     content_hash=file.content_hash or "",
                 )
             )

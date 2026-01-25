@@ -111,17 +111,14 @@ class IndexLocalDirectoryUseCase:
         assert saved_repo.id is not None, "Repository ID must be set after save"
 
         # 2. Create dummy commit (for local indexing)
+        # Note: Author info and message are NOT stored - queried from git on-demand.
+        # For local directories without git, this info is not available anyway.
         commit_hash = self._generate_local_commit_hash(request.path)
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash(commit_hash),
-            author_name="local",
-            author_email="local@localhost",
-            committer_name="local",
-            committer_email="local@localhost",
             author_date=datetime.utcnow(),
             commit_date=datetime.utcnow(),
-            message="Local directory index",
         )
         saved_commit = await self._commit_repo.save(commit)
         assert saved_commit.id is not None, "Commit ID must be set after save"

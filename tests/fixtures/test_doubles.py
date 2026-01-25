@@ -460,6 +460,8 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         if commit.id is None:
             from inxr2.domain.value_objects import CommitHash
 
+            # Design note: Only essential data is stored. Author info, message,
+            # and parent hashes are queried from git on-demand.
             commit = Commit(
                 id=self._next_id,
                 repository_id=commit.repository_id,
@@ -468,15 +470,8 @@ class InMemoryCommitRepository(CommitRepositoryPort):
                     if isinstance(commit.commit_hash, CommitHash)
                     else CommitHash(commit.commit_hash)
                 ),
-                short_hash=commit.short_hash,
-                parent_hashes=commit.parent_hashes,
-                author_name=commit.author_name,
-                author_email=commit.author_email,
-                committer_name=commit.committer_name,
-                committer_email=commit.committer_email,
                 author_date=commit.author_date,
                 commit_date=commit.commit_date,
-                message=commit.message,
                 indexed_at=commit.indexed_at,
             )
             self._next_id += 1

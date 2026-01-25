@@ -247,9 +247,8 @@ class TestIndexLocalDirectoryUseCase:
 
         commit = commits[0]
         assert commit.repository_id == result.repository_id
-        assert commit.author_name == "local"
-        assert commit.message == "Local directory index"
-        assert commit.parent_hashes is None or commit.parent_hashes == []
+        # Note: Author info/message are NOT stored - queried from git on-demand
+        assert commit.commit_hash is not None
 
         # Verify commit is linked to "local" branch
         branches = await commit_repo.get_branches_for_commit(commit.id)

@@ -113,7 +113,11 @@ class TestPostgresRepositoryAdapter:
 
 @pytest.mark.asyncio
 class TestPostgresCommitRepository:
-    """Tests for PostgresCommitRepository adapter."""
+    """Tests for PostgresCommitRepository adapter.
+
+    Design note: Only essential data is stored. Author info, message, and
+    parent hashes are queried from git on-demand. See ARCHITECTURAL_REVIEW.md.
+    """
 
     async def test_save_and_find_commit(self, db_session: AsyncSession) -> None:
         """Test saving and retrieving a commit."""
@@ -126,15 +130,8 @@ class TestPostgresCommitRepository:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("abc123" + "0" * 34),
-            short_hash="abc123",
-            parent_hashes=None,
-            author_name="Test Author",
-            author_email="test@example.com",
-            committer_name="Test Author",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1, 12, 0, 0),
             commit_date=datetime(2025, 1, 1, 12, 0, 0),
-            message="Test commit",
         )
 
         # Act
@@ -145,7 +142,7 @@ class TestPostgresCommitRepository:
         assert found_commit is not None
         assert found_commit.id == saved_commit.id
         assert found_commit.commit_hash.value == "abc123" + "0" * 34
-        assert found_commit.message == "Test commit"
+        assert found_commit.short_hash == "abc1230"  # Computed property
 
     async def test_save_many_commits(self, db_session: AsyncSession) -> None:
         """Test bulk saving commits."""
@@ -159,14 +156,8 @@ class TestPostgresCommitRepository:
             Commit(
                 repository_id=saved_repo.id,
                 commit_hash=CommitHash(f"commit{i}" + "0" * 33),
-                short_hash=f"commit{i}",
-                author_name="Author",
-                author_email="author@example.com",
-                committer_name="Author",
-                committer_email="author@example.com",
                 author_date=datetime(2025, 1, i + 1),
                 commit_date=datetime(2025, 1, i + 1),
-                message=f"Commit {i}",
             )
             for i in range(3)
         ]
@@ -191,13 +182,8 @@ class TestPostgresCommitRepository:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash(commit_hash),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         await commit_adapter.save(commit)
 
@@ -220,13 +206,8 @@ class TestPostgresCommitRepository:
             Commit(
                 repository_id=saved_repo.id,
                 commit_hash=CommitHash(f"hash{i}" + "0" * 35),
-                author_name="Author",
-                author_email="author@example.com",
-                committer_name="Author",
-                committer_email="author@example.com",
                 author_date=datetime(2025, 1, i + 1),
                 commit_date=datetime(2025, 1, i + 1),
-                message=f"Commit {i}",
             )
             for i in range(5)
         ]
@@ -260,13 +241,8 @@ class TestPostgresFileRepository:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("abc123" + "0" * 34),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -303,13 +279,8 @@ class TestPostgresFileRepository:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("abc123" + "0" * 34),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -346,13 +317,8 @@ class TestPostgresFileRepository:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("abc123" + "0" * 34),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -389,13 +355,8 @@ class TestPostgresFileRepository:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("abc123" + "0" * 34),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -429,13 +390,8 @@ class TestPostgresFileRepository:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("abc123" + "0" * 34),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -469,13 +425,8 @@ class TestPostgresFileRepository:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("abc123" + "0" * 34),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -513,13 +464,8 @@ class TestPostgresFileRepository:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("findpath" + "0" * 32),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -584,13 +530,8 @@ class TestPostgresFileRepository:
         old_commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("oldcommit" + "0" * 31),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Old commit",
         )
         saved_old_commit = await commit_adapter.save(old_commit)
 
@@ -598,13 +539,8 @@ class TestPostgresFileRepository:
         new_commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("newcommit" + "0" * 31),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 2),
             commit_date=datetime(2025, 1, 2),
-            message="New commit",
         )
         saved_new_commit = await commit_adapter.save(new_commit)
 
@@ -659,13 +595,8 @@ class TestPostgresSymbolRepository:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("symtest" + "0" * 33),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -787,13 +718,8 @@ class TestPostgresReferenceRepository:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("reftest" + "0" * 33),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -911,13 +837,8 @@ class TestPostgresReferenceRepository:
         old_commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("oldref00" + "0" * 32),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Old commit",
         )
         saved_old_commit = await commit_adapter.save(old_commit)
 
@@ -948,13 +869,8 @@ class TestPostgresReferenceRepository:
         new_commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash("newref00" + "0" * 32),
-            author_name="Author",
-            author_email="author@example.com",
-            committer_name="Author",
-            committer_email="author@example.com",
             author_date=datetime(2025, 1, 2),
             commit_date=datetime(2025, 1, 2),
-            message="New commit",
         )
         saved_new_commit = await commit_adapter.save(new_commit)
 

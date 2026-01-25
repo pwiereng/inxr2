@@ -144,15 +144,8 @@ class TestGetRepositoryFilesUseCase:
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("abc123" + "0" * 34),
-                short_hash="abc123",
-                parent_hashes=[],
-                author_name="Test Author",
-                author_email="test@example.com",
-                committer_name="Test Author",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1, 12, 0, 0),
                 commit_date=datetime(2025, 1, 1, 12, 0, 0),
-                message="Test commit",
             )
         )
 
@@ -232,30 +225,16 @@ class TestGetRepositoryFilesUseCase:
             Commit(
                 repository_id=repo1.id,
                 commit_hash=CommitHash("abc123" + "0" * 34),
-                short_hash="abc123",
-                parent_hashes=[],
-                author_name="Test Author",
-                author_email="test@example.com",
-                committer_name="Test Author",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="Commit 1",
             )
         )
         commit2 = await commit_repository.save(
             Commit(
                 repository_id=repo2.id,
                 commit_hash=CommitHash("def456" + "0" * 34),
-                short_hash="def456",
-                parent_hashes=[],
-                author_name="Test Author",
-                author_email="test@example.com",
-                committer_name="Test Author",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="Commit 2",
             )
         )
 
@@ -374,15 +353,8 @@ class TestGetRepositoryTreeUseCase:
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("abc123" + "0" * 34),
-                short_hash="abc123",
-                parent_hashes=[],
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="Test commit",
             )
         )
 
@@ -457,15 +429,8 @@ class TestGetRepositoryTreeUseCase:
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("abc123" + "0" * 34),
-                short_hash="abc123",
-                parent_hashes=[],
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="Test commit",
             )
         )
 
@@ -529,15 +494,8 @@ class TestGetRepositoryTreeUseCase:
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("abc123" + "0" * 34),
-                short_hash="abc123",
-                parent_hashes=[],
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="Test commit",
             )
         )
 
@@ -587,30 +545,16 @@ class TestGetRepositoryTreeUseCase:
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("aaa111" + "0" * 34),
-                short_hash="aaa111",
-                parent_hashes=[],
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="First commit",
             )
         )
         commit2 = await commit_repository.save(
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("bbb222" + "0" * 34),
-                short_hash="bbb222",
-                parent_hashes=["aaa111" + "0" * 34],
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 2),
                 commit_date=datetime(2025, 1, 2),
-                message="Second commit",
             )
         )
 

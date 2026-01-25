@@ -137,13 +137,8 @@ class TestRepositoriesAPI:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("abc123"),
-            author_name="Test Author",
-            author_email="test@example.com",
-            committer_name="Test Author",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test commit",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -244,13 +239,8 @@ class TestRepositoriesAPI:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("tree123"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -361,13 +351,8 @@ class TestRepositoriesAPI:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("treename"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -435,13 +420,8 @@ class TestRepositoriesAPI:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("stats12"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -511,13 +491,8 @@ class TestSymbolsAPI:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("symbols"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -968,13 +943,8 @@ class TestFilesAPI:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("filesym"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -1071,13 +1041,8 @@ class TestFilesAPI:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("fileref"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -1207,13 +1172,8 @@ class TestFilesAPI:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("sympath"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -1292,13 +1252,8 @@ class TestFilesAPI:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("refpath"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Test",
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -1550,24 +1505,14 @@ class TestCommitsAPI:
             Commit(
                 repository_id=saved_repo.id,
                 commit_hash=make_test_commit_hash("commit1"),
-                author_name="Test Author",
-                author_email="test@example.com",
-                committer_name="Test Author",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="First commit",
             ),
             Commit(
                 repository_id=saved_repo.id,
                 commit_hash=make_test_commit_hash("commit2"),
-                author_name="Test Author",
-                author_email="test@example.com",
-                committer_name="Test Author",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 2),
                 commit_date=datetime(2025, 1, 2),
-                message="Second commit",
             ),
         ]
         for c in commits:
@@ -1613,24 +1558,14 @@ class TestCommitsAPI:
         main_commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("maincom"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="Main commit",
         )
         dev_commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("devcom"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 2),
             commit_date=datetime(2025, 1, 2),
-            message="Dev commit",
         )
 
         saved_main = await commit_adapter.save(main_commit)
@@ -1653,7 +1588,8 @@ class TestCommitsAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
-        assert data["commits"][0]["message"] == "Main commit"
+        # Message is hydrated from git - empty in test since repo doesn't exist
+        assert "message" in data["commits"][0]
 
     async def test_list_commits_repo_not_found(self, test_app) -> None:
         """Test listing commits for non-existent repository."""
@@ -1681,14 +1617,8 @@ class TestCommitsAPI:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("detail1"),
-            author_name="Test Author",
-            author_email="test@example.com",
-            committer_name="Test Committer",
-            committer_email="committer@example.com",
             author_date=datetime(2025, 1, 1, 10, 30),
             commit_date=datetime(2025, 1, 1, 12, 0),
-            message="Detailed commit message",
-            parent_hashes=["parent123" + "0" * 31],
         )
         saved_commit = await commit_adapter.save(commit)
 
@@ -1704,10 +1634,11 @@ class TestCommitsAPI:
         assert data["id"] == saved_commit.id
         assert data["hash"] == commit.commit_hash.value
         assert data["short_hash"] == "detail1"
-        assert data["message"] == "Detailed commit message"
-        assert data["author_name"] == "Test Author"
-        assert data["committer_name"] == "Test Committer"
-        assert len(data["parent_hashes"]) == 1
+        # Author/message/parent_hashes are hydrated from git - empty in test since repo doesn't exist
+        assert "message" in data
+        assert "author_name" in data
+        assert "committer_name" in data
+        assert "parent_hashes" in data
 
     async def test_get_commit_not_found(self, test_app) -> None:
         """Test getting a non-existent commit."""
@@ -1737,24 +1668,14 @@ class TestFileHistoryAPI:
         commit1 = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("hist1"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
-            message="First version",
         )
         commit2 = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("hist2"),
-            author_name="Test",
-            author_email="test@example.com",
-            committer_name="Test",
-            committer_email="test@example.com",
             author_date=datetime(2025, 1, 2),
             commit_date=datetime(2025, 1, 2),
-            message="Second version",
         )
         saved_commit1 = await commit_adapter.save(commit1)
         saved_commit2 = await commit_adapter.save(commit2)
