@@ -190,18 +190,17 @@ async def get_file_content_by_path(
         if versions:
             file = versions[0]  # Most recent version on this branch
         else:
-            # Branch has no indexed data (e.g., merged branch with no unique commits)
-            # Fall back to default branch
-            versions = await file_adapter.list_versions_by_path(
-                repository_id, path, repository.default_branch
+            # Branch has no indexed data for this file
+            # Don't silently fall back - inform the user explicitly
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"File '{path}' not found on branch '{branch}'. "
+                    f"This branch may not have indexed data for this file. "
+                    f"Try the default branch '{repository.default_branch}' or "
+                    f"remove the branch parameter to use the latest indexed version."
+                ),
             )
-            if versions:
-                file = versions[0]
-            else:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"File not found on branch {branch}",
-                )
     else:
         # Default: get latest version across all branches
         file = await file_adapter.find_by_repository_and_path(repository_id, path)
@@ -377,18 +376,17 @@ async def get_file_symbols_by_path(
         if versions:
             file = versions[0]  # Most recent version on this branch
         else:
-            # Branch has no indexed data (e.g., merged branch with no unique commits)
-            # Fall back to default branch
-            versions = await file_adapter.list_versions_by_path(
-                repository_id, path, repository.default_branch
+            # Branch has no indexed data for this file
+            # Don't silently fall back - inform the user explicitly
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"File '{path}' not found on branch '{branch}'. "
+                    f"This branch may not have indexed data for this file. "
+                    f"Try the default branch '{repository.default_branch}' or "
+                    f"remove the branch parameter to use the latest indexed version."
+                ),
             )
-            if versions:
-                file = versions[0]
-            else:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"File not found on branch {branch}",
-                )
     else:
         # Default: get latest version across all branches
         file = await file_adapter.find_by_repository_and_path(repository_id, path)
@@ -474,18 +472,17 @@ async def get_file_references_by_path(
         if versions:
             file = versions[0]  # Most recent version on this branch
         else:
-            # Branch has no indexed data (e.g., merged branch with no unique commits)
-            # Fall back to default branch
-            versions = await file_adapter.list_versions_by_path(
-                repository_id, path, repository.default_branch
+            # Branch has no indexed data for this file
+            # Don't silently fall back - inform the user explicitly
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"File '{path}' not found on branch '{branch}'. "
+                    f"This branch may not have indexed data for this file. "
+                    f"Try the default branch '{repository.default_branch}' or "
+                    f"remove the branch parameter to use the latest indexed version."
+                ),
             )
-            if versions:
-                file = versions[0]
-            else:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"File not found on branch {branch}",
-                )
     else:
         # Default: get latest version across all branches
         file = await file_adapter.find_by_repository_and_path(repository_id, path)

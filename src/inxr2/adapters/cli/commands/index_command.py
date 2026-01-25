@@ -42,10 +42,16 @@ INDEXER_VERSION = "0.1.0"
 
 def reset_database(console: Console) -> None:
     """
-    Reset the entire database by truncating all tables.
+    DESTRUCTIVE: Reset the entire database by truncating all tables.
+
+    WARNING: This permanently deletes ALL indexed data from ALL repositories
+    with no way to recover. This is equivalent to dropping and recreating the
+    entire database schema.
 
     This is much faster than deleting data per-repository because TRUNCATE
     bypasses row-by-row deletion and reclaims storage immediately.
+
+    The CLI requires the --yes flag to confirm this operation.
 
     Args:
         console: Rich console for output

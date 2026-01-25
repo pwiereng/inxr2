@@ -335,7 +335,7 @@ tests/                         # Backend tests
 ## Important Files
 
 - **DESIGN.md** - Complete design document with architecture decisions
-- **IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.9)
+- **IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.12)
 - **CONTRIBUTING.md** - Coding standards, testing philosophy, git workflow
 - **docs/database-schema.md** - Complete database schema with design rationale
 
@@ -562,7 +562,33 @@ Recent achievements:
 - Proper scope tracking for nested symbols (class → method relationships)
 - 28 comprehensive Tree-sitter tests
 
-**Next Phase:** 1.9 Remote Repository Support - Clone and index repositories from URLs
+**Phase 1.9: Time Travel & Temporal Navigation** - ✅ COMPLETED (2026-01-17)
+
+Recent achievements:
+- Browse code at any indexed commit
+- Version selector showing all commits that modified a file
+- Commit-aware file tree
+- Side-by-side diff viewer with syntax highlighting
+
+**Phase 1.10: URL State & Permalinks** - ✅ COMPLETED (2026-01-20)
+
+Recent achievements:
+- Full URL state management for bookmarkable views
+- Line number, commit, diff mode, search query all in URL
+- Click line numbers to update URL
+- Scroll to line on page load
+- Comprehensive useBrowseState hook with tests
+
+**Phase 1.11: Multi-Branch Support** - ✅ COMPLETED (2026-01-24)
+
+Recent achievements:
+- BranchSelector component for switching between indexed branches
+- Branch parameter in URL for bookmarkable branch views
+- Cross-branch diff comparison
+- File history filtered by branch
+- Live branch listing from git repository
+
+**Next Phase:** 1.12 Remote Repository Support - Clone and index repositories from URLs
 
 See `IMPLEMENTATION_PLAN.md` for complete roadmap.
 

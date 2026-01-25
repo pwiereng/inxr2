@@ -109,14 +109,14 @@ class GetRepositoryTreeUseCase:
             )
             if branch_commit:
                 resolved_commit_hash = branch_commit.commit_hash.value
-            elif request.branch != repository.default_branch:
-                # Branch has no indexed commits (e.g., merged branch with delta indexing)
-                # Fall back to default branch
-                branch_commit = await self._commit_repo.find_latest_by_branch(
-                    repository_id, repository.default_branch
+            else:
+                # Branch has no indexed commits
+                # Don't silently fall back - inform the caller explicitly
+                raise ValueError(
+                    f"Branch '{request.branch}' has no indexed commits. "
+                    f"Try the default branch '{repository.default_branch}' or "
+                    f"remove the branch parameter to use the latest indexed version."
                 )
-                if branch_commit:
-                    resolved_commit_hash = branch_commit.commit_hash.value
 
         # Get files - either at specific commit (time travel) or latest
         if resolved_commit_hash:

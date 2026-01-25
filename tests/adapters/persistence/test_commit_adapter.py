@@ -22,7 +22,9 @@ class TestPostgresCommitRepository:
         """Test saving a new commit generates an ID."""
         # First create a repository
         repo_adapter = PostgresRepositoryAdapter(db_session)
-        repo = await repo_adapter.save(RepositoryFactory.create(name="commit-test-repo"))
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="commit-test-repo")
+        )
 
         adapter = PostgresCommitRepository(db_session)
         commit = CommitFactory.create(
@@ -137,9 +139,7 @@ class TestPostgresCommitRepository:
     ):
         """Test that find_latest_by_branch returns None for non-existent branch."""
         repo_adapter = PostgresRepositoryAdapter(db_session)
-        repo = await repo_adapter.save(
-            RepositoryFactory.create(name="no-branch-repo")
-        )
+        repo = await repo_adapter.save(RepositoryFactory.create(name="no-branch-repo"))
 
         adapter = PostgresCommitRepository(db_session)
 

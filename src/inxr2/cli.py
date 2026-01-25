@@ -297,7 +297,13 @@ def index() -> None:
 @click.option(
     "--reset-db",
     is_flag=True,
-    help="Reset entire database before indexing (TRUNCATE all tables - much faster than --force for full re-index)",
+    help="Reset entire database before indexing (TRUNCATE all tables - much faster than --force for full re-index). Requires --yes flag.",
+)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Confirm destructive operations like --reset-db without prompting",
 )
 def index_full(
     path: Path | None,
@@ -310,6 +316,7 @@ def index_full(
     log_level: str,
     force: bool,
     reset_db: bool,
+    yes: bool,
 ) -> None:
     """
     Perform full indexing of repository/repositories.
@@ -337,6 +344,12 @@ def index_full(
 
     # Reset database if requested (much faster than per-repo --force)
     if reset_db:
+        if not yes:
+            console.print(
+                "[red]Error:[/red] --reset-db requires --yes flag to confirm. "
+                "This will permanently delete ALL indexed data."
+            )
+            sys.exit(1)
         console.print("[yellow]Resetting database...[/yellow]")
         from inxr2.adapters.cli.commands.index_command import reset_database
 

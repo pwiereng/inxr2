@@ -522,8 +522,17 @@ class GitService:
                 )
                 commits = list(reversed(commits))
                 return self._commits_to_dicts(commits)
-        except Exception:
-            pass
+        except Exception as e:
+            # Best-effort detection of unmerged commits failed; fall back to
+            # merge-commit analysis below instead of failing the entire operation.
+            logger.debug(
+                "Failed to determine unmerged commits for branch '%s' against "
+                "base '%s' in repository '%s': %s",
+                branch,
+                base_branch,
+                repo_path,
+                e,
+            )
 
         # Branch appears to be merged - find the merge commit and original branch commits
         # Look for merge commits on base_branch that mention this branch
@@ -660,8 +669,12 @@ class GitService:
                 head_ref = repo.remotes.origin.refs["HEAD"]
                 # HEAD.reference points to the default branch
                 default_branch = head_ref.reference.remote_head
-            except (KeyError, AttributeError):
-                pass
+            except (KeyError, AttributeError) as e:
+                logger.debug(
+                    "Could not determine default branch from remote HEAD for %s: %s",
+                    repo_path,
+                    e,
+                )
 
         # Sort: default branch first, then by last commit date descending
         sorted_branches = sorted(
