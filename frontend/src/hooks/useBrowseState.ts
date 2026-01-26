@@ -979,7 +979,10 @@ export function useBrowseState() {
         // Use refPanel (which side the ReferencesPanel is showing) not activePanel
         // (which code panel was last clicked) to determine commit and branch
         const isRightPanel = urlState.diffMode && urlState.refPanel === 'right'
-        const commitToUse = isRightPanel ? urlState.diffCommit : urlState.selectedCommit
+        // In cross-branch diff mode, diffCommit may be null - fall back to computedState.rightCommit
+        const commitToUse = isRightPanel
+          ? urlState.diffCommit || computedState.rightCommit
+          : urlState.selectedCommit
         const branchToUse = isRightPanel ? urlState.diffBranch : urlState.selectedBranch
         if (commitToUse) params.set('commit', commitToUse)
         if (branchToUse) params.set('branch', branchToUse)
@@ -991,7 +994,7 @@ export function useBrowseState() {
         )
       }
     },
-    [navigate, urlState]
+    [navigate, urlState, computedState.rightCommit]
   )
 
   const handleDefinitionClick = useCallback(
@@ -1002,7 +1005,10 @@ export function useBrowseState() {
         // Use refPanel (which side the ReferencesPanel is showing) not activePanel
         // (which code panel was last clicked) to determine commit and branch
         const isRightPanel = urlState.diffMode && urlState.refPanel === 'right'
-        const commitToUse = isRightPanel ? urlState.diffCommit : urlState.selectedCommit
+        // In cross-branch diff mode, diffCommit may be null - fall back to computedState.rightCommit
+        const commitToUse = isRightPanel
+          ? urlState.diffCommit || computedState.rightCommit
+          : urlState.selectedCommit
         const branchToUse = isRightPanel ? urlState.diffBranch : urlState.selectedBranch
         if (commitToUse) params.set('commit', commitToUse)
         if (branchToUse) params.set('branch', branchToUse)
@@ -1014,7 +1020,7 @@ export function useBrowseState() {
         )
       }
     },
-    [navigate, urlState]
+    [navigate, urlState, computedState.rightCommit]
   )
 
   const handleDiffLineClick = useCallback(

@@ -1,10 +1,11 @@
 """Service port interfaces - external service abstractions."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, Iterator
+from typing import BinaryIO
 
 from ...domain.entities import Symbol
 from ...domain.value_objects import AppConfig

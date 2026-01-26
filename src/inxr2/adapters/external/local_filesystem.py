@@ -1,9 +1,10 @@
 """Local file system adapter implementation."""
 
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import BinaryIO, Iterator
+from typing import BinaryIO
 
 from ...application.ports.services import FileStat, FileSystemPort
 

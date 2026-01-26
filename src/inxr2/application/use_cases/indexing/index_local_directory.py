@@ -107,10 +107,12 @@ class IndexLocalDirectoryUseCase:
             Indexing response with statistics
         """
         # 1. Create repository
+        # Normalize to absolute path to avoid working directory dependency
+        absolute_path = str(Path(request.path).resolve())
         repository = Repository(
             name=request.name,
-            url=request.path,
-            description=request.description or f"Local directory: {request.path}",
+            url=absolute_path,
+            description=request.description or f"Local directory: {absolute_path}",
             default_branch="local",
         )
         saved_repo = await self._repository_repo.save(repository)

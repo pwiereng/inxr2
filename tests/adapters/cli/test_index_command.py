@@ -435,7 +435,7 @@ class TestTimeUtilities:
 
         from inxr2.adapters.cli.commands.index_command import _to_naive_utc
 
-        # Create a datetime with UTC+5 timezone
+        # Create a datetime with UTC timezone
         dt = datetime(2025, 1, 1, 17, 0, 0, tzinfo=UTC)
         result = _to_naive_utc(dt)
         assert result is not None

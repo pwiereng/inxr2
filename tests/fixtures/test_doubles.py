@@ -30,10 +30,11 @@ fake_repo.add_test_symbol(Symbol(...))
 ```
 """
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO, Iterator
+from typing import BinaryIO
 
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,

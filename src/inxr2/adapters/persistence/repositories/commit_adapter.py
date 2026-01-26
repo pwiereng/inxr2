@@ -4,6 +4,7 @@ Supports PostgreSQL and SQLite dialects.
 """
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import CommitRepositoryPort
@@ -88,6 +89,7 @@ class PostgresCommitRepository(CommitRepositoryPort):
 
         Creates an entry in the branch_commits junction table.
         Idempotent - checks for existing link before inserting.
+        Handles concurrent inserts via savepoint rollback (TOCTOU race).
         Works with both PostgreSQL and SQLite.
         """
         # Check if link already exists (dialect-agnostic idempotency)
@@ -106,8 +108,13 @@ class PostgresCommitRepository(CommitRepositoryPort):
             commit_id=commit_id,
             branch=branch,
         )
-        self.session.add(model)
-        await self.session.flush()
+        # Use savepoint to isolate potential IntegrityError from main transaction
+        try:
+            async with self.session.begin_nested():
+                self.session.add(model)
+        except IntegrityError:
+            # Concurrent insert won the race - link already exists
+            pass
 
     async def link_commit_to_branches(
         self, repository_id: int, commit_id: int, branches: list[str]
@@ -116,6 +123,7 @@ class PostgresCommitRepository(CommitRepositoryPort):
 
         Bulk version of link_commit_to_branch for efficiency.
         Idempotent - only inserts links that don't already exist.
+        Handles concurrent inserts via savepoint rollback (TOCTOU race).
         Works with both PostgreSQL and SQLite.
         """
         if not branches:
@@ -133,16 +141,20 @@ class PostgresCommitRepository(CommitRepositoryPort):
 
         # Only insert branches that aren't already linked
         new_branches = [b for b in branches if b not in existing_branches]
+
+        # Insert each in a savepoint to handle concurrent races
         for branch in new_branches:
             model = BranchCommitModel(
                 repository_id=repository_id,
                 commit_id=commit_id,
                 branch=branch,
             )
-            self.session.add(model)
-
-        if new_branches:
-            await self.session.flush()
+            try:
+                async with self.session.begin_nested():
+                    self.session.add(model)
+            except IntegrityError:
+                # Concurrent insert won the race - link already exists
+                pass
 
     async def get_branches_for_commit(self, commit_id: int) -> list[str]:
         """Get all branches that contain a specific commit."""
