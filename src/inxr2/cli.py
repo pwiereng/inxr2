@@ -126,7 +126,7 @@ def _run_config_based_index(
             sys.exit(1)
         repos_to_index = [repo_config]
     else:
-        repos_to_index = config.repositories
+        repos_to_index = list(config.repositories)
 
     # Filter to only repos with local paths (remote URLs not yet supported)
     repos_with_paths = [r for r in repos_to_index if r.path]

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....application.ports.repositories import FileRepositoryPort
 from ....domain.entities import File
 from ..mappers import FileMapper
+from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from ..models.file import FileModel
 
@@ -144,7 +145,13 @@ class PostgresFileRepository(FileRepositoryPort):
         )
 
         if branch:
-            query = query.where(CommitModel.branch == branch)
+            # Join with branch_commits to filter by branch
+            query = query.join(
+                BranchCommitModel, BranchCommitModel.commit_id == CommitModel.id
+            ).where(
+                BranchCommitModel.branch == branch,
+                BranchCommitModel.repository_id == repository_id,
+            )
 
         query = query.order_by(CommitModel.commit_date.desc())
 

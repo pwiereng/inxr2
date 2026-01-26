@@ -89,7 +89,7 @@ export function BranchSelector({
   // Determine the currently selected value
   // If selectedBranch isn't in the indexed branches, fall back to defaultBranch
   const selectedExists = branches.some((b) => b.name === selectedBranch)
-  const currentValue = selectedExists ? (selectedBranch || defaultBranch) : defaultBranch
+  const currentValue = selectedExists ? selectedBranch || defaultBranch : defaultBranch
 
   return (
     <FormControl size="small">

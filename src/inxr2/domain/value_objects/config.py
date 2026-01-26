@@ -1,36 +1,23 @@
-"""Configuration value objects for INXR2."""
+"""Configuration value objects for INXR2.
 
+These are pure domain objects with no framework dependencies.
+Validation is handled by the adapter layer (Pydantic models in adapters/config/).
+"""
+
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from pydantic import BaseModel, Field, model_validator
 
-
-class RepositoryConfig(BaseModel):
+@dataclass(frozen=True)
+class RepositoryConfig:
     """Configuration for a single repository to index."""
 
-    name: str = Field(..., description="Unique name for the repository")
-    path: str | None = Field(
-        default=None, description="Local filesystem path to the repository"
-    )
-    url: str | None = Field(
-        default=None, description="Remote URL for cloning (Phase 1.9)"
-    )
-    branches: list[str] = Field(default=["main"], description="Branches to index")
-    languages: list[str] = Field(
-        default=["python", "typescript", "javascript"],
-        description="Languages to extract symbols from",
-    )
-    exclude_patterns: list[str] = Field(
-        default_factory=list,
-        description="Glob patterns for files/directories to exclude",
-    )
-
-    @model_validator(mode="after")
-    def validate_path_or_url(self) -> "RepositoryConfig":
-        """Ensure either path or url is specified."""
-        if not self.path and not self.url:
-            raise ValueError("Either 'path' or 'url' must be specified")
-        return self
+    name: str
+    path: str | None = None
+    url: str | None = None
+    branches: tuple[str, ...] = ("main",)
+    languages: tuple[str, ...] = ("python", "typescript", "javascript")
+    exclude_patterns: tuple[str, ...] = ()
 
     def get_resolved_path(self) -> Path | None:
         """Get the resolved path (with env vars expanded)."""
@@ -39,39 +26,30 @@ class RepositoryConfig(BaseModel):
         return None
 
 
-class IndexingConfig(BaseModel):
+@dataclass(frozen=True)
+class IndexingConfig:
     """Configuration for indexing behavior."""
 
-    incremental: bool = Field(
-        default=True, description="Use incremental indexing when possible"
-    )
-    max_commit_history: int = Field(
-        default=1000, description="Maximum number of commits to index per branch"
-    )
-    batch_size: int = Field(
-        default=100, description="Number of files to process per batch"
-    )
+    incremental: bool = True
+    max_commit_history: int = 1000
+    batch_size: int = 100
 
 
-class ServerConfig(BaseModel):
+@dataclass(frozen=True)
+class ServerConfig:
     """Configuration for the web server."""
 
-    host: str = Field(default="0.0.0.0", description="Host to bind to")
-    port: int = Field(default=8000, description="Port to listen on")
+    host: str = "0.0.0.0"
+    port: int = 8000
 
 
-class AppConfig(BaseModel):
+@dataclass(frozen=True)
+class AppConfig:
     """Root configuration for INXR2."""
 
-    repositories: list[RepositoryConfig] = Field(
-        ..., description="List of repositories to index"
-    )
-    indexing: IndexingConfig = Field(
-        default_factory=IndexingConfig, description="Indexing configuration"
-    )
-    server: ServerConfig = Field(
-        default_factory=ServerConfig, description="Server configuration"
-    )
+    repositories: tuple[RepositoryConfig, ...]
+    indexing: IndexingConfig = field(default_factory=IndexingConfig)
+    server: ServerConfig = field(default_factory=ServerConfig)
 
     def get_repository(self, name: str) -> RepositoryConfig | None:
         """Get a repository by name."""

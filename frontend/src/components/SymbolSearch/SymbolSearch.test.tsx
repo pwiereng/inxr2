@@ -122,13 +122,9 @@ describe('SymbolSearch', () => {
       expect(onSymbolSelect).toHaveBeenCalledWith(mockSymbol)
     })
 
-    it('should not update input value during selection (prevents navigation race)', async () => {
-      // This test verifies the fix for the race condition where Autocomplete's onInputChange
-      // would update the input value to the symbol name, triggering setSearchQuery which
-      // would call setSearchParams and overwrite the navigate() call from onSymbolSelect.
-      //
-      // The fix checks the reason parameter in onInputChange, only updating the input value
-      // when reason === 'input', which prevents updates during selection (reason === 'reset').
+    it('should clear input after selection', async () => {
+      // After selecting a symbol, the search box should clear.
+      // The search box is purely for input, not for displaying current state.
       const { searchSymbols } = await import('@/lib/api')
       const mockSymbol = {
         id: 2,
@@ -179,9 +175,8 @@ describe('SymbolSearch', () => {
       // onSymbolSelect should be called
       expect(onSymbolSelect).toHaveBeenCalledWith(mockSymbol)
 
-      // Input should still have the original typed value, NOT the symbol name
-      // (because onInputChange only updates when reason === 'input', not during selection)
-      expect(input).toHaveValue('MySy')
+      // Input should be cleared after selection
+      expect(input).toHaveValue('')
     })
   })
 })

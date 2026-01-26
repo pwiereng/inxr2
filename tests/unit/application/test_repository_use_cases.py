@@ -111,6 +111,7 @@ class TestGetRepositoryFilesUseCase:
         repo = await repo_repository.save(
             Repository(name="test-repo", url="https://example.com/repo.git")
         )
+        assert repo.id is not None
 
         use_case = GetRepositoryFilesUseCase(
             repository_repo=repo_repository,
@@ -138,24 +139,18 @@ class TestGetRepositoryFilesUseCase:
         repo = await repo_repository.save(
             Repository(name="test-repo", url="https://example.com/repo.git")
         )
+        assert repo.id is not None
 
         # Create commit
         commit = await commit_repository.save(
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("abc123" + "0" * 34),
-                short_hash="abc123",
-                parent_hashes=[],
-                branch="main",
-                author_name="Test Author",
-                author_email="test@example.com",
-                committer_name="Test Author",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1, 12, 0, 0),
                 commit_date=datetime(2025, 1, 1, 12, 0, 0),
-                message="Test commit",
             )
         )
+        assert commit.id is not None
 
         # Create files
         await file_repository.save(
@@ -224,43 +219,31 @@ class TestGetRepositoryFilesUseCase:
         repo1 = await repo_repository.save(
             Repository(name="repo1", url="https://example.com/repo1.git")
         )
+        assert repo1.id is not None
         repo2 = await repo_repository.save(
             Repository(name="repo2", url="https://example.com/repo2.git")
         )
+        assert repo2.id is not None
 
         # Create commits
         commit1 = await commit_repository.save(
             Commit(
                 repository_id=repo1.id,
                 commit_hash=CommitHash("abc123" + "0" * 34),
-                short_hash="abc123",
-                parent_hashes=[],
-                branch="main",
-                author_name="Test Author",
-                author_email="test@example.com",
-                committer_name="Test Author",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="Commit 1",
             )
         )
+        assert commit1.id is not None
         commit2 = await commit_repository.save(
             Commit(
                 repository_id=repo2.id,
                 commit_hash=CommitHash("def456" + "0" * 34),
-                short_hash="def456",
-                parent_hashes=[],
-                branch="main",
-                author_name="Test Author",
-                author_email="test@example.com",
-                committer_name="Test Author",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="Commit 2",
             )
         )
+        assert commit2.id is not None
 
         # Add files to both repositories
         await file_repository.save(
@@ -372,23 +355,17 @@ class TestGetRepositoryTreeUseCase:
         repo = await repo_repository.save(
             Repository(name="test-repo", url="https://example.com/repo.git")
         )
+        assert repo.id is not None
 
         commit = await commit_repository.save(
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("abc123" + "0" * 34),
-                short_hash="abc123",
-                parent_hashes=[],
-                branch="main",
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="Test commit",
             )
         )
+        assert commit.id is not None
 
         # Create files in nested structure
         await file_repository.save(
@@ -456,23 +433,17 @@ class TestGetRepositoryTreeUseCase:
         repo = await repo_repository.save(
             Repository(name="test-repo", url="https://example.com/repo.git")
         )
+        assert repo.id is not None
 
         commit = await commit_repository.save(
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("abc123" + "0" * 34),
-                short_hash="abc123",
-                parent_hashes=[],
-                branch="main",
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="Test commit",
             )
         )
+        assert commit.id is not None
 
         # Create files: alphabetically "app.py" comes before "src"
         # but directories should be listed first
@@ -529,23 +500,17 @@ class TestGetRepositoryTreeUseCase:
         repo = await repo_repository.save(
             Repository(name="my-repo", url="https://example.com/repo.git")
         )
+        assert repo.id is not None
 
         commit = await commit_repository.save(
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("abc123" + "0" * 34),
-                short_hash="abc123",
-                parent_hashes=[],
-                branch="main",
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="Test commit",
             )
         )
+        assert commit.id is not None
 
         await file_repository.save(
             File(
@@ -587,40 +552,27 @@ class TestGetRepositoryTreeUseCase:
         repo = await repo_repository.save(
             Repository(name="test-repo", url="https://example.com/repo.git")
         )
+        assert repo.id is not None
 
         # Create two commits
         commit1 = await commit_repository.save(
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("aaa111" + "0" * 34),
-                short_hash="aaa111",
-                parent_hashes=[],
-                branch="main",
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 1),
                 commit_date=datetime(2025, 1, 1),
-                message="First commit",
             )
         )
+        assert commit1.id is not None
         commit2 = await commit_repository.save(
             Commit(
                 repository_id=repo.id,
                 commit_hash=CommitHash("bbb222" + "0" * 34),
-                short_hash="bbb222",
-                parent_hashes=["aaa111" + "0" * 34],
-                branch="main",
-                author_name="Test",
-                author_email="test@example.com",
-                committer_name="Test",
-                committer_email="test@example.com",
                 author_date=datetime(2025, 1, 2),
                 commit_date=datetime(2025, 1, 2),
-                message="Second commit",
             )
         )
+        assert commit2.id is not None
 
         # Files at commit 1: only app.py exists
         await file_repository.save(

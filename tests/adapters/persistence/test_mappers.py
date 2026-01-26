@@ -16,7 +16,7 @@ from .factories import CommitFactory, FileFactory, RepositoryFactory, SymbolFact
 class TestRepositoryMapper:
     """Test RepositoryMapper bidirectional conversion."""
 
-    def test_to_model_converts_entity_to_orm_model(self):
+    def test_to_model_converts_entity_to_orm_model(self) -> None:
         """Test converting Repository entity to RepositoryModel."""
         entity = RepositoryFactory.create(
             name="test-repo",
@@ -32,7 +32,7 @@ class TestRepositoryMapper:
         assert model.default_branch == entity.default_branch
         assert model.config == entity.config
 
-    def test_to_domain_converts_orm_model_to_entity(self):
+    def test_to_domain_converts_orm_model_to_entity(self) -> None:
         """Test converting RepositoryModel to Repository entity."""
         from inxr2.adapters.persistence.models import RepositoryModel
 
@@ -56,7 +56,7 @@ class TestRepositoryMapper:
         assert entity.default_branch == model.default_branch
         assert entity.config == model.config
 
-    def test_round_trip_conversion_preserves_data(self):
+    def test_round_trip_conversion_preserves_data(self) -> None:
         """Test that entity -> model -> entity preserves all data."""
         original = RepositoryFactory.create(
             id=1,
@@ -74,25 +74,27 @@ class TestRepositoryMapper:
 
 
 class TestCommitMapper:
-    """Test CommitMapper bidirectional conversion."""
+    """Test CommitMapper bidirectional conversion.
 
-    def test_to_model_converts_entity_to_orm_model(self):
+    Design note: Only essential data is stored. Author info, message, and
+    parent hashes are queried from git on-demand. See ARCHITECTURAL_REVIEW.md.
+    """
+
+    def test_to_model_converts_entity_to_orm_model(self) -> None:
         """Test converting Commit entity to CommitModel."""
         entity = CommitFactory.create(
             repository_id=1,
             commit_hash="a" * 40,
-            author_name="Test Author",
-            message="Test commit",
         )
 
         model = CommitMapper.to_model(entity)
 
         assert model.repository_id == entity.repository_id
         assert model.commit_hash == entity.commit_hash.value
-        assert model.author_name == entity.author_name
-        assert model.message == entity.message
+        assert model.author_date == entity.author_date
+        assert model.commit_date == entity.commit_date
 
-    def test_to_domain_converts_orm_model_to_entity(self):
+    def test_to_domain_converts_orm_model_to_entity(self) -> None:
         """Test converting CommitModel to Commit entity."""
         from inxr2.adapters.persistence.models import CommitModel
 
@@ -100,15 +102,8 @@ class TestCommitMapper:
             id=1,
             repository_id=1,
             commit_hash="a" * 40,
-            short_hash="aaaaaaa",
-            author_name="Test Author",
-            author_email="author@test.com",
-            committer_name="Test Committer",
-            committer_email="committer@test.com",
             author_date=datetime.utcnow(),
             commit_date=datetime.utcnow(),
-            message="Test commit",
-            branch="main",
         )
 
         entity = CommitMapper.to_domain(model)
@@ -116,10 +111,10 @@ class TestCommitMapper:
         assert entity.id == model.id
         assert entity.repository_id == model.repository_id
         assert entity.commit_hash.value == model.commit_hash
-        assert entity.author_name == model.author_name
-        assert entity.message == model.message
+        assert entity.author_date == model.author_date
+        assert entity.commit_date == model.commit_date
 
-    def test_commit_hash_value_object_handled_correctly(self):
+    def test_commit_hash_value_object_handled_correctly(self) -> None:
         """Test that CommitHash value object is properly converted."""
         entity = CommitFactory.create(commit_hash="abc123" + "0" * 34)
 
@@ -128,11 +123,17 @@ class TestCommitMapper:
         assert model.commit_hash == entity.commit_hash.value
         assert len(model.commit_hash) == 40
 
+    def test_short_hash_computed_property(self) -> None:
+        """Test that short_hash is computed from commit_hash."""
+        entity = CommitFactory.create(commit_hash="abc1234567890" + "0" * 27)
+
+        assert entity.short_hash == "abc1234"
+
 
 class TestFileMapper:
     """Test FileMapper bidirectional conversion."""
 
-    def test_to_model_converts_entity_to_orm_model(self):
+    def test_to_model_converts_entity_to_orm_model(self) -> None:
         """Test converting File entity to FileModel."""
         entity = FileFactory.create(
             repository_id=1,
@@ -150,7 +151,7 @@ class TestFileMapper:
         assert model.content_hash == entity.content_hash
         assert model.size_bytes == entity.size_bytes
 
-    def test_to_domain_converts_orm_model_to_entity(self):
+    def test_to_domain_converts_orm_model_to_entity(self) -> None:
         """Test converting FileModel to File entity."""
         from inxr2.adapters.persistence.models import FileModel
 
@@ -178,7 +179,7 @@ class TestFileMapper:
 class TestSymbolMapper:
     """Test SymbolMapper bidirectional conversion."""
 
-    def test_to_model_converts_entity_to_orm_model(self):
+    def test_to_model_converts_entity_to_orm_model(self) -> None:
         """Test converting Symbol entity to SymbolModel."""
         entity = SymbolFactory.create(
             file_id=1,
@@ -198,7 +199,7 @@ class TestSymbolMapper:
         assert model.start_line == entity.start_line
         assert model.end_line == entity.end_line
 
-    def test_to_domain_converts_orm_model_to_entity(self):
+    def test_to_domain_converts_orm_model_to_entity(self) -> None:
         """Test converting SymbolModel to Symbol entity."""
         from inxr2.adapters.persistence.models import SymbolModel
 
@@ -222,7 +223,7 @@ class TestSymbolMapper:
         assert entity.kind == SymbolKind.FUNCTION
         assert entity.start_line == model.start_line
 
-    def test_symbol_kind_enum_handled_correctly(self):
+    def test_symbol_kind_enum_handled_correctly(self) -> None:
         """Test that SymbolKind enum is properly converted."""
         entity = SymbolFactory.create(kind=SymbolKind.CLASS)
 
@@ -235,7 +236,7 @@ class TestSymbolMapper:
         assert restored.kind == SymbolKind.CLASS
         assert isinstance(restored.kind, SymbolKind)
 
-    def test_metadata_field_renamed_to_extra_metadata(self):
+    def test_metadata_field_renamed_to_extra_metadata(self) -> None:
         """Test that metadata field is correctly mapped to extra_metadata."""
         entity = SymbolFactory.create(
             metadata={"decorators": ["@property"], "is_async": True}
@@ -244,4 +245,5 @@ class TestSymbolMapper:
         model = SymbolMapper.to_model(entity)
 
         assert model.extra_metadata == entity.metadata
+        assert model.extra_metadata is not None
         assert model.extra_metadata["decorators"] == ["@property"]

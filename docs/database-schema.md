@@ -1,8 +1,8 @@
 # INXR2 Database Schema Design
 
-**Version:** 1.0
-**Date:** 2026-01-04
-**Status:** Proposed
+**Version:** 2.0
+**Date:** 2026-01-26
+**Status:** Implemented
 
 ## Overview
 
@@ -12,14 +12,17 @@ This document defines the PostgreSQL database schema for INXR2, a cross-referenc
 - Symbol cross-referencing within and across repositories
 - Incremental indexing
 - Efficient search queries
+- Multi-branch support (commits can exist on multiple branches)
 
 ## Design Principles
 
 1. **Temporal Support**: All entities are tied to specific commits to enable time-travel
-2. **Denormalization for Performance**: Some data duplicated to avoid expensive JOINs
-3. **JSONB for Flexibility**: Use JSONB for language-specific metadata
-4. **Indexing Strategy**: Indexes optimized for common query patterns
-5. **Clean Architecture**: ORM models (SQLAlchemy) separate from domain entities
+2. **Minimal Storage**: Only store data that can't be queried from git on-demand
+3. **Normalized Branch Handling**: Branches stored in junction table (commits can be on multiple branches)
+4. **JSONB for Flexibility**: Use JSONB for language-specific metadata
+5. **Indexing Strategy**: Indexes optimized for common query patterns
+6. **Clean Architecture**: ORM models (SQLAlchemy) separate from domain entities
+7. **Dialect Agnostic**: Schema works with both PostgreSQL and SQLite
 
 ---
 
@@ -33,14 +36,12 @@ Stores metadata about indexed git repositories.
 CREATE TABLE repositories (
     id                  SERIAL PRIMARY KEY,
     name                VARCHAR(255) NOT NULL UNIQUE,
-    url                 TEXT NOT NULL,
+    url                 TEXT NOT NULL,              -- Local path (e.g., /repos/myproject)
     description         TEXT,
     default_branch      VARCHAR(100) DEFAULT 'main',
     config              JSONB,                      -- Repository-specific config
     created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMP NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT repositories_name_check CHECK (name ~ '^[a-zA-Z0-9_-]+$')
+    updated_at          TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_repositories_name ON repositories(name);
@@ -49,10 +50,10 @@ CREATE INDEX idx_repositories_name ON repositories(name);
 **Fields:**
 - `id`: Auto-incrementing primary key
 - `name`: Unique identifier for the repository (e.g., "linux-kernel", "django")
-- `url`: Git repository URL (https or ssh)
+- `url`: Local filesystem path to the repository (plain path, not file:// URL)
 - `description`: Optional description
 - `default_branch`: Default branch to index (usually "main" or "master")
-- `config`: JSONB for repository-specific settings (branches to index, file patterns, etc.)
+- `config`: JSONB for repository-specific settings
 - `created_at`, `updated_at`: Audit timestamps
 
 **JSONB config example:**
@@ -69,51 +70,82 @@ CREATE INDEX idx_repositories_name ON repositories(name);
 
 ### 2. commits
 
-Stores git commit metadata for all indexed commits.
+Stores minimal git commit metadata. Author info, message, and parent hashes are queried from git on-demand.
 
 ```sql
 CREATE TABLE commits (
     id                  BIGSERIAL PRIMARY KEY,
     repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
     commit_hash         CHAR(40) NOT NULL,          -- Full SHA-1 hash
-    short_hash          CHAR(7) NOT NULL,           -- Short hash for display
-    parent_hashes       TEXT[],                     -- Array of parent commit hashes
-    branch              VARCHAR(255),               -- Branch name (nullable for detached)
-    author_name         VARCHAR(255) NOT NULL,
-    author_email        VARCHAR(255) NOT NULL,
-    committer_name      VARCHAR(255) NOT NULL,
-    committer_email     VARCHAR(255) NOT NULL,
     author_date         TIMESTAMP NOT NULL,         -- When authored
     commit_date         TIMESTAMP NOT NULL,         -- When committed
-    message             TEXT NOT NULL,
     indexed_at          TIMESTAMP NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT commits_unique_repo_hash UNIQUE(repository_id, commit_hash)
+    CONSTRAINT uq_repo_commit_hash UNIQUE(repository_id, commit_hash)
 );
 
-CREATE INDEX idx_commits_repo_hash ON commits(repository_id, commit_hash);
-CREATE INDEX idx_commits_repo_branch ON commits(repository_id, branch);
-CREATE INDEX idx_commits_repo_date ON commits(repository_id, commit_date DESC);
 CREATE INDEX idx_commits_hash ON commits(commit_hash);
+CREATE INDEX idx_commits_repo_date ON commits(repository_id, commit_date DESC);
 ```
 
 **Fields:**
 - `commit_hash`: Full 40-character SHA-1 hash
-- `short_hash`: 7-character short hash for UI display
-- `parent_hashes`: Array of parent commit hashes (for merge commits)
-- `branch`: Branch this commit belongs to (can be NULL for detached commits)
-- Author vs Committer: Git distinguishes between who wrote the code and who committed it
 - `author_date` vs `commit_date`: Support for rebasing/cherry-picking
+- `indexed_at`: When this commit was indexed
 
-**Indexes:**
-- Fast lookup by repository + hash (most common query)
-- Fast filtering by branch
-- Temporal queries sorted by date
-- Global hash lookup (for cross-repo scenarios)
+**Design Note:**
+The following fields are intentionally NOT stored (queried from git on-demand):
+- `author_name`, `author_email`: Available from git commit object
+- `committer_name`, `committer_email`: Available from git commit object
+- `message`: Available from git commit object
+- `parent_hashes`: Available from git commit parents
+- `short_hash`: Computed property (commit_hash[:7])
+- `branch`: Stored in branch_commits junction table
+
+This design reduces storage by ~30% and avoids data duplication with git.
+
+**Computed Property:**
+```python
+@property
+def short_hash(self) -> str:
+    return self.commit_hash[:7]
+```
 
 ---
 
-### 3. files
+### 3. branch_commits (Junction Table)
+
+Links commits to branches. A commit can exist on multiple branches (reflecting git's model).
+
+```sql
+CREATE TABLE branch_commits (
+    id                  BIGSERIAL PRIMARY KEY,
+    repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    branch              VARCHAR(255) NOT NULL,
+    commit_id           BIGINT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
+
+    CONSTRAINT uq_branch_commit UNIQUE(repository_id, branch, commit_id)
+);
+
+CREATE INDEX idx_branch_commits_branch ON branch_commits(branch);
+CREATE INDEX idx_branch_commits_commit ON branch_commits(commit_id);
+CREATE INDEX idx_branch_commits_repo_branch ON branch_commits(repository_id, branch);
+```
+
+**Fields:**
+- `repository_id`: Repository this branch-commit link belongs to
+- `branch`: Branch name (e.g., "main", "feature/login")
+- `commit_id`: Reference to the commit
+
+**Design Note:**
+This junction table replaces the previous `branch` column on commits. Benefits:
+- A commit can be on multiple branches (e.g., after merge)
+- No duplicate commit storage per branch
+- Proper representation of git's branch model
+
+---
+
+### 4. files
 
 Stores metadata about files at specific commits (temporal snapshot).
 
@@ -155,7 +187,7 @@ CREATE INDEX idx_files_content_hash ON files(content_hash);
 
 ---
 
-### 4. symbols
+### 5. symbols
 
 Stores extracted code symbols (functions, classes, variables, etc.) at specific file versions.
 
@@ -200,26 +232,32 @@ CREATE INDEX idx_symbols_kind ON symbols(kind);
 CREATE INDEX idx_symbols_repo_name_kind ON symbols(repository_id, name, kind);
 CREATE INDEX idx_symbols_parent ON symbols(parent_symbol_id);
 
--- Full-text search index
+-- Full-text search index (PostgreSQL only)
 CREATE INDEX idx_symbols_name_fts ON symbols USING GIN(name_tsvector);
-
--- Trigger to automatically update name_tsvector
-CREATE TRIGGER symbols_name_tsvector_update
-    BEFORE INSERT OR UPDATE ON symbols
-    FOR EACH ROW EXECUTE FUNCTION
-    tsvector_update_trigger(name_tsvector, 'pg_catalog.english', name, qualified_name);
 ```
 
 **Fields:**
 - `name`: Simple symbol name (e.g., "calculate_total")
-- `qualified_name`: Fully qualified name including module/class (e.g., "myapp.utils.Math.calculate_total")
-- `kind`: Symbol type - function, class, method, variable, constant, interface, enum, etc.
+- `qualified_name`: Fully qualified name including module/class
+- `kind`: Symbol type - function, class, method, variable, constant, interface, enum, property, staticmethod, classmethod, etc.
 - `start_line/column`, `end_line/column`: Precise location in file (1-indexed)
 - `parent_symbol_id`: Self-referencing FK for nested symbols (methods within classes)
 - `scope`: Scope path for resolution (e.g., "MyClass.my_method")
 - `signature`: Function/method signature with types
 - `docstring`: Extracted documentation
 - `metadata`: JSONB for language-specific attributes
+
+**Symbol Kinds:**
+- `function`: Top-level function
+- `class`: Class definition
+- `method`: Instance method
+- `staticmethod`: Static method
+- `classmethod`: Class method
+- `property`: Property (getter/setter)
+- `variable`: Variable/constant
+- `interface`: TypeScript interface
+- `enum`: Enumeration
+- `type_alias`: Type alias
 
 **JSONB metadata examples:**
 
@@ -246,16 +284,9 @@ TypeScript:
 }
 ```
 
-**Indexes:**
-- Fast lookup by file (for rendering file with symbols)
-- Fast filtering by repository + commit (temporal queries)
-- Symbol search by name (autocomplete)
-- Qualified name lookup (precise resolution)
-- Full-text search with GIN index
-
 ---
 
-### 5. references
+### 6. references
 
 Stores symbol references (usages) - links from one location to a symbol definition.
 
@@ -317,18 +348,9 @@ CREATE INDEX idx_references_source_line ON references(source_file_id, source_lin
 - `attribute_access`: Object attribute access
 - `instantiation`: Class instantiation
 
-**JSONB metadata examples:**
-```json
-{
-    "is_qualified": true,
-    "qualifier": "math",
-    "context": "function_argument"
-}
-```
-
 ---
 
-### 6. index_status
+### 7. index_status
 
 Tracks indexing progress and status for each repository/branch combination.
 
@@ -339,7 +361,8 @@ CREATE TABLE index_status (
     branch                  VARCHAR(255) NOT NULL,
 
     -- Indexing state
-    last_indexed_commit     CHAR(40),               -- Last successfully indexed commit hash
+    last_indexed_commit     CHAR(40),               -- Most recent indexed commit hash
+    oldest_indexed_commit   CHAR(40),               -- Oldest indexed commit hash (for time-travel range)
     last_indexed_at         TIMESTAMP,              -- When indexing completed
     indexing_started_at     TIMESTAMP,              -- When current/last indexing started
     indexing_status         VARCHAR(50) NOT NULL DEFAULT 'pending',  -- pending, in_progress, completed, failed
@@ -356,7 +379,7 @@ CREATE TABLE index_status (
 
     -- Metadata
     indexer_version         VARCHAR(50),            -- Version of indexer that ran
-    metadata                JSONB,
+    extra_metadata          JSONB,
 
     created_at              TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -369,7 +392,8 @@ CREATE INDEX idx_index_status_status ON index_status(indexing_status);
 ```
 
 **Fields:**
-- `last_indexed_commit`: SHA-1 of last fully indexed commit
+- `last_indexed_commit`: SHA-1 of most recent fully indexed commit
+- `oldest_indexed_commit`: SHA-1 of oldest indexed commit (defines time-travel range)
 - `indexing_status`: Current state (pending, in_progress, completed, failed)
 - Statistics: Count of indexed entities (for progress tracking)
 - `error_message`: Last error encountered
@@ -383,51 +407,19 @@ CREATE INDEX idx_index_status_status ON index_status(indexing_status);
 
 ---
 
-## Supporting Tables
-
-### 7. file_contents (Optional - for full-text search)
-
-Optionally store file contents for full-text search without hitting git.
-
-```sql
-CREATE TABLE file_contents (
-    file_id             BIGINT PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
-    content             TEXT NOT NULL,
-    content_tsvector    tsvector,
-
-    created_at          TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- Full-text search index
-CREATE INDEX idx_file_contents_fts ON file_contents USING GIN(content_tsvector);
-
--- Trigger to update tsvector
-CREATE TRIGGER file_contents_tsvector_update
-    BEFORE INSERT OR UPDATE ON file_contents
-    FOR EACH ROW EXECUTE FUNCTION
-    tsvector_update_trigger(content_tsvector, 'pg_catalog.english', content);
-```
-
-**Design Decision:**
-- **Trade-off**: Storage space vs query performance
-- Storing contents enables fast full-text search without git operations
-- Alternative: Always fetch from git (slower but saves space)
-- **Recommendation**: Start without this table, add if needed
-
----
-
 ## Relationships Diagram
 
 ```
 repositories (1) ──────< (N) commits
     │                        │
+    │                        ├──< branch_commits (junction)
     │                        │
-    └────────────────< files │
-                        │    │
-                        │    │
-                    symbols  │
-                      │  │   │
-                      │  └───┘
+    └────────────────< files ┘
+                        │
+                        │
+                    symbols
+                      │  │
+                      │  └───< references (self-ref for parent)
                       │
                   references
                       │
@@ -475,65 +467,26 @@ WHERE repository_id = ? AND commit_id = ? AND path = ?;
 ```
 **Index:** `files_unique_repo_commit_path` (unique constraint serves as index)
 
-### 5. Search symbols (autocomplete)
+### 5. List commits for a branch
 ```sql
-SELECT name, qualified_name, kind, COUNT(*) as usage_count
-FROM symbols
-WHERE name_tsvector @@ to_tsquery('calculate:*')
-AND repository_id = ?
-GROUP BY name, qualified_name, kind
-ORDER BY usage_count DESC
-LIMIT 20;
+SELECT c.* FROM commits c
+JOIN branch_commits bc ON bc.commit_id = c.id
+WHERE bc.repository_id = ? AND bc.branch = ?
+ORDER BY c.commit_date DESC;
 ```
-**Index:** `idx_symbols_name_fts` (GIN full-text)
+**Indexes:** `idx_branch_commits_repo_branch`, `idx_commits_repo_date`
 
-### 6. Incremental indexing - detect changed files
+### 6. Find latest commit for a branch
 ```sql
-SELECT DISTINCT f.path
-FROM files f
-JOIN commits c ON f.commit_id = c.id
-WHERE f.repository_id = ?
-AND c.commit_date > (
-    SELECT last_indexed_at FROM index_status
-    WHERE repository_id = ? AND branch = ?
-);
+SELECT c.* FROM commits c
+JOIN branch_commits bc ON bc.commit_id = c.id
+WHERE c.repository_id = ?
+  AND bc.repository_id = ?
+  AND bc.branch = ?
+ORDER BY c.commit_date DESC
+LIMIT 1;
 ```
-**Index:** `idx_commits_repo_date`
-
----
-
-## Performance Considerations
-
-### 1. Partitioning Strategy (Future)
-For very large deployments, consider partitioning:
-- `files` by `repository_id`
-- `symbols` by `repository_id`
-- `references` by `repository_id`
-
-### 2. Archival Strategy
-Older commits can be archived:
-- Keep last N commits fully indexed
-- Archive older commits to separate tables or cold storage
-- Implement on-demand indexing for archived commits
-
-### 3. Connection Pooling
-- Use connection pooling (pgBouncer or SQLAlchemy pool)
-- Recommended pool size: 10-20 connections for 5 concurrent users
-
-### 4. Materialized Views (Optional)
-For expensive aggregations:
-```sql
-CREATE MATERIALIZED VIEW symbol_statistics AS
-SELECT
-    repository_id,
-    kind,
-    COUNT(*) as count,
-    AVG(end_line - start_line) as avg_lines
-FROM symbols
-GROUP BY repository_id, kind;
-
-CREATE INDEX idx_symbol_stats_repo ON symbol_statistics(repository_id);
-```
+**Indexes:** `idx_branch_commits_repo_branch`
 
 ---
 
@@ -543,70 +496,60 @@ For a medium-sized repository (100k LOC):
 - **Files**: ~1,000 files × 100 commits = 100,000 rows
 - **Symbols**: ~10,000 symbols per commit × 100 commits = 1,000,000 rows
 - **References**: ~50,000 references per commit × 100 commits = 5,000,000 rows
+- **Branch Commits**: ~100 commits × 3 branches = 300 rows
 
 **Estimated storage per repository:**
 - Files: ~10 MB
 - Symbols: ~200 MB
 - References: ~800 MB
+- Commits: ~1 MB (minimal - no message/author stored)
 - **Total per repo: ~1 GB**
 
 For 10 repositories: ~10 GB database size
 
 ---
 
-## Migration Strategy
+## Migration History
 
-1. **Initial schema**: All tables created via Alembic migration
-2. **Indexes**: Created in same migration (or separate for large tables)
-3. **Data migrations**: Separate migrations for data transformations
-4. **Version tracking**: Alembic versions stored in `alembic_version` table
-
-### Alembic Migration Naming Convention
-- `001_create_core_tables.py` - repositories, commits, files
-- `002_create_symbol_tables.py` - symbols, references
-- `003_create_index_status.py` - index_status table
-- `004_add_indexes.py` - Performance indexes
-- `005_add_fts_indexes.py` - Full-text search indexes
+| Migration | Description |
+|-----------|-------------|
+| `edc605da5d0a` | Initial schema: repositories, commits, files, symbols, references, index_status |
+| `add_time_travel_001` | Add oldest_indexed_commit to index_status for time-travel range |
+| `normalize_branch_001` | Add branch_commits junction table, remove branch column from commits |
+| `remove_redundant_commit_001` | Remove redundant columns from commits (author, message, etc.) |
 
 ---
 
-## Open Questions
+## Design Decisions
 
-1. **File contents storage**: Store in DB or always fetch from git?
-   - **Recommendation**: Start without storage, add if performance requires
+### Why no author/message in commits table?
 
-2. **Cross-repository references**: How to handle unresolved external symbols?
-   - **Recommendation**: Store as unresolved (target_symbol_id = NULL) with metadata
+Author info and commit messages are stored in git and can be queried on-demand. Storing them in the database:
+- Duplicates data that git already has
+- Increases storage by ~30%
+- Requires keeping data in sync with git
 
-3. **Symbol versioning**: Track symbol renames across commits?
-   - **Recommendation**: Phase 2 feature, not MVP
+Instead, the API hydrates this data from git when needed.
 
-4. **Deleted files/symbols**: Hard delete or soft delete?
-   - **Recommendation**: Cascade delete (temporal nature means old commits preserved)
+### Why branch_commits junction table?
 
-5. **Multi-branch indexing**: Index all branches or just default?
-   - **Recommendation**: Configurable per repository, start with default branch only
+Git's model allows a commit to exist on multiple branches (e.g., after merging). The junction table:
+- Properly represents this relationship
+- Avoids storing duplicate commits per branch
+- Makes branch filtering queries explicit
 
----
+### Why dialect-agnostic?
 
-## Next Steps
-
-1. Review and approve this schema design
-2. Create Alembic migrations
-3. Define domain entities (Python dataclasses)
-4. Define repository ports (interfaces)
-5. Implement SQLAlchemy ORM models
-6. Implement repository adapters
-7. Write tests with test database
+The schema and ORM code work with both PostgreSQL and SQLite, enabling:
+- Faster tests with SQLite
+- Simpler local development
+- Future flexibility in deployment options
 
 ---
 
-**Review Checklist:**
-- [ ] Schema supports all INXR2 features
-- [ ] Indexes cover common query patterns
-- [ ] Foreign keys ensure referential integrity
-- [ ] Constraints prevent invalid data
-- [ ] Temporal queries supported
-- [ ] Incremental indexing feasible
-- [ ] Cross-repository references handled
-- [ ] Performance considerations addressed
+## Document History
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0 | 2026-01-04 | Claude + User | Initial schema design |
+| 2.0 | 2026-01-26 | Claude + User | Normalized branches, removed redundant commit columns, added time-travel support |

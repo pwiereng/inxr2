@@ -4,6 +4,7 @@ These tests use a real database (SQLite in-memory or test PostgreSQL).
 """
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from inxr2.adapters.persistence.repositories.repository_adapter import (
     PostgresRepositoryAdapter,
@@ -16,7 +17,9 @@ from .factories import RepositoryFactory
 class TestPostgresRepositoryAdapter:
     """Integration tests for PostgresRepositoryAdapter."""
 
-    async def test_save_new_repository_returns_entity_with_id(self, db_session):
+    async def test_save_new_repository_returns_entity_with_id(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test saving a new repository generates an ID."""
         adapter = PostgresRepositoryAdapter(db_session)
         entity = RepositoryFactory.create(name="new-repo")
@@ -31,13 +34,16 @@ class TestPostgresRepositoryAdapter:
         assert saved.name == entity.name
         assert saved.url == entity.url
 
-    async def test_find_by_id_returns_repository_when_exists(self, db_session):
+    async def test_find_by_id_returns_repository_when_exists(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test finding a repository by ID."""
         adapter = PostgresRepositoryAdapter(db_session)
 
         # Create and save a repository
         entity = RepositoryFactory.create(name="find-by-id-repo")
         saved = await adapter.save(entity)
+        assert saved.id is not None
 
         # Find by ID
         found = await adapter.find_by_id(saved.id)
@@ -46,7 +52,9 @@ class TestPostgresRepositoryAdapter:
         assert found.id == saved.id
         assert found.name == saved.name
 
-    async def test_find_by_id_returns_none_when_not_exists(self, db_session):
+    async def test_find_by_id_returns_none_when_not_exists(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test finding a non-existent repository returns None."""
         adapter = PostgresRepositoryAdapter(db_session)
 
@@ -54,7 +62,9 @@ class TestPostgresRepositoryAdapter:
 
         assert found is None
 
-    async def test_find_by_name_returns_repository_when_exists(self, db_session):
+    async def test_find_by_name_returns_repository_when_exists(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test finding a repository by unique name."""
         adapter = PostgresRepositoryAdapter(db_session)
 
@@ -68,7 +78,9 @@ class TestPostgresRepositoryAdapter:
         assert found is not None
         assert found.name == "unique-repo"
 
-    async def test_find_by_name_returns_none_when_not_exists(self, db_session):
+    async def test_find_by_name_returns_none_when_not_exists(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test finding a non-existent repository by name returns None."""
         adapter = PostgresRepositoryAdapter(db_session)
 
@@ -76,7 +88,9 @@ class TestPostgresRepositoryAdapter:
 
         assert found is None
 
-    async def test_list_all_returns_empty_list_initially(self, db_session):
+    async def test_list_all_returns_empty_list_initially(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test listing repositories when none exist."""
         adapter = PostgresRepositoryAdapter(db_session)
 
@@ -84,7 +98,9 @@ class TestPostgresRepositoryAdapter:
 
         assert repos == []
 
-    async def test_list_all_returns_all_repositories(self, db_session):
+    async def test_list_all_returns_all_repositories(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test listing all repositories."""
         adapter = PostgresRepositoryAdapter(db_session)
 
@@ -99,13 +115,14 @@ class TestPostgresRepositoryAdapter:
         repo_names = {repo.name for repo in repos}
         assert repo_names == {"repo1", "repo2", "repo3"}
 
-    async def test_update_existing_repository(self, db_session):
+    async def test_update_existing_repository(self, db_session: AsyncSession) -> None:
         """Test updating an existing repository."""
         adapter = PostgresRepositoryAdapter(db_session)
 
         # Create and save
         entity = RepositoryFactory.create(name="update-repo", description="Original")
         saved = await adapter.save(entity)
+        assert saved.id is not None
 
         # Update (create new entity with same ID but different description)
         updated_entity = RepositoryFactory.create(
@@ -121,15 +138,19 @@ class TestPostgresRepositoryAdapter:
 
         # Verify in database
         found = await adapter.find_by_id(saved.id)
+        assert found is not None
         assert found.description == "Updated description"
 
-    async def test_delete_existing_repository_returns_true(self, db_session):
+    async def test_delete_existing_repository_returns_true(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test deleting an existing repository."""
         adapter = PostgresRepositoryAdapter(db_session)
 
         # Create and save
         entity = RepositoryFactory.create(name="delete-repo")
         saved = await adapter.save(entity)
+        assert saved.id is not None
 
         # Delete
         result = await adapter.delete(saved.id)
@@ -140,7 +161,9 @@ class TestPostgresRepositoryAdapter:
         found = await adapter.find_by_id(saved.id)
         assert found is None
 
-    async def test_delete_nonexistent_repository_returns_false(self, db_session):
+    async def test_delete_nonexistent_repository_returns_false(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test deleting a non-existent repository."""
         adapter = PostgresRepositoryAdapter(db_session)
 
@@ -148,7 +171,9 @@ class TestPostgresRepositoryAdapter:
 
         assert result is False
 
-    async def test_repository_config_jsonb_field_works(self, db_session):
+    async def test_repository_config_jsonb_field_works(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test that config JSONB field stores complex data."""
         adapter = PostgresRepositoryAdapter(db_session)
 
@@ -160,13 +185,17 @@ class TestPostgresRepositoryAdapter:
         entity = RepositoryFactory.create(name="config-repo", config=config)
 
         saved = await adapter.save(entity)
+        assert saved.id is not None
         found = await adapter.find_by_id(saved.id)
+        assert found is not None
 
         assert found.config == config
         assert found.config["branches"] == ["main", "develop", "feature/test"]
         assert found.config["max_file_size_kb"] == 1024
 
-    async def test_concurrent_saves_work_correctly(self, db_session):
+    async def test_concurrent_saves_work_correctly(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test that multiple saves in same session work."""
         adapter = PostgresRepositoryAdapter(db_session)
 

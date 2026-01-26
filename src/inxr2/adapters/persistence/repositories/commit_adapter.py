@@ -1,11 +1,16 @@
-"""PostgreSQL commit repository adapter."""
+"""Commit repository adapter.
+
+Supports PostgreSQL and SQLite dialects.
+"""
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import CommitRepositoryPort
 from ....domain.entities import Commit
 from ..mappers import CommitMapper
+from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 
 
@@ -66,48 +71,143 @@ class PostgresCommitRepository(CommitRepositoryPort):
     async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
         """Find commit by repository and hash.
 
-        Note: Same commit hash may exist for multiple branches. We just need
-        any matching commit since the content is identical across branches.
-        """
-        result = await self.session.execute(
-            select(CommitModel)
-            .where(
-                CommitModel.repository_id == repository_id,
-                CommitModel.commit_hash == commit_hash,
-            )
-            .limit(1)
-        )
-        model = result.scalar_one_or_none()
-        return self.mapper.to_domain(model) if model else None
-
-    async def find_by_hash_and_branch(
-        self, repository_id: int, commit_hash: str, branch: str
-    ) -> Commit | None:
-        """Find commit by repository, hash, and branch.
-
-        This allows the same commit hash to exist for different branches,
-        which is necessary because branches share commit history.
+        Commits are unique per (repository_id, commit_hash).
         """
         result = await self.session.execute(
             select(CommitModel).where(
                 CommitModel.repository_id == repository_id,
                 CommitModel.commit_hash == commit_hash,
-                CommitModel.branch == branch,
             )
         )
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
 
+    async def link_commit_to_branch(
+        self, repository_id: int, commit_id: int, branch: str
+    ) -> None:
+        """Link an existing commit to a branch.
+
+        Creates an entry in the branch_commits junction table.
+        Idempotent - checks for existing link before inserting.
+        Handles concurrent inserts via savepoint rollback (TOCTOU race).
+        Works with both PostgreSQL and SQLite.
+        """
+        # Check if link already exists (dialect-agnostic idempotency)
+        existing = await self.session.execute(
+            select(BranchCommitModel).where(
+                BranchCommitModel.repository_id == repository_id,
+                BranchCommitModel.commit_id == commit_id,
+                BranchCommitModel.branch == branch,
+            )
+        )
+        if existing.scalar_one_or_none() is not None:
+            return  # Already linked
+
+        model = BranchCommitModel(
+            repository_id=repository_id,
+            commit_id=commit_id,
+            branch=branch,
+        )
+        # Use savepoint to isolate potential IntegrityError from main transaction
+        try:
+            async with self.session.begin_nested():
+                self.session.add(model)
+        except IntegrityError:
+            # Could be duplicate-key (concurrent insert) or FK violation
+            # Re-check if link exists - if not, it was a real error
+            verify = await self.session.execute(
+                select(BranchCommitModel).where(
+                    BranchCommitModel.repository_id == repository_id,
+                    BranchCommitModel.commit_id == commit_id,
+                    BranchCommitModel.branch == branch,
+                )
+            )
+            if verify.scalar_one_or_none() is None:
+                raise  # Real failure (e.g., FK violation), not duplicate
+
+    async def link_commit_to_branches(
+        self, repository_id: int, commit_id: int, branches: list[str]
+    ) -> None:
+        """Link an existing commit to multiple branches.
+
+        Bulk version of link_commit_to_branch for efficiency.
+        Idempotent - only inserts links that don't already exist.
+        Handles concurrent inserts via savepoint rollback (TOCTOU race).
+        Works with both PostgreSQL and SQLite.
+        """
+        if not branches:
+            return
+
+        # Find which branches are already linked (single query)
+        existing = await self.session.execute(
+            select(BranchCommitModel.branch).where(
+                BranchCommitModel.repository_id == repository_id,
+                BranchCommitModel.commit_id == commit_id,
+                BranchCommitModel.branch.in_(branches),
+            )
+        )
+        existing_branches = set(existing.scalars().all())
+
+        # Only insert branches that aren't already linked
+        new_branches = [b for b in branches if b not in existing_branches]
+
+        # Insert each in a savepoint to handle concurrent races
+        for branch in new_branches:
+            model = BranchCommitModel(
+                repository_id=repository_id,
+                commit_id=commit_id,
+                branch=branch,
+            )
+            try:
+                async with self.session.begin_nested():
+                    self.session.add(model)
+            except IntegrityError:
+                # Could be duplicate-key (concurrent insert) or FK violation
+                # Re-check if link exists - if not, it was a real error
+                verify = await self.session.execute(
+                    select(BranchCommitModel).where(
+                        BranchCommitModel.repository_id == repository_id,
+                        BranchCommitModel.commit_id == commit_id,
+                        BranchCommitModel.branch == branch,
+                    )
+                )
+                if verify.scalar_one_or_none() is None:
+                    raise  # Real failure (e.g., FK violation), not duplicate
+
+    async def get_branches_for_commit(self, commit_id: int) -> list[str]:
+        """Get all branches that contain a specific commit."""
+        result = await self.session.execute(
+            select(BranchCommitModel.branch).where(
+                BranchCommitModel.commit_id == commit_id
+            )
+        )
+        return list(result.scalars().all())
+
     async def list_by_repository(
         self, repository_id: int, branch: str | None = None, limit: int = 100
     ) -> list[Commit]:
-        """List commits for a repository."""
-        query = select(CommitModel).where(CommitModel.repository_id == repository_id)
-
+        """List commits for a repository, optionally filtered by branch."""
         if branch:
-            query = query.where(CommitModel.branch == branch)
-
-        query = query.order_by(CommitModel.commit_date.desc()).limit(limit)
+            # Join with branch_commits to filter by branch
+            query = (
+                select(CommitModel)
+                .join(BranchCommitModel, BranchCommitModel.commit_id == CommitModel.id)
+                .where(
+                    CommitModel.repository_id == repository_id,
+                    BranchCommitModel.branch == branch,
+                    BranchCommitModel.repository_id == repository_id,
+                )
+                .order_by(CommitModel.commit_date.desc())
+                .limit(limit)
+            )
+        else:
+            # No branch filter - return all commits for repository
+            query = (
+                select(CommitModel)
+                .where(CommitModel.repository_id == repository_id)
+                .order_by(CommitModel.commit_date.desc())
+                .limit(limit)
+            )
 
         result = await self.session.execute(query)
         models = result.scalars().all()
@@ -117,12 +217,17 @@ class PostgresCommitRepository(CommitRepositoryPort):
     async def find_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> Commit | None:
-        """Find the latest indexed commit for a specific branch."""
+        """Find the latest indexed commit for a specific branch.
+
+        Queries via the branch_commits junction table.
+        """
         result = await self.session.execute(
             select(CommitModel)
+            .join(BranchCommitModel, BranchCommitModel.commit_id == CommitModel.id)
             .where(
                 CommitModel.repository_id == repository_id,
-                CommitModel.branch == branch,
+                BranchCommitModel.branch == branch,
+                BranchCommitModel.repository_id == repository_id,
             )
             .order_by(CommitModel.commit_date.desc())
             .limit(1)
@@ -131,7 +236,10 @@ class PostgresCommitRepository(CommitRepositoryPort):
         return self.mapper.to_domain(model) if model else None
 
     async def delete_by_repository(self, repository_id: int) -> int:
-        """Delete all commits for a repository. Returns count deleted."""
+        """Delete all commits for a repository. Returns count deleted.
+
+        Note: branch_commits entries are deleted via CASCADE.
+        """
         result = await self.session.execute(
             delete(CommitModel).where(CommitModel.repository_id == repository_id)
         )

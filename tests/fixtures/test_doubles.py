@@ -30,7 +30,11 @@ fake_repo.add_test_symbol(Symbol(...))
 ```
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from io import BytesIO
 from pathlib import Path
+from typing import BinaryIO
 
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
@@ -40,7 +44,12 @@ from inxr2.application.ports.repositories import (
     RepositoryPort,
     SymbolRepositoryPort,
 )
-from inxr2.application.ports.services import GitServicePort, ParserServicePort
+from inxr2.application.ports.services import (
+    FileStat,
+    FileSystemPort,
+    GitServicePort,
+    ParserServicePort,
+)
 from inxr2.domain.entities import (
     Commit,
     File,
@@ -107,8 +116,8 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         self,
         name: str,
         repository_id: int | None = None,
-        commit_id: int | None = None,
-        limit: int = 100,
+        kind: str | None = None,
+        limit: int = 50,
     ) -> list[Symbol]:
         """Search symbols by name with optional filters."""
         results = []
@@ -116,7 +125,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
             if name.lower() in symbol.name.lower():
                 if repository_id is not None and symbol.repository_id != repository_id:
                     continue
-                if commit_id is not None and symbol.commit_id != commit_id:
+                if kind is not None and symbol.kind.value != kind:
                     continue
                 results.append(symbol)
         return results[:limit]
@@ -190,6 +199,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 indexed_at=symbol.indexed_at,
             )
             self._next_id += 1
+        assert symbol.id is not None, "Symbol must have an ID after assignment"
         self._symbols[symbol.id] = symbol
         return symbol
 
@@ -248,6 +258,7 @@ class InMemoryFileRepository(FileRepositoryPort):
                 indexed_at=file.indexed_at,
             )
             self._next_id += 1
+        assert file.id is not None, "File must have an ID after assignment"
         self._files[file.id] = file
         return file
 
@@ -257,11 +268,11 @@ class InMemoryFileRepository(FileRepositoryPort):
 
     async def save_many(self, files: list[File]) -> list[File]:
         """Save multiple files."""
+        saved_files = []
         for file in files:
-            if file.id is None:
-                file.id = len(self._files) + 1
-            self._files[file.id] = file
-        return files
+            saved = await self.save(file)
+            saved_files.append(saved)
+        return saved_files
 
     async def list_by_repository(self, repository_id: int) -> list[File]:
         """List all files for a repository."""
@@ -305,7 +316,7 @@ class InMemoryFileRepository(FileRepositoryPort):
         Args:
             repository_id: The repository ID
             path: The file path
-            branch: Optional branch to filter by (requires commit_repo)
+            branch: Optional branch to filter by (requires commit_repo with branch tracking)
         """
         files = [
             f
@@ -315,14 +326,11 @@ class InMemoryFileRepository(FileRepositoryPort):
 
         # If branch filter specified and we have a commit repo, filter by branch
         if branch is not None and self._commit_repo is not None:
+            # Get commit IDs on this branch from the branch_commits mapping
             branch_commit_ids: set[int] = set()
-            for commit in self._commit_repo._commits.values():
-                if (
-                    commit.repository_id == repository_id
-                    and commit.branch == branch
-                    and commit.id is not None
-                ):
-                    branch_commit_ids.add(commit.id)
+            for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
+                if repo_id == repository_id and b == branch:
+                    branch_commit_ids.add(cid)
             files = [f for f in files if f.commit_id in branch_commit_ids]
 
         return files
@@ -359,6 +367,8 @@ class InMemoryFileRepository(FileRepositoryPort):
     # Test helper methods
     def add(self, file: File) -> None:
         """Add a file for testing."""
+        if file.id is None:
+            raise ValueError("File must have an ID when using add()")
         self._files[file.id] = file
 
     def clear(self) -> None:
@@ -388,6 +398,7 @@ class InMemoryRepositoryRepository(RepositoryPort):
                 updated_at=repository.updated_at,
             )
             self._next_id += 1
+        assert repository.id is not None, "Repository must have an ID after assignment"
         self._repositories[repository.id] = repository
         return repository
 
@@ -445,11 +456,17 @@ class InMemoryRepositoryRepository(RepositoryPort):
 
 
 class InMemoryCommitRepository(CommitRepositoryPort):
-    """In-memory implementation of CommitRepositoryPort for testing."""
+    """In-memory implementation of CommitRepositoryPort for testing.
+
+    Branch information is stored in a separate _branch_commits dict,
+    matching the production junction table approach.
+    """
 
     def __init__(self) -> None:
         """Initialize with empty storage."""
         self._commits: dict[int, Commit] = {}
+        # branch_commits: maps (repository_id, branch, commit_id) -> True
+        self._branch_commits: dict[tuple[int, str, int], bool] = {}
         self._next_id = 1
 
     async def save(self, commit: Commit) -> Commit:
@@ -457,6 +474,8 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         if commit.id is None:
             from inxr2.domain.value_objects import CommitHash
 
+            # Design note: Only essential data is stored. Author info, message,
+            # and parent hashes are queried from git on-demand.
             commit = Commit(
                 id=self._next_id,
                 repository_id=commit.repository_id,
@@ -465,19 +484,12 @@ class InMemoryCommitRepository(CommitRepositoryPort):
                     if isinstance(commit.commit_hash, CommitHash)
                     else CommitHash(commit.commit_hash)
                 ),
-                short_hash=commit.short_hash,
-                parent_hashes=commit.parent_hashes,
-                branch=commit.branch,
-                author_name=commit.author_name,
-                author_email=commit.author_email,
-                committer_name=commit.committer_name,
-                committer_email=commit.committer_email,
                 author_date=commit.author_date,
                 commit_date=commit.commit_date,
-                message=commit.message,
                 indexed_at=commit.indexed_at,
             )
             self._next_id += 1
+        assert commit.id is not None, "Commit must have an ID after assignment"
         self._commits[commit.id] = commit
         return commit
 
@@ -494,7 +506,10 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         return self._commits.get(commit_id)
 
     async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
-        """Find commit by repository and hash."""
+        """Find commit by repository and hash.
+
+        Commits are unique per (repository_id, commit_hash).
+        """
         for commit in self._commits.values():
             if (
                 commit.repository_id == repository_id
@@ -503,28 +518,46 @@ class InMemoryCommitRepository(CommitRepositoryPort):
                 return commit
         return None
 
-    async def find_by_hash_and_branch(
-        self, repository_id: int, commit_hash: str, branch: str
-    ) -> Commit | None:
-        """Find commit by repository, hash, and branch."""
-        for commit in self._commits.values():
-            if (
-                commit.repository_id == repository_id
-                and commit.commit_hash.value == commit_hash
-                and commit.branch == branch
-            ):
-                return commit
-        return None
+    async def link_commit_to_branch(
+        self, repository_id: int, commit_id: int, branch: str
+    ) -> None:
+        """Link an existing commit to a branch.
+
+        Idempotent - if the link already exists, does nothing.
+        """
+        key = (repository_id, branch, commit_id)
+        self._branch_commits[key] = True
+
+    async def link_commit_to_branches(
+        self, repository_id: int, commit_id: int, branches: list[str]
+    ) -> None:
+        """Link an existing commit to multiple branches."""
+        for branch in branches:
+            await self.link_commit_to_branch(repository_id, commit_id, branch)
+
+    async def get_branches_for_commit(self, commit_id: int) -> list[str]:
+        """Get all branches that contain a specific commit."""
+        branches = []
+        for (_repo_id, branch, cid), _ in self._branch_commits.items():
+            if cid == commit_id:
+                branches.append(branch)
+        return branches
 
     async def list_by_repository(
         self, repository_id: int, branch: str | None = None, limit: int = 100
     ) -> list[Commit]:
-        """List commits for a repository."""
+        """List commits for a repository, optionally filtered by branch."""
         commits = [
             c for c in self._commits.values() if c.repository_id == repository_id
         ]
         if branch:
-            commits = [c for c in commits if c.branch == branch]
+            # Filter by branch via the branch_commits mapping
+            branch_commit_ids = {
+                cid
+                for (repo_id, b, cid), _ in self._branch_commits.items()
+                if repo_id == repository_id and b == branch
+            }
+            commits = [c for c in commits if c.id in branch_commit_ids]
         # Sort by commit date descending
         commits.sort(key=lambda c: c.commit_date, reverse=True)
         return commits[:limit]
@@ -533,10 +566,17 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         self, repository_id: int, branch: str
     ) -> Commit | None:
         """Find the latest indexed commit for a specific branch."""
+        # Get commit IDs on this branch
+        branch_commit_ids = {
+            cid
+            for (repo_id, b, cid), _ in self._branch_commits.items()
+            if repo_id == repository_id and b == branch
+        }
+
         commits = [
             c
             for c in self._commits.values()
-            if c.repository_id == repository_id and c.branch == branch
+            if c.repository_id == repository_id and c.id in branch_commit_ids
         ]
         if not commits:
             return None
@@ -545,8 +585,9 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         return commits[0]
 
     def clear(self) -> None:
-        """Clear all commits."""
+        """Clear all commits and branch links."""
         self._commits.clear()
+        self._branch_commits.clear()
 
 
 class InMemoryReferenceRepository(ReferenceRepositoryPort):
@@ -562,7 +603,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         count = await ref_repo.resolve_unlinked_references(repository_id=1)
     """
 
-    def __init__(self, symbol_repo: SymbolRepositoryPort | None = None) -> None:
+    def __init__(self, symbol_repo: "InMemorySymbolRepository | None" = None) -> None:
         """Initialize with empty storage.
 
         Args:
@@ -597,6 +638,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 indexed_at=reference.indexed_at,
             )
             self._next_id += 1
+        assert reference.id is not None, "Reference must have an ID after assignment"
         self._references[reference.id] = reference
         return reference
 
@@ -790,6 +832,7 @@ class InMemoryIndexStatusRepository(IndexStatusRepositoryPort):
                 updated_at=status.updated_at,
             )
             self._next_id += 1
+        assert status.id is not None, "IndexStatus must have an ID after assignment"
         self._statuses[status.id] = status
         return status
 
@@ -843,6 +886,147 @@ class InMemoryIndexStatusRepository(IndexStatusRepositoryPort):
 # ============================================================================
 # Service Test Doubles
 # ============================================================================
+
+
+class FakeFileSystem(FileSystemPort):
+    """
+    In-memory file system implementation for testing.
+
+    Allows tests to set up virtual files without touching the real file system.
+    Useful for pure unit tests of use cases that depend on file I/O.
+
+    Example:
+        fs = FakeFileSystem()
+        fs.add_file("/project/main.py", b"print('hello')")
+        fs.add_file("/project/utils.py", b"def helper(): pass")
+        content = fs.read_text("/project/main.py")
+    """
+
+    def __init__(self) -> None:
+        """Initialize with empty virtual file system."""
+        self._files: dict[str, bytes] = {}
+        self._directories: set[str] = set()
+
+    def walk_directory(
+        self,
+        path: str | Path,
+        skip_dirs: set[str] | None = None,
+        skip_hidden: bool = True,
+    ) -> list[Path]:
+        """Walk virtual directory and return file paths."""
+        skip_dirs = skip_dirs or set()
+        path_str = str(path).rstrip("/")
+        result: list[Path] = []
+
+        for file_path in self._files:
+            # Check if file is under the given path (must be exact prefix + /)
+            # This prevents /project from matching /project2/file.txt
+            if not (file_path.startswith(path_str + "/") or file_path == path_str):
+                continue
+
+            # Get the relative part
+            relative = file_path[len(path_str) :].lstrip("/")
+            if not relative:
+                continue
+
+            # Check for skip conditions
+            parts = relative.split("/")
+
+            # Skip hidden files/dirs
+            if skip_hidden and any(p.startswith(".") for p in parts):
+                continue
+
+            # Skip excluded directories
+            skip = False
+            for part in parts[:-1]:  # Exclude filename
+                if part in skip_dirs:
+                    skip = True
+                    break
+            if skip:
+                continue
+
+            result.append(Path(file_path))
+
+        return result
+
+    def stat(self, path: str | Path) -> FileStat:
+        """Get file statistics for virtual file."""
+        path_str = str(path)
+        if path_str in self._files:
+            return FileStat(
+                size_bytes=len(self._files[path_str]),
+                is_file=True,
+                is_dir=False,
+            )
+        if path_str in self._directories:
+            return FileStat(
+                size_bytes=0,
+                is_file=False,
+                is_dir=True,
+            )
+        raise FileNotFoundError(f"No such file or directory: {path}")
+
+    def read_bytes(self, path: str | Path) -> bytes:
+        """Read virtual file as bytes."""
+        path_str = str(path)
+        if path_str not in self._files:
+            raise FileNotFoundError(f"No such file: {path}")
+        return self._files[path_str]
+
+    def read_text(
+        self, path: str | Path, encoding: str = "utf-8", errors: str = "strict"
+    ) -> str:
+        """Read virtual file as text."""
+        content = self.read_bytes(path)
+        return content.decode(encoding, errors=errors)
+
+    def relative_path(self, path: str | Path, base: str | Path) -> str:
+        """Get path relative to base."""
+        path_str = str(path)
+        base_str = str(base).rstrip("/")
+        if path_str.startswith(base_str):
+            rel = path_str[len(base_str) :].lstrip("/")
+            return rel if rel else "."
+        return path_str
+
+    def exists(self, path: str | Path) -> bool:
+        """Check if virtual path exists."""
+        path_str = str(path)
+        return path_str in self._files or path_str in self._directories
+
+    @contextmanager
+    def open_binary(self, path: str | Path) -> Iterator[BinaryIO]:
+        """Open virtual file for binary reading as a context manager."""
+        content = self.read_bytes(path)
+        yield BytesIO(content)
+
+    # Test helper methods
+    def add_file(self, path: str, content: bytes | str) -> None:
+        """Add a virtual file.
+
+        Args:
+            path: Absolute path for the virtual file
+            content: File content (str will be encoded as UTF-8)
+        """
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        self._files[path] = content
+
+        # Ensure parent directories exist
+        parts = path.split("/")
+        for i in range(1, len(parts)):
+            dir_path = "/".join(parts[:i])
+            if dir_path:
+                self._directories.add(dir_path)
+
+    def add_directory(self, path: str) -> None:
+        """Add a virtual directory."""
+        self._directories.add(path)
+
+    def clear(self) -> None:
+        """Clear all virtual files and directories."""
+        self._files.clear()
+        self._directories.clear()
 
 
 class StubParserService(ParserServicePort):
@@ -927,38 +1111,53 @@ def create_populated_symbol_repository() -> InMemorySymbolRepository:
     Useful for tests that need realistic symbol data without
     setting it up manually each time.
     """
-    from inxr2.domain.value_objects import SymbolKind, SymbolLocation
+    from inxr2.domain.value_objects import SymbolKind
 
     repo = InMemorySymbolRepository()
 
     # Add some common test symbols
     repo.add(
         Symbol(
-            id="sym-func-1",
+            id=1,
+            file_id=1,
+            repository_id=1,
+            commit_id=1,
             name="calculate_total",
             kind=SymbolKind.FUNCTION,
-            location=SymbolLocation(line=10, column=0),
-            file_id="file-1",
+            start_line=10,
+            start_column=0,
+            end_line=15,
+            end_column=0,
             scope="module",
         )
     )
     repo.add(
         Symbol(
-            id="sym-class-1",
+            id=2,
+            file_id=1,
+            repository_id=1,
+            commit_id=1,
             name="Calculator",
             kind=SymbolKind.CLASS,
-            location=SymbolLocation(line=20, column=0),
-            file_id="file-1",
+            start_line=20,
+            start_column=0,
+            end_line=50,
+            end_column=0,
             scope="module",
         )
     )
     repo.add(
         Symbol(
-            id="sym-method-1",
+            id=3,
+            file_id=1,
+            repository_id=1,
+            commit_id=1,
             name="add",
             kind=SymbolKind.METHOD,
-            location=SymbolLocation(line=25, column=4),
-            file_id="file-1",
+            start_line=25,
+            start_column=4,
+            end_line=30,
+            end_column=4,
             scope="module.Calculator",
         )
     )

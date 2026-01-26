@@ -59,13 +59,13 @@ class TestSymbolKind:
 
     def test_symbol_kinds_exist(self) -> None:
         """Test that expected symbol kinds are defined."""
-        assert SymbolKind.FUNCTION == "function"
-        assert SymbolKind.CLASS == "class"
-        assert SymbolKind.METHOD == "method"
-        assert SymbolKind.VARIABLE == "variable"
-        assert SymbolKind.MODULE == "module"
+        assert SymbolKind.FUNCTION.value == "function"
+        assert SymbolKind.CLASS.value == "class"
+        assert SymbolKind.METHOD.value == "method"
+        assert SymbolKind.VARIABLE.value == "variable"
+        assert SymbolKind.MODULE.value == "module"
 
     def test_symbol_kind_is_string(self) -> None:
         """Test that symbol kind values are strings."""
         assert isinstance(SymbolKind.FUNCTION.value, str)
-        assert SymbolKind.CLASS == "class"
+        assert SymbolKind.CLASS.value == "class"

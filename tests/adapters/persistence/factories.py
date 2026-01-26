@@ -1,6 +1,7 @@
 """Test data factories for creating domain entities."""
 
 from datetime import datetime
+from typing import Any
 
 from inxr2.domain.entities import Commit, File, Repository, Symbol
 from inxr2.domain.value_objects import CommitHash, SymbolKind
@@ -13,7 +14,7 @@ class RepositoryFactory:
     def create(
         name: str = "test-repo",
         url: str = "https://github.com/test/repo.git",
-        **kwargs,
+        **kwargs: Any,
     ) -> Repository:
         """Create a test repository."""
         return Repository(
@@ -35,23 +36,22 @@ class CommitFactory:
     def create(
         repository_id: int = 1,
         commit_hash: str = "a" * 40,
-        **kwargs,
+        **kwargs: Any,
     ) -> Commit:
-        """Create a test commit."""
+        """Create a test commit.
+
+        Note: Branch information is no longer stored on the Commit entity.
+        Use CommitRepositoryPort.link_commit_to_branch() to associate commits with branches.
+
+        Design note: Author info, message, and parent hashes are NOT stored.
+        They are queried from git on-demand. See ARCHITECTURAL_REVIEW.md.
+        """
         return Commit(
             repository_id=repository_id,
             commit_hash=CommitHash(value=commit_hash),
-            author_name=kwargs.get("author_name", "Test Author"),
-            author_email=kwargs.get("author_email", "author@test.com"),
-            committer_name=kwargs.get("committer_name", "Test Committer"),
-            committer_email=kwargs.get("committer_email", "committer@test.com"),
             author_date=kwargs.get("author_date", datetime.utcnow()),
             commit_date=kwargs.get("commit_date", datetime.utcnow()),
-            message=kwargs.get("message", "Test commit message"),
             id=kwargs.get("id"),
-            short_hash=kwargs.get("short_hash", commit_hash[:7]),
-            parent_hashes=kwargs.get("parent_hashes"),
-            branch=kwargs.get("branch", "main"),
             indexed_at=kwargs.get("indexed_at"),
         )
 
@@ -64,7 +64,7 @@ class FileFactory:
         repository_id: int = 1,
         commit_id: int = 1,
         path: str = "src/test.py",
-        **kwargs,
+        **kwargs: Any,
     ) -> File:
         """Create a test file."""
         return File(
@@ -91,7 +91,7 @@ class SymbolFactory:
         repository_id: int = 1,
         commit_id: int = 1,
         name: str = "test_function",
-        **kwargs,
+        **kwargs: Any,
     ) -> Symbol:
         """Create a test symbol."""
         return Symbol(
