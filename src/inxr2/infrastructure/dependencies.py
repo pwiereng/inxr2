@@ -47,7 +47,11 @@ from ..application.ports.repositories import (
     SymbolRepositoryPort,
 )
 from ..application.ports.services import FileSystemPort
-from ..application.use_cases.files.resolve_file import ResolveFileUseCase
+from ..application.use_cases.files import (
+    GetFileContentUseCase,
+    GetFileHistoryUseCase,
+    ResolveFileUseCase,
+)
 from ..application.use_cases.indexing.index_local_directory import (
     IndexLocalDirectoryUseCase,
 )
@@ -243,6 +247,34 @@ def get_repository_branches_use_case(
     )
 
 
+def get_file_content_use_case(
+    resolve_file_use_case: Annotated[
+        ResolveFileUseCase, Depends(get_resolve_file_use_case)
+    ],
+    git_service: GitServiceDep,
+) -> GetFileContentUseCase:
+    """Provide GetFileContentUseCase with dependencies."""
+    return GetFileContentUseCase(
+        resolve_file_use_case=resolve_file_use_case,
+        git_service=git_service,
+    )
+
+
+def get_file_history_use_case(
+    repository_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+    git_service: GitServiceDep,
+) -> GetFileHistoryUseCase:
+    """Provide GetFileHistoryUseCase with dependencies."""
+    return GetFileHistoryUseCase(
+        repository_repo=repository_adapter,
+        file_repo=file_adapter,
+        commit_repo=commit_adapter,
+        git_service=git_service,
+    )
+
+
 # Type aliases for injected use cases
 ListRepositoriesUseCaseDep = Annotated[
     ListRepositoriesUseCase, Depends(get_list_repositories_use_case)
@@ -264,4 +296,10 @@ GetRepositoryStatsUseCaseDep = Annotated[
 ]
 GetRepositoryBranchesUseCaseDep = Annotated[
     GetRepositoryBranchesUseCase, Depends(get_repository_branches_use_case)
+]
+GetFileContentUseCaseDep = Annotated[
+    GetFileContentUseCase, Depends(get_file_content_use_case)
+]
+GetFileHistoryUseCaseDep = Annotated[
+    GetFileHistoryUseCase, Depends(get_file_history_use_case)
 ]

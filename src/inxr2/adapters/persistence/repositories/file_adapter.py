@@ -190,6 +190,54 @@ class PostgresFileRepository(FileRepositoryPort):
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
 
+    async def list_latest_by_branch(
+        self, repository_id: int, branch: str
+    ) -> list[File]:
+        """List the latest version of each file on a branch.
+
+        For delta-indexed repositories, this aggregates files across all commits
+        on the branch, returning only the most recent version of each unique path.
+
+        Uses a window function to rank files by commit date and selects only
+        the most recent version of each path.
+        """
+        from sqlalchemy import func
+
+        # Subquery to get all files on the branch with their commit dates
+        file_with_date = (
+            select(
+                FileModel.id,
+                FileModel.path,
+                CommitModel.commit_date,
+                func.row_number()
+                .over(
+                    partition_by=FileModel.path,
+                    order_by=CommitModel.commit_date.desc(),
+                )
+                .label("rn"),
+            )
+            .join(CommitModel, FileModel.commit_id == CommitModel.id)
+            .join(BranchCommitModel, BranchCommitModel.commit_id == CommitModel.id)
+            .where(
+                FileModel.repository_id == repository_id,
+                BranchCommitModel.branch == branch,
+                BranchCommitModel.repository_id == repository_id,
+            )
+            .subquery()
+        )
+
+        # Select only the latest version of each file (rn = 1)
+        latest_file_ids = select(file_with_date.c.id).where(file_with_date.c.rn == 1)
+
+        # Get the full file models for those IDs
+        result = await self.session.execute(
+            select(FileModel)
+            .where(FileModel.id.in_(latest_file_ids))
+            .order_by(FileModel.path)
+        )
+        models = result.scalars().all()
+        return [self.mapper.to_domain(model) for model in models]
+
     async def delete_by_repository(self, repository_id: int) -> int:
         """Delete all files for a repository. Returns count deleted."""
         result = await self.session.execute(

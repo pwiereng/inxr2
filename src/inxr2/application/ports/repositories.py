@@ -213,6 +213,24 @@ class FileRepositoryPort(ABC):
         """
         pass
 
+    @abstractmethod
+    async def list_latest_by_branch(
+        self, repository_id: int, branch: str
+    ) -> list[File]:
+        """List the latest version of each file on a branch.
+
+        For delta-indexed repositories, this aggregates files across all commits
+        on the branch, returning only the most recent version of each unique path.
+
+        Args:
+            repository_id: The repository ID
+            branch: The branch name
+
+        Returns:
+            List of files (latest version of each unique path on the branch)
+        """
+        pass
+
 
 class SymbolRepositoryPort(ABC):
     """Port for symbol entity operations."""

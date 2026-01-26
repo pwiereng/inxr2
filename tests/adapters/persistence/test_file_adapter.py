@@ -282,3 +282,229 @@ class TestPostgresFileRepositoryVersions:
         assert versions[0].content_hash == "v3" + "0" * 38  # newest
         assert versions[1].content_hash == "v2" + "0" * 38
         assert versions[2].content_hash == "v1" + "0" * 38  # oldest
+
+
+@pytest.mark.asyncio
+class TestPostgresFileRepositoryLatestByBranch:
+    """Tests for list_latest_by_branch method."""
+
+    async def test_list_latest_by_branch_returns_latest_version_of_each_file(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that list_latest_by_branch returns only the most recent version of each file."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="latest-by-branch-repo")
+        )
+        assert repo.id is not None
+
+        now = datetime.utcnow()
+
+        # Create commits at different times
+        old_commit = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="old" + "0" * 37,
+                commit_date=now - timedelta(hours=2),
+            )
+        )
+        assert old_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, old_commit.id, "main")
+
+        new_commit = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="new" + "0" * 37,
+                commit_date=now,
+            )
+        )
+        assert new_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, new_commit.id, "main")
+
+        # Create file.py at both commits (file modified)
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=old_commit.id,
+                path="src/file.py",
+                content_hash="old_content" + "0" * 29,
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=new_commit.id,
+                path="src/file.py",
+                content_hash="new_content" + "0" * 29,
+            )
+        )
+
+        # Create another_file.py only at old commit (file not modified)
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=old_commit.id,
+                path="src/another_file.py",
+                content_hash="unchanged" + "0" * 31,
+            )
+        )
+
+        # Get latest files on main branch
+        files = await file_adapter.list_latest_by_branch(repo.id, "main")
+
+        # Should have 2 files (latest version of each)
+        assert len(files) == 2
+
+        # Sort by path for predictable assertions
+        files_by_path = {f.path: f for f in files}
+
+        # file.py should have the newer content
+        assert files_by_path["src/file.py"].content_hash == "new_content" + "0" * 29
+
+        # another_file.py should still be present (from old commit)
+        assert files_by_path["src/another_file.py"].content_hash == "unchanged" + "0" * 31
+
+    async def test_list_latest_by_branch_filters_by_branch(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that list_latest_by_branch only returns files from the specified branch."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="branch-filter-repo")
+        )
+        assert repo.id is not None
+
+        now = datetime.utcnow()
+
+        # Create commit on main branch
+        main_commit = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="main" + "0" * 36,
+                commit_date=now,
+            )
+        )
+        assert main_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, main_commit.id, "main")
+
+        # Create commit on feature branch
+        feature_commit = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="feat" + "0" * 36,
+                commit_date=now,
+            )
+        )
+        assert feature_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, feature_commit.id, "feature")
+
+        # Create files on each branch
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=main_commit.id,
+                path="src/main_only.py",
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=feature_commit.id,
+                path="src/feature_only.py",
+            )
+        )
+
+        # Get files on main branch
+        main_files = await file_adapter.list_latest_by_branch(repo.id, "main")
+        assert len(main_files) == 1
+        assert main_files[0].path == "src/main_only.py"
+
+        # Get files on feature branch
+        feature_files = await file_adapter.list_latest_by_branch(repo.id, "feature")
+        assert len(feature_files) == 1
+        assert feature_files[0].path == "src/feature_only.py"
+
+    async def test_list_latest_by_branch_returns_empty_for_unknown_branch(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that list_latest_by_branch returns empty list for non-existent branch."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="unknown-branch-repo")
+        )
+        assert repo.id is not None
+
+        commit = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="test" + "0" * 36,
+            )
+        )
+        assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
+
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="src/test.py",
+            )
+        )
+
+        # Get files on non-existent branch
+        files = await file_adapter.list_latest_by_branch(repo.id, "nonexistent")
+        assert files == []
+
+    async def test_list_latest_by_branch_handles_shared_commits(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that files from commits shared between branches are included correctly."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="shared-commit-repo")
+        )
+        assert repo.id is not None
+
+        now = datetime.utcnow()
+
+        # Create a commit that's on both branches (like a merge base)
+        shared_commit = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="shared" + "0" * 34,
+                commit_date=now - timedelta(hours=1),
+            )
+        )
+        assert shared_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, shared_commit.id, "main")
+        await commit_adapter.link_commit_to_branch(repo.id, shared_commit.id, "feature")
+
+        # Create a file at the shared commit
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=shared_commit.id,
+                path="src/shared.py",
+            )
+        )
+
+        # Both branches should see the file
+        main_files = await file_adapter.list_latest_by_branch(repo.id, "main")
+        feature_files = await file_adapter.list_latest_by_branch(repo.id, "feature")
+
+        assert len(main_files) == 1
+        assert len(feature_files) == 1
+        assert main_files[0].path == "src/shared.py"
+        assert feature_files[0].path == "src/shared.py"

@@ -32,6 +32,7 @@ fake_repo.add_test_symbol(Symbol(...))
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
@@ -363,6 +364,56 @@ class InMemoryFileRepository(FileRepositoryPort):
             ):
                 return file
         return None
+
+    async def list_latest_by_branch(
+        self, repository_id: int, branch: str
+    ) -> list[File]:
+        """List the latest version of each file on a branch.
+
+        For delta-indexed repositories, this aggregates files across all commits
+        on the branch, returning only the most recent version of each unique path.
+        """
+        if self._commit_repo is None:
+            # No commit repo - return all files for repository
+            return [
+                f for f in self._files.values() if f.repository_id == repository_id
+            ]
+
+        # Get commit IDs on this branch
+        branch_commit_ids: set[int] = set()
+        for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
+            if repo_id == repository_id and b == branch:
+                branch_commit_ids.add(cid)
+
+        # Get commits with dates for ordering
+        commits_with_dates: dict[int, datetime] = {}
+        for cid in branch_commit_ids:
+            commit = self._commit_repo._commits.get(cid)
+            if commit:
+                commits_with_dates[cid] = commit.commit_date
+
+        # Get all files on this branch
+        branch_files = [
+            f
+            for f in self._files.values()
+            if f.repository_id == repository_id and f.commit_id in branch_commit_ids
+        ]
+
+        # Group by path and keep only the latest (by commit date)
+        latest_by_path: dict[str, File] = {}
+        for file in branch_files:
+            file_date = commits_with_dates.get(file.commit_id, datetime.min)
+            if file.path not in latest_by_path:
+                latest_by_path[file.path] = file
+            else:
+                existing_date = commits_with_dates.get(
+                    latest_by_path[file.path].commit_id, datetime.min
+                )
+                if file_date > existing_date:
+                    latest_by_path[file.path] = file
+
+        # Return sorted by path
+        return sorted(latest_by_path.values(), key=lambda f: f.path)
 
     # Test helper methods
     def add(self, file: File) -> None:

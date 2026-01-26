@@ -95,46 +95,38 @@ class GetRepositoryTreeUseCase:
 
         repository_id = repository.id if repository.id is not None else 0
 
-        # Resolve commit: explicit commit_hash > branch resolution > latest
-        resolved_commit_hash = request.commit_hash
-        if not resolved_commit_hash and request.branch:
-            # Resolve branch to latest indexed commit
-            if not self._commit_repo:
-                raise ValueError(
-                    "Branch resolution requires commit repository. "
-                    "branch was provided but commit_repo is not available."
-                )
-            branch_commit = await self._commit_repo.find_latest_by_branch(
-                repository_id, request.branch
-            )
-            if branch_commit:
-                resolved_commit_hash = branch_commit.commit_hash.value
-            else:
-                # Branch has no indexed commits
-                # Don't silently fall back - inform the caller explicitly
-                raise ValueError(
-                    f"Branch '{request.branch}' has no indexed commits. "
-                    f"Try the default branch '{repository.default_branch}' or "
-                    f"remove the branch parameter to use the latest indexed version."
-                )
-
-        # Get files - either at specific commit (time travel) or latest
-        if resolved_commit_hash:
-            # Time travel requested - commit_repo is required
+        # Get files based on request parameters:
+        # 1. Explicit commit_hash: get files at that specific commit
+        # 2. Branch specified: get latest version of each file on that branch
+        # 3. Default: get latest files across all branches
+        if request.commit_hash:
+            # Time travel to specific commit
             if not self._commit_repo:
                 raise ValueError(
                     "Time travel requires commit repository. "
                     "commit_hash was provided but commit_repo is not available."
                 )
-            # Get files at specific commit
             commit = await self._commit_repo.find_by_hash(
-                repository_id, resolved_commit_hash
+                repository_id, request.commit_hash
             )
             if not commit or commit.id is None:
-                raise ValueError(f"Commit not found: {resolved_commit_hash}")
+                raise ValueError(f"Commit not found: {request.commit_hash}")
             files = await self._file_repo.list_by_commit(commit.id)
+        elif request.branch:
+            # Get latest version of each file on the branch
+            # This aggregates across all commits on the branch
+            files = await self._file_repo.list_latest_by_branch(
+                repository_id, request.branch
+            )
+            if not files:
+                # Branch has no indexed files
+                raise ValueError(
+                    f"Branch '{request.branch}' has no indexed files. "
+                    f"Try the default branch '{repository.default_branch}' or "
+                    f"remove the branch parameter to use the latest indexed version."
+                )
         else:
-            # Default: get latest files
+            # Default: get latest files across all branches
             files = await self._file_repo.list_by_repository(repository_id)
 
         # Build tree structure
