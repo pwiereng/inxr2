@@ -2,7 +2,6 @@
 
 import hashlib
 import logging
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +14,7 @@ from ...ports.repositories import (
     FileRepositoryPort,
     RepositoryPort,
 )
+from ...ports.services import FileSystemPort
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,7 @@ class IndexLocalDirectoryUseCase:
         repository_repo: RepositoryPort,
         commit_repo: CommitRepositoryPort,
         file_repo: FileRepositoryPort,
+        filesystem: FileSystemPort,
     ) -> None:
         """
         Initialize use case.
@@ -85,10 +86,12 @@ class IndexLocalDirectoryUseCase:
             repository_repo: Repository for accessing repositories
             commit_repo: Repository for accessing commits
             file_repo: Repository for accessing files
+            filesystem: File system port for I/O operations
         """
         self._repository_repo = repository_repo
         self._commit_repo = commit_repo
         self._file_repo = file_repo
+        self._filesystem = filesystem
         self._language_detector = LanguageDetector()
 
     async def execute(
@@ -136,7 +139,11 @@ class IndexLocalDirectoryUseCase:
         indexed_files = 0
         skipped_files = 0
 
-        for file_path in self._walk_directory(request.path):
+        file_paths = self._filesystem.walk_directory(
+            request.path, skip_dirs=self.SKIP_DIRS, skip_hidden=True
+        )
+
+        for file_path in file_paths:
             total_files += 1
 
             # Skip non-text files
@@ -146,8 +153,8 @@ class IndexLocalDirectoryUseCase:
 
             try:
                 # Get file metadata
-                stats = os.stat(file_path)
-                relative_path = os.path.relpath(file_path, request.path)
+                file_stat = self._filesystem.stat(file_path)
+                relative_path = self._filesystem.relative_path(file_path, request.path)
 
                 # Detect language
                 language = self._language_detector.detect(file_path)
@@ -161,7 +168,7 @@ class IndexLocalDirectoryUseCase:
                     commit_id=saved_commit.id,
                     path=relative_path,
                     content_hash=content_hash,
-                    size_bytes=stats.st_size,
+                    size_bytes=file_stat.size_bytes,
                     language=language,
                     line_count=self._count_lines(file_path),
                 )
@@ -181,30 +188,6 @@ class IndexLocalDirectoryUseCase:
             indexed_files=indexed_files,
             skipped_files=skipped_files,
         )
-
-    def _walk_directory(self, path: str) -> list[Path]:
-        """
-        Walk directory and return all file paths.
-
-        Args:
-            path: Directory path to walk
-
-        Returns:
-            List of file paths
-        """
-        files = []
-        for root, dirs, filenames in os.walk(path):
-            # Filter out directories to skip
-            dirs[:] = [
-                d for d in dirs if not d.startswith(".") and d not in self.SKIP_DIRS
-            ]
-
-            for filename in filenames:
-                # Skip hidden files
-                if not filename.startswith("."):
-                    files.append(Path(root) / filename)
-
-        return files
 
     def _generate_local_commit_hash(self, path: str) -> str:
         """
@@ -231,11 +214,8 @@ class IndexLocalDirectoryUseCase:
         Returns:
             40-character hex hash
         """
-        sha1 = hashlib.sha1()
-        with open(file_path, "rb") as f:
-            while chunk := f.read(8192):
-                sha1.update(chunk)
-        return sha1.hexdigest()
+        content = self._filesystem.read_bytes(file_path)
+        return hashlib.sha1(content).hexdigest()
 
     def _count_lines(self, file_path: str | Path) -> int | None:
         """
@@ -248,7 +228,9 @@ class IndexLocalDirectoryUseCase:
             Number of lines or None if can't be read
         """
         try:
-            with open(file_path, encoding="utf-8", errors="ignore") as f:
-                return sum(1 for _ in f)
+            content = self._filesystem.read_text(file_path, errors="ignore")
+            return content.count("\n") + (
+                1 if content and not content.endswith("\n") else 0
+            )
         except Exception:
             return None

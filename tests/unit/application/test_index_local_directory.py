@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from inxr2.adapters.external.local_filesystem import LocalFileSystem
 from inxr2.application.use_cases.indexing.index_local_directory import (
     IndexLocalDirectoryRequest,
     IndexLocalDirectoryUseCase,
@@ -18,8 +19,15 @@ from tests.fixtures.test_doubles import (
 class TestIndexLocalDirectoryUseCase:
     """Tests for IndexLocalDirectoryUseCase."""
 
+    @pytest.fixture
+    def filesystem(self) -> LocalFileSystem:
+        """Provide LocalFileSystem for integration tests with real files."""
+        return LocalFileSystem()
+
     @pytest.mark.asyncio
-    async def test_index_empty_directory(self, tmp_path: Path) -> None:
+    async def test_index_empty_directory(
+        self, tmp_path: Path, filesystem: LocalFileSystem
+    ) -> None:
         """Test indexing an empty directory."""
         # Arrange
         empty_dir = tmp_path / "empty"
@@ -33,6 +41,7 @@ class TestIndexLocalDirectoryUseCase:
             repository_repo=repo_repo,
             commit_repo=commit_repo,
             file_repo=file_repo,
+            filesystem=filesystem,
         )
 
         # Act
@@ -56,7 +65,9 @@ class TestIndexLocalDirectoryUseCase:
         assert repo.description == "Empty test repository"
 
     @pytest.mark.asyncio
-    async def test_index_directory_with_text_files(self, tmp_path: Path) -> None:
+    async def test_index_directory_with_text_files(
+        self, tmp_path: Path, filesystem: LocalFileSystem
+    ) -> None:
         """Test indexing a directory with text files."""
         # Arrange - create test files
         test_dir = tmp_path / "test-repo"
@@ -77,6 +88,7 @@ class TestIndexLocalDirectoryUseCase:
             repository_repo=repo_repo,
             commit_repo=commit_repo,
             file_repo=file_repo,
+            filesystem=filesystem,
         )
 
         # Act
@@ -110,7 +122,9 @@ class TestIndexLocalDirectoryUseCase:
         assert line_counts["README.md"] == 3
 
     @pytest.mark.asyncio
-    async def test_index_skips_excluded_directories(self, tmp_path: Path) -> None:
+    async def test_index_skips_excluded_directories(
+        self, tmp_path: Path, filesystem: LocalFileSystem
+    ) -> None:
         """Test that excluded directories are skipped."""
         # Arrange - create directory structure with excluded dirs
         test_dir = tmp_path / "project"
@@ -149,6 +163,7 @@ class TestIndexLocalDirectoryUseCase:
             repository_repo=repo_repo,
             commit_repo=commit_repo,
             file_repo=file_repo,
+            filesystem=filesystem,
         )
 
         # Act
@@ -174,7 +189,9 @@ class TestIndexLocalDirectoryUseCase:
         assert len(files) == 2
 
     @pytest.mark.asyncio
-    async def test_index_skips_binary_files(self, tmp_path: Path) -> None:
+    async def test_index_skips_binary_files(
+        self, tmp_path: Path, filesystem: LocalFileSystem
+    ) -> None:
         """Test that binary files are skipped."""
         # Arrange
         test_dir = tmp_path / "binary-test"
@@ -197,6 +214,7 @@ class TestIndexLocalDirectoryUseCase:
             repository_repo=repo_repo,
             commit_repo=commit_repo,
             file_repo=file_repo,
+            filesystem=filesystem,
         )
 
         # Act
@@ -219,7 +237,9 @@ class TestIndexLocalDirectoryUseCase:
         assert "archive.zip" not in paths
 
     @pytest.mark.asyncio
-    async def test_index_creates_commit(self, tmp_path: Path) -> None:
+    async def test_index_creates_commit(
+        self, tmp_path: Path, filesystem: LocalFileSystem
+    ) -> None:
         """Test that a commit is created during indexing."""
         # Arrange
         test_dir = tmp_path / "commit-test"
@@ -234,6 +254,7 @@ class TestIndexLocalDirectoryUseCase:
             repository_repo=repo_repo,
             commit_repo=commit_repo,
             file_repo=file_repo,
+            filesystem=filesystem,
         )
 
         # Act
@@ -249,13 +270,16 @@ class TestIndexLocalDirectoryUseCase:
         assert commit.repository_id == result.repository_id
         # Note: Author info/message are NOT stored - queried from git on-demand
         assert commit.commit_hash is not None
+        assert commit.id is not None
 
         # Verify commit is linked to "local" branch
         branches = await commit_repo.get_branches_for_commit(commit.id)
         assert "local" in branches
 
     @pytest.mark.asyncio
-    async def test_index_calculates_content_hash(self, tmp_path: Path) -> None:
+    async def test_index_calculates_content_hash(
+        self, tmp_path: Path, filesystem: LocalFileSystem
+    ) -> None:
         """Test that content hashes are calculated for files."""
         # Arrange
         test_dir = tmp_path / "hash-test"
@@ -272,6 +296,7 @@ class TestIndexLocalDirectoryUseCase:
             repository_repo=repo_repo,
             commit_repo=commit_repo,
             file_repo=file_repo,
+            filesystem=filesystem,
         )
 
         # Act
@@ -288,7 +313,9 @@ class TestIndexLocalDirectoryUseCase:
         assert len(file.content_hash) == 40  # SHA1 hex digest length
 
     @pytest.mark.asyncio
-    async def test_index_nested_directories(self, tmp_path: Path) -> None:
+    async def test_index_nested_directories(
+        self, tmp_path: Path, filesystem: LocalFileSystem
+    ) -> None:
         """Test indexing deeply nested directory structures."""
         # Arrange
         test_dir = tmp_path / "nested"
@@ -312,6 +339,7 @@ class TestIndexLocalDirectoryUseCase:
             repository_repo=repo_repo,
             commit_repo=commit_repo,
             file_repo=file_repo,
+            filesystem=filesystem,
         )
 
         # Act
@@ -330,7 +358,9 @@ class TestIndexLocalDirectoryUseCase:
         assert "level1/level2/level3/file3.py" in paths
 
     @pytest.mark.asyncio
-    async def test_index_sets_file_sizes(self, tmp_path: Path) -> None:
+    async def test_index_sets_file_sizes(
+        self, tmp_path: Path, filesystem: LocalFileSystem
+    ) -> None:
         """Test that file sizes are correctly recorded."""
         # Arrange
         test_dir = tmp_path / "size-test"
@@ -350,6 +380,7 @@ class TestIndexLocalDirectoryUseCase:
             repository_repo=repo_repo,
             commit_repo=commit_repo,
             file_repo=file_repo,
+            filesystem=filesystem,
         )
 
         # Act
@@ -365,7 +396,9 @@ class TestIndexLocalDirectoryUseCase:
         assert sizes["large.txt"] == len(large_content.encode("utf-8"))
 
     @pytest.mark.asyncio
-    async def test_index_preserves_relative_paths(self, tmp_path: Path) -> None:
+    async def test_index_preserves_relative_paths(
+        self, tmp_path: Path, filesystem: LocalFileSystem
+    ) -> None:
         """Test that file paths are stored relative to repository root."""
         # Arrange
         test_dir = tmp_path / "path-test"
@@ -387,6 +420,7 @@ class TestIndexLocalDirectoryUseCase:
             repository_repo=repo_repo,
             commit_repo=commit_repo,
             file_repo=file_repo,
+            filesystem=filesystem,
         )
 
         # Act

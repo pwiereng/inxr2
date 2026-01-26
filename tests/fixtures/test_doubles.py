@@ -40,7 +40,12 @@ from inxr2.application.ports.repositories import (
     RepositoryPort,
     SymbolRepositoryPort,
 )
-from inxr2.application.ports.services import GitServicePort, ParserServicePort
+from inxr2.application.ports.services import (
+    FileStat,
+    FileSystemPort,
+    GitServicePort,
+    ParserServicePort,
+)
 from inxr2.domain.entities import (
     Commit,
     File,
@@ -107,8 +112,8 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         self,
         name: str,
         repository_id: int | None = None,
-        commit_id: int | None = None,
-        limit: int = 100,
+        kind: str | None = None,
+        limit: int = 50,
     ) -> list[Symbol]:
         """Search symbols by name with optional filters."""
         results = []
@@ -116,7 +121,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
             if name.lower() in symbol.name.lower():
                 if repository_id is not None and symbol.repository_id != repository_id:
                     continue
-                if commit_id is not None and symbol.commit_id != commit_id:
+                if kind is not None and symbol.kind.value != kind:
                     continue
                 results.append(symbol)
         return results[:limit]
@@ -190,6 +195,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 indexed_at=symbol.indexed_at,
             )
             self._next_id += 1
+        assert symbol.id is not None, "Symbol must have an ID after assignment"
         self._symbols[symbol.id] = symbol
         return symbol
 
@@ -248,6 +254,7 @@ class InMemoryFileRepository(FileRepositoryPort):
                 indexed_at=file.indexed_at,
             )
             self._next_id += 1
+        assert file.id is not None, "File must have an ID after assignment"
         self._files[file.id] = file
         return file
 
@@ -257,11 +264,11 @@ class InMemoryFileRepository(FileRepositoryPort):
 
     async def save_many(self, files: list[File]) -> list[File]:
         """Save multiple files."""
+        saved_files = []
         for file in files:
-            if file.id is None:
-                file.id = len(self._files) + 1
-            self._files[file.id] = file
-        return files
+            saved = await self.save(file)
+            saved_files.append(saved)
+        return saved_files
 
     async def list_by_repository(self, repository_id: int) -> list[File]:
         """List all files for a repository."""
@@ -356,6 +363,8 @@ class InMemoryFileRepository(FileRepositoryPort):
     # Test helper methods
     def add(self, file: File) -> None:
         """Add a file for testing."""
+        if file.id is None:
+            raise ValueError("File must have an ID when using add()")
         self._files[file.id] = file
 
     def clear(self) -> None:
@@ -385,6 +394,7 @@ class InMemoryRepositoryRepository(RepositoryPort):
                 updated_at=repository.updated_at,
             )
             self._next_id += 1
+        assert repository.id is not None, "Repository must have an ID after assignment"
         self._repositories[repository.id] = repository
         return repository
 
@@ -475,6 +485,7 @@ class InMemoryCommitRepository(CommitRepositoryPort):
                 indexed_at=commit.indexed_at,
             )
             self._next_id += 1
+        assert commit.id is not None, "Commit must have an ID after assignment"
         self._commits[commit.id] = commit
         return commit
 
@@ -588,7 +599,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         count = await ref_repo.resolve_unlinked_references(repository_id=1)
     """
 
-    def __init__(self, symbol_repo: SymbolRepositoryPort | None = None) -> None:
+    def __init__(self, symbol_repo: "InMemorySymbolRepository | None" = None) -> None:
         """Initialize with empty storage.
 
         Args:
@@ -623,6 +634,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 indexed_at=reference.indexed_at,
             )
             self._next_id += 1
+        assert reference.id is not None, "Reference must have an ID after assignment"
         self._references[reference.id] = reference
         return reference
 
@@ -816,6 +828,7 @@ class InMemoryIndexStatusRepository(IndexStatusRepositoryPort):
                 updated_at=status.updated_at,
             )
             self._next_id += 1
+        assert status.id is not None, "IndexStatus must have an ID after assignment"
         self._statuses[status.id] = status
         return status
 
@@ -869,6 +882,140 @@ class InMemoryIndexStatusRepository(IndexStatusRepositoryPort):
 # ============================================================================
 # Service Test Doubles
 # ============================================================================
+
+
+class FakeFileSystem(FileSystemPort):
+    """
+    In-memory file system implementation for testing.
+
+    Allows tests to set up virtual files without touching the real file system.
+    Useful for pure unit tests of use cases that depend on file I/O.
+
+    Example:
+        fs = FakeFileSystem()
+        fs.add_file("/project/main.py", b"print('hello')")
+        fs.add_file("/project/utils.py", b"def helper(): pass")
+        content = fs.read_text("/project/main.py")
+    """
+
+    def __init__(self) -> None:
+        """Initialize with empty virtual file system."""
+        self._files: dict[str, bytes] = {}
+        self._directories: set[str] = set()
+
+    def walk_directory(
+        self,
+        path: str | Path,
+        skip_dirs: set[str] | None = None,
+        skip_hidden: bool = True,
+    ) -> list[Path]:
+        """Walk virtual directory and return file paths."""
+        skip_dirs = skip_dirs or set()
+        path_str = str(path)
+        result: list[Path] = []
+
+        for file_path in self._files:
+            # Check if file is under the given path
+            if not file_path.startswith(path_str):
+                continue
+
+            # Get the relative part
+            relative = file_path[len(path_str) :].lstrip("/")
+            if not relative:
+                continue
+
+            # Check for skip conditions
+            parts = relative.split("/")
+
+            # Skip hidden files/dirs
+            if skip_hidden and any(p.startswith(".") for p in parts):
+                continue
+
+            # Skip excluded directories
+            skip = False
+            for part in parts[:-1]:  # Exclude filename
+                if part in skip_dirs:
+                    skip = True
+                    break
+            if skip:
+                continue
+
+            result.append(Path(file_path))
+
+        return result
+
+    def stat(self, path: str | Path) -> FileStat:
+        """Get file statistics for virtual file."""
+        path_str = str(path)
+        if path_str in self._files:
+            return FileStat(
+                size_bytes=len(self._files[path_str]),
+                is_file=True,
+                is_dir=False,
+            )
+        if path_str in self._directories:
+            return FileStat(
+                size_bytes=0,
+                is_file=False,
+                is_dir=True,
+            )
+        raise FileNotFoundError(f"No such file or directory: {path}")
+
+    def read_bytes(self, path: str | Path) -> bytes:
+        """Read virtual file as bytes."""
+        path_str = str(path)
+        if path_str not in self._files:
+            raise FileNotFoundError(f"No such file: {path}")
+        return self._files[path_str]
+
+    def read_text(
+        self, path: str | Path, encoding: str = "utf-8", errors: str = "strict"
+    ) -> str:
+        """Read virtual file as text."""
+        content = self.read_bytes(path)
+        return content.decode(encoding, errors=errors)
+
+    def relative_path(self, path: str | Path, base: str | Path) -> str:
+        """Get path relative to base."""
+        path_str = str(path)
+        base_str = str(base).rstrip("/")
+        if path_str.startswith(base_str):
+            rel = path_str[len(base_str) :].lstrip("/")
+            return rel if rel else "."
+        return path_str
+
+    def exists(self, path: str | Path) -> bool:
+        """Check if virtual path exists."""
+        path_str = str(path)
+        return path_str in self._files or path_str in self._directories
+
+    # Test helper methods
+    def add_file(self, path: str, content: bytes | str) -> None:
+        """Add a virtual file.
+
+        Args:
+            path: Absolute path for the virtual file
+            content: File content (str will be encoded as UTF-8)
+        """
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        self._files[path] = content
+
+        # Ensure parent directories exist
+        parts = path.split("/")
+        for i in range(1, len(parts)):
+            dir_path = "/".join(parts[:i])
+            if dir_path:
+                self._directories.add(dir_path)
+
+    def add_directory(self, path: str) -> None:
+        """Add a virtual directory."""
+        self._directories.add(path)
+
+    def clear(self) -> None:
+        """Clear all virtual files and directories."""
+        self._files.clear()
+        self._directories.clear()
 
 
 class StubParserService(ParserServicePort):
@@ -953,38 +1100,53 @@ def create_populated_symbol_repository() -> InMemorySymbolRepository:
     Useful for tests that need realistic symbol data without
     setting it up manually each time.
     """
-    from inxr2.domain.value_objects import SymbolKind, SymbolLocation
+    from inxr2.domain.value_objects import SymbolKind
 
     repo = InMemorySymbolRepository()
 
     # Add some common test symbols
     repo.add(
         Symbol(
-            id="sym-func-1",
+            id=1,
+            file_id=1,
+            repository_id=1,
+            commit_id=1,
             name="calculate_total",
             kind=SymbolKind.FUNCTION,
-            location=SymbolLocation(line=10, column=0),
-            file_id="file-1",
+            start_line=10,
+            start_column=0,
+            end_line=15,
+            end_column=0,
             scope="module",
         )
     )
     repo.add(
         Symbol(
-            id="sym-class-1",
+            id=2,
+            file_id=1,
+            repository_id=1,
+            commit_id=1,
             name="Calculator",
             kind=SymbolKind.CLASS,
-            location=SymbolLocation(line=20, column=0),
-            file_id="file-1",
+            start_line=20,
+            start_column=0,
+            end_line=50,
+            end_column=0,
             scope="module",
         )
     )
     repo.add(
         Symbol(
-            id="sym-method-1",
+            id=3,
+            file_id=1,
+            repository_id=1,
+            commit_id=1,
             name="add",
             kind=SymbolKind.METHOD,
-            location=SymbolLocation(line=25, column=4),
-            file_id="file-1",
+            start_line=25,
+            start_column=4,
+            end_line=30,
+            end_column=4,
             scope="module.Calculator",
         )
     )

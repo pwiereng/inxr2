@@ -25,6 +25,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..adapters.external.git_service import GitService
+from ..adapters.external.local_filesystem import LocalFileSystem
 from ..adapters.persistence.repositories.commit_adapter import PostgresCommitRepository
 from ..adapters.persistence.repositories.file_adapter import PostgresFileRepository
 from ..adapters.persistence.repositories.index_status_adapter import (
@@ -45,6 +46,7 @@ from ..application.ports.repositories import (
     RepositoryPort,
     SymbolRepositoryPort,
 )
+from ..application.ports.services import FileSystemPort
 from ..application.use_cases.indexing.index_local_directory import (
     IndexLocalDirectoryUseCase,
 )
@@ -127,6 +129,20 @@ def get_git_service() -> GitService:
 
 GitServiceDep = Annotated[GitService, Depends(get_git_service)]
 
+# Singleton instance for LocalFileSystem (stateless, reusable)
+_local_filesystem: LocalFileSystem | None = None
+
+
+def get_filesystem() -> FileSystemPort:
+    """Provide FileSystemPort singleton (LocalFileSystem implementation)."""
+    global _local_filesystem
+    if _local_filesystem is None:
+        _local_filesystem = LocalFileSystem()
+    return _local_filesystem
+
+
+FileSystemDep = Annotated[FileSystemPort, Depends(get_filesystem)]
+
 
 # =============================================================================
 # Use Case Providers
@@ -155,12 +171,14 @@ def get_index_local_directory_use_case(
     repository_adapter: RepositoryAdapter,
     commit_adapter: CommitAdapter,
     file_adapter: FileAdapter,
+    filesystem: FileSystemDep,
 ) -> IndexLocalDirectoryUseCase:
     """Provide IndexLocalDirectoryUseCase with dependencies."""
     return IndexLocalDirectoryUseCase(
         repository_repo=repository_adapter,
         commit_repo=commit_adapter,
         file_repo=file_adapter,
+        filesystem=filesystem,
     )
 
 

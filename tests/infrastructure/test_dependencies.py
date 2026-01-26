@@ -37,6 +37,7 @@ from inxr2.application.use_cases.repositories.list_repositories import (
 from inxr2.infrastructure.dependencies import (
     get_commit_adapter,
     get_file_adapter,
+    get_filesystem,
     get_git_service,
     get_index_local_directory_use_case,
     get_index_status_adapter,
@@ -119,6 +120,38 @@ class TestGitServiceProvider:
         assert isinstance(service, GitService)
 
 
+class TestFileSystemProvider:
+    """Tests for FileSystem provider."""
+
+    def test_get_filesystem_returns_filesystem_port(self) -> None:
+        """get_filesystem should return a FileSystemPort instance."""
+        from inxr2.application.ports.services import FileSystemPort
+
+        filesystem = get_filesystem()
+        assert isinstance(filesystem, FileSystemPort)
+
+    def test_get_filesystem_is_singleton(self) -> None:
+        """get_filesystem should return the same instance (singleton)."""
+        import inxr2.infrastructure.dependencies as deps_module
+
+        deps_module._local_filesystem = None
+
+        fs1 = get_filesystem()
+        fs2 = get_filesystem()
+        assert fs1 is fs2
+
+    def test_get_filesystem_creates_new_if_none(self) -> None:
+        """get_filesystem should create new instance if none exists."""
+        import inxr2.infrastructure.dependencies as deps_module
+        from inxr2.adapters.external.local_filesystem import LocalFileSystem
+
+        deps_module._local_filesystem = None
+
+        filesystem = get_filesystem()
+        assert filesystem is not None
+        assert isinstance(filesystem, LocalFileSystem)
+
+
 class TestUseCaseProviders:
     """Tests for use case provider functions."""
 
@@ -162,8 +195,12 @@ class TestUseCaseProviders:
         mock_file_adapter: MagicMock,
     ) -> None:
         """get_index_local_directory_use_case should return IndexLocalDirectoryUseCase."""
+        mock_filesystem = MagicMock()
         use_case = get_index_local_directory_use_case(
-            mock_repository_adapter, mock_commit_adapter, mock_file_adapter
+            mock_repository_adapter,
+            mock_commit_adapter,
+            mock_file_adapter,
+            mock_filesystem,
         )
         assert isinstance(use_case, IndexLocalDirectoryUseCase)
 
@@ -199,14 +236,18 @@ class TestUseCaseDependencyWiring:
         assert use_case._file_repo is mock_file_adapter
 
     def test_index_local_directory_has_all_repos(self) -> None:
-        """IndexLocalDirectoryUseCase should receive all three adapters."""
+        """IndexLocalDirectoryUseCase should receive all adapters including filesystem."""
         mock_repo = MagicMock()
         mock_commit = MagicMock()
         mock_file = MagicMock()
-        use_case = get_index_local_directory_use_case(mock_repo, mock_commit, mock_file)
+        mock_filesystem = MagicMock()
+        use_case = get_index_local_directory_use_case(
+            mock_repo, mock_commit, mock_file, mock_filesystem
+        )
         assert use_case._repository_repo is mock_repo
         assert use_case._commit_repo is mock_commit
         assert use_case._file_repo is mock_file
+        assert use_case._filesystem is mock_filesystem
 
     def test_repository_tree_has_all_repos(self) -> None:
         """GetRepositoryTreeUseCase should receive all three adapters."""
