@@ -113,8 +113,17 @@ class PostgresCommitRepository(CommitRepositoryPort):
             async with self.session.begin_nested():
                 self.session.add(model)
         except IntegrityError:
-            # Concurrent insert won the race - link already exists
-            pass
+            # Could be duplicate-key (concurrent insert) or FK violation
+            # Re-check if link exists - if not, it was a real error
+            verify = await self.session.execute(
+                select(BranchCommitModel).where(
+                    BranchCommitModel.repository_id == repository_id,
+                    BranchCommitModel.commit_id == commit_id,
+                    BranchCommitModel.branch == branch,
+                )
+            )
+            if verify.scalar_one_or_none() is None:
+                raise  # Real failure (e.g., FK violation), not duplicate
 
     async def link_commit_to_branches(
         self, repository_id: int, commit_id: int, branches: list[str]
@@ -153,8 +162,17 @@ class PostgresCommitRepository(CommitRepositoryPort):
                 async with self.session.begin_nested():
                     self.session.add(model)
             except IntegrityError:
-                # Concurrent insert won the race - link already exists
-                pass
+                # Could be duplicate-key (concurrent insert) or FK violation
+                # Re-check if link exists - if not, it was a real error
+                verify = await self.session.execute(
+                    select(BranchCommitModel).where(
+                        BranchCommitModel.repository_id == repository_id,
+                        BranchCommitModel.commit_id == commit_id,
+                        BranchCommitModel.branch == branch,
+                    )
+                )
+                if verify.scalar_one_or_none() is None:
+                    raise  # Real failure (e.g., FK violation), not duplicate
 
     async def get_branches_for_commit(self, commit_id: int) -> list[str]:
         """Get all branches that contain a specific commit."""

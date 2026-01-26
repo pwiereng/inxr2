@@ -121,7 +121,7 @@ class IndexLocalDirectoryUseCase:
         # 2. Create dummy commit (for local indexing)
         # Note: Author info and message are NOT stored - queried from git on-demand.
         # For local directories without git, this info is not available anyway.
-        commit_hash = self._generate_local_commit_hash(request.path)
+        commit_hash = self._generate_local_commit_hash(absolute_path)
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash(commit_hash),
@@ -142,7 +142,7 @@ class IndexLocalDirectoryUseCase:
         skipped_files = 0
 
         file_paths = self._filesystem.walk_directory(
-            request.path, skip_dirs=self.SKIP_DIRS, skip_hidden=True
+            absolute_path, skip_dirs=self.SKIP_DIRS, skip_hidden=True
         )
 
         for file_path in file_paths:
@@ -156,7 +156,7 @@ class IndexLocalDirectoryUseCase:
             try:
                 # Get file metadata
                 file_stat = self._filesystem.stat(file_path)
-                relative_path = self._filesystem.relative_path(file_path, request.path)
+                relative_path = self._filesystem.relative_path(file_path, absolute_path)
 
                 # Detect language
                 language = self._language_detector.detect(file_path)
@@ -227,9 +227,10 @@ class IndexLocalDirectoryUseCase:
 
     def _count_lines(self, file_path: str | Path) -> int | None:
         """
-        Count lines in a file.
+        Count lines in a file using streaming.
 
-        Uses bytes to avoid decoding overhead for large files.
+        Reads file in chunks to avoid loading entire content into memory,
+        which is important for large files.
 
         Args:
             file_path: Path to file
@@ -238,10 +239,14 @@ class IndexLocalDirectoryUseCase:
             Number of lines or None if can't be read
         """
         try:
-            content = self._filesystem.read_bytes(file_path)
-            line_count = content.count(b"\n")
+            line_count = 0
+            last_byte: int | None = None
+            with self._filesystem.open_binary(file_path) as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    line_count += chunk.count(b"\n")
+                    last_byte = chunk[-1] if chunk else last_byte
             # Add 1 if file has content but doesn't end with newline
-            if content and not content.endswith(b"\n"):
+            if last_byte is not None and last_byte != ord(b"\n"):
                 line_count += 1
             return line_count
         except Exception:
