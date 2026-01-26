@@ -57,6 +57,21 @@ class PostgresFileRepository(FileRepositoryPort):
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
 
+    async def find_by_ids(self, file_ids: list[int]) -> dict[int, File]:
+        """Find multiple files by IDs in a single query."""
+        if not file_ids:
+            return {}
+
+        result = await self.session.execute(
+            select(FileModel).where(FileModel.id.in_(file_ids))
+        )
+        models = result.scalars().all()
+        return {
+            model.id: self.mapper.to_domain(model)
+            for model in models
+            if model.id is not None
+        }
+
     async def find_by_path(
         self, repository_id: int, commit_id: int, path: str
     ) -> File | None:

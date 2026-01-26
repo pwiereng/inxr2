@@ -365,7 +365,9 @@ class TestPostgresFileRepositoryLatestByBranch:
         assert files_by_path["src/file.py"].content_hash == "new_content" + "0" * 29
 
         # another_file.py should still be present (from old commit)
-        assert files_by_path["src/another_file.py"].content_hash == "unchanged" + "0" * 31
+        assert (
+            files_by_path["src/another_file.py"].content_hash == "unchanged" + "0" * 31
+        )
 
     async def test_list_latest_by_branch_filters_by_branch(
         self, db_session: AsyncSession
@@ -402,7 +404,9 @@ class TestPostgresFileRepositoryLatestByBranch:
             )
         )
         assert feature_commit.id is not None
-        await commit_adapter.link_commit_to_branch(repo.id, feature_commit.id, "feature")
+        await commit_adapter.link_commit_to_branch(
+            repo.id, feature_commit.id, "feature"
+        )
 
         # Create files on each branch
         await file_adapter.save(

@@ -244,9 +244,7 @@ class TestGetFileContentUseCase:
             await use_case.execute(request)
 
     @pytest.mark.asyncio
-    async def test_raises_file_not_found(
-        self, use_case: GetFileContentUseCase
-    ) -> None:
+    async def test_raises_file_not_found(self, use_case: GetFileContentUseCase) -> None:
         """Should raise FileNotFound for unknown file path."""
         request = GetFileContentRequest(
             repository_name="test-repo",

@@ -133,7 +133,9 @@ class GetRepositoryStatsUseCase:
             return repository
 
         if request.repository_name is not None:
-            repository = await self._repository_repo.find_by_name(request.repository_name)
+            repository = await self._repository_repo.find_by_name(
+                request.repository_name
+            )
             if not repository:
                 raise RepositoryNotFound(request.repository_name)
             return repository

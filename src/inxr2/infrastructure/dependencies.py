@@ -47,6 +47,7 @@ from ..application.ports.repositories import (
     SymbolRepositoryPort,
 )
 from ..application.ports.services import FileSystemPort
+from ..application.use_cases.commits import ListCommitsUseCase
 from ..application.use_cases.files import (
     GetFileContentUseCase,
     GetFileHistoryUseCase,
@@ -69,6 +70,10 @@ from ..application.use_cases.repositories.get_repository_tree import (
 )
 from ..application.use_cases.repositories.list_repositories import (
     ListRepositoriesUseCase,
+)
+from ..application.use_cases.symbols import (
+    GetSymbolReferencesUseCase,
+    SearchSymbolsUseCase,
 )
 from .database import get_db_session
 
@@ -302,4 +307,60 @@ GetFileContentUseCaseDep = Annotated[
 ]
 GetFileHistoryUseCaseDep = Annotated[
     GetFileHistoryUseCase, Depends(get_file_history_use_case)
+]
+
+
+# Symbol use case providers
+def get_search_symbols_use_case(
+    symbol_adapter: SymbolAdapter,
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+) -> SearchSymbolsUseCase:
+    """Provide SearchSymbolsUseCase with dependencies."""
+    return SearchSymbolsUseCase(
+        symbol_repo=symbol_adapter,
+        file_repo=file_adapter,
+        commit_repo=commit_adapter,
+    )
+
+
+def get_symbol_references_use_case(
+    symbol_adapter: SymbolAdapter,
+    reference_adapter: ReferenceAdapter,
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+) -> GetSymbolReferencesUseCase:
+    """Provide GetSymbolReferencesUseCase with dependencies."""
+    return GetSymbolReferencesUseCase(
+        symbol_repo=symbol_adapter,
+        reference_repo=reference_adapter,
+        file_repo=file_adapter,
+        commit_repo=commit_adapter,
+    )
+
+
+SearchSymbolsUseCaseDep = Annotated[
+    SearchSymbolsUseCase, Depends(get_search_symbols_use_case)
+]
+GetSymbolReferencesUseCaseDep = Annotated[
+    GetSymbolReferencesUseCase, Depends(get_symbol_references_use_case)
+]
+
+
+# Commit use case providers
+def get_list_commits_use_case(
+    repository_adapter: RepositoryAdapter,
+    commit_adapter: CommitAdapter,
+    git_service: GitServiceDep,
+) -> ListCommitsUseCase:
+    """Provide ListCommitsUseCase with dependencies."""
+    return ListCommitsUseCase(
+        repository_repo=repository_adapter,
+        commit_repo=commit_adapter,
+        git_service=git_service,
+    )
+
+
+ListCommitsUseCaseDep = Annotated[
+    ListCommitsUseCase, Depends(get_list_commits_use_case)
 ]

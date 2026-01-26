@@ -291,9 +291,7 @@ class TestGetRepositoryBranchesUseCaseEdgeCases:
 
         repository_repo = InMemoryRepositoryRepository()
         repository_repo.add(
-            Repository(
-                id=1, name="empty", url=str(repo_path), default_branch="main"
-            )
+            Repository(id=1, name="empty", url=str(repo_path), default_branch="main")
         )
 
         git_service = StubGitBranchService(branches=[])
@@ -319,9 +317,7 @@ class TestGetRepositoryBranchesUseCaseEdgeCases:
 
         repository_repo = InMemoryRepositoryRepository()
         repository_repo.add(
-            Repository(
-                id=1, name="error", url=str(repo_path), default_branch="main"
-            )
+            Repository(id=1, name="error", url=str(repo_path), default_branch="main")
         )
 
         git_service = StubGitBranchService()

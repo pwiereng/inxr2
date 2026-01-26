@@ -267,6 +267,10 @@ class InMemoryFileRepository(FileRepositoryPort):
         """Find file by ID."""
         return self._files.get(file_id)
 
+    async def find_by_ids(self, file_ids: list[int]) -> dict[int, File]:
+        """Find multiple files by IDs."""
+        return {fid: self._files[fid] for fid in file_ids if fid in self._files}
+
     async def save_many(self, files: list[File]) -> list[File]:
         """Save multiple files."""
         saved_files = []
@@ -375,9 +379,7 @@ class InMemoryFileRepository(FileRepositoryPort):
         """
         if self._commit_repo is None:
             # No commit repo - return all files for repository
-            return [
-                f for f in self._files.values() if f.repository_id == repository_id
-            ]
+            return [f for f in self._files.values() if f.repository_id == repository_id]
 
         # Get commit IDs on this branch
         branch_commit_ids: set[int] = set()

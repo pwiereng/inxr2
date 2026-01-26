@@ -318,9 +318,7 @@ class TestGetFileHistoryUseCase:
             await use_case.execute(request)
 
     @pytest.mark.asyncio
-    async def test_raises_file_not_found(
-        self, use_case: GetFileHistoryUseCase
-    ) -> None:
+    async def test_raises_file_not_found(self, use_case: GetFileHistoryUseCase) -> None:
         """Should raise FileNotFound for unknown file path."""
         request = GetFileHistoryRequest(
             repository_name="test-repo",
@@ -363,9 +361,7 @@ class TestGetFileHistoryUseCase:
     # === Short Hash Tests ===
 
     @pytest.mark.asyncio
-    async def test_includes_short_hash(
-        self, use_case: GetFileHistoryUseCase
-    ) -> None:
+    async def test_includes_short_hash(self, use_case: GetFileHistoryUseCase) -> None:
         """Should include short hash for display."""
         request = GetFileHistoryRequest(
             repository_name="test-repo",

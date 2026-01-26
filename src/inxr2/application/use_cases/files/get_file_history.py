@@ -187,7 +187,9 @@ class GetFileHistoryUseCase:
                 continue
 
             # Hydrate message from git
-            message = self._get_commit_message(repo_path, commit_record.commit_hash.value)
+            message = self._get_commit_message(
+                repo_path, commit_record.commit_hash.value
+            )
 
             versions.append(
                 FileVersion(

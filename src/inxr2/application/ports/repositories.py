@@ -159,6 +159,19 @@ class FileRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def find_by_ids(self, file_ids: list[int]) -> dict[int, File]:
+        """Find multiple files by IDs in a single query.
+
+        Args:
+            file_ids: List of file IDs to fetch
+
+        Returns:
+            Dictionary mapping file_id to File entity.
+            Missing IDs are not included in the result.
+        """
+        pass
+
+    @abstractmethod
     async def find_by_path(
         self, repository_id: int, commit_id: int, path: str
     ) -> File | None:
