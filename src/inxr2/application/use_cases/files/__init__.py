@@ -1,3 +1,9 @@
 """File-related use cases."""
 
-__all__: list[str] = []
+from .resolve_file import ResolveFileRequest, ResolveFileResponse, ResolveFileUseCase
+
+__all__ = [
+    "ResolveFileRequest",
+    "ResolveFileResponse",
+    "ResolveFileUseCase",
+]

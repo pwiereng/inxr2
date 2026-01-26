@@ -47,6 +47,7 @@ from ..application.ports.repositories import (
     SymbolRepositoryPort,
 )
 from ..application.ports.services import FileSystemPort
+from ..application.use_cases.files.resolve_file import ResolveFileUseCase
 from ..application.use_cases.indexing.index_local_directory import (
     IndexLocalDirectoryUseCase,
 )
@@ -195,6 +196,19 @@ def get_repository_tree_use_case(
     )
 
 
+def get_resolve_file_use_case(
+    repository_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+) -> ResolveFileUseCase:
+    """Provide ResolveFileUseCase with dependencies."""
+    return ResolveFileUseCase(
+        repository_repo=repository_adapter,
+        file_repo=file_adapter,
+        commit_repo=commit_adapter,
+    )
+
+
 # Type aliases for injected use cases
 ListRepositoriesUseCaseDep = Annotated[
     ListRepositoriesUseCase, Depends(get_list_repositories_use_case)
@@ -207,4 +221,7 @@ IndexLocalDirectoryUseCaseDep = Annotated[
 ]
 GetRepositoryTreeUseCaseDep = Annotated[
     GetRepositoryTreeUseCase, Depends(get_repository_tree_use_case)
+]
+ResolveFileUseCaseDep = Annotated[
+    ResolveFileUseCase, Depends(get_resolve_file_use_case)
 ]
