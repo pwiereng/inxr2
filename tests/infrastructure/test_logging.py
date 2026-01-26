@@ -52,38 +52,39 @@ class TestConfigureLogging:
         module_logger.warning("Warning message")
         module_logger.error("Error message")
 
-    def test_configure_logging_configures_stream_to_stdout(self) -> None:
-        """configure_logging should configure handlers to use stdout."""
-        # We can't directly test the effect due to pytest's logging capture,
-        # but we can verify the function uses the correct parameters
-        # by checking that sys.stdout is used in the module
-        # Read the source to verify sys.stdout is referenced
-        import inspect
+    def test_configure_logging_calls_basic_config_correctly(self) -> None:
+        """configure_logging should call basicConfig with INFO level and stdout handler."""
+        import sys
+        from unittest.mock import patch
 
-        import inxr2.infrastructure.logging as log_module
+        with patch("logging.basicConfig") as mock_basic_config:
+            # Import fresh to ensure we test the actual call
+            import importlib
 
-        source = inspect.getsource(log_module.configure_logging)
-        assert "sys.stdout" in source
+            import inxr2.infrastructure.logging as log_module
 
-    def test_configure_logging_sets_info_level(self) -> None:
-        """configure_logging should set INFO level in basicConfig call."""
-        import inspect
+            importlib.reload(log_module)
+            log_module.configure_logging()
 
-        import inxr2.infrastructure.logging as log_module
+            # Verify basicConfig was called
+            mock_basic_config.assert_called_once()
 
-        source = inspect.getsource(log_module.configure_logging)
-        # Verify INFO level is specified
-        assert "logging.INFO" in source
+            # Get the call arguments
+            call_kwargs = mock_basic_config.call_args[1]
 
-    def test_configure_logging_sets_format_string(self) -> None:
-        """configure_logging should set a format string with key components."""
-        import inspect
+            # Verify INFO level
+            assert call_kwargs["level"] == logging.INFO
 
-        import inxr2.infrastructure.logging as log_module
+            # Verify format string contains key components
+            format_str = call_kwargs["format"]
+            assert "%(asctime)s" in format_str
+            assert "%(name)s" in format_str
+            assert "%(levelname)s" in format_str
+            assert "%(message)s" in format_str
 
-        source = inspect.getsource(log_module.configure_logging)
-        # Verify format string contains expected placeholders
-        assert "%(asctime)s" in source
-        assert "%(name)s" in source
-        assert "%(levelname)s" in source
-        assert "%(message)s" in source
+            # Verify handlers includes a StreamHandler to stdout
+            handlers = call_kwargs["handlers"]
+            assert len(handlers) == 1
+            handler = handlers[0]
+            assert isinstance(handler, logging.StreamHandler)
+            assert handler.stream is sys.stdout

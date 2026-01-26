@@ -1,8 +1,10 @@
 """Service port interfaces - external service abstractions."""
 
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO, Iterator
 
 from ...domain.entities import Symbol
 from ...domain.value_objects import AppConfig
@@ -231,5 +233,30 @@ class FileSystemPort(ABC):
 
         Returns:
             True if path exists
+        """
+        pass
+
+    @abstractmethod
+    @contextmanager
+    def open_binary(self, path: str | Path) -> Iterator[BinaryIO]:
+        """
+        Open file for binary reading as a context manager.
+
+        Enables streaming reads without loading entire file into memory.
+
+        Args:
+            path: Path to file
+
+        Yields:
+            Binary file handle
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            PermissionError: If file can't be read
+
+        Example:
+            with filesystem.open_binary(path) as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    process(chunk)
         """
         pass

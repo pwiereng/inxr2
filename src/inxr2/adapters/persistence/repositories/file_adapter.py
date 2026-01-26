@@ -148,7 +148,10 @@ class PostgresFileRepository(FileRepositoryPort):
             # Join with branch_commits to filter by branch
             query = query.join(
                 BranchCommitModel, BranchCommitModel.commit_id == CommitModel.id
-            ).where(BranchCommitModel.branch == branch)
+            ).where(
+                BranchCommitModel.branch == branch,
+                BranchCommitModel.repository_id == repository_id,
+            )
 
         query = query.order_by(CommitModel.commit_date.desc())
 

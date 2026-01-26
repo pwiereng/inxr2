@@ -138,6 +138,7 @@ class PostgresCommitRepository(CommitRepositoryPort):
                 .where(
                     CommitModel.repository_id == repository_id,
                     BranchCommitModel.branch == branch,
+                    BranchCommitModel.repository_id == repository_id,
                 )
                 .order_by(CommitModel.commit_date.desc())
                 .limit(limit)
@@ -169,6 +170,7 @@ class PostgresCommitRepository(CommitRepositoryPort):
             .where(
                 CommitModel.repository_id == repository_id,
                 BranchCommitModel.branch == branch,
+                BranchCommitModel.repository_id == repository_id,
             )
             .order_by(CommitModel.commit_date.desc())
             .limit(1)

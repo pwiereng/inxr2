@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+import inxr2.infrastructure.database.connection as conn_module
 from inxr2.infrastructure.database.connection import (
     DatabaseConnection,
     get_database_connection,
@@ -111,8 +112,6 @@ class TestInitAndGetDatabaseConnection:
     def test_get_database_connection_raises_when_not_initialized(self) -> None:
         """get_database_connection should raise RuntimeError when not initialized."""
         # Reset global state
-        import inxr2.infrastructure.database.connection as conn_module
-
         conn_module._db_connection = None
 
         with pytest.raises(RuntimeError, match="Database not initialized"):

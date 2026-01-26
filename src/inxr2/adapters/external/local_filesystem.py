@@ -1,7 +1,9 @@
 """Local file system adapter implementation."""
 
 import os
+from contextlib import contextmanager
 from pathlib import Path
+from typing import BinaryIO, Iterator
 
 from ...application.ports.services import FileStat, FileSystemPort
 
@@ -69,3 +71,12 @@ class LocalFileSystem(FileSystemPort):
     def exists(self, path: str | Path) -> bool:
         """Check if path exists."""
         return Path(path).exists()
+
+    @contextmanager
+    def open_binary(self, path: str | Path) -> Iterator[BinaryIO]:
+        """Open file for binary reading as a context manager."""
+        f = open(path, "rb")
+        try:
+            yield f
+        finally:
+            f.close()

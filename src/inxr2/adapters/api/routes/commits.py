@@ -7,22 +7,17 @@ See ARCHITECTURAL_REVIEW.md for rationale.
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
-from ....adapters.external.git_service import GitService
 from ....infrastructure.dependencies import (
     CommitAdapter,
+    GitServiceDep,
     RepositoryAdapter,
 )
 from ..validation import validate_repo_name
 
 router = APIRouter(prefix="/commits", tags=["commits"])
-
-
-def get_git_service() -> GitService:
-    """Get GitService instance."""
-    return GitService()
 
 
 # Response models
@@ -77,10 +72,10 @@ class CommitDetailResponse(BaseModel):
 async def list_commits(
     repo_adapter: RepositoryAdapter,
     commit_adapter: CommitAdapter,
+    git_service: GitServiceDep,
     repo: str = Query(..., description="Repository name"),
     branch: str | None = Query(None, description="Branch name (optional)"),
     limit: int = Query(50, ge=1, le=500, description="Maximum commits to return"),
-    git_service: GitService = Depends(get_git_service),
 ) -> CommitListResponse:
     """
     List commits for a repository.
@@ -155,7 +150,7 @@ async def get_commit(
     commit_id: int,
     commit_adapter: CommitAdapter,
     repo_adapter: RepositoryAdapter,
-    git_service: GitService = Depends(get_git_service),
+    git_service: GitServiceDep,
 ) -> CommitDetailResponse:
     """
     Get detailed information about a specific commit.

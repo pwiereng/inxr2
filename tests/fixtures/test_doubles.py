@@ -30,7 +30,10 @@ fake_repo.add_test_symbol(Symbol(...))
 ```
 """
 
+from contextlib import contextmanager
+from io import BytesIO
 from pathlib import Path
+from typing import BinaryIO, Iterator
 
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
@@ -911,12 +914,13 @@ class FakeFileSystem(FileSystemPort):
     ) -> list[Path]:
         """Walk virtual directory and return file paths."""
         skip_dirs = skip_dirs or set()
-        path_str = str(path)
+        path_str = str(path).rstrip("/")
         result: list[Path] = []
 
         for file_path in self._files:
-            # Check if file is under the given path
-            if not file_path.startswith(path_str):
+            # Check if file is under the given path (must be exact prefix + /)
+            # This prevents /project from matching /project2/file.txt
+            if not (file_path.startswith(path_str + "/") or file_path == path_str):
                 continue
 
             # Get the relative part
@@ -988,6 +992,12 @@ class FakeFileSystem(FileSystemPort):
         """Check if virtual path exists."""
         path_str = str(path)
         return path_str in self._files or path_str in self._directories
+
+    @contextmanager
+    def open_binary(self, path: str | Path) -> Iterator[BinaryIO]:
+        """Open virtual file for binary reading as a context manager."""
+        content = self.read_bytes(path)
+        yield BytesIO(content)
 
     # Test helper methods
     def add_file(self, path: str, content: bytes | str) -> None:

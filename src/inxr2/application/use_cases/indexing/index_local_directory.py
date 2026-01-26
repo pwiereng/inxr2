@@ -109,7 +109,7 @@ class IndexLocalDirectoryUseCase:
         # 1. Create repository
         repository = Repository(
             name=request.name,
-            url=f"file://{request.path}",
+            url=request.path,
             description=request.description or f"Local directory: {request.path}",
             default_branch="local",
         )
@@ -206,7 +206,10 @@ class IndexLocalDirectoryUseCase:
 
     def _calculate_file_hash(self, file_path: str | Path) -> str:
         """
-        Calculate SHA-1 hash of file content.
+        Calculate SHA-1 hash of file content using streaming.
+
+        Reads file in chunks to avoid loading entire content into memory,
+        which is important for large files.
 
         Args:
             file_path: Path to file
@@ -214,12 +217,17 @@ class IndexLocalDirectoryUseCase:
         Returns:
             40-character hex hash
         """
-        content = self._filesystem.read_bytes(file_path)
-        return hashlib.sha1(content).hexdigest()
+        sha1 = hashlib.sha1()
+        with self._filesystem.open_binary(file_path) as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                sha1.update(chunk)
+        return sha1.hexdigest()
 
     def _count_lines(self, file_path: str | Path) -> int | None:
         """
-        Count lines in a text file.
+        Count lines in a file.
+
+        Uses bytes to avoid decoding overhead for large files.
 
         Args:
             file_path: Path to file
@@ -228,9 +236,11 @@ class IndexLocalDirectoryUseCase:
             Number of lines or None if can't be read
         """
         try:
-            content = self._filesystem.read_text(file_path, errors="ignore")
-            return content.count("\n") + (
-                1 if content and not content.endswith("\n") else 0
-            )
+            content = self._filesystem.read_bytes(file_path)
+            line_count = content.count(b"\n")
+            # Add 1 if file has content but doesn't end with newline
+            if content and not content.endswith(b"\n"):
+                line_count += 1
+            return line_count
         except Exception:
             return None

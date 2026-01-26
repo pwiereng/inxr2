@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import inxr2.infrastructure.dependencies as deps_module
 from inxr2.adapters.external.git_service import GitService
 from inxr2.adapters.persistence.repositories.commit_adapter import (
     PostgresCommitRepository,
@@ -101,8 +102,6 @@ class TestGitServiceProvider:
     def test_get_git_service_is_singleton(self) -> None:
         """get_git_service should return the same instance (singleton)."""
         # Reset singleton for clean test
-        import inxr2.infrastructure.dependencies as deps_module
-
         deps_module._git_service = None
 
         service1 = get_git_service()
@@ -111,8 +110,6 @@ class TestGitServiceProvider:
 
     def test_get_git_service_creates_new_if_none(self) -> None:
         """get_git_service should create new instance if none exists."""
-        import inxr2.infrastructure.dependencies as deps_module
-
         deps_module._git_service = None
 
         service = get_git_service()
@@ -132,8 +129,6 @@ class TestFileSystemProvider:
 
     def test_get_filesystem_is_singleton(self) -> None:
         """get_filesystem should return the same instance (singleton)."""
-        import inxr2.infrastructure.dependencies as deps_module
-
         deps_module._local_filesystem = None
 
         fs1 = get_filesystem()
@@ -142,7 +137,6 @@ class TestFileSystemProvider:
 
     def test_get_filesystem_creates_new_if_none(self) -> None:
         """get_filesystem should create new instance if none exists."""
-        import inxr2.infrastructure.dependencies as deps_module
         from inxr2.adapters.external.local_filesystem import LocalFileSystem
 
         deps_module._local_filesystem = None

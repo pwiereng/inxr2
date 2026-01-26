@@ -6,7 +6,6 @@ with real use cases and database adapters.
 
 from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Any
 
 import pytest
 import pytest_asyncio
