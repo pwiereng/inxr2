@@ -3,6 +3,10 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from ....application.use_cases.repositories import (
+    GetRepositoryBranchesRequest,
+    GetRepositoryStatsRequest,
+)
 from ....application.use_cases.repositories.get_repository_files import (
     GetRepositoryFilesRequest,
 )
@@ -10,16 +14,14 @@ from ....application.use_cases.repositories.get_repository_tree import (
     GetRepositoryTreeRequest,
     TreeNode,
 )
+from ....domain.exceptions import RepositoryNotFound
 from ....infrastructure.dependencies import (
-    FileAdapter,
+    GetRepositoryBranchesUseCaseDep,
     GetRepositoryFilesUseCaseDep,
+    GetRepositoryStatsUseCaseDep,
     GetRepositoryTreeUseCaseDep,
-    GitServiceDep,
-    IndexStatusAdapter,
     ListRepositoriesUseCaseDep,
-    ReferenceAdapter,
     RepositoryAdapter,
-    SymbolAdapter,
 )
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
@@ -292,48 +294,34 @@ async def get_repository_tree(
 @router.get("/{repository_id}/stats", response_model=RepositoryStatsResponse)
 async def get_repository_stats(
     repository_id: int,
-    repo_adapter: RepositoryAdapter,
-    file_adapter: FileAdapter,
-    symbol_adapter: SymbolAdapter,
-    reference_adapter: ReferenceAdapter,
+    use_case: GetRepositoryStatsUseCaseDep,
 ) -> RepositoryStatsResponse:
     """
     Get statistics for a repository.
 
     Returns counts of files, symbols, and references.
     """
-    # Get repository
-    repository = await repo_adapter.find_by_id(repository_id)
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    # Get counts
-    files = await file_adapter.list_by_repository(repository_id)
-    symbol_count = await symbol_adapter.count_by_repository(repository_id)
-    reference_count = await reference_adapter.count_by_repository(repository_id)
-
-    # Count languages
-    languages: dict[str, int] = {}
-    for file in files:
-        lang = file.language or "unknown"
-        languages[lang] = languages.get(lang, 0) + 1
+    try:
+        stats = await use_case.execute(
+            GetRepositoryStatsRequest(repository_id=repository_id)
+        )
+    except RepositoryNotFound as e:
+        raise HTTPException(status_code=404, detail="Repository not found") from e
 
     return RepositoryStatsResponse(
-        repository_id=repository_id,
-        name=repository.name,
-        total_files=len(files),
-        total_symbols=symbol_count,
-        total_references=reference_count,
-        languages=languages,
+        repository_id=stats.repository_id,
+        name=stats.name,
+        total_files=stats.total_files,
+        total_symbols=stats.total_symbols,
+        total_references=stats.total_references,
+        languages=stats.language_distribution,
     )
 
 
 @router.get("/{repository_id}/branches", response_model=BranchListResponse)
 async def get_repository_branches(
     repository_id: int,
-    repo_adapter: RepositoryAdapter,
-    index_status_adapter: IndexStatusAdapter,
-    git_service: GitServiceDep,
+    use_case: GetRepositoryBranchesUseCaseDep,
 ) -> BranchListResponse:
     """
     Get all branches for a repository.
@@ -341,48 +329,28 @@ async def get_repository_branches(
     Fetches branches live from the git repository. For each branch,
     also includes indexing status if the branch has been indexed.
     """
-    from pathlib import Path
-
-    # Verify repository exists
-    repository = await repo_adapter.find_by_id(repository_id)
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    # Get branches live from git
-    repo_path = Path(repository.url)
-    if not repo_path.exists():
-        raise HTTPException(
-            status_code=500,
-            detail=f"Repository path not found: {repository.url}",
-        )
-
     try:
-        branch_names = git_service.list_branches(repo_path)
+        response = await use_case.execute(
+            GetRepositoryBranchesRequest(repository_id=repository_id)
+        )
+    except RepositoryNotFound as e:
+        raise HTTPException(status_code=404, detail="Repository not found") from e
     except ValueError as e:
+        # Path not found or git error
+        error_msg = str(e).lower()
+        if "path not found" in error_msg:
+            raise HTTPException(status_code=500, detail=str(e)) from e
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Get index status for all branches to include indexing info
-    statuses = await index_status_adapter.list_by_repository(repository_id)
-    status_by_branch = {
-        s.branch: s for s in statuses if s.indexing_status == "completed"
-    }
-
-    # Build response with branches from git, enriched with indexing info
-    branches = []
-    for branch_name in branch_names:
-        status = status_by_branch.get(branch_name)
-        branches.append(
+    return BranchListResponse(
+        branches=[
             BranchInfoResponse(
-                name=branch_name,
-                last_indexed_commit=status.last_indexed_commit if status else None,
-                oldest_indexed_commit=status.oldest_indexed_commit if status else None,
-                commit_count=status.total_commits_indexed if status else 0,
-                last_indexed_at=(
-                    status.last_indexed_at.isoformat()
-                    if status and status.last_indexed_at
-                    else None
-                ),
+                name=b.name,
+                last_indexed_commit=b.last_indexed_commit,
+                oldest_indexed_commit=b.oldest_indexed_commit,
+                commit_count=b.commit_count,
+                last_indexed_at=b.last_indexed_at,
             )
-        )
-
-    return BranchListResponse(branches=branches)
+            for b in response.branches
+        ]
+    )
