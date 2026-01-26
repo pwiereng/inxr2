@@ -63,17 +63,13 @@ class FileContent:
 class GetFileContentRequest:
     """Request to get file content.
 
-    Can resolve by repository name + path, or by file ID directly.
+    Resolves file by repository name + path.
     """
 
-    # Resolution by name + path
     repository_name: str | None = None
     file_path: str | None = None
     commit_hash: str | None = None
     branch: str | None = None
-
-    # Resolution by file ID (for direct file access)
-    file_id: int | None = None
 
 
 class GetFileContentUseCase:
@@ -83,7 +79,7 @@ class GetFileContentUseCase:
     fetches content from git and computes metadata.
 
     Handles:
-    - File resolution (by name+path or by ID)
+    - File resolution by repository name and path
     - Git content fetching with error handling
     - Binary file detection
     - Line counting and size calculation
@@ -120,28 +116,19 @@ class GetFileContentUseCase:
             BinaryFileError: If file is binary
             ValueError: If request parameters are invalid
         """
+        # Validate required parameters
+        if not request.repository_name or not request.file_path:
+            raise ValueError("repository_name and file_path are required")
+
         # Resolve file using the composed use case
-        if request.repository_name and request.file_path:
-            resolved = await self._resolve_file_use_case.execute(
-                ResolveFileRequest(
-                    repository_name=request.repository_name,
-                    file_path=request.file_path,
-                    commit_hash=request.commit_hash,
-                    branch=request.branch,
-                )
+        resolved = await self._resolve_file_use_case.execute(
+            ResolveFileRequest(
+                repository_name=request.repository_name,
+                file_path=request.file_path,
+                commit_hash=request.commit_hash,
+                branch=request.branch,
             )
-        elif request.file_id is not None:
-            # For file_id resolution, we need to resolve differently
-            # This requires accessing the repositories directly
-            # For now, raise an error - the caller should use repository_name + file_path
-            raise ValueError(
-                "file_id resolution not yet supported. "
-                "Use repository_name and file_path instead."
-            )
-        else:
-            raise ValueError(
-                "Either (repository_name and file_path) or file_id must be provided"
-            )
+        )
 
         file = resolved.file
         commit = resolved.commit

@@ -4,6 +4,7 @@ Provides aggregated statistics for a repository including file counts,
 symbol counts, reference counts, and language distribution.
 """
 
+import asyncio
 from dataclasses import dataclass
 
 from ....domain.entities import Repository
@@ -94,10 +95,12 @@ class GetRepositoryStatsUseCase:
 
         repository_id = repository.id if repository.id is not None else 0
 
-        # 2. Get counts (these can be done in parallel in async context)
-        files = await self._file_repo.list_by_repository(repository_id)
-        symbol_count = await self._symbol_repo.count_by_repository(repository_id)
-        reference_count = await self._reference_repo.count_by_repository(repository_id)
+        # 2. Get counts in parallel
+        files, symbol_count, reference_count = await asyncio.gather(
+            self._file_repo.list_by_repository(repository_id),
+            self._symbol_repo.count_by_repository(repository_id),
+            self._reference_repo.count_by_repository(repository_id),
+        )
 
         # 3. Compute language distribution from files
         language_distribution = self._compute_language_distribution(files)

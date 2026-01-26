@@ -32,7 +32,8 @@ class SearchSymbolsRequest:
         query: Search query for symbol name (empty string matches all)
         repository_id: Optional repository filter
         kind: Optional symbol kind filter (e.g., "function", "class")
-        commit_hash: Optional commit hash for time travel
+        commit_hash: Optional commit hash for time travel (only applies when
+            exact_match=True; partial searches do not filter by commit)
         exact_match: If True, match exact name instead of partial
         limit: Maximum results to return
         offset: Offset for pagination
@@ -53,7 +54,8 @@ class SearchSymbolsResponse:
 
     Args:
         symbols: List of symbols with file paths
-        total: Total number of results (for pagination)
+        total: Number of symbols returned in this response (not the total
+            count of all matching symbols across all pages)
         limit: Limit used in request
         offset: Offset used in request
     """
