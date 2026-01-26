@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from inxr2.adapters.persistence.repositories.commit_adapter import (
     PostgresCommitRepository,
@@ -21,7 +22,9 @@ from .factories import CommitFactory, FileFactory, RepositoryFactory
 class TestPostgresFileRepositoryVersions:
     """Tests for file version listing with branch filtering."""
 
-    async def test_list_versions_by_path_returns_all_versions(self, db_session):
+    async def test_list_versions_by_path_returns_all_versions(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test listing all versions of a file across commits."""
         repo_adapter = PostgresRepositoryAdapter(db_session)
         commit_adapter = PostgresCommitRepository(db_session)
@@ -29,6 +32,7 @@ class TestPostgresFileRepositoryVersions:
 
         # Create repository
         repo = await repo_adapter.save(RepositoryFactory.create(name="versions-repo"))
+        assert repo.id is not None
 
         # Create commits with different dates
         now = datetime.utcnow()
@@ -39,6 +43,7 @@ class TestPostgresFileRepositoryVersions:
                 commit_date=now - timedelta(hours=2),
             )
         )
+        assert commit1.id is not None
         await commit_adapter.link_commit_to_branch(repo.id, commit1.id, "main")
 
         commit2 = await commit_adapter.save(
@@ -48,6 +53,7 @@ class TestPostgresFileRepositoryVersions:
                 commit_date=now - timedelta(hours=1),
             )
         )
+        assert commit2.id is not None
         await commit_adapter.link_commit_to_branch(repo.id, commit2.id, "main")
 
         commit3 = await commit_adapter.save(
@@ -57,6 +63,7 @@ class TestPostgresFileRepositoryVersions:
                 commit_date=now,
             )
         )
+        assert commit3.id is not None
         await commit_adapter.link_commit_to_branch(repo.id, commit3.id, "main")
 
         # Create file at each commit
@@ -94,7 +101,9 @@ class TestPostgresFileRepositoryVersions:
         assert versions[1].content_hash == "h2" + "0" * 38
         assert versions[2].content_hash == "h1" + "0" * 38
 
-    async def test_list_versions_by_path_filters_by_branch(self, db_session):
+    async def test_list_versions_by_path_filters_by_branch(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test that list_versions_by_path filters by branch."""
         repo_adapter = PostgresRepositoryAdapter(db_session)
         commit_adapter = PostgresCommitRepository(db_session)
@@ -103,6 +112,7 @@ class TestPostgresFileRepositoryVersions:
         repo = await repo_adapter.save(
             RepositoryFactory.create(name="branch-versions-repo")
         )
+        assert repo.id is not None
 
         now = datetime.utcnow()
         # Create commits on different branches
@@ -113,6 +123,7 @@ class TestPostgresFileRepositoryVersions:
                 commit_date=now - timedelta(hours=1),
             )
         )
+        assert main_commit.id is not None
         await commit_adapter.link_commit_to_branch(repo.id, main_commit.id, "main")
 
         feature_commit = await commit_adapter.save(
@@ -122,6 +133,7 @@ class TestPostgresFileRepositoryVersions:
                 commit_date=now,
             )
         )
+        assert feature_commit.id is not None
         await commit_adapter.link_commit_to_branch(
             repo.id, feature_commit.id, "feature"
         )
@@ -163,8 +175,8 @@ class TestPostgresFileRepositoryVersions:
         assert feature_versions[0].content_hash == "feat" + "0" * 36
 
     async def test_list_versions_by_path_returns_empty_for_unknown_branch(
-        self, db_session
-    ):
+        self, db_session: AsyncSession
+    ) -> None:
         """Test that filtering by non-existent branch returns empty list."""
         repo_adapter = PostgresRepositoryAdapter(db_session)
         commit_adapter = PostgresCommitRepository(db_session)
@@ -173,6 +185,7 @@ class TestPostgresFileRepositoryVersions:
         repo = await repo_adapter.save(
             RepositoryFactory.create(name="empty-branch-repo")
         )
+        assert repo.id is not None
 
         commit = await commit_adapter.save(
             CommitFactory.create(
@@ -180,6 +193,7 @@ class TestPostgresFileRepositoryVersions:
                 commit_hash="f" * 40,
             )
         )
+        assert commit.id is not None
         await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
 
         await file_adapter.save(
@@ -197,7 +211,9 @@ class TestPostgresFileRepositoryVersions:
 
         assert versions == []
 
-    async def test_list_versions_preserves_order_with_branch_filter(self, db_session):
+    async def test_list_versions_preserves_order_with_branch_filter(
+        self, db_session: AsyncSession
+    ) -> None:
         """Test that branch-filtered versions maintain correct ordering."""
         repo_adapter = PostgresRepositoryAdapter(db_session)
         commit_adapter = PostgresCommitRepository(db_session)
@@ -206,6 +222,7 @@ class TestPostgresFileRepositoryVersions:
         repo = await repo_adapter.save(
             RepositoryFactory.create(name="order-branch-repo")
         )
+        assert repo.id is not None
 
         now = datetime.utcnow()
         # Create multiple commits on main branch
@@ -218,14 +235,23 @@ class TestPostgresFileRepositoryVersions:
                     commit_date=now - timedelta(hours=3 - i),
                 )
             )
+            assert commit.id is not None
             await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
             commits.append(commit)
 
         # Create files in different order than commits
+        # Extract commit IDs with assertions for type narrowing
+        commit0_id = commits[0].id
+        commit1_id = commits[1].id
+        commit2_id = commits[2].id
+        assert commit0_id is not None
+        assert commit1_id is not None
+        assert commit2_id is not None
+
         await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commits[1].id,
+                commit_id=commit1_id,
                 path="src/order.py",
                 content_hash="v2" + "0" * 38,
             )
@@ -233,7 +259,7 @@ class TestPostgresFileRepositoryVersions:
         await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commits[0].id,
+                commit_id=commit0_id,
                 path="src/order.py",
                 content_hash="v1" + "0" * 38,
             )
@@ -241,7 +267,7 @@ class TestPostgresFileRepositoryVersions:
         await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commits[2].id,
+                commit_id=commit2_id,
                 path="src/order.py",
                 content_hash="v3" + "0" * 38,
             )

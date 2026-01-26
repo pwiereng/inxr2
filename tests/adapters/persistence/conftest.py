@@ -4,8 +4,12 @@ import os
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from inxr2.adapters.persistence.models import Base
 
@@ -14,7 +18,7 @@ TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:
 
 
 @pytest_asyncio.fixture
-async def test_engine():
+async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
     """Create test database engine."""
     # For SQLite, map PostgreSQL ARRAY to JSON (stores as text)
     # Note: SQLAlchemy will use our StringArray custom type
@@ -39,11 +43,9 @@ async def test_engine():
 
 
 @pytest_asyncio.fixture
-async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
+async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
     """Create test database session."""
-    async_session = sessionmaker(
-        test_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    async_session = async_sessionmaker(test_engine, expire_on_commit=False)
 
     async with async_session() as session:
         yield session

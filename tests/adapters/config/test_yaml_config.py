@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,7 @@ class TestYamlConfigService:
         return YamlConfigService()
 
     @pytest.fixture
-    def temp_dir(self) -> Path:
+    def temp_dir(self) -> Generator[Path, None, None]:
         """Create a temporary directory with a fake git repo."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a fake .git directory
@@ -243,7 +244,7 @@ class TestConfigValidation:
         return YamlConfigService()
 
     @pytest.fixture
-    def temp_dir(self) -> Path:
+    def temp_dir(self) -> Generator[Path, None, None]:
         """Create a temporary directory with a fake git repo."""
         with tempfile.TemporaryDirectory() as tmpdir:
             git_dir = Path(tmpdir) / ".git"

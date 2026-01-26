@@ -42,6 +42,7 @@ class TestPostgresRepositoryAdapter:
 
         # Act
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
         found_repo = await repo_adapter.find_by_id(saved_repo.id)
 
         # Assert
@@ -99,6 +100,7 @@ class TestPostgresRepositoryAdapter:
             url="https://example.com/delete.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         # Act
         deleted = await repo_adapter.delete(saved_repo.id)
@@ -125,6 +127,7 @@ class TestPostgresCommitRepository:
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="test-repo", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -136,6 +139,7 @@ class TestPostgresCommitRepository:
 
         # Act
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
         found_commit = await commit_adapter.find_by_id(saved_commit.id)
 
         # Assert
@@ -150,6 +154,7 @@ class TestPostgresCommitRepository:
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="test-repo", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commits = [
@@ -176,6 +181,7 @@ class TestPostgresCommitRepository:
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="test-repo", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit_hash = "unique123" + "0" * 31
@@ -200,6 +206,7 @@ class TestPostgresCommitRepository:
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="test-repo", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commits = [
@@ -215,6 +222,7 @@ class TestPostgresCommitRepository:
 
         # Link all commits to main branch
         for c in saved_commits:
+            assert c.id is not None
             await commit_adapter.link_commit_to_branch(saved_repo.id, c.id, "main")
 
         # Act
@@ -236,6 +244,7 @@ class TestPostgresFileRepository:
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="test-repo", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -245,6 +254,7 @@ class TestPostgresFileRepository:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -259,6 +269,7 @@ class TestPostgresFileRepository:
 
         # Act
         saved_file = await file_adapter.save(file)
+        assert saved_file.id is not None
         found_file = await file_adapter.find_by_id(saved_file.id)
 
         # Assert
@@ -274,6 +285,7 @@ class TestPostgresFileRepository:
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="test-repo", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -283,6 +295,7 @@ class TestPostgresFileRepository:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         files = [
@@ -312,6 +325,7 @@ class TestPostgresFileRepository:
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="test-repo", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -321,6 +335,7 @@ class TestPostgresFileRepository:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         files = [
@@ -350,6 +365,7 @@ class TestPostgresFileRepository:
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="test-repo", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -359,6 +375,7 @@ class TestPostgresFileRepository:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -385,6 +402,7 @@ class TestPostgresFileRepository:
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="test-repo", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -394,6 +412,7 @@ class TestPostgresFileRepository:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         files = [
@@ -420,6 +439,7 @@ class TestPostgresFileRepository:
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="test-repo", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -429,6 +449,7 @@ class TestPostgresFileRepository:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
 
@@ -459,6 +480,7 @@ class TestPostgresFileRepository:
             name="find-by-path-repo", url="https://example.com/repo.git"
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -468,6 +490,7 @@ class TestPostgresFileRepository:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -498,6 +521,7 @@ class TestPostgresFileRepository:
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="empty-repo", url="https://example.com/empty.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
 
@@ -523,6 +547,7 @@ class TestPostgresFileRepository:
             name="multi-version-repo", url="https://example.com/repo.git"
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
 
@@ -534,6 +559,7 @@ class TestPostgresFileRepository:
             commit_date=datetime(2025, 1, 1),
         )
         saved_old_commit = await commit_adapter.save(old_commit)
+        assert saved_old_commit.id is not None
 
         # Create a newer commit
         new_commit = Commit(
@@ -543,6 +569,7 @@ class TestPostgresFileRepository:
             commit_date=datetime(2025, 1, 2),
         )
         saved_new_commit = await commit_adapter.save(new_commit)
+        assert saved_new_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
 
@@ -585,11 +612,14 @@ class TestPostgresFileRepository:
 class TestPostgresSymbolRepository:
     """Tests for PostgresSymbolRepository adapter."""
 
-    async def _create_test_data(self, db_session: AsyncSession):
+    async def _create_test_data(
+        self, db_session: AsyncSession
+    ) -> tuple[Repository, Commit, File, File]:
         """Create test repository, commit, and file."""
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="symbol-test", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -599,6 +629,7 @@ class TestPostgresSymbolRepository:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         file1 = File(
@@ -626,6 +657,10 @@ class TestPostgresSymbolRepository:
         """Test finding all symbols with the exact same name."""
         # Arrange
         repo, commit, file1, file2 = await self._create_test_data(db_session)
+        assert repo.id is not None
+        assert commit.id is not None
+        assert file1.id is not None
+        assert file2.id is not None
         symbol_adapter = PostgresSymbolRepository(db_session)
 
         # Create multiple symbols with same name in different classes
@@ -682,6 +717,9 @@ class TestPostgresSymbolRepository:
         """Test finding symbols with a name that doesn't exist."""
         # Arrange
         repo, commit, file1, _ = await self._create_test_data(db_session)
+        assert repo.id is not None
+        assert commit.id is not None
+        assert file1.id is not None
         symbol_adapter = PostgresSymbolRepository(db_session)
 
         symbol = Symbol(
@@ -708,11 +746,14 @@ class TestPostgresSymbolRepository:
 class TestPostgresReferenceRepository:
     """Tests for PostgresReferenceRepository adapter."""
 
-    async def _create_test_data(self, db_session: AsyncSession):
+    async def _create_test_data(
+        self, db_session: AsyncSession
+    ) -> tuple[Repository, Commit, File]:
         """Create test repository, commit, file, and symbols."""
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(name="ref-test", url="https://example.com/repo.git")
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -722,6 +763,7 @@ class TestPostgresReferenceRepository:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -739,6 +781,9 @@ class TestPostgresReferenceRepository:
         """Test finding all references matching a text string."""
         # Arrange
         repo, commit, file = await self._create_test_data(db_session)
+        assert repo.id is not None
+        assert commit.id is not None
+        assert file.id is not None
         reference_adapter = PostgresReferenceRepository(db_session)
 
         # Create references with same text but potentially different targets
@@ -793,6 +838,9 @@ class TestPostgresReferenceRepository:
         """Test finding references with text that doesn't exist."""
         # Arrange
         repo, commit, file = await self._create_test_data(db_session)
+        assert repo.id is not None
+        assert commit.id is not None
+        assert file.id is not None
         reference_adapter = PostgresReferenceRepository(db_session)
 
         reference = Reference(
@@ -828,6 +876,7 @@ class TestPostgresReferenceRepository:
             name="multi-commit-ref-test", url="https://example.com/repo.git"
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         file_adapter = PostgresFileRepository(db_session)
@@ -841,6 +890,7 @@ class TestPostgresReferenceRepository:
             commit_date=datetime(2025, 1, 1),
         )
         saved_old_commit = await commit_adapter.save(old_commit)
+        assert saved_old_commit.id is not None
 
         # Create file in old commit
         old_file = File(
@@ -851,6 +901,7 @@ class TestPostgresReferenceRepository:
             size_bytes=100,
         )
         saved_old_file = await file_adapter.save(old_file)
+        assert saved_old_file.id is not None
 
         # Create reference in old file
         old_ref = Reference(
@@ -873,6 +924,7 @@ class TestPostgresReferenceRepository:
             commit_date=datetime(2025, 1, 2),
         )
         saved_new_commit = await commit_adapter.save(new_commit)
+        assert saved_new_commit.id is not None
 
         # Create file in new commit (same path, newer version)
         new_file = File(
@@ -883,6 +935,7 @@ class TestPostgresReferenceRepository:
             size_bytes=150,
         )
         saved_new_file = await file_adapter.save(new_file)
+        assert saved_new_file.id is not None
 
         # Create reference in new file (same text, different line)
         new_ref = Reference(

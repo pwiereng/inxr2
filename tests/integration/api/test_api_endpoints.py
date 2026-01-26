@@ -4,10 +4,13 @@ These tests verify that the FastAPI routes work correctly
 with real use cases and database adapters.
 """
 
+from collections.abc import AsyncGenerator
 from datetime import datetime
+from typing import Any
 
 import pytest
 import pytest_asyncio
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,14 +41,14 @@ def make_test_commit_hash(prefix: str) -> CommitHash:
 
 
 @pytest_asyncio.fixture
-async def test_app(db_session: AsyncSession):
+async def test_app(db_session: AsyncSession) -> FastAPI:
     """Create a FastAPI app with overridden database session."""
     from inxr2.infrastructure.database import get_db_session
 
     app = create_app()
 
     # Override the database session dependency
-    async def override_get_db():
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
 
     app.dependency_overrides[get_db_session] = override_get_db
@@ -58,7 +61,7 @@ class TestRepositoriesAPI:
     """Tests for /api/repositories endpoints."""
 
     async def test_list_repositories_empty(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test listing repositories when none exist."""
         # Act
@@ -73,7 +76,7 @@ class TestRepositoriesAPI:
         assert isinstance(data, list)
 
     async def test_list_repositories_with_data(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test listing repositories with existing data."""
         # Arrange - create test repositories
@@ -108,7 +111,7 @@ class TestRepositoriesAPI:
         assert "test-repo-api-1" in repo_names
         assert "test-repo-api-2" in repo_names
 
-    async def test_get_repository_files_not_found(self, test_app) -> None:
+    async def test_get_repository_files_not_found(self, test_app: FastAPI) -> None:
         """Test getting files for non-existent repository."""
         # Act
         async with AsyncClient(
@@ -121,7 +124,7 @@ class TestRepositoriesAPI:
         assert "not found" in response.json()["detail"].lower()
 
     async def test_get_repository_files_with_data(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting files for repository with files."""
         # Arrange - create repository with files
@@ -131,6 +134,7 @@ class TestRepositoriesAPI:
             url="https://github.com/test/files.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         # Create commit
         commit_adapter = PostgresCommitRepository(db_session)
@@ -141,6 +145,7 @@ class TestRepositoriesAPI:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         # Create files
         file_adapter = PostgresFileRepository(db_session)
@@ -185,7 +190,7 @@ class TestRepositoriesAPI:
         assert "line_count" in first_file
 
     async def test_get_repository_by_id(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting a specific repository by ID."""
         # Arrange
@@ -210,7 +215,7 @@ class TestRepositoriesAPI:
         assert data["name"] == "specific-repo-test"
         assert data["description"] == "Specific test repo"
 
-    async def test_get_repository_not_found(self, test_app) -> None:
+    async def test_get_repository_not_found(self, test_app: FastAPI) -> None:
         """Test getting a non-existent repository."""
         # Act
         async with AsyncClient(
@@ -223,7 +228,7 @@ class TestRepositoriesAPI:
         assert "not found" in response.json()["detail"].lower()
 
     async def test_get_repository_tree(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting the file tree for a repository."""
         # Arrange
@@ -233,6 +238,7 @@ class TestRepositoriesAPI:
             url="https://github.com/test/tree.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         # Create commit
         commit_adapter = PostgresCommitRepository(db_session)
@@ -243,6 +249,7 @@ class TestRepositoriesAPI:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         # Create files with nested paths
         file_adapter = PostgresFileRepository(db_session)
@@ -290,7 +297,7 @@ class TestRepositoriesAPI:
         assert "root" in data
         assert len(data["root"]) == 2  # src and tests directories
 
-    async def test_get_repository_tree_not_found(self, test_app) -> None:
+    async def test_get_repository_tree_not_found(self, test_app: FastAPI) -> None:
         """Test getting tree for non-existent repository."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -300,7 +307,7 @@ class TestRepositoriesAPI:
         assert response.status_code == 404
 
     async def test_get_repository_by_name(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting a repository by name."""
         # Arrange
@@ -324,7 +331,7 @@ class TestRepositoriesAPI:
         assert data["name"] == "by-name-test-repo"
         assert data["description"] == "Test repo for by-name lookup"
 
-    async def test_get_repository_by_name_not_found(self, test_app) -> None:
+    async def test_get_repository_by_name_not_found(self, test_app: FastAPI) -> None:
         """Test getting a non-existent repository by name."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -335,7 +342,7 @@ class TestRepositoriesAPI:
         assert "not found" in response.json()["detail"].lower()
 
     async def test_get_repository_tree_by_name(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting the file tree for a repository by name."""
         # Arrange
@@ -345,6 +352,7 @@ class TestRepositoriesAPI:
             url="https://github.com/test/treebyname.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         # Create commit
         commit_adapter = PostgresCommitRepository(db_session)
@@ -355,6 +363,7 @@ class TestRepositoriesAPI:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         # Create files
         file_adapter = PostgresFileRepository(db_session)
@@ -392,7 +401,9 @@ class TestRepositoriesAPI:
         assert data["repository_name"] == "tree-by-name-repo"
         assert data["total_files"] == 2
 
-    async def test_get_repository_tree_by_name_not_found(self, test_app) -> None:
+    async def test_get_repository_tree_by_name_not_found(
+        self, test_app: FastAPI
+    ) -> None:
         """Test getting tree for non-existent repository by name."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -404,7 +415,7 @@ class TestRepositoriesAPI:
         assert response.status_code == 404
 
     async def test_get_repository_stats(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting statistics for a repository."""
         # Arrange
@@ -414,6 +425,7 @@ class TestRepositoriesAPI:
             url="https://github.com/test/stats.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         # Create commit
         commit_adapter = PostgresCommitRepository(db_session)
@@ -424,6 +436,7 @@ class TestRepositoriesAPI:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         # Create files with different languages
         file_adapter = PostgresFileRepository(db_session)
@@ -486,6 +499,7 @@ class TestSymbolsAPI:
             url="https://github.com/test/symbols.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -495,6 +509,7 @@ class TestSymbolsAPI:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -506,11 +521,12 @@ class TestSymbolsAPI:
             language="python",
         )
         saved_file = await file_adapter.save(file)
+        assert saved_file.id is not None
 
         return saved_repo, saved_commit, saved_file
 
     async def test_search_symbols_empty(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test searching symbols when none exist."""
         async with AsyncClient(
@@ -524,7 +540,7 @@ class TestSymbolsAPI:
         assert data["total"] == 0
 
     async def test_search_symbols_with_data(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test searching symbols with existing data."""
         from inxr2.adapters.persistence.repositories.symbol_adapter import (
@@ -535,6 +551,9 @@ class TestSymbolsAPI:
 
         # Arrange
         saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+        assert saved_repo.id is not None
+        assert saved_commit.id is not None
+        assert saved_file.id is not None
 
         symbol_adapter = PostgresSymbolRepository(db_session)
         symbols = [
@@ -580,7 +599,7 @@ class TestSymbolsAPI:
         assert "my_function" in names
 
     async def test_search_symbols_with_kind_filter(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test searching symbols with kind filter."""
         from inxr2.adapters.persistence.repositories.symbol_adapter import (
@@ -591,6 +610,9 @@ class TestSymbolsAPI:
 
         # Arrange
         saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+        assert saved_repo.id is not None
+        assert saved_commit.id is not None
+        assert saved_file.id is not None
 
         symbol_adapter = PostgresSymbolRepository(db_session)
         symbols = [
@@ -632,7 +654,9 @@ class TestSymbolsAPI:
         assert data["items"][0]["name"] == "test_function"
         assert data["items"][0]["kind"] == "function"
 
-    async def test_get_symbol_by_id(self, test_app, db_session: AsyncSession) -> None:
+    async def test_get_symbol_by_id(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
         """Test getting a specific symbol by ID."""
         from inxr2.adapters.persistence.repositories.symbol_adapter import (
             PostgresSymbolRepository,
@@ -642,6 +666,9 @@ class TestSymbolsAPI:
 
         # Arrange
         saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+        assert saved_repo.id is not None
+        assert saved_commit.id is not None
+        assert saved_file.id is not None
 
         symbol_adapter = PostgresSymbolRepository(db_session)
         symbol = Symbol(
@@ -677,7 +704,7 @@ class TestSymbolsAPI:
         assert data["signature"] == "class UniqueSymbol:"
         assert data["docstring"] == "Test docstring"
 
-    async def test_get_symbol_not_found(self, test_app) -> None:
+    async def test_get_symbol_not_found(self, test_app: FastAPI) -> None:
         """Test getting a non-existent symbol."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -688,7 +715,7 @@ class TestSymbolsAPI:
         assert "not found" in response.json()["detail"].lower()
 
     async def test_get_symbol_references(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting references to a symbol."""
         from inxr2.adapters.persistence.repositories.reference_adapter import (
@@ -702,6 +729,9 @@ class TestSymbolsAPI:
 
         # Arrange
         saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+        assert saved_repo.id is not None
+        assert saved_commit.id is not None
+        assert saved_file.id is not None
 
         symbol_adapter = PostgresSymbolRepository(db_session)
         symbol = Symbol(
@@ -765,7 +795,7 @@ class TestSymbolsAPI:
         assert "reference_type" in ref
         assert ref["source_file_path"] == "src/main.py"
 
-    async def test_get_symbol_references_not_found(self, test_app) -> None:
+    async def test_get_symbol_references_not_found(self, test_app: FastAPI) -> None:
         """Test getting references for non-existent symbol."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -775,7 +805,7 @@ class TestSymbolsAPI:
         assert response.status_code == 404
 
     async def test_get_symbols_by_name_multiple(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting all symbols with the same name (disambiguation)."""
         from inxr2.adapters.persistence.repositories.symbol_adapter import (
@@ -786,6 +816,9 @@ class TestSymbolsAPI:
 
         # Arrange - create multiple symbols with same name
         saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+        assert saved_repo.id is not None
+        assert saved_commit.id is not None
+        assert saved_file.id is not None
 
         # Create another file
         file_adapter = PostgresFileRepository(db_session)
@@ -798,6 +831,7 @@ class TestSymbolsAPI:
             language="python",
         )
         saved_file2 = await file_adapter.save(file2)
+        assert saved_file2.id is not None
 
         symbol_adapter = PostgresSymbolRepository(db_session)
         symbols = [
@@ -847,7 +881,7 @@ class TestSymbolsAPI:
         assert "CommitRepository.save" in qualified_names
 
     async def test_get_symbol_references_by_name(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting references by symbol name (for disambiguation)."""
         from inxr2.adapters.persistence.repositories.reference_adapter import (
@@ -861,6 +895,9 @@ class TestSymbolsAPI:
 
         # Arrange
         saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+        assert saved_repo.id is not None
+        assert saved_commit.id is not None
+        assert saved_file.id is not None
 
         # Create symbol
         symbol_adapter = PostgresSymbolRepository(db_session)
@@ -877,6 +914,7 @@ class TestSymbolsAPI:
             end_column=0,
         )
         saved_symbol = await symbol_adapter.save(symbol)
+        assert saved_symbol.id is not None
 
         # Create multiple references with same text
         reference_adapter = PostgresReferenceRepository(db_session)
@@ -923,7 +961,9 @@ class TestSymbolsAPI:
 class TestFilesAPI:
     """Tests for /api/files endpoints."""
 
-    async def test_get_file_symbols(self, test_app, db_session: AsyncSession) -> None:
+    async def test_get_file_symbols(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
         """Test getting symbols for a specific file."""
         from inxr2.adapters.persistence.repositories.symbol_adapter import (
             PostgresSymbolRepository,
@@ -938,6 +978,7 @@ class TestFilesAPI:
             url="https://github.com/test/files.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -947,6 +988,7 @@ class TestFilesAPI:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -958,6 +1000,7 @@ class TestFilesAPI:
             language="python",
         )
         saved_file = await file_adapter.save(file)
+        assert saved_file.id is not None
 
         symbol_adapter = PostgresSymbolRepository(db_session)
         symbols = [
@@ -1006,7 +1049,7 @@ class TestFilesAPI:
         assert "FileClass" in symbol_names
         assert "file_function" in symbol_names
 
-    async def test_get_file_symbols_not_found(self, test_app) -> None:
+    async def test_get_file_symbols_not_found(self, test_app: FastAPI) -> None:
         """Test getting symbols for non-existent file."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1017,7 +1060,7 @@ class TestFilesAPI:
         assert "not found" in response.json()["detail"].lower()
 
     async def test_get_file_references(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting references from a specific file."""
         from inxr2.adapters.persistence.repositories.reference_adapter import (
@@ -1036,6 +1079,7 @@ class TestFilesAPI:
             url="https://github.com/test/refs.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -1045,6 +1089,7 @@ class TestFilesAPI:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -1056,6 +1101,7 @@ class TestFilesAPI:
             language="python",
         )
         saved_file = await file_adapter.save(file)
+        assert saved_file.id is not None
 
         # Create a target symbol
         symbol_adapter = PostgresSymbolRepository(db_session)
@@ -1140,7 +1186,7 @@ class TestFilesAPI:
         assert "source_column" in ref
         assert "target_symbol_id" in ref
 
-    async def test_get_file_references_not_found(self, test_app) -> None:
+    async def test_get_file_references_not_found(self, test_app: FastAPI) -> None:
         """Test getting references for non-existent file."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1151,7 +1197,7 @@ class TestFilesAPI:
         assert "not found" in response.json()["detail"].lower()
 
     async def test_get_file_symbols_by_path(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting symbols for a file by repository name and path."""
         from inxr2.adapters.persistence.repositories.symbol_adapter import (
@@ -1167,6 +1213,7 @@ class TestFilesAPI:
             url="https://github.com/test/symbolspath.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -1176,6 +1223,7 @@ class TestFilesAPI:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -1187,6 +1235,7 @@ class TestFilesAPI:
             language="python",
         )
         saved_file = await file_adapter.save(file)
+        assert saved_file.id is not None
 
         symbol_adapter = PostgresSymbolRepository(db_session)
         symbol = Symbol(
@@ -1218,7 +1267,7 @@ class TestFilesAPI:
         assert data["total"] == 1
         assert data["symbols"][0]["name"] == "helper_function"
 
-    async def test_get_file_symbols_by_path_not_found(self, test_app) -> None:
+    async def test_get_file_symbols_by_path_not_found(self, test_app: FastAPI) -> None:
         """Test getting symbols by path for non-existent repo/file."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1231,7 +1280,7 @@ class TestFilesAPI:
         assert response.status_code == 404
 
     async def test_get_file_references_by_path(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting references for a file by repository name and path."""
         from inxr2.adapters.persistence.repositories.reference_adapter import (
@@ -1247,6 +1296,7 @@ class TestFilesAPI:
             url="https://github.com/test/refspath.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -1256,6 +1306,7 @@ class TestFilesAPI:
             commit_date=datetime(2025, 1, 1),
         )
         saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -1267,6 +1318,7 @@ class TestFilesAPI:
             language="python",
         )
         saved_file = await file_adapter.save(file)
+        assert saved_file.id is not None
 
         reference_adapter = PostgresReferenceRepository(db_session)
         reference = Reference(
@@ -1298,7 +1350,9 @@ class TestFilesAPI:
         assert data["total"] == 1
         assert data["references"][0]["reference_type"] == "import"
 
-    async def test_get_file_references_by_path_not_found(self, test_app) -> None:
+    async def test_get_file_references_by_path_not_found(
+        self, test_app: FastAPI
+    ) -> None:
         """Test getting references by path for non-existent repo/file."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1315,7 +1369,7 @@ class TestFilesAPI:
 class TestPathValidation:
     """Tests for path and repo name validation in by-path endpoints."""
 
-    async def test_path_traversal_rejected(self, test_app) -> None:
+    async def test_path_traversal_rejected(self, test_app: FastAPI) -> None:
         """Test that path traversal attempts are rejected."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1328,7 +1382,7 @@ class TestPathValidation:
         assert response.status_code == 400
         assert "Path traversal" in response.json()["detail"]
 
-    async def test_absolute_path_rejected(self, test_app) -> None:
+    async def test_absolute_path_rejected(self, test_app: FastAPI) -> None:
         """Test that absolute paths are rejected."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1341,7 +1395,7 @@ class TestPathValidation:
         assert response.status_code == 400
         assert "Absolute paths" in response.json()["detail"]
 
-    async def test_empty_path_rejected(self, test_app) -> None:
+    async def test_empty_path_rejected(self, test_app: FastAPI) -> None:
         """Test that empty paths are rejected."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1354,7 +1408,7 @@ class TestPathValidation:
         assert response.status_code == 400
         assert "empty" in response.json()["detail"].lower()
 
-    async def test_invalid_repo_name_rejected(self, test_app) -> None:
+    async def test_invalid_repo_name_rejected(self, test_app: FastAPI) -> None:
         """Test that invalid repo names are rejected."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1367,7 +1421,7 @@ class TestPathValidation:
         assert response.status_code == 400
         assert "invalid characters" in response.json()["detail"].lower()
 
-    async def test_valid_path_with_subdirs_accepted(self, test_app) -> None:
+    async def test_valid_path_with_subdirs_accepted(self, test_app: FastAPI) -> None:
         """Test that valid paths with subdirectories work (return 404 for not found)."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1380,7 +1434,7 @@ class TestPathValidation:
         # Should get 404 (not found) not 400 (validation error)
         assert response.status_code == 404
 
-    async def test_path_traversal_in_middle_rejected(self, test_app) -> None:
+    async def test_path_traversal_in_middle_rejected(self, test_app: FastAPI) -> None:
         """Test that path traversal in the middle of path is rejected."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1393,7 +1447,7 @@ class TestPathValidation:
         assert response.status_code == 400
         assert "Path traversal" in response.json()["detail"]
 
-    async def test_repo_name_dot_rejected(self, test_app) -> None:
+    async def test_repo_name_dot_rejected(self, test_app: FastAPI) -> None:
         """Test that '.' as repo name is rejected."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1406,7 +1460,7 @@ class TestPathValidation:
         assert response.status_code == 400
         assert "start/end with a dot" in response.json()["detail"]
 
-    async def test_repo_name_dotdot_rejected(self, test_app) -> None:
+    async def test_repo_name_dotdot_rejected(self, test_app: FastAPI) -> None:
         """Test that '..' as repo name is rejected."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1419,7 +1473,9 @@ class TestPathValidation:
         assert response.status_code == 400
         assert "start/end with a dot" in response.json()["detail"]
 
-    async def test_repo_name_starting_with_dot_rejected(self, test_app) -> None:
+    async def test_repo_name_starting_with_dot_rejected(
+        self, test_app: FastAPI
+    ) -> None:
         """Test that repo names starting with dot are rejected."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1432,7 +1488,7 @@ class TestPathValidation:
         assert response.status_code == 400
         assert "start/end with a dot" in response.json()["detail"]
 
-    async def test_repo_name_ending_with_dot_rejected(self, test_app) -> None:
+    async def test_repo_name_ending_with_dot_rejected(self, test_app: FastAPI) -> None:
         """Test that repo names ending with dot are rejected."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1445,7 +1501,7 @@ class TestPathValidation:
         assert response.status_code == 400
         assert "start/end with a dot" in response.json()["detail"]
 
-    async def test_repo_name_with_middle_dot_accepted(self, test_app) -> None:
+    async def test_repo_name_with_middle_dot_accepted(self, test_app: FastAPI) -> None:
         """Test that repo names with dots in the middle are accepted."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1463,7 +1519,9 @@ class TestPathValidation:
 class TestCommitsAPI:
     """Tests for /api/commits endpoints (time travel)."""
 
-    async def test_list_commits_empty(self, test_app, db_session: AsyncSession) -> None:
+    async def test_list_commits_empty(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
         """Test listing commits for a repository with no commits."""
         # Arrange - create repository without commits
         repo_adapter = PostgresRepositoryAdapter(db_session)
@@ -1489,7 +1547,7 @@ class TestCommitsAPI:
         assert data["total"] == 0
 
     async def test_list_commits_with_data(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test listing commits for a repository with commits."""
         # Arrange
@@ -1499,6 +1557,7 @@ class TestCommitsAPI:
             url="https://github.com/test/commits.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commits = [
@@ -1543,7 +1602,7 @@ class TestCommitsAPI:
         assert "commit_date" in commit
 
     async def test_list_commits_with_branch_filter(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test filtering commits by branch."""
         # Arrange
@@ -1553,6 +1612,7 @@ class TestCommitsAPI:
             url="https://github.com/test/branch.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         main_commit = Commit(
@@ -1569,7 +1629,9 @@ class TestCommitsAPI:
         )
 
         saved_main = await commit_adapter.save(main_commit)
+        assert saved_main.id is not None
         saved_dev = await commit_adapter.save(dev_commit)
+        assert saved_dev.id is not None
 
         # Link commits to their respective branches
         await commit_adapter.link_commit_to_branch(saved_repo.id, saved_main.id, "main")
@@ -1591,7 +1653,7 @@ class TestCommitsAPI:
         # Message is hydrated from git - empty in test since repo doesn't exist
         assert "message" in data["commits"][0]
 
-    async def test_list_commits_repo_not_found(self, test_app) -> None:
+    async def test_list_commits_repo_not_found(self, test_app: FastAPI) -> None:
         """Test listing commits for non-existent repository."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1603,7 +1665,9 @@ class TestCommitsAPI:
 
         assert response.status_code == 404
 
-    async def test_get_commit_by_id(self, test_app, db_session: AsyncSession) -> None:
+    async def test_get_commit_by_id(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
         """Test getting a specific commit by ID."""
         # Arrange
         repo_adapter = PostgresRepositoryAdapter(db_session)
@@ -1612,6 +1676,7 @@ class TestCommitsAPI:
             url="https://github.com/test/detail.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit = Commit(
@@ -1640,7 +1705,7 @@ class TestCommitsAPI:
         assert "committer_name" in data
         assert "parent_hashes" in data
 
-    async def test_get_commit_not_found(self, test_app) -> None:
+    async def test_get_commit_not_found(self, test_app: FastAPI) -> None:
         """Test getting a non-existent commit."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1654,7 +1719,9 @@ class TestCommitsAPI:
 class TestFileHistoryAPI:
     """Tests for /api/files/history endpoint (time travel)."""
 
-    async def test_get_file_history(self, test_app, db_session: AsyncSession) -> None:
+    async def test_get_file_history(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
         """Test getting file version history."""
         # Arrange
         repo_adapter = PostgresRepositoryAdapter(db_session)
@@ -1663,6 +1730,7 @@ class TestFileHistoryAPI:
             url="https://github.com/test/history.git",
         )
         saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
 
         commit_adapter = PostgresCommitRepository(db_session)
         commit1 = Commit(
@@ -1678,7 +1746,9 @@ class TestFileHistoryAPI:
             commit_date=datetime(2025, 1, 2),
         )
         saved_commit1 = await commit_adapter.save(commit1)
+        assert saved_commit1.id is not None
         saved_commit2 = await commit_adapter.save(commit2)
+        assert saved_commit2.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
         files = [
@@ -1731,7 +1801,7 @@ class TestFileHistoryAPI:
         content_hashes = {v["content_hash"] for v in data["versions"]}
         assert len(content_hashes) == 2
 
-    async def test_get_file_history_not_found(self, test_app) -> None:
+    async def test_get_file_history_not_found(self, test_app: FastAPI) -> None:
         """Test file history for non-existent file."""
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
@@ -1744,7 +1814,7 @@ class TestFileHistoryAPI:
         assert response.status_code == 404
 
     async def test_get_file_history_repo_not_found(
-        self, test_app, db_session: AsyncSession
+        self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test file history when repository doesn't exist."""
         async with AsyncClient(
