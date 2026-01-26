@@ -1,7 +1,9 @@
-"""PostgreSQL commit repository adapter."""
+"""Commit repository adapter.
+
+Supports PostgreSQL and SQLite dialects.
+"""
 
 from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import CommitRepositoryPort
@@ -85,14 +87,26 @@ class PostgresCommitRepository(CommitRepositoryPort):
         """Link an existing commit to a branch.
 
         Creates an entry in the branch_commits junction table.
-        Uses INSERT ... ON CONFLICT DO NOTHING for idempotency.
+        Idempotent - checks for existing link before inserting.
+        Works with both PostgreSQL and SQLite.
         """
-        stmt = (
-            pg_insert(BranchCommitModel)
-            .values(repository_id=repository_id, commit_id=commit_id, branch=branch)
-            .on_conflict_do_nothing(constraint="uq_branch_commit")
+        # Check if link already exists (dialect-agnostic idempotency)
+        existing = await self.session.execute(
+            select(BranchCommitModel).where(
+                BranchCommitModel.repository_id == repository_id,
+                BranchCommitModel.commit_id == commit_id,
+                BranchCommitModel.branch == branch,
+            )
         )
-        await self.session.execute(stmt)
+        if existing.scalar_one_or_none() is not None:
+            return  # Already linked
+
+        model = BranchCommitModel(
+            repository_id=repository_id,
+            commit_id=commit_id,
+            branch=branch,
+        )
+        self.session.add(model)
         await self.session.flush()
 
     async def link_commit_to_branches(
@@ -101,21 +115,34 @@ class PostgresCommitRepository(CommitRepositoryPort):
         """Link an existing commit to multiple branches.
 
         Bulk version of link_commit_to_branch for efficiency.
+        Idempotent - only inserts links that don't already exist.
+        Works with both PostgreSQL and SQLite.
         """
         if not branches:
             return
 
-        values = [
-            {"repository_id": repository_id, "commit_id": commit_id, "branch": branch}
-            for branch in branches
-        ]
-        stmt = (
-            pg_insert(BranchCommitModel)
-            .values(values)
-            .on_conflict_do_nothing(constraint="uq_branch_commit")
+        # Find which branches are already linked (single query)
+        existing = await self.session.execute(
+            select(BranchCommitModel.branch).where(
+                BranchCommitModel.repository_id == repository_id,
+                BranchCommitModel.commit_id == commit_id,
+                BranchCommitModel.branch.in_(branches),
+            )
         )
-        await self.session.execute(stmt)
-        await self.session.flush()
+        existing_branches = set(existing.scalars().all())
+
+        # Only insert branches that aren't already linked
+        new_branches = [b for b in branches if b not in existing_branches]
+        for branch in new_branches:
+            model = BranchCommitModel(
+                repository_id=repository_id,
+                commit_id=commit_id,
+                branch=branch,
+            )
+            self.session.add(model)
+
+        if new_branches:
+            await self.session.flush()
 
     async def get_branches_for_commit(self, commit_id: int) -> list[str]:
         """Get all branches that contain a specific commit."""
