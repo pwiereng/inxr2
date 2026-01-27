@@ -23,9 +23,11 @@ class SymbolKind(str, Enum):
     MODULE = "module"
     NAMESPACE = "namespace"
 
-    # TODO: Add more kinds as needed:
-    # - STRUCT
-    # - UNION
-    # - TYPEDEF
-    # - MACRO
-    # - etc.
+    # C-specific kinds
+    STRUCT = "struct"
+    UNION = "union"
+    TYPEDEF = "typedef"
+    MACRO = "macro"
+    ENUM_VALUE = "enum_value"
+    STRUCT_FIELD = "struct_field"
+    UNION_FIELD = "union_field"

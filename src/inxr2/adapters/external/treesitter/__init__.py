@@ -10,6 +10,7 @@ To add a new language:
 """
 
 from .base import BaseLanguageParser
+from .c_parser import CParser
 from .python_parser import PythonParser
 from .service import TreeSitterService
 from .typescript_parser import TypeScriptParser
@@ -17,6 +18,7 @@ from .typescript_parser import TypeScriptParser
 __all__ = [
     "TreeSitterService",
     "BaseLanguageParser",
+    "CParser",
     "PythonParser",
     "TypeScriptParser",
 ]

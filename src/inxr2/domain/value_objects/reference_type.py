@@ -12,6 +12,7 @@ class ReferenceType(str, Enum):
 
     CALL = "call"  # Function/method call
     IMPORT = "import"  # Import statement
+    INCLUDE = "include"  # #include statement (C/C++)
     INHERITANCE = "inheritance"  # Class inheritance
     TYPE_ANNOTATION = "type_annotation"  # Type hint/annotation
     ASSIGNMENT = "assignment"  # Variable assignment
