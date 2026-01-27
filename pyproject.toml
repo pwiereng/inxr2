@@ -41,6 +41,7 @@ dependencies = [
     "tree-sitter-python>=0.23.0",
     "tree-sitter-typescript>=0.23.0",
     "tree-sitter-javascript>=0.23.0",
+    "tree-sitter-c>=0.23.0",
 
     # Configuration
     "pyyaml>=6.0",
@@ -146,7 +147,7 @@ warn_no_return = true
 strict_equality = true
 
 [[tool.mypy.overrides]]
-module = ["tree_sitter.*", "tree_sitter_python.*", "tree_sitter_typescript.*", "tree_sitter_javascript.*", "gitpython.*"]
+module = ["tree_sitter.*", "tree_sitter_python.*", "tree_sitter_typescript.*", "tree_sitter_javascript.*", "tree_sitter_c.*", "gitpython.*"]
 ignore_missing_imports = true
 
 # Pytest configuration
