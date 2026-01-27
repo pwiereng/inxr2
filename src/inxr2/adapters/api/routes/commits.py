@@ -10,9 +10,12 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
+from ....application.use_cases.commits import ListCommitsRequest
+from ....domain.exceptions import RepositoryNotFound
 from ....infrastructure.dependencies import (
     CommitAdapter,
     GitServiceDep,
+    ListCommitsUseCaseDep,
     RepositoryAdapter,
 )
 from ..validation import validate_repo_name
@@ -70,9 +73,7 @@ class CommitDetailResponse(BaseModel):
 
 @router.get("", response_model=CommitListResponse)
 async def list_commits(
-    repo_adapter: RepositoryAdapter,
-    commit_adapter: CommitAdapter,
-    git_service: GitServiceDep,
+    use_case: ListCommitsUseCaseDep,
     repo: str = Query(..., description="Repository name"),
     branch: str | None = Query(None, description="Branch name (optional)"),
     limit: int = Query(50, ge=1, le=500, description="Maximum commits to return"),
@@ -88,60 +89,33 @@ async def list_commits(
     # Validate inputs
     repo = validate_repo_name(repo)
 
-    # Get repository
-    repository = await repo_adapter.find_by_name(repo)
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    repository_id = repository.id if repository.id is not None else 0
-
-    # Get commits from DB (only has hash, dates)
-    commits = await commit_adapter.list_by_repository(
-        repository_id=repository_id,
-        branch=branch,
-        limit=limit,
-    )
-
-    # Hydrate commit info from git if repo path is available
-    repo_path = Path(repository.url)  # url contains local path for indexed repos
-    commit_info_cache: dict[str, dict[str, str]] = {}
-
-    for c in commits:
-        try:
-            info = git_service.get_commit_info(repo_path, c.commit_hash.value)
-            commit_info_cache[c.commit_hash.value] = {
-                "message": info.get("message", "")[:200],
-                "author_name": info.get("author_name", ""),
-                "author_email": info.get("author_email", ""),
-            }
-        except Exception:
-            # Git query failed - use empty values
-            commit_info_cache[c.commit_hash.value] = {
-                "message": "",
-                "author_name": "",
-                "author_email": "",
-            }
+    try:
+        result = await use_case.execute(
+            ListCommitsRequest(
+                repository_name=repo,
+                branch=branch,
+                limit=limit,
+            )
+        )
+    except RepositoryNotFound:
+        raise HTTPException(status_code=404, detail="Repository not found") from None
 
     return CommitListResponse(
         commits=[
             CommitResponse(
-                id=c.id or 0,
-                hash=c.commit_hash.value,
-                short_hash=c.short_hash,
-                message=commit_info_cache.get(c.commit_hash.value, {}).get(
-                    "message", ""
+                id=c.commit.id or 0,
+                hash=c.commit.commit_hash.value,
+                short_hash=c.commit.short_hash,
+                message=c.message[:200] if c.message else "",
+                author_name=c.author_name or "",
+                author_email=c.author_email or "",
+                commit_date=(
+                    c.commit.commit_date.isoformat() if c.commit.commit_date else ""
                 ),
-                author_name=commit_info_cache.get(c.commit_hash.value, {}).get(
-                    "author_name", ""
-                ),
-                author_email=commit_info_cache.get(c.commit_hash.value, {}).get(
-                    "author_email", ""
-                ),
-                commit_date=c.commit_date.isoformat() if c.commit_date else "",
             )
-            for c in commits
+            for c in result.commits
         ],
-        total=len(commits),
+        total=result.total,
     )
 
 

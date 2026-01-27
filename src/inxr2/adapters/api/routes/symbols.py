@@ -3,10 +3,15 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
+from ....application.use_cases.symbols import (
+    GetSymbolReferencesRequest,
+    SearchSymbolsRequest,
+)
+from ....domain.exceptions import SymbolNotFound
 from ....infrastructure.dependencies import (
-    CommitAdapter,
     FileAdapter,
-    ReferenceAdapter,
+    GetSymbolReferencesUseCaseDep,
+    SearchSymbolsUseCaseDep,
     SymbolAdapter,
 )
 
@@ -69,8 +74,7 @@ class ReferencesListResponse(BaseModel):
 
 @router.get("", response_model=SymbolListResponse)
 async def search_symbols(
-    symbol_adapter: SymbolAdapter,
-    file_adapter: FileAdapter,
+    use_case: SearchSymbolsUseCaseDep,
     q: str = Query(default="", description="Search query for symbol name"),
     kind: str | None = Query(default=None, description="Filter by symbol kind"),
     repository_id: int | None = Query(default=None, description="Filter by repository"),
@@ -82,71 +86,50 @@ async def search_symbols(
 
     Returns paginated list of symbols matching the query.
     """
-    # Search symbols
-    if q:
-        symbols = await symbol_adapter.search_by_name(
-            name=q,
+    result = await use_case.execute(
+        SearchSymbolsRequest(
+            query=q,
             repository_id=repository_id,
             kind=kind,
-            limit=limit + offset,  # Fetch enough for pagination
+            limit=limit,
+            offset=offset,
         )
-    else:
-        # If no query, list all symbols (with filters)
-        symbols = await symbol_adapter.search_by_name(
-            name="",
-            repository_id=repository_id,
-            kind=kind,
-            limit=limit + offset,
-        )
-
-    # Apply offset
-    symbols = symbols[offset : offset + limit]
-
-    # Enrich with file paths
-    items: list[SymbolResponse] = []
-    for symbol in symbols:
-        file_path = None
-        if symbol.file_id:
-            file = await file_adapter.find_by_id(symbol.file_id)
-            if file:
-                file_path = file.path
-
-        items.append(
-            SymbolResponse(
-                id=symbol.id or 0,
-                name=symbol.name,
-                qualified_name=symbol.qualified_name,
-                kind=symbol.kind,
-                file_id=symbol.file_id,
-                file_path=file_path,
-                repository_id=symbol.repository_id,
-                commit_id=symbol.commit_id,
-                start_line=symbol.start_line,
-                start_column=symbol.start_column,
-                end_line=symbol.end_line,
-                end_column=symbol.end_column,
-                signature=symbol.signature,
-                docstring=symbol.docstring,
-            )
-        )
+    )
 
     return SymbolListResponse(
-        items=items,
-        total=len(items),  # TODO: Get actual total count
-        limit=limit,
-        offset=offset,
+        items=[
+            SymbolResponse(
+                id=s.symbol.id or 0,
+                name=s.symbol.name,
+                qualified_name=s.symbol.qualified_name,
+                kind=s.symbol.kind.value,
+                file_id=s.symbol.file_id,
+                file_path=s.file_path,
+                repository_id=s.symbol.repository_id,
+                commit_id=s.symbol.commit_id,
+                start_line=s.symbol.start_line,
+                start_column=s.symbol.start_column,
+                end_line=s.symbol.end_line,
+                end_column=s.symbol.end_column,
+                signature=s.symbol.signature,
+                docstring=s.symbol.docstring,
+            )
+            for s in result.symbols
+        ],
+        total=result.total,
+        limit=result.limit,
+        offset=result.offset,
     )
 
 
 @router.get("/by-name/{name}", response_model=SymbolListResponse)
 async def get_symbols_by_name(
     name: str,
-    symbol_adapter: SymbolAdapter,
-    file_adapter: FileAdapter,
-    commit_adapter: CommitAdapter,
+    use_case: SearchSymbolsUseCaseDep,
     repository_id: int | None = Query(default=None, description="Filter by repository"),
     commit: str | None = Query(
-        default=None, description="Commit hash for time travel (optional)"
+        default=None,
+        description="Commit hash for time travel (requires repository_id)",
     ),
 ) -> SymbolListResponse:
     """
@@ -156,56 +139,47 @@ async def get_symbols_by_name(
     (e.g., save() methods in different classes).
 
     Query parameters:
-    - repository_id: Filter by repository (optional)
-    - commit: Commit hash for time travel (optional). If provided, returns
-              symbols from that specific commit only.
+    - repository_id: Filter by repository (optional, required if commit is set)
+    - commit: Commit hash for time travel (optional, requires repository_id)
     """
-    # Look up commit_id from hash if provided
-    commit_id: int | None = None
-    if commit and repository_id:
-        commit_record = await commit_adapter.find_by_hash(repository_id, commit)
-        if commit_record:
-            commit_id = commit_record.id
-
-    # Find all symbols with exact name match
-    symbols = await symbol_adapter.find_by_exact_name(
-        name=name,
-        repository_id=repository_id,
-        commit_id=commit_id,
-    )
-
-    # Enrich with file paths
-    items: list[SymbolResponse] = []
-    for symbol in symbols:
-        file_path = None
-        if symbol.file_id:
-            file = await file_adapter.find_by_id(symbol.file_id)
-            if file:
-                file_path = file.path
-
-        items.append(
-            SymbolResponse(
-                id=symbol.id or 0,
-                name=symbol.name,
-                qualified_name=symbol.qualified_name,
-                kind=symbol.kind,
-                file_id=symbol.file_id,
-                file_path=file_path,
-                repository_id=symbol.repository_id,
-                commit_id=symbol.commit_id,
-                start_line=symbol.start_line,
-                start_column=symbol.start_column,
-                end_line=symbol.end_line,
-                end_column=symbol.end_column,
-                signature=symbol.signature,
-                docstring=symbol.docstring,
-            )
+    if commit and not repository_id:
+        raise HTTPException(
+            status_code=400,
+            detail="repository_id is required when commit is specified",
         )
 
+    result = await use_case.execute(
+        SearchSymbolsRequest(
+            query=name,
+            repository_id=repository_id,
+            commit_hash=commit,
+            exact_match=True,
+            limit=1000,  # High limit for exact match
+        )
+    )
+
     return SymbolListResponse(
-        items=items,
-        total=len(items),
-        limit=len(items),
+        items=[
+            SymbolResponse(
+                id=s.symbol.id or 0,
+                name=s.symbol.name,
+                qualified_name=s.symbol.qualified_name,
+                kind=s.symbol.kind.value,
+                file_id=s.symbol.file_id,
+                file_path=s.file_path,
+                repository_id=s.symbol.repository_id,
+                commit_id=s.symbol.commit_id,
+                start_line=s.symbol.start_line,
+                start_column=s.symbol.start_column,
+                end_line=s.symbol.end_line,
+                end_column=s.symbol.end_column,
+                signature=s.symbol.signature,
+                docstring=s.symbol.docstring,
+            )
+            for s in result.symbols
+        ],
+        total=result.total,
+        limit=result.total,
         offset=0,
     )
 
@@ -249,10 +223,7 @@ async def get_symbol(
 @router.get("/{symbol_id}/references", response_model=ReferencesListResponse)
 async def get_symbol_references(
     symbol_id: int,
-    symbol_adapter: SymbolAdapter,
-    reference_adapter: ReferenceAdapter,
-    file_adapter: FileAdapter,
-    commit_adapter: CommitAdapter,
+    use_case: GetSymbolReferencesUseCaseDep,
     by_name: bool = Query(
         default=True,
         description="If true, find all references matching the symbol name "
@@ -275,54 +246,32 @@ async def get_symbol_references(
     - commit: Commit hash for time travel (optional). If provided, returns
               references from that specific commit only.
     """
-    # Get the symbol first
-    symbol = await symbol_adapter.find_by_id(symbol_id)
-    if not symbol:
-        raise HTTPException(status_code=404, detail="Symbol not found")
-
-    # Look up commit_id from hash if provided
-    commit_id: int | None = None
-    if commit:
-        commit_record = await commit_adapter.find_by_hash(symbol.repository_id, commit)
-        if commit_record:
-            commit_id = commit_record.id
-
-    # Get references - either by symbol ID or by name
-    if by_name:
-        # Find all references matching the symbol name (for disambiguation)
-        references = await reference_adapter.find_references_by_text(
-            symbol.name, symbol.repository_id, limit=limit, commit_id=commit_id
-        )
-    else:
-        # Find only references pointing to this specific symbol
-        references = await reference_adapter.find_references_to_symbol(
-            symbol_id, limit=limit, commit_id=commit_id
-        )
-
-    # Enrich with file paths
-    items: list[ReferenceResponse] = []
-    for ref in references:
-        file_path = None
-        if ref.source_file_id:
-            file = await file_adapter.find_by_id(ref.source_file_id)
-            if file:
-                file_path = file.path
-
-        items.append(
-            ReferenceResponse(
-                id=ref.id or 0,
-                source_file_id=ref.source_file_id,
-                source_file_path=file_path,
-                source_line=ref.source_line,
-                source_column=ref.source_column,
-                target_symbol_id=ref.target_symbol_id,
-                reference_text=ref.reference_text,
-                reference_type=ref.reference_type.value,
+    try:
+        result = await use_case.execute(
+            GetSymbolReferencesRequest(
+                symbol_id=symbol_id,
+                by_name=by_name,
+                commit_hash=commit,
+                limit=limit,
             )
         )
+    except SymbolNotFound:
+        raise HTTPException(status_code=404, detail="Symbol not found") from None
 
     return ReferencesListResponse(
-        items=items,
-        total=len(items),
-        symbol_name=symbol.name,
+        items=[
+            ReferenceResponse(
+                id=r.reference.id or 0,
+                source_file_id=r.reference.source_file_id,
+                source_file_path=r.source_file_path,
+                source_line=r.reference.source_line,
+                source_column=r.reference.source_column,
+                target_symbol_id=r.reference.target_symbol_id,
+                reference_text=r.reference.reference_text,
+                reference_type=r.reference.reference_type.value,
+            )
+            for r in result.references
+        ],
+        total=result.total,
+        symbol_name=result.symbol_name,
     )

@@ -1,9 +1,20 @@
 """Repository use cases."""
 
+from .get_repository_branches import (
+    BranchInfo,
+    GetRepositoryBranchesRequest,
+    GetRepositoryBranchesResponse,
+    GetRepositoryBranchesUseCase,
+)
 from .get_repository_files import (
     GetRepositoryFilesRequest,
     GetRepositoryFilesResponse,
     GetRepositoryFilesUseCase,
+)
+from .get_repository_stats import (
+    GetRepositoryStatsRequest,
+    GetRepositoryStatsUseCase,
+    RepositoryStats,
 )
 from .get_repository_tree import (
     GetRepositoryTreeRequest,
@@ -14,13 +25,20 @@ from .get_repository_tree import (
 from .list_repositories import ListRepositoriesResponse, ListRepositoriesUseCase
 
 __all__ = [
+    "BranchInfo",
+    "GetRepositoryBranchesRequest",
+    "GetRepositoryBranchesResponse",
+    "GetRepositoryBranchesUseCase",
     "GetRepositoryFilesRequest",
     "GetRepositoryFilesResponse",
     "GetRepositoryFilesUseCase",
+    "GetRepositoryStatsRequest",
+    "GetRepositoryStatsUseCase",
     "GetRepositoryTreeRequest",
     "GetRepositoryTreeResponse",
     "GetRepositoryTreeUseCase",
-    "TreeNode",
     "ListRepositoriesResponse",
     "ListRepositoriesUseCase",
+    "RepositoryStats",
+    "TreeNode",
 ]

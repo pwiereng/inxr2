@@ -47,17 +47,33 @@ from ..application.ports.repositories import (
     SymbolRepositoryPort,
 )
 from ..application.ports.services import FileSystemPort
+from ..application.use_cases.commits import ListCommitsUseCase
+from ..application.use_cases.files import (
+    GetFileContentUseCase,
+    GetFileHistoryUseCase,
+    ResolveFileUseCase,
+)
 from ..application.use_cases.indexing.index_local_directory import (
     IndexLocalDirectoryUseCase,
 )
+from ..application.use_cases.repositories.get_repository_branches import (
+    GetRepositoryBranchesUseCase,
+)
 from ..application.use_cases.repositories.get_repository_files import (
     GetRepositoryFilesUseCase,
+)
+from ..application.use_cases.repositories.get_repository_stats import (
+    GetRepositoryStatsUseCase,
 )
 from ..application.use_cases.repositories.get_repository_tree import (
     GetRepositoryTreeUseCase,
 )
 from ..application.use_cases.repositories.list_repositories import (
     ListRepositoriesUseCase,
+)
+from ..application.use_cases.symbols import (
+    GetSymbolReferencesUseCase,
+    SearchSymbolsUseCase,
 )
 from .database import get_db_session
 
@@ -195,6 +211,75 @@ def get_repository_tree_use_case(
     )
 
 
+def get_resolve_file_use_case(
+    repository_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+) -> ResolveFileUseCase:
+    """Provide ResolveFileUseCase with dependencies."""
+    return ResolveFileUseCase(
+        repository_repo=repository_adapter,
+        file_repo=file_adapter,
+        commit_repo=commit_adapter,
+    )
+
+
+def get_repository_stats_use_case(
+    repository_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    symbol_adapter: SymbolAdapter,
+    reference_adapter: ReferenceAdapter,
+) -> GetRepositoryStatsUseCase:
+    """Provide GetRepositoryStatsUseCase with dependencies."""
+    return GetRepositoryStatsUseCase(
+        repository_repo=repository_adapter,
+        file_repo=file_adapter,
+        symbol_repo=symbol_adapter,
+        reference_repo=reference_adapter,
+    )
+
+
+def get_repository_branches_use_case(
+    repository_adapter: RepositoryAdapter,
+    index_status_adapter: IndexStatusAdapter,
+    git_service: GitServiceDep,
+) -> GetRepositoryBranchesUseCase:
+    """Provide GetRepositoryBranchesUseCase with dependencies."""
+    return GetRepositoryBranchesUseCase(
+        repository_repo=repository_adapter,
+        index_status_repo=index_status_adapter,
+        git_service=git_service,
+    )
+
+
+def get_file_content_use_case(
+    resolve_file_use_case: Annotated[
+        ResolveFileUseCase, Depends(get_resolve_file_use_case)
+    ],
+    git_service: GitServiceDep,
+) -> GetFileContentUseCase:
+    """Provide GetFileContentUseCase with dependencies."""
+    return GetFileContentUseCase(
+        resolve_file_use_case=resolve_file_use_case,
+        git_service=git_service,
+    )
+
+
+def get_file_history_use_case(
+    repository_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+    git_service: GitServiceDep,
+) -> GetFileHistoryUseCase:
+    """Provide GetFileHistoryUseCase with dependencies."""
+    return GetFileHistoryUseCase(
+        repository_repo=repository_adapter,
+        file_repo=file_adapter,
+        commit_repo=commit_adapter,
+        git_service=git_service,
+    )
+
+
 # Type aliases for injected use cases
 ListRepositoriesUseCaseDep = Annotated[
     ListRepositoriesUseCase, Depends(get_list_repositories_use_case)
@@ -207,4 +292,75 @@ IndexLocalDirectoryUseCaseDep = Annotated[
 ]
 GetRepositoryTreeUseCaseDep = Annotated[
     GetRepositoryTreeUseCase, Depends(get_repository_tree_use_case)
+]
+ResolveFileUseCaseDep = Annotated[
+    ResolveFileUseCase, Depends(get_resolve_file_use_case)
+]
+GetRepositoryStatsUseCaseDep = Annotated[
+    GetRepositoryStatsUseCase, Depends(get_repository_stats_use_case)
+]
+GetRepositoryBranchesUseCaseDep = Annotated[
+    GetRepositoryBranchesUseCase, Depends(get_repository_branches_use_case)
+]
+GetFileContentUseCaseDep = Annotated[
+    GetFileContentUseCase, Depends(get_file_content_use_case)
+]
+GetFileHistoryUseCaseDep = Annotated[
+    GetFileHistoryUseCase, Depends(get_file_history_use_case)
+]
+
+
+# Symbol use case providers
+def get_search_symbols_use_case(
+    symbol_adapter: SymbolAdapter,
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+) -> SearchSymbolsUseCase:
+    """Provide SearchSymbolsUseCase with dependencies."""
+    return SearchSymbolsUseCase(
+        symbol_repo=symbol_adapter,
+        file_repo=file_adapter,
+        commit_repo=commit_adapter,
+    )
+
+
+def get_symbol_references_use_case(
+    symbol_adapter: SymbolAdapter,
+    reference_adapter: ReferenceAdapter,
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+) -> GetSymbolReferencesUseCase:
+    """Provide GetSymbolReferencesUseCase with dependencies."""
+    return GetSymbolReferencesUseCase(
+        symbol_repo=symbol_adapter,
+        reference_repo=reference_adapter,
+        file_repo=file_adapter,
+        commit_repo=commit_adapter,
+    )
+
+
+SearchSymbolsUseCaseDep = Annotated[
+    SearchSymbolsUseCase, Depends(get_search_symbols_use_case)
+]
+GetSymbolReferencesUseCaseDep = Annotated[
+    GetSymbolReferencesUseCase, Depends(get_symbol_references_use_case)
+]
+
+
+# Commit use case providers
+def get_list_commits_use_case(
+    repository_adapter: RepositoryAdapter,
+    commit_adapter: CommitAdapter,
+    git_service: GitServiceDep,
+) -> ListCommitsUseCase:
+    """Provide ListCommitsUseCase with dependencies."""
+    return ListCommitsUseCase(
+        repository_repo=repository_adapter,
+        commit_repo=commit_adapter,
+        git_service=git_service,
+    )
+
+
+ListCommitsUseCaseDep = Annotated[
+    ListCommitsUseCase, Depends(get_list_commits_use_case)
 ]

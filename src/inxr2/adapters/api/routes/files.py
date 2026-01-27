@@ -5,12 +5,23 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from ....application.use_cases.files import (
+    BinaryFileError,
+    GetFileContentRequest,
+    GetFileHistoryRequest,
+    RepositoryPathNotFoundError,
+    ResolveFileRequest,
+)
+from ....domain.exceptions import CommitNotFound, FileNotFound, RepositoryNotFound
 from ....infrastructure.dependencies import (
     CommitAdapter,
     FileAdapter,
+    GetFileContentUseCaseDep,
+    GetFileHistoryUseCaseDep,
     GitServiceDep,
     ReferenceAdapter,
     RepositoryAdapter,
+    ResolveFileUseCaseDep,
     SymbolAdapter,
 )
 from ..validation import validate_path, validate_repo_name
@@ -97,54 +108,11 @@ class FileHistoryResponse(BaseModel):
     total: int
 
 
-async def _resolve_commit_for_branch(
-    commit_adapter: CommitAdapter,
-    repository_id: int,
-    branch: str | None,
-    default_branch: str,
-) -> str | None:
-    """Resolve branch to its latest indexed commit hash.
-
-    Args:
-        commit_adapter: Commit repository adapter
-        repository_id: Repository ID
-        branch: Branch name to resolve, or None
-        default_branch: Repository's default branch name
-
-    Returns:
-        Commit hash if found, None otherwise
-
-    Note:
-        If the requested branch has no indexed commits (e.g., a merged branch
-        where we only index delta commits), falls back to the default branch.
-    """
-    if not branch:
-        return None
-
-    # Resolve branch to latest indexed commit
-    commit = await commit_adapter.find_latest_by_branch(repository_id, branch)
-    if commit:
-        return commit.commit_hash.value
-
-    # Branch has no indexed commits - fall back to default branch
-    # This handles merged branches where delta indexing found no unique commits
-    if branch != default_branch:
-        commit = await commit_adapter.find_latest_by_branch(
-            repository_id, default_branch
-        )
-        return commit.commit_hash.value if commit else None
-
-    return None
-
-
 @router.get("/by-path", response_model=FileContentResponse)
 async def get_file_content_by_path(
     repo: str,
     path: str,
-    repo_adapter: RepositoryAdapter,
-    file_adapter: FileAdapter,
-    commit_adapter: CommitAdapter,
-    git_service: GitServiceDep,
+    use_case: GetFileContentUseCaseDep,
     commit: str | None = None,
     branch: str | None = None,
 ) -> FileContentResponse:
@@ -163,89 +131,36 @@ async def get_file_content_by_path(
     repo = validate_repo_name(repo)
     path = validate_path(path)
 
-    # Get repository by name
-    repository = await repo_adapter.find_by_name(repo)
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    repository_id = repository.id if repository.id is not None else 0
-
-    # Get file by repository and path
-    # Priority: explicit commit > branch (latest file on branch) > default (latest)
-    file = None
-
-    if commit:
-        # Time travel mode: get file at specific commit
-        file = await file_adapter.find_by_repository_path_and_commit_hash(
-            repository_id, path, commit
-        )
-        if not file:
-            raise HTTPException(
-                status_code=404,
-                detail=f"File not found at commit {commit}",
-            )
-    elif branch:
-        # Branch mode: get latest version of file on this branch
-        versions = await file_adapter.list_versions_by_path(repository_id, path, branch)
-        if versions:
-            file = versions[0]  # Most recent version on this branch
-        else:
-            # Branch has no indexed data for this file
-            # Don't silently fall back - inform the user explicitly
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    f"File '{path}' not found on branch '{branch}'. "
-                    f"This branch may not have indexed data for this file. "
-                    f"Try the default branch '{repository.default_branch}' or "
-                    f"remove the branch parameter to use the latest indexed version."
-                ),
-            )
-    else:
-        # Default: get latest version across all branches
-        file = await file_adapter.find_by_repository_and_path(repository_id, path)
-        if not file:
-            raise HTTPException(status_code=404, detail="File not found")
-
-    # Get commit info to get the hash
-    commit_record = await commit_adapter.find_by_id(file.commit_id)
-    if not commit_record:
-        raise HTTPException(status_code=404, detail="Commit not found")
-
-    # The repository URL is the local path for indexed repos
-    repo_path = Path(repository.url)
-    if not repo_path.exists():
-        raise HTTPException(
-            status_code=500,
-            detail=f"Repository path not found: {repository.url}",
-        )
-
-    # Fetch content from git
     try:
-        content = git_service.get_file_content(
-            repo_path=repo_path,
-            commit_hash=commit_record.commit_hash.value,
-            file_path=file.path,
+        result = await use_case.execute(
+            GetFileContentRequest(
+                repository_name=repo,
+                file_path=path,
+                commit_hash=commit,
+                branch=branch,
+            )
         )
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except UnicodeDecodeError as e:
+    except RepositoryNotFound as e:
+        raise HTTPException(status_code=404, detail="Repository not found") from e
+    except FileNotFound as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+    except CommitNotFound as e:
+        raise HTTPException(status_code=404, detail="Commit not found") from e
+    except RepositoryPathNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    except BinaryFileError as e:
         raise HTTPException(
             status_code=400,
             detail="File is binary and cannot be displayed as text",
         ) from e
 
-    # Count lines
-    has_trailing_newline = content.endswith("\n") if content else True
-    line_count = content.count("\n") + (0 if has_trailing_newline else 1)
-
     return FileContentResponse(
-        id=file.id or 0,
-        path=file.path,
-        language=file.language,
-        content=content,
-        line_count=line_count,
-        size_bytes=len(content.encode("utf-8")),
+        id=result.file.id or 0,
+        path=result.file.path,
+        language=result.file.language,
+        content=result.content,
+        line_count=result.line_count,
+        size_bytes=result.size_bytes,
     )
 
 
@@ -253,10 +168,7 @@ async def get_file_content_by_path(
 async def get_file_history(
     repo: str,
     path: str,
-    repo_adapter: RepositoryAdapter,
-    file_adapter: FileAdapter,
-    commit_adapter: CommitAdapter,
-    git_service: GitServiceDep,
+    use_case: GetFileHistoryUseCaseDep,
     branch: str | None = None,
 ) -> FileHistoryResponse:
     """
@@ -275,61 +187,34 @@ async def get_file_history(
     repo = validate_repo_name(repo)
     path = validate_path(path)
 
-    # Get repository by name
-    repository = await repo_adapter.find_by_name(repo)
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    repository_id = repository.id if repository.id is not None else 0
-    repo_path = Path(repository.url)  # url contains local path for indexed repos
-
-    # Get all versions of this file (optionally filtered by branch)
-    files = await file_adapter.list_versions_by_path(repository_id, path, branch)
-
-    # If no files found for this branch, fall back to default branch
-    # This handles merged branches where delta indexing found no unique commits
-    if not files and branch and branch != repository.default_branch:
-        files = await file_adapter.list_versions_by_path(
-            repository_id, path, repository.default_branch
-        )
-
-    if not files:
-        raise HTTPException(status_code=404, detail="File not found")
-
-    # Get commit info for each version, hydrating message from git
-    versions = []
-    for file in files:
-        commit_record = await commit_adapter.find_by_id(file.commit_id)
-        if commit_record:
-            # Hydrate message from git
-            try:
-                git_info = git_service.get_commit_info(
-                    repo_path, commit_record.commit_hash.value
-                )
-                message = git_info.get("message", "")[:100]
-            except Exception:
-                message = ""
-
-            versions.append(
-                FileVersionResponse(
-                    commit_id=commit_record.id or 0,
-                    commit_hash=commit_record.commit_hash.value,
-                    short_hash=commit_record.short_hash,
-                    commit_date=(
-                        commit_record.commit_date.isoformat()
-                        if commit_record.commit_date
-                        else ""
-                    ),
-                    message=message,
-                    content_hash=file.content_hash or "",
-                )
+    try:
+        result = await use_case.execute(
+            GetFileHistoryRequest(
+                repository_name=repo,
+                file_path=path,
+                branch=branch,
             )
+        )
+    except RepositoryNotFound as e:
+        raise HTTPException(status_code=404, detail="Repository not found") from e
+    except FileNotFound as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
 
     return FileHistoryResponse(
-        path=path,
-        repository_name=repository.name,
-        versions=versions,
-        total=len(versions),
+        path=result.path,
+        repository_name=result.repository_name,
+        versions=[
+            FileVersionResponse(
+                commit_id=v.commit_id,
+                commit_hash=v.commit_hash,
+                short_hash=v.short_hash,
+                commit_date=v.commit_date,
+                message=v.message,
+                content_hash=v.content_hash,
+            )
+            for v in result.versions
+        ],
+        total=result.total,
     )
 
 
@@ -337,10 +222,8 @@ async def get_file_history(
 async def get_file_symbols_by_path(
     repo: str,
     path: str,
-    repo_adapter: RepositoryAdapter,
-    file_adapter: FileAdapter,
+    resolve_file_use_case: ResolveFileUseCaseDep,
     symbol_adapter: SymbolAdapter,
-    commit_adapter: CommitAdapter,
     commit: str | None = None,
     branch: str | None = None,
 ) -> FileSymbolsResponse:
@@ -359,50 +242,24 @@ async def get_file_symbols_by_path(
     repo = validate_repo_name(repo)
     path = validate_path(path)
 
-    # Get repository by name
-    repository = await repo_adapter.find_by_name(repo)
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    repository_id = repository.id if repository.id is not None else 0
-
-    # Get file by repository and path
-    # Priority: explicit commit > branch (latest file on branch) > default (latest)
-    file = None
-
-    if commit:
-        # Time travel mode: get file at specific commit
-        file = await file_adapter.find_by_repository_path_and_commit_hash(
-            repository_id, path, commit
+    # Resolve file using use case (handles priority: commit > branch > default)
+    try:
+        resolved = await resolve_file_use_case.execute(
+            ResolveFileRequest(
+                repository_name=repo,
+                file_path=path,
+                commit_hash=commit,
+                branch=branch,
+            )
         )
-        if not file:
-            raise HTTPException(
-                status_code=404,
-                detail=f"File not found at commit {commit}",
-            )
-    elif branch:
-        # Branch mode: get latest version of file on this branch
-        versions = await file_adapter.list_versions_by_path(repository_id, path, branch)
-        if versions:
-            file = versions[0]  # Most recent version on this branch
-        else:
-            # Branch has no indexed data for this file
-            # Don't silently fall back - inform the user explicitly
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    f"File '{path}' not found on branch '{branch}'. "
-                    f"This branch may not have indexed data for this file. "
-                    f"Try the default branch '{repository.default_branch}' or "
-                    f"remove the branch parameter to use the latest indexed version."
-                ),
-            )
-    else:
-        # Default: get latest version across all branches
-        file = await file_adapter.find_by_repository_and_path(repository_id, path)
-        if not file:
-            raise HTTPException(status_code=404, detail="File not found")
+    except RepositoryNotFound as e:
+        raise HTTPException(status_code=404, detail="Repository not found") from e
+    except FileNotFound as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+    except CommitNotFound as e:
+        raise HTTPException(status_code=404, detail="Commit not found") from e
 
+    file = resolved.file
     file_id = file.id or 0
 
     # Get symbols in this file
@@ -433,10 +290,8 @@ async def get_file_symbols_by_path(
 async def get_file_references_by_path(
     repo: str,
     path: str,
-    repo_adapter: RepositoryAdapter,
-    file_adapter: FileAdapter,
+    resolve_file_use_case: ResolveFileUseCaseDep,
     ref_adapter: ReferenceAdapter,
-    commit_adapter: CommitAdapter,
     commit: str | None = None,
     branch: str | None = None,
 ) -> FileReferencesResponse:
@@ -455,50 +310,24 @@ async def get_file_references_by_path(
     repo = validate_repo_name(repo)
     path = validate_path(path)
 
-    # Get repository by name
-    repository = await repo_adapter.find_by_name(repo)
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    repository_id = repository.id if repository.id is not None else 0
-
-    # Get file by repository and path
-    # Priority: explicit commit > branch (latest file on branch) > default (latest)
-    file = None
-
-    if commit:
-        # Time travel mode: get file at specific commit
-        file = await file_adapter.find_by_repository_path_and_commit_hash(
-            repository_id, path, commit
+    # Resolve file using use case (handles priority: commit > branch > default)
+    try:
+        resolved = await resolve_file_use_case.execute(
+            ResolveFileRequest(
+                repository_name=repo,
+                file_path=path,
+                commit_hash=commit,
+                branch=branch,
+            )
         )
-        if not file:
-            raise HTTPException(
-                status_code=404,
-                detail=f"File not found at commit {commit}",
-            )
-    elif branch:
-        # Branch mode: get latest version of file on this branch
-        versions = await file_adapter.list_versions_by_path(repository_id, path, branch)
-        if versions:
-            file = versions[0]  # Most recent version on this branch
-        else:
-            # Branch has no indexed data for this file
-            # Don't silently fall back - inform the user explicitly
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    f"File '{path}' not found on branch '{branch}'. "
-                    f"This branch may not have indexed data for this file. "
-                    f"Try the default branch '{repository.default_branch}' or "
-                    f"remove the branch parameter to use the latest indexed version."
-                ),
-            )
-    else:
-        # Default: get latest version across all branches
-        file = await file_adapter.find_by_repository_and_path(repository_id, path)
-        if not file:
-            raise HTTPException(status_code=404, detail="File not found")
+    except RepositoryNotFound as e:
+        raise HTTPException(status_code=404, detail="Repository not found") from e
+    except FileNotFound as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+    except CommitNotFound as e:
+        raise HTTPException(status_code=404, detail="Commit not found") from e
 
+    file = resolved.file
     file_id = file.id or 0
 
     # Get references from this file
