@@ -24,6 +24,12 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
    - All code changes MUST include tests
    - Use dependency injection, NOT mocking (see test examples)
    - Minimum 80% test coverage
+   - ⚠️ **Test Independence**: Tests MUST be self-contained and NOT depend on:
+     - Specific test repositories in `/repos/test-repos/`
+     - The actual workspace git history
+     - Any external data that could change
+   - Use `tmp_path` fixtures and create controlled test data (e.g., temp git repos)
+   - Tests must pass regardless of which repositories are configured
 
 3. **Code Quality**
    - Zero tolerance for linting errors

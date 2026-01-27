@@ -801,3 +801,116 @@ struct Handler {
         # Verify scope is set correctly
         for field in fields:
             assert field["scope"] == "Handler"
+
+    @pytest.mark.asyncio
+    async def test_parse_extern_c_block(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test parsing content inside extern C blocks (common in C++ compatible headers)."""
+        code = """
+#ifndef MY_HEADER_H
+#define MY_HEADER_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct _MyStruct {
+    int x;
+    int y;
+} MyStruct;
+
+void my_function(MyStruct* s);
+int another_function(int a, int b);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="c", file_path="test.h"
+        )
+
+        # Should find macros including header guard
+        macro_symbols = [s for s in symbols if s["kind"] == "macro"]
+        macro_names = [s["name"] for s in macro_symbols]
+        assert "MY_HEADER_H" in macro_names
+
+        # Should find struct inside extern "C" block
+        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
+        struct_names = [s["name"] for s in struct_symbols]
+        assert "_MyStruct" in struct_names
+
+        # Should find struct fields
+        fields = [s for s in symbols if s["kind"] == "struct_field"]
+        field_names = [s["name"] for s in fields]
+        assert "x" in field_names
+        assert "y" in field_names
+
+        # Should find typedef
+        typedef_symbols = [s for s in symbols if s["kind"] == "typedef"]
+        typedef_names = [s["name"] for s in typedef_symbols]
+        assert "MyStruct" in typedef_names
+
+        # Should find function declarations inside extern "C" block
+        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        func_names = [s["name"] for s in func_symbols]
+        assert "my_function" in func_names
+        assert "another_function" in func_names
+
+    @pytest.mark.asyncio
+    async def test_parse_variable_usage_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that variable usages in field expressions are tracked as references."""
+        code = """
+typedef struct {
+    int debugLevel;
+    int running;
+    char* config;
+} Globals;
+
+static Globals globals;
+
+void init() {
+    globals.debugLevel = 1;
+    globals.running = 1;
+}
+
+int get_debug_level() {
+    return globals.debugLevel;
+}
+
+void process() {
+    if (globals.running) {
+        printf("%s", globals.config);
+    }
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+
+        # Should find the globals variable definition
+        var_symbols = [s for s in symbols if s["kind"] == "variable"]
+        assert any(s["name"] == "globals" for s in var_symbols)
+
+        # Should find usage references to globals
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        globals_usages = [r for r in usage_refs if r["text"] == "globals"]
+
+        # globals is used 5 times in field expressions:
+        # init(): globals.debugLevel, globals.running
+        # get_debug_level(): globals.debugLevel
+        # process(): globals.running, globals.config
+        assert len(globals_usages) == 5
+
+        # Verify line numbers are correct
+        usage_lines = sorted([r["source_line"] for r in globals_usages])
+        assert 11 in usage_lines  # globals.debugLevel = 1
+        assert 12 in usage_lines  # globals.running = 1
+        assert 16 in usage_lines  # return globals.debugLevel
+        assert 20 in usage_lines  # if (globals.running)
+        assert 21 in usage_lines  # printf("%s", globals.config)
