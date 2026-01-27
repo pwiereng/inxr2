@@ -36,6 +36,11 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
    - No deprecated or vulnerable packages
    - Run `npm audit` regularly (zero vulnerabilities required)
 
+5. **Git Commits**
+   - ❌ NEVER use `git commit --amend` - always create new commits for fixes
+   - ✅ Rebase is OK for resolving conflicts on feature branches
+   - Keep commits simple and straightforward
+
 ## Common Commands
 
 ### Starting Development Environment
@@ -695,6 +700,10 @@ See `config.yaml` for the current repository configuration.
    - NEVER use `--path /workspace` or `--path .`
    - ALWAYS use `--config config.yaml` for indexing
    - Test repos are at `/repos/test-repos/`, not the current codebase
+
+8. **Don't amend commits**
+   - NEVER use `git commit --amend` - create a new commit instead
+   - Rebase is OK for resolving conflicts on feature branches
 
 ## Getting Help
 
