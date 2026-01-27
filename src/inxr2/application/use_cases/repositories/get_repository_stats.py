@@ -7,7 +7,7 @@ symbol counts, reference counts, and language distribution.
 import asyncio
 from dataclasses import dataclass
 
-from ....domain.entities import Repository
+from ....domain.entities import File, Repository
 from ....domain.exceptions import RepositoryNotFound
 from ...ports.repositories import (
     FileRepositoryPort,
@@ -102,13 +102,17 @@ class GetRepositoryStatsUseCase:
             self._reference_repo.count_by_repository(repository_id),
         )
 
-        # 3. Compute language distribution from files
-        language_distribution = self._compute_language_distribution(files)
+        # 3. Deduplicate files by path (keep latest version per path)
+        # list_by_repository may return multiple versions per path in delta-indexed repos
+        unique_files = self._deduplicate_files_by_path(files)
+
+        # 4. Compute language distribution from deduplicated files
+        language_distribution = self._compute_language_distribution(unique_files)
 
         return RepositoryStats(
             repository_id=repository_id,
             name=repository.name,
-            total_files=len(files),
+            total_files=len(unique_files),
             total_symbols=symbol_count,
             total_references=reference_count,
             language_distribution=language_distribution,
@@ -145,11 +149,35 @@ class GetRepositoryStatsUseCase:
 
         raise ValueError("Either repository_id or repository_name must be provided")
 
-    def _compute_language_distribution(self, files: list) -> dict[str, int]:
+    def _deduplicate_files_by_path(self, files: list[File]) -> list[File]:
+        """Deduplicate files by path, keeping the latest version.
+
+        In delta-indexed repositories, list_by_repository may return multiple
+        versions of the same file (one per indexed commit). This method keeps
+        only the latest version of each unique path based on commit_id.
+
+        Args:
+            files: List of File entities (may contain duplicates)
+
+        Returns:
+            List of unique files (one per path, latest version)
+        """
+        latest_by_path: dict[str, File] = {}
+        for file in files:
+            existing = latest_by_path.get(file.path)
+            if existing is None:
+                latest_by_path[file.path] = file
+            elif file.commit_id is not None and existing.commit_id is not None:
+                # Keep the one with higher commit_id (more recent)
+                if file.commit_id > existing.commit_id:
+                    latest_by_path[file.path] = file
+        return list(latest_by_path.values())
+
+    def _compute_language_distribution(self, files: list[File]) -> dict[str, int]:
         """Compute language distribution from files.
 
         Args:
-            files: List of File entities
+            files: List of File entities (should be deduplicated by path)
 
         Returns:
             Dictionary mapping language name to file count
