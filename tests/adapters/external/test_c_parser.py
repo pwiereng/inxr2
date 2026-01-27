@@ -791,3 +791,13 @@ struct Handler {
 
         struct_symbols = [s for s in symbols if s["kind"] == "struct"]
         assert any(s["name"] == "Handler" for s in struct_symbols)
+
+        # Verify function pointer fields are extracted
+        fields = [s for s in symbols if s["kind"] == "struct_field"]
+        field_names = [s["name"] for s in fields]
+        assert "process" in field_names
+        assert "cleanup" in field_names
+
+        # Verify scope is set correctly
+        for field in fields:
+            assert field["scope"] == "Handler"

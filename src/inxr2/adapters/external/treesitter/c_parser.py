@@ -104,8 +104,13 @@ C_BUILTINS = {
     "offsetof",
 }
 
-# C primitive types to exclude from type references
+# C primitive types and keywords to exclude from type references.
+# This includes actual primitive types (int, char, etc.) plus keywords and
+# identifiers that should never be treated as user-defined type references.
+# While keywords like "const" or "static" wouldn't normally appear as
+# type_identifier nodes in valid C, we include them defensively.
 C_PRIMITIVE_TYPES = {
+    # Primitive types
     "void",
     "char",
     "short",
@@ -115,6 +120,7 @@ C_PRIMITIVE_TYPES = {
     "double",
     "signed",
     "unsigned",
+    # Standard typedefs
     "size_t",
     "ssize_t",
     "ptrdiff_t",
@@ -131,9 +137,11 @@ C_PRIMITIVE_TYPES = {
     "bool",
     "_Bool",
     "FILE",
+    # Literals/macros (defensive)
     "NULL",
     "true",
     "false",
+    # Keywords (defensive - shouldn't appear as type_identifier but filtered anyway)
     "const",
     "static",
     "extern",
@@ -163,17 +171,6 @@ class CParser(BaseLanguageParser):
 
         def get_text(node: Node) -> str:
             return self._get_text(node, content)
-
-        def get_identifier_text(node: Node) -> str | None:
-            """Get identifier text from a node or its first identifier child."""
-            if node.type == "identifier":
-                return get_text(node)
-            if node.type == "type_identifier":
-                return get_text(node)
-            for child in node.children:
-                if child.type in ("identifier", "type_identifier"):
-                    return get_text(child)
-            return None
 
         def add_reference(ref: dict[str, Any]) -> None:
             """Add reference only if it has non-empty text."""
@@ -250,14 +247,6 @@ class CParser(BaseLanguageParser):
         def process_declaration(node: Node) -> None:
             """Process a declaration (variable or function prototype)."""
             # Note: typedef declarations are handled by process_type_definition
-            # Check for extern storage class
-            has_extern = False
-            for child in node.children:
-                if child.type == "storage_class_specifier":
-                    spec_text = get_text(child)
-                    if spec_text == "extern":
-                        has_extern = True
-
             # Get the type specifier
             type_node = node.child_by_field_name("type")
 
@@ -275,18 +264,16 @@ class CParser(BaseLanguageParser):
                 if child.type == "init_declarator":
                     declarator = child.child_by_field_name("declarator")
                     if declarator:
-                        process_declarator(declarator, type_node, has_extern)
+                        process_declarator(declarator, type_node)
                 elif child.type in (
                     "identifier",
                     "function_declarator",
                     "pointer_declarator",
                     "array_declarator",
                 ):
-                    process_declarator(child, type_node, has_extern)
+                    process_declarator(child, type_node)
 
-        def process_declarator(
-            declarator: Node, type_node: Node | None, is_extern: bool
-        ) -> None:
+        def process_declarator(declarator: Node, type_node: Node | None) -> None:
             """Process a declarator to extract variable or function declaration."""
             if declarator.type == "function_declarator":
                 # Function declaration/prototype
@@ -310,7 +297,7 @@ class CParser(BaseLanguageParser):
                 inner = declarator.child_by_field_name("declarator")
                 if inner:
                     if inner.type == "function_declarator":
-                        process_declarator(inner, type_node, is_extern)
+                        process_declarator(inner, type_node)
                     elif inner.type == "identifier":
                         # Pointer variable
                         var_name = get_text(inner)
@@ -322,18 +309,27 @@ class CParser(BaseLanguageParser):
                                 "scope": None,
                             }
                         )
+                    else:
+                        # Recursively handle nested declarators (e.g., pointer-to-pointer,
+                        # pointers to arrays, etc.)
+                        process_declarator(inner, type_node)
             elif declarator.type == "array_declarator":
                 inner = declarator.child_by_field_name("declarator")
-                if inner and inner.type == "identifier":
-                    var_name = get_text(inner)
-                    symbols.append(
-                        {
-                            "name": var_name,
-                            "kind": "variable",
-                            **self._node_location(declarator),
-                            "scope": None,
-                        }
-                    )
+                if inner:
+                    if inner.type == "identifier":
+                        var_name = get_text(inner)
+                        symbols.append(
+                            {
+                                "name": var_name,
+                                "kind": "variable",
+                                **self._node_location(declarator),
+                                "scope": None,
+                            }
+                        )
+                    else:
+                        # Recursively handle nested declarators (e.g., arrays of pointers,
+                        # multi-dimensional arrays, etc.)
+                        process_declarator(inner, type_node)
             elif declarator.type == "identifier":
                 # Simple variable declaration
                 var_name = get_text(declarator)
@@ -348,7 +344,7 @@ class CParser(BaseLanguageParser):
             elif declarator.type == "init_declarator":
                 inner = declarator.child_by_field_name("declarator")
                 if inner:
-                    process_declarator(inner, type_node, is_extern)
+                    process_declarator(inner, type_node)
 
         def process_type_definition(node: Node) -> None:
             """Process a typedef declaration (type_definition node)."""
@@ -421,6 +417,8 @@ class CParser(BaseLanguageParser):
 
         def process_struct_specifier(node: Node, in_typedef: bool = False) -> None:
             """Process a struct specifier."""
+            # in_typedef is accepted for API consistency but not currently used
+            _ = in_typedef
             # Find the name (type_identifier)
             struct_name = None
             for child in node.children:
@@ -451,6 +449,8 @@ class CParser(BaseLanguageParser):
 
         def process_union_specifier(node: Node, in_typedef: bool = False) -> None:
             """Process a union specifier."""
+            # in_typedef is accepted for API consistency but not currently used
+            _ = in_typedef
             # Find the name (type_identifier)
             union_name = None
             for child in node.children:
@@ -478,6 +478,34 @@ class CParser(BaseLanguageParser):
                                     field_child, union_name, "union_field"
                                 )
 
+        def extract_field_identifier(node: Node) -> str | None:
+            """Recursively extract field_identifier from nested declarators."""
+            if node.type == "field_identifier":
+                return get_text(node)
+            elif node.type == "pointer_declarator":
+                # Check direct children first
+                for child in node.children:
+                    if child.type == "field_identifier":
+                        return get_text(child)
+                # Then try declarator field
+                inner = node.child_by_field_name("declarator")
+                if inner:
+                    return extract_field_identifier(inner)
+            elif node.type == "parenthesized_declarator":
+                for child in node.children:
+                    result = extract_field_identifier(child)
+                    if result:
+                        return result
+            elif node.type == "function_declarator":
+                inner = node.child_by_field_name("declarator")
+                if inner:
+                    return extract_field_identifier(inner)
+            elif node.type == "array_declarator":
+                inner = node.child_by_field_name("declarator")
+                if inner:
+                    return extract_field_identifier(inner)
+            return None
+
         def process_field_declaration(
             node: Node, parent_name: str, field_kind: str
         ) -> None:
@@ -494,37 +522,28 @@ class CParser(BaseLanguageParser):
                             "qualified_name": f"{parent_name}.{field_name}",
                         }
                     )
-                elif child.type == "pointer_declarator":
-                    # Pointer field
-                    inner = child.child_by_field_name("declarator")
-                    if inner and inner.type == "field_identifier":
-                        field_name = get_text(inner)
+                elif child.type in (
+                    "pointer_declarator",
+                    "array_declarator",
+                    "function_declarator",
+                ):
+                    # Handle pointer, array, and function pointer fields
+                    extracted_name = extract_field_identifier(child)
+                    if extracted_name:
                         symbols.append(
                             {
-                                "name": field_name,
+                                "name": extracted_name,
                                 "kind": field_kind,
                                 **self._node_location(child),
                                 "scope": parent_name,
-                                "qualified_name": f"{parent_name}.{field_name}",
-                            }
-                        )
-                elif child.type == "array_declarator":
-                    # Array field
-                    inner = child.child_by_field_name("declarator")
-                    if inner and inner.type == "field_identifier":
-                        field_name = get_text(inner)
-                        symbols.append(
-                            {
-                                "name": field_name,
-                                "kind": field_kind,
-                                **self._node_location(child),
-                                "scope": parent_name,
-                                "qualified_name": f"{parent_name}.{field_name}",
+                                "qualified_name": f"{parent_name}.{extracted_name}",
                             }
                         )
 
         def process_enum_specifier(node: Node, in_typedef: bool = False) -> None:
             """Process an enum specifier."""
+            # in_typedef is accepted for API consistency but not currently used
+            _ = in_typedef
             # Find the name (type_identifier)
             enum_name = None
             for child in node.children:
