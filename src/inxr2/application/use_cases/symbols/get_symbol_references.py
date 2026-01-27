@@ -105,6 +105,7 @@ class GetSymbolReferencesUseCase:
 
         Raises:
             SymbolNotFound: If symbol_id doesn't exist
+            ValueError: If commit_hash is provided but cannot be resolved
         """
         # Get the symbol first
         symbol = await self._symbol_repo.find_by_id(request.symbol_id)
@@ -113,12 +114,20 @@ class GetSymbolReferencesUseCase:
 
         # Resolve commit_id if commit_hash provided
         commit_id: int | None = None
-        if request.commit_hash and self._commit_repo:
+        if request.commit_hash:
+            if not self._commit_repo:
+                raise ValueError(
+                    "commit_hash was provided but commit repository is not available"
+                )
             commit = await self._commit_repo.find_by_hash(
                 symbol.repository_id, request.commit_hash
             )
-            if commit:
-                commit_id = commit.id
+            if not commit:
+                raise ValueError(
+                    f"Unknown commit hash for repository {symbol.repository_id}: "
+                    f"{request.commit_hash}"
+                )
+            commit_id = commit.id
 
         # Get references - either by symbol ID or by name
         if request.by_name:

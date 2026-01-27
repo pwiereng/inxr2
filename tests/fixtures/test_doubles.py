@@ -401,18 +401,27 @@ class InMemoryFileRepository(FileRepositoryPort):
             if f.repository_id == repository_id and f.commit_id in branch_commit_ids
         ]
 
-        # Group by path and keep only the latest (by commit date)
+        # Group by path and keep only the latest (by commit date, then commit_id desc)
         latest_by_path: dict[str, File] = {}
         for file in branch_files:
             file_date = commits_with_dates.get(file.commit_id, datetime.min)
             if file.path not in latest_by_path:
                 latest_by_path[file.path] = file
             else:
+                existing_file = latest_by_path[file.path]
                 existing_date = commits_with_dates.get(
-                    latest_by_path[file.path].commit_id, datetime.min
+                    existing_file.commit_id, datetime.min
                 )
                 if file_date > existing_date:
                     latest_by_path[file.path] = file
+                elif file_date == existing_date:
+                    # Tie-breaker: prefer higher commit_id (matches production behavior)
+                    if (
+                        file.commit_id is not None
+                        and existing_file.commit_id is not None
+                        and file.commit_id > existing_file.commit_id
+                    ):
+                        latest_by_path[file.path] = file
 
         # Return sorted by path
         return sorted(latest_by_path.values(), key=lambda f: f.path)

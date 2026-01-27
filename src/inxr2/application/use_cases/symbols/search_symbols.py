@@ -30,12 +30,13 @@ class SearchSymbolsRequest:
 
     Args:
         query: Search query for symbol name (empty string matches all)
-        repository_id: Optional repository filter. Required for commit_hash
-            to have any effect.
+        repository_id: Optional repository filter. Required when using
+            commit_hash with exact_match=True.
         kind: Optional symbol kind filter (e.g., "function", "class")
         commit_hash: Optional commit hash for time travel. Only applies when
-            both repository_id is set AND exact_match=True. Partial searches
-            do not filter by commit, and without repository_id this is ignored.
+            exact_match=True. Raises ValueError if repository_id is not set
+            or if the commit hash cannot be resolved. Ignored for partial
+            searches (exact_match=False).
         exact_match: If True, match exact name instead of partial
         limit: Maximum results to return
         offset: Offset for pagination
@@ -106,15 +107,27 @@ class SearchSymbolsUseCase:
 
         Returns:
             SearchSymbolsResponse with enriched symbols
+
+        Raises:
+            ValueError: If commit_hash is provided for exact_match but
+                repository_id is missing or commit cannot be resolved
         """
-        # Resolve commit_id if commit_hash provided
+        # Resolve commit_id if commit_hash provided (only relevant for exact-match searches)
         commit_id: int | None = None
-        if request.commit_hash and request.repository_id and self._commit_repo:
+        if request.exact_match and request.commit_hash:
+            if not request.repository_id or not self._commit_repo:
+                raise ValueError(
+                    "commit_hash requires repository_id to be set for exact-match search"
+                )
             commit = await self._commit_repo.find_by_hash(
                 request.repository_id, request.commit_hash
             )
-            if commit:
-                commit_id = commit.id
+            if not commit:
+                raise ValueError(
+                    f"Commit hash '{request.commit_hash}' not found "
+                    f"for repository {request.repository_id}"
+                )
+            commit_id = commit.id
 
         # Search symbols
         if request.exact_match:
