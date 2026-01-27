@@ -227,7 +227,10 @@ class PostgresFileRepository(FileRepositoryPort):
                 func.row_number()
                 .over(
                     partition_by=FileModel.path,
-                    order_by=CommitModel.commit_date.desc(),
+                    order_by=(
+                        CommitModel.commit_date.desc(),
+                        CommitModel.id.desc(),
+                    ),
                 )
                 .label("rn"),
             )

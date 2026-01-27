@@ -128,7 +128,8 @@ async def get_symbols_by_name(
     use_case: SearchSymbolsUseCaseDep,
     repository_id: int | None = Query(default=None, description="Filter by repository"),
     commit: str | None = Query(
-        default=None, description="Commit hash for time travel (optional)"
+        default=None,
+        description="Commit hash for time travel (requires repository_id)",
     ),
 ) -> SymbolListResponse:
     """
@@ -138,10 +139,15 @@ async def get_symbols_by_name(
     (e.g., save() methods in different classes).
 
     Query parameters:
-    - repository_id: Filter by repository (optional)
-    - commit: Commit hash for time travel (optional). If provided, returns
-              symbols from that specific commit only.
+    - repository_id: Filter by repository (optional, required if commit is set)
+    - commit: Commit hash for time travel (optional, requires repository_id)
     """
+    if commit and not repository_id:
+        raise HTTPException(
+            status_code=400,
+            detail="repository_id is required when commit is specified",
+        )
+
     result = await use_case.execute(
         SearchSymbolsRequest(
             query=name,

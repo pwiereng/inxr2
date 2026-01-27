@@ -30,10 +30,12 @@ class SearchSymbolsRequest:
 
     Args:
         query: Search query for symbol name (empty string matches all)
-        repository_id: Optional repository filter
+        repository_id: Optional repository filter. Required for commit_hash
+            to have any effect.
         kind: Optional symbol kind filter (e.g., "function", "class")
-        commit_hash: Optional commit hash for time travel (only applies when
-            exact_match=True; partial searches do not filter by commit)
+        commit_hash: Optional commit hash for time travel. Only applies when
+            both repository_id is set AND exact_match=True. Partial searches
+            do not filter by commit, and without repository_id this is ignored.
         exact_match: If True, match exact name instead of partial
         limit: Maximum results to return
         offset: Offset for pagination
