@@ -267,6 +267,55 @@ class TestDictToSymbol:
         assert symbol.end_line == 1
         assert symbol.end_column == 0
 
+    # C-specific symbol kinds
+    def test_struct_symbol(self) -> None:
+        """Should convert struct dict to Symbol."""
+        data = {"name": "MyStruct", "kind": "struct", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.STRUCT
+
+    def test_union_symbol(self) -> None:
+        """Should convert union dict to Symbol."""
+        data = {"name": "MyUnion", "kind": "union", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.UNION
+
+    def test_typedef_symbol(self) -> None:
+        """Should convert typedef dict to Symbol."""
+        data = {"name": "MyType", "kind": "typedef", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.TYPEDEF
+
+    def test_macro_symbol(self) -> None:
+        """Should convert macro dict to Symbol."""
+        data = {"name": "MY_MACRO", "kind": "macro", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.MACRO
+
+    def test_enum_symbol(self) -> None:
+        """Should convert enum dict to Symbol."""
+        data = {"name": "MyEnum", "kind": "enum", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.ENUM
+
+    def test_enum_value_symbol(self) -> None:
+        """Should convert enum_value dict to Symbol."""
+        data = {"name": "ENUM_VALUE", "kind": "enum_value", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.ENUM_VALUE
+
+    def test_struct_field_symbol(self) -> None:
+        """Should convert struct_field dict to Symbol."""
+        data = {"name": "field_name", "kind": "struct_field", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.STRUCT_FIELD
+
+    def test_union_field_symbol(self) -> None:
+        """Should convert union_field dict to Symbol."""
+        data = {"name": "field_name", "kind": "union_field", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.UNION_FIELD
+
 
 class TestDictToReference:
     """Tests for _dict_to_reference converter function."""
@@ -345,6 +394,19 @@ class TestDictToReference:
         assert ref.source_column == 0
         assert ref.reference_text == "some_ref"
         assert ref.reference_type == ReferenceType.USAGE  # default type
+
+    # C-specific reference types
+    def test_include_reference(self) -> None:
+        """Should convert include reference dict (C/C++ #include)."""
+        data = {"type": "include", "text": "stdio.h", "source_line": 1}
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        assert ref.reference_type == ReferenceType.INCLUDE
+
+    def test_type_annotation_reference(self) -> None:
+        """Should convert type_annotation reference dict."""
+        data = {"type": "type_annotation", "text": "MyStruct", "source_line": 10}
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        assert ref.reference_type == ReferenceType.TYPE_ANNOTATION
 
 
 class TestIndexCommandIntegration:
