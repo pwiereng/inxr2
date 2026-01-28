@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from git import Repo
 
 from inxr2.adapters.cli.commands.index_command import (
     IndexingStats,
@@ -267,6 +268,55 @@ class TestDictToSymbol:
         assert symbol.end_line == 1
         assert symbol.end_column == 0
 
+    # C-specific symbol kinds
+    def test_struct_symbol(self) -> None:
+        """Should convert struct dict to Symbol."""
+        data = {"name": "MyStruct", "kind": "struct", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.STRUCT
+
+    def test_union_symbol(self) -> None:
+        """Should convert union dict to Symbol."""
+        data = {"name": "MyUnion", "kind": "union", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.UNION
+
+    def test_typedef_symbol(self) -> None:
+        """Should convert typedef dict to Symbol."""
+        data = {"name": "MyType", "kind": "typedef", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.TYPEDEF
+
+    def test_macro_symbol(self) -> None:
+        """Should convert macro dict to Symbol."""
+        data = {"name": "MY_MACRO", "kind": "macro", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.MACRO
+
+    def test_enum_symbol(self) -> None:
+        """Should convert enum dict to Symbol."""
+        data = {"name": "MyEnum", "kind": "enum", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.ENUM
+
+    def test_enum_value_symbol(self) -> None:
+        """Should convert enum_value dict to Symbol."""
+        data = {"name": "ENUM_VALUE", "kind": "enum_value", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.ENUM_VALUE
+
+    def test_struct_field_symbol(self) -> None:
+        """Should convert struct_field dict to Symbol."""
+        data = {"name": "field_name", "kind": "struct_field", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.STRUCT_FIELD
+
+    def test_union_field_symbol(self) -> None:
+        """Should convert union_field dict to Symbol."""
+        data = {"name": "field_name", "kind": "union_field", "start_line": 1}
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        assert symbol.kind == SymbolKind.UNION_FIELD
+
 
 class TestDictToReference:
     """Tests for _dict_to_reference converter function."""
@@ -346,6 +396,19 @@ class TestDictToReference:
         assert ref.reference_text == "some_ref"
         assert ref.reference_type == ReferenceType.USAGE  # default type
 
+    # C-specific reference types
+    def test_include_reference(self) -> None:
+        """Should convert include reference dict (C/C++ #include)."""
+        data = {"type": "include", "text": "stdio.h", "source_line": 1}
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        assert ref.reference_type == ReferenceType.INCLUDE
+
+    def test_type_annotation_reference(self) -> None:
+        """Should convert type_annotation reference dict."""
+        data = {"type": "type_annotation", "text": "MyStruct", "source_line": 10}
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        assert ref.reference_type == ReferenceType.TYPE_ANNOTATION
+
 
 class TestIndexCommandIntegration:
     """Integration tests for index commands using CLI runner."""
@@ -356,23 +419,39 @@ class TestIndexCommandIntegration:
         return CliRunner()
 
     @pytest.fixture
-    def test_repo_path(self) -> Path:
-        """Get path to a test repository (inxr in test-repos)."""
-        # Use the inxr test repo since it's small
-        test_repo = Path("/repos/test-repos/inxr")
-        if test_repo.exists():
-            return test_repo
-        # Fallback for local development
-        return Path(__file__).parent.parent.parent.parent
+    def temp_git_repo(self, tmp_path: Path) -> Path:
+        """Create a temporary git repository for testing.
 
-    def test_index_status_on_indexed_repo(
-        self, runner: CliRunner, test_repo_path: Path
+        This fixture creates an isolated git repo with a single commit,
+        making tests independent of external test repositories.
+        """
+        repo_path = tmp_path / "test-repo"
+        repo_path.mkdir()
+
+        # Initialize repo
+        repo = Repo.init(repo_path, initial_branch="main")
+
+        # Configure git user for commits
+        repo.config_writer().set_value("user", "name", "Test User").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+        # Create initial commit
+        readme = repo_path / "README.md"
+        readme.write_text("# Test Repository\n")
+
+        repo.index.add(["README.md"])
+        repo.index.commit("Initial commit")
+
+        return repo_path
+
+    def test_index_status_on_git_repo(
+        self, runner: CliRunner, temp_git_repo: Path
     ) -> None:
-        """Test index status shows correct info for indexed repo."""
+        """Test index status shows correct info for a git repository."""
         from inxr2.cli import main
 
-        result = runner.invoke(main, ["index", "status", "--path", str(test_repo_path)])
-        # Should show repository info (may or may not be indexed)
+        result = runner.invoke(main, ["index", "status", "--path", str(temp_git_repo)])
+        # Should show repository info (will show "not indexed" for new repo)
         assert result.exit_code == 0
         assert "Repository" in result.output
 

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from git import Repo
 
 from inxr2.cli import main
 
@@ -96,8 +97,8 @@ class TestIndexCommands:
             assert "No .git directory" in result.output
 
 
-class TestIndexOnRealRepo:
-    """Tests that run indexing on the actual INXR2 repository."""
+class TestIndexOnTempRepo:
+    """Tests that run indexing on a temporary git repository."""
 
     @pytest.fixture
     def runner(self) -> CliRunner:
@@ -105,13 +106,27 @@ class TestIndexOnRealRepo:
         return CliRunner()
 
     @pytest.fixture
-    def repo_path(self) -> Path:
-        """Get the INXR2 repository path."""
-        return Path(__file__).parent.parent.parent.parent
+    def temp_git_repo(self, tmp_path: Path) -> Path:
+        """Create a temporary git repository for testing."""
+        repo_path = tmp_path / "test-repo"
+        repo_path.mkdir()
 
-    def test_index_status_on_repo(self, runner: CliRunner, repo_path: Path) -> None:
-        """Test index status on INXR2 repo."""
-        result = runner.invoke(main, ["index", "status", "--path", str(repo_path)])
+        # Initialize git repo
+        repo = Repo.init(repo_path, initial_branch="main")
+        repo.config_writer().set_value("user", "name", "Test User").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+        # Create a test file and commit
+        test_file = repo_path / "test.py"
+        test_file.write_text("def hello():\n    pass\n")
+        repo.index.add(["test.py"])
+        repo.index.commit("Initial commit")
+
+        return repo_path
+
+    def test_index_status_on_repo(self, runner: CliRunner, temp_git_repo: Path) -> None:
+        """Test index status on a git repo."""
+        result = runner.invoke(main, ["index", "status", "--path", str(temp_git_repo)])
         # Should not error (may show "not indexed" which is fine)
         assert result.exit_code == 0
         assert "Repository" in result.output

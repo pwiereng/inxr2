@@ -1129,6 +1129,15 @@ def _dict_to_symbol(
         "constant": SymbolKind.CONSTANT,
         "variable": SymbolKind.VARIABLE,
         "type": SymbolKind.NAMESPACE,  # Map type aliases to namespace for now
+        # C-specific kinds
+        "struct": SymbolKind.STRUCT,
+        "union": SymbolKind.UNION,
+        "typedef": SymbolKind.TYPEDEF,
+        "macro": SymbolKind.MACRO,
+        "enum": SymbolKind.ENUM,
+        "enum_value": SymbolKind.ENUM_VALUE,
+        "struct_field": SymbolKind.STRUCT_FIELD,
+        "union_field": SymbolKind.UNION_FIELD,
     }
 
     kind_str = d.get("kind", "function").lower()
@@ -1164,6 +1173,8 @@ def _dict_to_reference(
         "import": ReferenceType.IMPORT,
         "call": ReferenceType.CALL,
         "usage": ReferenceType.USAGE,
+        "include": ReferenceType.INCLUDE,  # C/C++ #include
+        "type_annotation": ReferenceType.TYPE_ANNOTATION,
     }
 
     type_str = d.get("type", "usage").lower()

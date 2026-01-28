@@ -689,6 +689,24 @@ class CParser(BaseLanguageParser):
                         }
                     )
 
+            # Variable usage references (field expressions like globals.field)
+            if node.type == "field_expression":
+                # Get the base object being accessed (e.g., "globals" in "globals.field")
+                argument = node.child_by_field_name("argument")
+                if argument and argument.type == "identifier":
+                    var_name = get_text(argument)
+                    # Don't add if it's a builtin or primitive
+                    if var_name not in C_BUILTINS and var_name not in C_PRIMITIVE_TYPES:
+                        add_reference(
+                            {
+                                "text": var_name,
+                                "type": "usage",
+                                "source_line": argument.start_point[0] + 1,
+                                "source_column": argument.start_point[1],
+                                "scope": scope,
+                            }
+                        )
+
             # Recurse into children
             for child in node.children:
                 child_scope = scope
@@ -726,8 +744,11 @@ class CParser(BaseLanguageParser):
                 "preproc_if",
                 "preproc_elif",
                 "preproc_else",
+                "linkage_specification",  # extern "C" { ... }
+                "declaration_list",  # { ... } block inside linkage_specification
             ):
                 # Recursively process children of preprocessor conditionals
+                # and linkage specification blocks (extern "C")
                 for child in node.children:
                     process_node(child)
 
