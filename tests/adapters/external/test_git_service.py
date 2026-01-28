@@ -159,9 +159,7 @@ class TestGitService:
                 temp_git_repo, commit_hash, "non_existent_file.xyz"
             )
 
-    def test_get_file_hash(
-        self, git_service: GitService, temp_git_repo: Path
-    ) -> None:
+    def test_get_file_hash(self, git_service: GitService, temp_git_repo: Path) -> None:
         """Test getting file blob hash."""
         commit_hash = git_service.get_current_commit(temp_git_repo)
         file_hash = git_service.get_file_hash(temp_git_repo, commit_hash, "README.md")
@@ -170,14 +168,14 @@ class TestGitService:
         assert len(file_hash) == 40
         assert all(c in "0123456789abcdef" for c in file_hash)
 
-    def test_is_binary_file(
-        self, git_service: GitService, temp_git_repo: Path
-    ) -> None:
+    def test_is_binary_file(self, git_service: GitService, temp_git_repo: Path) -> None:
         """Test binary file detection."""
         commit_hash = git_service.get_current_commit(temp_git_repo)
 
         # README.md is not binary
-        assert git_service.is_binary_file(temp_git_repo, commit_hash, "README.md") is False
+        assert (
+            git_service.is_binary_file(temp_git_repo, commit_hash, "README.md") is False
+        )
 
     def test_invalid_repository_path(
         self, git_service: GitService, tmp_path: Path
@@ -245,9 +243,7 @@ class TestGitServiceBranches:
         """Create a GitService instance."""
         return GitService()
 
-    def test_list_branches(
-        self, git_service: GitService, temp_git_repo: Path
-    ) -> None:
+    def test_list_branches(self, git_service: GitService, temp_git_repo: Path) -> None:
         """Test listing branches in a repository."""
         branches = git_service.list_branches(temp_git_repo)
 
@@ -280,9 +276,7 @@ class TestGitServiceTimeTravel:
         """Create a GitService instance."""
         return GitService()
 
-    def test_list_commits(
-        self, git_service: GitService, temp_git_repo: Path
-    ) -> None:
+    def test_list_commits(self, git_service: GitService, temp_git_repo: Path) -> None:
         """Test listing commits for a branch."""
         commits = git_service.list_commits(temp_git_repo, "main", max_count=10)
 
@@ -359,7 +353,9 @@ class TestGitServiceTimeTravel:
         commits = git_service.list_commits(temp_git_repo, "main", max_count=None)
         add_main_commit = commits[1]["hash"]  # Second commit
 
-        changed = git_service.get_changed_files_in_commit(temp_git_repo, add_main_commit)
+        changed = git_service.get_changed_files_in_commit(
+            temp_git_repo, add_main_commit
+        )
 
         # Should have the three categories
         assert "added" in changed
@@ -435,9 +431,7 @@ class TestGitServiceMergeBase:
         self, git_service: GitService, temp_git_repo: Path
     ) -> None:
         """Test merge-base between main and feature branch."""
-        merge_base = git_service.get_merge_base(
-            temp_git_repo, "main", "feature-branch"
-        )
+        merge_base = git_service.get_merge_base(temp_git_repo, "main", "feature-branch")
 
         # Should return a valid commit hash
         assert merge_base is not None

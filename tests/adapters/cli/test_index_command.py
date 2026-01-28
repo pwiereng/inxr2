@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from git import Repo
 
 from inxr2.adapters.cli.commands.index_command import (
     IndexingStats,
@@ -418,23 +419,39 @@ class TestIndexCommandIntegration:
         return CliRunner()
 
     @pytest.fixture
-    def test_repo_path(self) -> Path:
-        """Get path to a test repository (inxr in test-repos)."""
-        # Use the inxr test repo since it's small
-        test_repo = Path("/repos/test-repos/inxr")
-        if test_repo.exists():
-            return test_repo
-        # Fallback for local development
-        return Path(__file__).parent.parent.parent.parent
+    def temp_git_repo(self, tmp_path: Path) -> Path:
+        """Create a temporary git repository for testing.
 
-    def test_index_status_on_indexed_repo(
-        self, runner: CliRunner, test_repo_path: Path
+        This fixture creates an isolated git repo with a single commit,
+        making tests independent of external test repositories.
+        """
+        repo_path = tmp_path / "test-repo"
+        repo_path.mkdir()
+
+        # Initialize repo
+        repo = Repo.init(repo_path, initial_branch="main")
+
+        # Configure git user for commits
+        repo.config_writer().set_value("user", "name", "Test User").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+        # Create initial commit
+        readme = repo_path / "README.md"
+        readme.write_text("# Test Repository\n")
+
+        repo.index.add(["README.md"])
+        repo.index.commit("Initial commit")
+
+        return repo_path
+
+    def test_index_status_on_git_repo(
+        self, runner: CliRunner, temp_git_repo: Path
     ) -> None:
-        """Test index status shows correct info for indexed repo."""
+        """Test index status shows correct info for a git repository."""
         from inxr2.cli import main
 
-        result = runner.invoke(main, ["index", "status", "--path", str(test_repo_path)])
-        # Should show repository info (may or may not be indexed)
+        result = runner.invoke(main, ["index", "status", "--path", str(temp_git_repo)])
+        # Should show repository info (will show "not indexed" for new repo)
         assert result.exit_code == 0
         assert "Repository" in result.output
 
