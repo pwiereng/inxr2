@@ -767,24 +767,27 @@ class CParser(BaseLanguageParser):
                             }
                         )
 
-            # sizeof expressions - extract type references
+            # sizeof expressions - extract references
             # sizeof(TypeName) parses as sizeof_expression with parenthesized_expression
             # sizeof(struct Foo) parses as sizeof_expression with type_descriptor
+            # Note: We use "usage" instead of "type_annotation" because we can't
+            # reliably distinguish sizeof(TypeName) from sizeof(variable) without
+            # tracking all typedefs. Using "usage" is safer and technically correct.
             if node.type == "sizeof_expression":
                 for child in node.children:
                     if child.type == "parenthesized_expression":
-                        # sizeof(TypedefName) - identifier inside parentheses
+                        # sizeof(name) - could be typedef or variable
                         for inner in child.children:
                             if inner.type == "identifier":
-                                type_name = get_text(inner)
+                                name = get_text(inner)
                                 if (
-                                    type_name not in C_BUILTINS
-                                    and type_name not in C_PRIMITIVE_TYPES
+                                    name not in C_BUILTINS
+                                    and name not in C_PRIMITIVE_TYPES
                                 ):
                                     add_reference(
                                         {
-                                            "text": type_name,
-                                            "type": "type_annotation",
+                                            "text": name,
+                                            "type": "usage",
                                             "source_line": inner.start_point[0] + 1,
                                             "source_column": inner.start_point[1],
                                             "scope": scope,

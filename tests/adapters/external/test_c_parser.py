@@ -669,10 +669,12 @@ void test(int x, char c) {
         assert "MyType" in type_texts
 
     @pytest.mark.asyncio
-    async def test_sizeof_type_references(
-        self, parser_service: TreeSitterService
-    ) -> None:
-        """Test that sizeof(TypeName) extracts type references."""
+    async def test_sizeof_references(self, parser_service: TreeSitterService) -> None:
+        """Test that sizeof(name) extracts usage references.
+
+        We use 'usage' instead of 'type_annotation' because we can't reliably
+        distinguish sizeof(TypeName) from sizeof(variable) without tracking typedefs.
+        """
         code = """
 typedef struct { int x; } MyState;
 
@@ -685,11 +687,11 @@ void test(void) {
             content=code, language="c", file_path="test.c"
         )
 
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
-        # sizeof(TypeName) should extract type references
-        assert "MyState" in type_texts
-        assert "OtherState" in type_texts
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_texts = [r["text"] for r in usage_refs]
+        # sizeof(name) should extract usage references
+        assert "MyState" in usage_texts
+        assert "OtherState" in usage_texts
 
     @pytest.mark.asyncio
     async def test_initializer_list_references(
