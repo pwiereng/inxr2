@@ -185,8 +185,8 @@ class CParser(BaseLanguageParser):
             if not declarator:
                 return
 
-            # Find function name from declarator
-            func_name = extract_function_name(declarator)
+            # Find function name and its identifier node from declarator
+            func_name, name_node = extract_function_name_and_node(declarator)
             if not func_name:
                 return
 
@@ -200,15 +200,53 @@ class CParser(BaseLanguageParser):
             params = extract_parameters(declarator)
             signature = f"{return_type or 'void'} {func_name}({', '.join(params)})"
 
+            # Use name_node position for start (where the name actually is),
+            # but use the full function node for end (where the body ends).
+            # This is important for C where return type may be on a separate line.
+            if name_node:
+                start_line = name_node.start_point[0] + 1
+                start_column = name_node.start_point[1]
+            else:
+                start_line = node.start_point[0] + 1
+                start_column = node.start_point[1]
+
             symbols.append(
                 {
                     "name": func_name,
                     "kind": "function",
-                    **self._node_location(node),
+                    "start_line": start_line,
+                    "start_column": start_column,
+                    "end_line": node.end_point[0] + 1,
+                    "end_column": node.end_point[1],
                     "scope": None,
                     "signature": signature,
                 }
             )
+
+        def extract_function_name_and_node(
+            declarator: Node,
+        ) -> tuple[str | None, Node | None]:
+            """Extract function name and identifier node from a declarator."""
+            if declarator.type == "function_declarator":
+                inner = declarator.child_by_field_name("declarator")
+                if inner:
+                    if inner.type == "identifier":
+                        return get_text(inner), inner
+                    elif inner.type == "pointer_declarator":
+                        return extract_function_name_and_node(inner)
+                    elif inner.type == "parenthesized_declarator":
+                        for child in inner.children:
+                            if child.type == "pointer_declarator":
+                                return extract_function_name_and_node(child)
+                            if child.type == "identifier":
+                                return get_text(child), child
+            elif declarator.type == "pointer_declarator":
+                inner = declarator.child_by_field_name("declarator")
+                if inner:
+                    return extract_function_name_and_node(inner)
+            elif declarator.type == "identifier":
+                return get_text(declarator), declarator
+            return None, None
 
         def extract_function_name(declarator: Node) -> str | None:
             """Extract function name from a declarator."""
@@ -706,6 +744,85 @@ class CParser(BaseLanguageParser):
                                 "scope": scope,
                             }
                         )
+                # Get the field being accessed (e.g., "numberOfNodes" in "config.numberOfNodes")
+                # But skip if this field_expression is the function in a call_expression,
+                # since the call_expression handler already records it as a "call" reference
+                parent = node.parent
+                is_method_call = (
+                    parent is not None
+                    and parent.type == "call_expression"
+                    and parent.child_by_field_name("function") == node
+                )
+                if not is_method_call:
+                    field = node.child_by_field_name("field")
+                    if field and field.type == "field_identifier":
+                        field_name = get_text(field)
+                        add_reference(
+                            {
+                                "text": field_name,
+                                "type": "usage",
+                                "source_line": field.start_point[0] + 1,
+                                "source_column": field.start_point[1],
+                                "scope": scope,
+                            }
+                        )
+
+            # sizeof expressions - extract references
+            # sizeof(TypeName) parses as sizeof_expression with parenthesized_expression
+            # sizeof(struct Foo) parses as sizeof_expression with type_descriptor
+            # Note: We use "usage" instead of "type_annotation" because we can't
+            # reliably distinguish sizeof(TypeName) from sizeof(variable) without
+            # tracking all typedefs. Using "usage" is safer and technically correct.
+            if node.type == "sizeof_expression":
+                for child in node.children:
+                    if child.type == "parenthesized_expression":
+                        # sizeof(name) - could be typedef or variable
+                        for inner in child.children:
+                            if inner.type == "identifier":
+                                name = get_text(inner)
+                                if (
+                                    name not in C_BUILTINS
+                                    and name not in C_PRIMITIVE_TYPES
+                                ):
+                                    add_reference(
+                                        {
+                                            "text": name,
+                                            "type": "usage",
+                                            "source_line": inner.start_point[0] + 1,
+                                            "source_column": inner.start_point[1],
+                                            "scope": scope,
+                                        }
+                                    )
+                    elif child.type == "type_descriptor":
+                        # sizeof(struct Foo) - type_identifier inside type_descriptor
+                        # The recursive traversal will handle type_identifier nodes
+
+                        pass
+
+            # Identifiers in initializer lists (function pointers, enum values, etc.)
+            # e.g., { engine, engine_init, sizeof(EngineState), 0, 0 }
+            if node.type == "initializer_list":
+                for child in node.children:
+                    if child.type == "identifier":
+                        ident_name = get_text(child)
+                        # Skip builtins, primitives, and common constants
+                        if (
+                            ident_name not in C_BUILTINS
+                            and ident_name not in C_PRIMITIVE_TYPES
+                            and ident_name not in ("NULL", "true", "false")
+                        ):
+                            add_reference(
+                                {
+                                    "text": ident_name,
+                                    "type": "usage",
+                                    "source_line": child.start_point[0] + 1,
+                                    "source_column": child.start_point[1],
+                                    "scope": scope,
+                                }
+                            )
+                    elif child.type == "initializer_list":
+                        # Nested initializer - will be handled by recursion
+                        pass
 
             # Recurse into children
             for child in node.children:

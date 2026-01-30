@@ -98,6 +98,35 @@ char* get_name(const char* prefix);
         assert "process" in func_names
         assert "get_name" in func_names
 
+    @pytest.mark.asyncio
+    async def test_function_symbol_line_points_to_name(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that function symbol start_line points to the function name, not return type.
+
+        This is important when the return type is on a separate line from the function name,
+        which is common in C code with long types or coding style preferences.
+        """
+        # Return type on line 1, function name on line 2
+        code = """void
+my_function(int arg) {
+    return;
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+
+        func_symbols = [s for s in symbols if s["name"] == "my_function"]
+        assert len(func_symbols) == 1
+
+        func = func_symbols[0]
+        # The function name "my_function" is on line 2, not line 1 where "void" is
+        assert func["start_line"] == 2, (
+            f"Expected function symbol to start on line 2 (where the name is), "
+            f"but got line {func['start_line']}"
+        )
+
 
 class TestCStructs:
     """Tests for C struct parsing."""
@@ -638,6 +667,113 @@ void test(int x, char c) {
         assert "double" not in type_texts
         # Custom type should remain
         assert "MyType" in type_texts
+
+    @pytest.mark.asyncio
+    async def test_sizeof_references(self, parser_service: TreeSitterService) -> None:
+        """Test that sizeof(name) extracts usage references.
+
+        We use 'usage' instead of 'type_annotation' because we can't reliably
+        distinguish sizeof(TypeName) from sizeof(variable) without tracking typedefs.
+        """
+        code = """
+typedef struct { int x; } MyState;
+
+void test(void) {
+    size_t s1 = sizeof(MyState);
+    size_t s2 = sizeof(OtherState);
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_texts = [r["text"] for r in usage_refs]
+        # sizeof(name) should extract usage references
+        assert "MyState" in usage_texts
+        assert "OtherState" in usage_texts
+
+    @pytest.mark.asyncio
+    async def test_initializer_list_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that identifiers in initializer lists are captured as references."""
+        code = """
+FuncTable table[] = {
+    { handler1, callback1, 0 },
+    { handler2, callback2, 0 }
+};
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_texts = [r["text"] for r in usage_refs]
+        # Function pointers in initializer should be captured
+        assert "handler1" in usage_texts
+        assert "callback1" in usage_texts
+        assert "handler2" in usage_texts
+        assert "callback2" in usage_texts
+
+    @pytest.mark.asyncio
+    async def test_field_access_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that struct field accesses are captured as references."""
+        code = """
+void test(void) {
+    config.numberOfNodes = 256;
+    ptr->fieldName = 0;
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_texts = [r["text"] for r in usage_refs]
+        # Both base objects and fields should be captured (dot and arrow operators)
+        assert "config" in usage_texts
+        assert "numberOfNodes" in usage_texts
+        assert "ptr" in usage_texts
+        assert "fieldName" in usage_texts
+
+    @pytest.mark.asyncio
+    async def test_method_call_no_duplicate_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that method calls don't create duplicate references for the field.
+
+        When calling a method like obj.method(), the field should only be recorded
+        as a 'call' reference, not also as a 'usage' reference.
+        """
+        code = """
+void test(void) {
+    obj.method();
+    ptr->callback();
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+
+        # Get all references to "method"
+        method_refs = [r for r in references if r["text"] == "method"]
+        # Should only have ONE reference (the call), not two
+        assert len(method_refs) == 1, (
+            f"Expected 1 reference to 'method', got {len(method_refs)}: "
+            f"{[r['type'] for r in method_refs]}"
+        )
+        assert method_refs[0]["type"] == "call"
+
+        # Same for "callback"
+        callback_refs = [r for r in references if r["text"] == "callback"]
+        assert len(callback_refs) == 1, (
+            f"Expected 1 reference to 'callback', got {len(callback_refs)}: "
+            f"{[r['type'] for r in callback_refs]}"
+        )
+        assert callback_refs[0]["type"] == "call"
 
 
 class TestCEdgeCases:

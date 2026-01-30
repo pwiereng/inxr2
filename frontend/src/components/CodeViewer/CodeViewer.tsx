@@ -14,6 +14,7 @@ import 'prismjs/components/prism-bash'
 import 'prismjs/components/prism-markdown'
 import 'prismjs/components/prism-css'
 import 'prismjs/components/prism-sql'
+import 'prismjs/components/prism-c'
 
 import type { FileSymbol, FileReference } from '@/lib/api'
 
@@ -45,6 +46,7 @@ const languageMap: Record<string, string> = {
   md: 'markdown',
   css: 'css',
   sql: 'sql',
+  c: 'c',
 }
 
 // Represents a clickable segment in a line
