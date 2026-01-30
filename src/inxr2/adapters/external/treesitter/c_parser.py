@@ -745,18 +745,27 @@ class CParser(BaseLanguageParser):
                             }
                         )
                 # Get the field being accessed (e.g., "numberOfNodes" in "config.numberOfNodes")
-                field = node.child_by_field_name("field")
-                if field and field.type == "field_identifier":
-                    field_name = get_text(field)
-                    add_reference(
-                        {
-                            "text": field_name,
-                            "type": "usage",
-                            "source_line": field.start_point[0] + 1,
-                            "source_column": field.start_point[1],
-                            "scope": scope,
-                        }
-                    )
+                # But skip if this field_expression is the function in a call_expression,
+                # since the call_expression handler already records it as a "call" reference
+                parent = node.parent
+                is_method_call = (
+                    parent is not None
+                    and parent.type == "call_expression"
+                    and parent.child_by_field_name("function") == node
+                )
+                if not is_method_call:
+                    field = node.child_by_field_name("field")
+                    if field and field.type == "field_identifier":
+                        field_name = get_text(field)
+                        add_reference(
+                            {
+                                "text": field_name,
+                                "type": "usage",
+                                "source_line": field.start_point[0] + 1,
+                                "source_column": field.start_point[1],
+                                "scope": scope,
+                            }
+                        )
 
             # sizeof expressions - extract type references
             # sizeof(TypeName) parses as sizeof_expression with parenthesized_expression
