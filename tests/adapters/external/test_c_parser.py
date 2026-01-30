@@ -639,6 +639,75 @@ void test(int x, char c) {
         # Custom type should remain
         assert "MyType" in type_texts
 
+    @pytest.mark.asyncio
+    async def test_sizeof_type_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that sizeof(TypeName) extracts type references."""
+        code = """
+typedef struct { int x; } MyState;
+
+void test(void) {
+    size_t s1 = sizeof(MyState);
+    size_t s2 = sizeof(OtherState);
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+
+        type_refs = [r for r in references if r["type"] == "type_annotation"]
+        type_texts = [r["text"] for r in type_refs]
+        # sizeof(TypeName) should extract type references
+        assert "MyState" in type_texts
+        assert "OtherState" in type_texts
+
+    @pytest.mark.asyncio
+    async def test_initializer_list_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that identifiers in initializer lists are captured as references."""
+        code = """
+FuncTable table[] = {
+    { handler1, callback1, 0 },
+    { handler2, callback2, 0 }
+};
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_texts = [r["text"] for r in usage_refs]
+        # Function pointers in initializer should be captured
+        assert "handler1" in usage_texts
+        assert "callback1" in usage_texts
+        assert "handler2" in usage_texts
+        assert "callback2" in usage_texts
+
+    @pytest.mark.asyncio
+    async def test_field_access_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that struct field accesses are captured as references."""
+        code = """
+void test(void) {
+    config.numberOfNodes = 256;
+    ptr->fieldName = 0;
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_texts = [r["text"] for r in usage_refs]
+        # Both base objects and fields should be captured (dot and arrow operators)
+        assert "config" in usage_texts
+        assert "numberOfNodes" in usage_texts
+        assert "ptr" in usage_texts
+        assert "fieldName" in usage_texts
+
 
 class TestCEdgeCases:
     """Tests for edge cases in C parsing."""

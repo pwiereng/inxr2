@@ -52,8 +52,10 @@ def _run_single_repo_index(
         sys.exit(1)
 
     # Parse languages
+    from inxr2.adapters.external.treesitter.service import TreeSitterService
+
     lang_list = [lang.strip().lower() for lang in languages.split(",")]
-    supported_languages = {"python", "typescript", "javascript"}
+    supported_languages = set(TreeSitterService.SUPPORTED_LANGUAGES.keys())
     unsupported = set(lang_list) - supported_languages
     if unsupported:
         console.print(
@@ -170,8 +172,10 @@ def _run_config_based_index(
         else:
             lang_list = [lang.lower() for lang in repo.languages]
 
-        # Filter to supported languages
-        supported_languages = {"python", "typescript", "javascript"}
+        # Filter to supported languages (from TreeSitterService)
+        from inxr2.adapters.external.treesitter.service import TreeSitterService
+
+        supported_languages = set(TreeSitterService.SUPPORTED_LANGUAGES.keys())
         lang_list = [lang for lang in lang_list if lang in supported_languages]
 
         if not lang_list:
