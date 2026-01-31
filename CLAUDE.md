@@ -36,6 +36,8 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
    - All code must pass: black, isort, ruff, mypy (Python) and eslint, prettier (TypeScript)
    - ⚠️ **MANDATORY**: Run `mypy src/ tests/` to check ALL Python files before committing
    - Run formatters BEFORE committing
+   - ❌ NEVER suppress errors or warnings - always fix the root cause or ask the user for guidance
+   - If a warning seems unavoidable, discuss with user before adding any suppression
 
 4. **Package Management**
    - Only use well-supported, actively maintained packages

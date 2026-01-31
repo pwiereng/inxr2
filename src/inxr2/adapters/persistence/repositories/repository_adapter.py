@@ -125,5 +125,5 @@ class PostgresRepositoryAdapter(RepositoryPort):
             if existing is None:
                 raise RuntimeError(
                     f"Repository '{name}' not found after IntegrityError"
-                )
+                ) from None
             return existing, False

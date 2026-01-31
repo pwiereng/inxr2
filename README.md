@@ -257,6 +257,9 @@ docker exec inxr2-dev inxr2 index full --config config.yaml --repo myrepo --forc
 # Limit commit history (useful for large repos)
 docker exec inxr2-dev inxr2 index full --config config.yaml --history 50
 
+# Index only commits from last 30 days
+docker exec inxr2-dev inxr2 index full --config config.yaml --days 30
+
 # With verbose output
 docker exec inxr2-dev inxr2 index full --config config.yaml --verbose
 ```

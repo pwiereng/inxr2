@@ -61,6 +61,12 @@ echo ""
 # Give backend a moment to start
 sleep 2
 
+# Verify backend is still running before starting frontend
+if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+    echo -e "${RED}Error: Backend failed to start${NC}"
+    exit 1
+fi
+
 # Start frontend in background
 echo -e "${GREEN}Starting frontend...${NC}"
 cd frontend && npm run dev &

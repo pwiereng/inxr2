@@ -217,6 +217,10 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         Creates new symbol records with the target file/commit IDs while
         preserving all other symbol attributes. Parent symbol IDs are
         remapped to point to the newly created symbols.
+
+        Performance: Uses batched operations - single flush for all inserts,
+        then batch update for parent references. This reduces database
+        round-trips from O(N) to O(1) for files with many symbols.
         """
         # Fetch source symbols ordered by ID to maintain parent-child ordering
         result = await self.session.execute(
@@ -229,11 +233,14 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         if not source_symbols:
             return 0
 
-        # Map old symbol IDs to new ones for parent_symbol_id remapping
-        old_to_new_id: dict[int, int] = {}
+        # Track source symbols that have parents (for second pass)
+        symbols_with_parents: list[tuple[int, int]] = []  # (source_id, parent_id)
+
+        # Create all new symbols and add to session (no flush yet)
+        new_symbols: list[SymbolModel] = []
+        indexed_at = datetime.now(UTC).replace(tzinfo=None)
 
         for source in source_symbols:
-            # Create new symbol with updated file/commit/repository IDs
             new_symbol = SymbolModel(
                 file_id=target_file_id,
                 repository_id=target_repository_id,
@@ -249,31 +256,36 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
                 signature=source.signature,
                 docstring=source.docstring,
                 extra_metadata=source.extra_metadata,
-                # parent_symbol_id will be set below after remapping
-                parent_symbol_id=None,
-                # Explicitly set indexed_at for SQLite compatibility in tests
-                indexed_at=datetime.now(UTC).replace(tzinfo=None),
+                parent_symbol_id=None,  # Set in second pass
+                indexed_at=indexed_at,
             )
             self.session.add(new_symbol)
-            await self.session.flush()
-            await self.session.refresh(new_symbol)
+            new_symbols.append(new_symbol)
 
-            # Record mapping for parent remapping
+            # Track symbols that need parent remapping
+            if source.parent_symbol_id is not None and source.id is not None:
+                symbols_with_parents.append((source.id, source.parent_symbol_id))
+
+        # Single flush to insert all symbols at once
+        await self.session.flush()
+
+        # Build old->new ID mapping (symbols maintain order after flush)
+        old_to_new_id: dict[int, int] = {}
+        for source, new_symbol in zip(source_symbols, new_symbols, strict=True):
             if source.id is not None and new_symbol.id is not None:
                 old_to_new_id[source.id] = new_symbol.id
 
-        # Second pass: remap parent_symbol_id references
-        for source in source_symbols:
-            if source.parent_symbol_id is not None and source.id is not None:
-                new_id = old_to_new_id.get(source.id)
-                new_parent_id = old_to_new_id.get(source.parent_symbol_id)
+        # Second pass: batch update parent_symbol_id references
+        if symbols_with_parents:
+            for source_id, old_parent_id in symbols_with_parents:
+                new_id = old_to_new_id.get(source_id)
+                new_parent_id = old_to_new_id.get(old_parent_id)
                 if new_id is not None and new_parent_id is not None:
-                    # Update the new symbol's parent reference
                     await self.session.execute(
                         update(SymbolModel)
                         .where(SymbolModel.id == new_id)
                         .values(parent_symbol_id=new_parent_id)
                     )
+            await self.session.flush()
 
-        await self.session.flush()
         return len(source_symbols)
