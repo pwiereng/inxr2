@@ -38,6 +38,31 @@ class RepositoryPort(ABC):
         """Delete repository and all related data (CASCADE)."""
         pass
 
+    @abstractmethod
+    async def get_or_create(
+        self,
+        name: str,
+        url: str | None = None,
+        description: str | None = None,
+        default_branch: str | None = None,
+    ) -> tuple["Repository", bool]:
+        """Get existing repository by name, or create if not exists.
+
+        Atomically handles race conditions where multiple processes might
+        try to create the same repository simultaneously.
+
+        Args:
+            name: Unique repository name
+            url: Repository URL (local path or remote URL)
+            description: Optional description
+            default_branch: Default branch name
+
+        Returns:
+            Tuple of (Repository, created) where created is True if
+            a new repository was created, False if existing was returned.
+        """
+        pass
+
 
 class CommitRepositoryPort(ABC):
     """Port for commit entity operations."""
@@ -244,6 +269,43 @@ class FileRepositoryPort(ABC):
         """
         pass
 
+    @abstractmethod
+    async def find_one_by_content_hash_in_repo(
+        self, repository_id: int, content_hash: str
+    ) -> File | None:
+        """Find first file with matching content hash within a repository.
+
+        Used for content-hash based symbol/reference reuse optimization.
+        When indexing multiple commits, files with identical content can
+        reuse symbols/references from a previously indexed version.
+
+        Args:
+            repository_id: The repository to search within
+            content_hash: The content hash to match
+
+        Returns:
+            The first matching file, or None if no match found
+        """
+        pass
+
+    @abstractmethod
+    async def get_content_hash_to_file_id_map(
+        self, repository_id: int
+    ) -> dict[str, int]:
+        """Load all content hashes for a repository into memory.
+
+        Returns a mapping of content_hash -> file_id for fast in-memory lookup
+        during indexing. This avoids per-file database queries when checking
+        for donor files with matching content.
+
+        Args:
+            repository_id: The repository to load hashes for
+
+        Returns:
+            Dict mapping content_hash to file_id
+        """
+        pass
+
 
 class SymbolRepositoryPort(ABC):
     """Port for symbol entity operations."""
@@ -310,6 +372,33 @@ class SymbolRepositoryPort(ABC):
     @abstractmethod
     async def delete_by_file(self, file_id: int) -> int:
         """Delete all symbols for a file (for re-indexing). Returns count deleted."""
+        pass
+
+    @abstractmethod
+    async def copy_symbols_to_file(
+        self,
+        source_file_id: int,
+        target_file_id: int,
+        target_commit_id: int,
+        target_repository_id: int,
+    ) -> int:
+        """Copy all symbols from source file to target file.
+
+        Used for content-hash based symbol reuse optimization.
+        Creates new symbol records with the target file/commit IDs while
+        preserving all other symbol attributes.
+
+        Parent symbol IDs are remapped to point to the newly created symbols.
+
+        Args:
+            source_file_id: The file ID to copy symbols from
+            target_file_id: The file ID to copy symbols to
+            target_commit_id: The commit ID for the new symbols
+            target_repository_id: The repository ID for the new symbols
+
+        Returns:
+            Number of symbols copied
+        """
         pass
 
 
@@ -396,6 +485,34 @@ class ReferenceRepositoryPort(ABC):
 
         Returns:
             Number of references resolved
+        """
+        pass
+
+    @abstractmethod
+    async def copy_references_to_file(
+        self,
+        source_file_id: int,
+        target_file_id: int,
+        target_commit_id: int,
+        target_repository_id: int,
+    ) -> int:
+        """Copy all references from source file to target file.
+
+        Used for content-hash based reference reuse optimization.
+        Creates new reference records with the target file/commit IDs while
+        preserving all other reference attributes.
+
+        Note: target_symbol_id is set to NULL for copied references.
+        They will be resolved later by resolve_unlinked_references.
+
+        Args:
+            source_file_id: The file ID to copy references from
+            target_file_id: The file ID to copy references to
+            target_commit_id: The commit ID for the new references
+            target_repository_id: The repository ID for the new references
+
+        Returns:
+            Number of references copied
         """
         pass
 
