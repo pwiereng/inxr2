@@ -19,8 +19,15 @@ NC='\033[0m' # No Color
 # Track PIDs for cleanup
 BACKEND_PID=""
 FRONTEND_PID=""
+EXIT_CODE=0
 
 cleanup() {
+    # Preserve exit code from caller
+    local saved_exit_code=$?
+    if [ $saved_exit_code -ne 0 ]; then
+        EXIT_CODE=$saved_exit_code
+    fi
+
     echo ""
     echo -e "${YELLOW}Shutting down services...${NC}"
 
@@ -40,7 +47,7 @@ cleanup() {
     fi
 
     echo -e "${GREEN}Done.${NC}"
-    exit 0
+    exit $EXIT_CODE
 }
 
 # Set up trap for Ctrl+C and exit
@@ -69,7 +76,11 @@ fi
 
 # Start frontend in background
 echo -e "${GREEN}Starting frontend...${NC}"
-cd frontend && npm run dev &
+if [ ! -d "frontend" ]; then
+    echo -e "${RED}Error: frontend directory not found${NC}"
+    exit 1
+fi
+npm --prefix frontend run dev &
 FRONTEND_PID=$!
 echo -e "  Frontend PID: $FRONTEND_PID"
 echo -e "  URL: ${BLUE}http://localhost:5173${NC}"

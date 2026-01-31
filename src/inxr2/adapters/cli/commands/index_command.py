@@ -86,9 +86,11 @@ def _cleanup_and_exit(signum: int | None = None, frame: Any = None) -> None:
 
 def _setup_signal_handlers() -> None:
     """Set up signal handlers for clean shutdown."""
-    # Handle SIGINT (Ctrl+C) and SIGTERM
+    # Handle SIGINT (Ctrl+C)
     signal.signal(signal.SIGINT, _cleanup_and_exit)
-    signal.signal(signal.SIGTERM, _cleanup_and_exit)
+    # Handle SIGTERM (not available on all platforms, e.g., Windows)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _cleanup_and_exit)
 
 
 def reset_database(console: Console) -> None:
@@ -625,6 +627,8 @@ async def _run_full_index_async(
                                 # Also count for overall stats (for index_status)
                                 stats.symbols_found += symbols_copied
                                 stats.references_found += refs_copied
+                                # Add to cache so later files can chain-reuse
+                                content_hash_cache[content_hash] = file_id
                             else:
                                 # PARSE: No donor, use Tree-sitter as usual
                                 if language and parser_service.supports_language(

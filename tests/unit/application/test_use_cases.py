@@ -152,6 +152,12 @@ class FakeSymbolRepository(SymbolRepositoryPort):
         source_symbols = [
             s for s in self._symbols.values() if s.file_id == source_file_id
         ]
+        if not source_symbols:
+            return 0
+
+        # Map old symbol IDs to new ones for parent_symbol_id remapping
+        old_to_new_id: dict[int, int] = {}
+
         for source in source_symbols:
             new_symbol = Symbol(
                 id=self._next_id,
@@ -166,9 +172,42 @@ class FakeSymbolRepository(SymbolRepositoryPort):
                 end_column=source.end_column,
                 qualified_name=source.qualified_name,
                 scope=source.scope,
+                signature=source.signature,
+                docstring=source.docstring,
+                metadata=source.metadata,
+                parent_symbol_id=None,  # Will be remapped below
             )
             self._symbols[self._next_id] = new_symbol
+            if source.id is not None:
+                old_to_new_id[source.id] = self._next_id
             self._next_id += 1
+
+        # Remap parent_symbol_id references
+        for source in source_symbols:
+            if source.parent_symbol_id is not None and source.id is not None:
+                new_id = old_to_new_id.get(source.id)
+                new_parent_id = old_to_new_id.get(source.parent_symbol_id)
+                if new_id is not None and new_parent_id is not None:
+                    old_symbol = self._symbols[new_id]
+                    self._symbols[new_id] = Symbol(
+                        id=old_symbol.id,
+                        file_id=old_symbol.file_id,
+                        repository_id=old_symbol.repository_id,
+                        commit_id=old_symbol.commit_id,
+                        name=old_symbol.name,
+                        kind=old_symbol.kind,
+                        start_line=old_symbol.start_line,
+                        start_column=old_symbol.start_column,
+                        end_line=old_symbol.end_line,
+                        end_column=old_symbol.end_column,
+                        qualified_name=old_symbol.qualified_name,
+                        scope=old_symbol.scope,
+                        signature=old_symbol.signature,
+                        docstring=old_symbol.docstring,
+                        metadata=old_symbol.metadata,
+                        parent_symbol_id=new_parent_id,
+                    )
+
         return len(source_symbols)
 
     def add_test_symbol(self, symbol: Symbol) -> None:

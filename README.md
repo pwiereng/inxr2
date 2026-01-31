@@ -289,8 +289,8 @@ inxr2 index full --config config.yaml
 ```
 
 **Performance Note:** The indexer uses content-hash based reuse - files with identical content
-across commits are not re-parsed. This provides ~5x speedup for repositories where most files
-don't change between commits. Watch for "Files Reused" in the summary output.
+across commits are not re-parsed. This can provide up to ~5x speedup for repositories where most
+files don't change between commits. Watch for "Files Reused" in the summary output.
 
 ### Indexing External Repositories
 
