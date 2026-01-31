@@ -33,6 +33,15 @@ def setup_logging(verbose: bool, log_level: str) -> None:
     )
 
 
+def validate_positive_days(
+    ctx: click.Context, param: click.Parameter, value: int | None
+) -> int | None:
+    """Validate that --days is a positive integer when provided."""
+    if value is not None and value <= 0:
+        raise click.BadParameter("must be a positive integer (greater than 0)")
+    return value
+
+
 def _run_single_repo_index(
     path: Path,
     branch: str | None,
@@ -293,6 +302,7 @@ def index() -> None:
     "-d",
     type=int,
     default=None,
+    callback=validate_positive_days,
     help="Only index commits from the last N days (overrides --history when specified)",
 )
 @click.option(

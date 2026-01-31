@@ -10,12 +10,14 @@ import * as api from '@/lib/api'
  * causing state updates after initial render. Wrapping the entire render + settling
  * in act() ensures React properly handles all async updates without warnings.
  */
-async function renderBrowseStateHook(): Promise<RenderHookResult<ReturnType<typeof useBrowseState>, unknown>> {
+async function renderBrowseStateHook(): Promise<
+  RenderHookResult<ReturnType<typeof useBrowseState>, unknown>
+> {
   let result: RenderHookResult<ReturnType<typeof useBrowseState>, unknown>
   await act(async () => {
     result = renderHook(() => useBrowseState())
     // Allow time for all async effects to settle
-    await new Promise(resolve => setTimeout(resolve, 50))
+    await new Promise((resolve) => setTimeout(resolve, 50))
   })
   return result!
 }

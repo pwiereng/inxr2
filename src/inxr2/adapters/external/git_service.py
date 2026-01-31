@@ -376,7 +376,7 @@ class GitService:
                 - message: Commit message
                 - parent_hashes: List of parent commit hashes
         """
-        from datetime import datetime, timedelta
+        from datetime import UTC, datetime, timedelta
 
         repo = Repo(repo_path)
 
@@ -386,7 +386,7 @@ class GitService:
             iter_kwargs["max_count"] = max_count
         if since_days is not None:
             # Calculate the date N days ago
-            since_date = datetime.now() - timedelta(days=since_days)
+            since_date = datetime.now(UTC) - timedelta(days=since_days)
             iter_kwargs["since"] = since_date.strftime("%Y-%m-%d")
 
         try:
@@ -524,13 +524,13 @@ class GitService:
             )
             if unmerged:
                 # Branch has unmerged commits - return them
-                from datetime import datetime, timedelta
+                from datetime import UTC, datetime, timedelta
 
                 iter_kwargs: dict[str, Any] = {}
                 if max_count is not None:
                     iter_kwargs["max_count"] = max_count
                 if since_days is not None:
-                    since_date = datetime.now() - timedelta(days=since_days)
+                    since_date = datetime.now(UTC) - timedelta(days=since_days)
                     iter_kwargs["since"] = since_date.strftime("%Y-%m-%d")
                 commits = list(
                     repo.iter_commits(f"{merge_base}..{branch_ref}", **iter_kwargs)
@@ -567,13 +567,15 @@ class GitService:
                             main_before_merge, merged_branch_head
                         )
                         if original_merge_base:
-                            from datetime import datetime, timedelta
+                            from datetime import UTC, datetime, timedelta
 
                             iter_kwargs = {}
                             if max_count is not None:
                                 iter_kwargs["max_count"] = max_count
                             if since_days is not None:
-                                since_date = datetime.now() - timedelta(days=since_days)
+                                since_date = datetime.now(UTC) - timedelta(
+                                    days=since_days
+                                )
                                 iter_kwargs["since"] = since_date.strftime("%Y-%m-%d")
                             commits = list(
                                 repo.iter_commits(
