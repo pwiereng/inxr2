@@ -25,17 +25,19 @@ cleanup() {
     echo -e "${YELLOW}Shutting down services...${NC}"
 
     if [ -n "$FRONTEND_PID" ] && kill -0 "$FRONTEND_PID" 2>/dev/null; then
-        kill "$FRONTEND_PID" 2>/dev/null || true
+        kill "$FRONTEND_PID" 2>/dev/null
         echo -e "  ${RED}Frontend stopped${NC}"
     fi
 
     if [ -n "$BACKEND_PID" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
-        kill "$BACKEND_PID" 2>/dev/null || true
+        kill "$BACKEND_PID" 2>/dev/null
         echo -e "  ${RED}Backend stopped${NC}"
     fi
 
-    # Kill any remaining child processes
-    pkill -P $$ 2>/dev/null || true
+    # Kill any remaining child processes (check first to avoid error)
+    if pgrep -P $$ >/dev/null 2>&1; then
+        pkill -P $$ 2>/dev/null
+    fi
 
     echo -e "${GREEN}Done.${NC}"
     exit 0

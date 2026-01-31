@@ -50,6 +50,12 @@ def _cleanup_and_exit(signum: int | None = None, frame: Any = None) -> None:
 
     This ensures the process actually terminates instead of continuing
     to run in the background.
+
+    NOTE: We intentionally use os._exit() instead of sys.exit() because:
+    1. sys.exit() raises SystemExit which can be caught, allowing zombie processes
+    2. asyncio event loops may not cleanly shut down with sys.exit()
+    3. We've seen cases where the process continues running after Ctrl+C
+    os._exit() guarantees immediate termination after we've cleaned up DB connections.
     """
     global _cleanup_in_progress
     if _cleanup_in_progress:
@@ -85,28 +91,6 @@ def _setup_signal_handlers() -> None:
     signal.signal(signal.SIGTERM, _cleanup_and_exit)
 
 
-def _cleanup_connections() -> None:
-    """Force cleanup of database connections after KeyboardInterrupt.
-
-    When Ctrl+C is pressed, asyncio.run() may not cleanly close all connections.
-    This function creates a new event loop to properly dispose of any lingering
-    SQLAlchemy engine connections.
-    """
-    try:
-        # Create a fresh event loop for cleanup
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            # Create a new connection just to dispose it properly
-            # This also clears the connection pool
-            db = DatabaseConnection()
-            loop.run_until_complete(db.close())
-        finally:
-            loop.close()
-    except Exception as e:
-        logger.debug(f"Cleanup error (can be ignored): {e}")
-
-
 def reset_database(console: Console) -> None:
     """
     DESTRUCTIVE: Reset the entire database by truncating all tables.
@@ -119,6 +103,9 @@ def reset_database(console: Console) -> None:
     bypasses row-by-row deletion and reclaims storage immediately.
 
     The CLI requires the --yes flag to confirm this operation.
+
+    NOTE: This function uses PostgreSQL-specific SQL (pg_terminate_backend,
+    TRUNCATE CASCADE). It is only used by the CLI, not by tests.
 
     Args:
         console: Rich console for output
