@@ -89,8 +89,8 @@ echo ""
 echo -e "${GREEN}Both services running. Press Ctrl+C to stop.${NC}"
 echo ""
 
-# Wait for either process to exit
-wait -n $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
+# Wait for either process to exit (EXIT trap will run cleanup)
+# Note: wait -n returns the exit status of the process that exited
+wait -n $BACKEND_PID $FRONTEND_PID 2>/dev/null
 
-# If we get here, one process died - clean up the other
-cleanup
+# If we get here, one process died - cleanup will be called by EXIT trap

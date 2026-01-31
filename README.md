@@ -88,6 +88,7 @@ docker exec -it inxr2-dev bash
 ./scripts/dev-start.sh   # Start containers
 ./scripts/dev-shell.sh   # Open shell
 ./scripts/dev-stop.sh    # Stop containers
+./scripts/dev-serve.sh   # Start both backend and frontend servers (run inside container)
 ```
 
 The dev container automatically installs all dependencies and includes:
@@ -351,6 +352,18 @@ docker exec inxr2-dev inxr2 config show /workspace/config.yaml
 
 ### Starting the Servers
 
+**Recommended: Use the helper script to start both servers at once:**
+```bash
+# Inside the dev container
+./scripts/dev-serve.sh
+
+# Or from the host
+docker exec -it inxr2-dev ./scripts/dev-serve.sh
+```
+
+This starts both backend (port 8000) and frontend (port 5173) with hot reload. Press Ctrl+C to stop both.
+
+**Alternative: Start servers separately:**
 ```bash
 # Start the backend server (runs in background)
 docker exec -d inxr2-dev bash -c "cd /workspace && inxr2 serve --reload"
