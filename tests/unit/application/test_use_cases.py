@@ -141,6 +141,36 @@ class FakeSymbolRepository(SymbolRepositoryPort):
             [s for s in self._symbols.values() if s.repository_id == repository_id]
         )
 
+    async def copy_symbols_to_file(
+        self,
+        source_file_id: int,
+        target_file_id: int,
+        target_commit_id: int,
+        target_repository_id: int,
+    ) -> int:
+        """Copy all symbols from source file to target file."""
+        source_symbols = [
+            s for s in self._symbols.values() if s.file_id == source_file_id
+        ]
+        for source in source_symbols:
+            new_symbol = Symbol(
+                id=self._next_id,
+                file_id=target_file_id,
+                repository_id=target_repository_id,
+                commit_id=target_commit_id,
+                name=source.name,
+                kind=source.kind,
+                start_line=source.start_line,
+                start_column=source.start_column,
+                end_line=source.end_line,
+                end_column=source.end_column,
+                qualified_name=source.qualified_name,
+                scope=source.scope,
+            )
+            self._symbols[self._next_id] = new_symbol
+            self._next_id += 1
+        return len(source_symbols)
+
     def add_test_symbol(self, symbol: Symbol) -> None:
         """Helper method to add test data."""
         if symbol.id is not None:

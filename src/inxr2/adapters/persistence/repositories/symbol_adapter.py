@@ -1,6 +1,8 @@
 """PostgreSQL symbol repository adapter."""
 
-from sqlalchemy import delete, func, select
+from datetime import UTC, datetime
+
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import SymbolRepositoryPort
@@ -202,3 +204,76 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         )
         await self.session.flush()
         return result.rowcount or 0  # type: ignore[attr-defined]
+
+    async def copy_symbols_to_file(
+        self,
+        source_file_id: int,
+        target_file_id: int,
+        target_commit_id: int,
+        target_repository_id: int,
+    ) -> int:
+        """Copy all symbols from source file to target file.
+
+        Creates new symbol records with the target file/commit IDs while
+        preserving all other symbol attributes. Parent symbol IDs are
+        remapped to point to the newly created symbols.
+        """
+        # Fetch source symbols ordered by ID to maintain parent-child ordering
+        result = await self.session.execute(
+            select(SymbolModel)
+            .where(SymbolModel.file_id == source_file_id)
+            .order_by(SymbolModel.id)
+        )
+        source_symbols = list(result.scalars().all())
+
+        if not source_symbols:
+            return 0
+
+        # Map old symbol IDs to new ones for parent_symbol_id remapping
+        old_to_new_id: dict[int, int] = {}
+
+        for source in source_symbols:
+            # Create new symbol with updated file/commit/repository IDs
+            new_symbol = SymbolModel(
+                file_id=target_file_id,
+                repository_id=target_repository_id,
+                commit_id=target_commit_id,
+                name=source.name,
+                qualified_name=source.qualified_name,
+                kind=source.kind,
+                start_line=source.start_line,
+                start_column=source.start_column,
+                end_line=source.end_line,
+                end_column=source.end_column,
+                scope=source.scope,
+                signature=source.signature,
+                docstring=source.docstring,
+                extra_metadata=source.extra_metadata,
+                # parent_symbol_id will be set below after remapping
+                parent_symbol_id=None,
+                # Explicitly set indexed_at for SQLite compatibility in tests
+                indexed_at=datetime.now(UTC).replace(tzinfo=None),
+            )
+            self.session.add(new_symbol)
+            await self.session.flush()
+            await self.session.refresh(new_symbol)
+
+            # Record mapping for parent remapping
+            if source.id is not None and new_symbol.id is not None:
+                old_to_new_id[source.id] = new_symbol.id
+
+        # Second pass: remap parent_symbol_id references
+        for source in source_symbols:
+            if source.parent_symbol_id is not None and source.id is not None:
+                new_id = old_to_new_id.get(source.id)
+                new_parent_id = old_to_new_id.get(source.parent_symbol_id)
+                if new_id is not None and new_parent_id is not None:
+                    # Update the new symbol's parent reference
+                    await self.session.execute(
+                        update(SymbolModel)
+                        .where(SymbolModel.id == new_id)
+                        .values(parent_symbol_id=new_parent_id)
+                    )
+
+        await self.session.flush()
+        return len(source_symbols)

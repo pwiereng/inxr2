@@ -929,19 +929,19 @@ class JavaParser(BaseLanguageParser):
             # Field access
             if node.type == "field_access":
                 # Get the object being accessed
-                obj_node = node.child_by_field_name("object")
-                if obj_node and obj_node.type == "identifier":
-                    obj_name = get_text(obj_node)
-                    if obj_name not in JAVA_BUILTINS and obj_name not in (
+                field_obj_node = node.child_by_field_name("object")
+                if field_obj_node and field_obj_node.type == "identifier":
+                    field_obj_name = get_text(field_obj_node)
+                    if field_obj_name not in JAVA_BUILTINS and field_obj_name not in (
                         "this",
                         "super",
                     ):
                         add_reference(
                             {
-                                "text": obj_name,
+                                "text": field_obj_name,
                                 "type": "usage",
-                                "source_line": obj_node.start_point[0] + 1,
-                                "source_column": obj_node.start_point[1],
+                                "source_line": field_obj_node.start_point[0] + 1,
+                                "source_column": field_obj_node.start_point[1],
                                 "scope": scope,
                             }
                         )

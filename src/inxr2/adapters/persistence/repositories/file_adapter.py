@@ -1,6 +1,6 @@
 """PostgreSQL file repository adapter."""
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import FileRepositoryPort
@@ -263,3 +263,39 @@ class PostgresFileRepository(FileRepositoryPort):
         )
         await self.session.flush()
         return result.rowcount or 0  # type: ignore[attr-defined]
+
+    async def find_one_by_content_hash_in_repo(
+        self, repository_id: int, content_hash: str
+    ) -> File | None:
+        """Find first file with matching content hash within a repository.
+
+        Used for content-hash based symbol/reference reuse optimization.
+        """
+        result = await self.session.execute(
+            select(FileModel)
+            .where(
+                FileModel.repository_id == repository_id,
+                FileModel.content_hash == content_hash,
+            )
+            .limit(1)
+        )
+        model = result.scalar_one_or_none()
+        return self.mapper.to_domain(model) if model else None
+
+    async def get_content_hash_to_file_id_map(
+        self, repository_id: int
+    ) -> dict[str, int]:
+        """Load all content hashes for a repository into memory.
+
+        Returns a mapping of content_hash -> file_id for fast in-memory lookup.
+        Uses the minimum file_id for each unique content_hash (first indexed).
+        """
+        result = await self.session.execute(
+            select(FileModel.content_hash, func.min(FileModel.id).label("file_id"))
+            .where(
+                FileModel.repository_id == repository_id,
+                FileModel.content_hash.isnot(None),
+            )
+            .group_by(FileModel.content_hash)
+        )
+        return {row.content_hash: row.file_id for row in result.all()}

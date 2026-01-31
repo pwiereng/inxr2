@@ -356,6 +356,7 @@ class GitService:
         repo_path: Path,
         branch: str,
         max_count: int | None = 1000,
+        since_days: int | None = None,
     ) -> list[dict[str, Any]]:
         """
         List commits for a branch, from oldest to newest.
@@ -364,6 +365,7 @@ class GitService:
             repo_path: Path to the git repository
             branch: Branch name to list commits for
             max_count: Maximum number of commits to return (None = all commits)
+            since_days: Only include commits from the last N days (None = no date filter)
 
         Returns:
             List of commit info dicts (oldest first), each containing:
@@ -374,12 +376,18 @@ class GitService:
                 - message: Commit message
                 - parent_hashes: List of parent commit hashes
         """
+        from datetime import datetime, timedelta
+
         repo = Repo(repo_path)
 
-        # Build kwargs for iter_commits - only include max_count if specified
+        # Build kwargs for iter_commits
         iter_kwargs: dict[str, Any] = {}
         if max_count is not None:
             iter_kwargs["max_count"] = max_count
+        if since_days is not None:
+            # Calculate the date N days ago
+            since_date = datetime.now() - timedelta(days=since_days)
+            iter_kwargs["since"] = since_date.strftime("%Y-%m-%d")
 
         try:
             # Try local branch first
@@ -464,6 +472,7 @@ class GitService:
         branch: str,
         base_branch: str,
         max_count: int | None = 1000,
+        since_days: int | None = None,
     ) -> list[dict[str, Any]]:
         """
         List commits that were made on a branch (from creation to merge/HEAD).
@@ -477,6 +486,7 @@ class GitService:
             branch: Branch to list commits for
             base_branch: Base branch to compare against (e.g., main)
             max_count: Maximum number of commits to return
+            since_days: Only include commits from the last N days (None = no date filter)
 
         Returns:
             List of commit info dicts (oldest first)
@@ -499,12 +509,12 @@ class GitService:
             return []
         if base_commit is None:
             # No base branch, return all commits on branch
-            return self.list_commits(repo_path, branch, max_count)
+            return self.list_commits(repo_path, branch, max_count, since_days)
 
         # First, try simple case: commits on branch not in base
         merge_base = self.get_merge_base(repo_path, branch, base_branch)
         if merge_base is None:
-            return self.list_commits(repo_path, branch, max_count)
+            return self.list_commits(repo_path, branch, max_count, since_days)
 
         # Check if branch has unmerged commits
         try:
@@ -514,9 +524,14 @@ class GitService:
             )
             if unmerged:
                 # Branch has unmerged commits - return them
+                from datetime import datetime, timedelta
+
                 iter_kwargs: dict[str, Any] = {}
                 if max_count is not None:
                     iter_kwargs["max_count"] = max_count
+                if since_days is not None:
+                    since_date = datetime.now() - timedelta(days=since_days)
+                    iter_kwargs["since"] = since_date.strftime("%Y-%m-%d")
                 commits = list(
                     repo.iter_commits(f"{merge_base}..{branch_ref}", **iter_kwargs)
                 )
@@ -552,9 +567,14 @@ class GitService:
                             main_before_merge, merged_branch_head
                         )
                         if original_merge_base:
+                            from datetime import datetime, timedelta
+
                             iter_kwargs = {}
                             if max_count is not None:
                                 iter_kwargs["max_count"] = max_count
+                            if since_days is not None:
+                                since_date = datetime.now() - timedelta(days=since_days)
+                                iter_kwargs["since"] = since_date.strftime("%Y-%m-%d")
                             commits = list(
                                 repo.iter_commits(
                                     f"{original_merge_base[0].hexsha}..{merged_branch_head.hexsha}",

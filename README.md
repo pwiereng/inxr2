@@ -219,46 +219,75 @@ For detailed development workflows and troubleshooting, see [DEVELOPMENT.md](DEV
 
 If you need to rebuild the database from scratch or re-index a repository:
 
-**Reset Database (clears all data):**
+**Complete Fresh Start (reset DB + full index):**
 ```bash
-# Inside dev container
-./scripts/dev-reset-db.sh
+# From your host machine - reset database then index all repos:
+docker exec inxr2-dev inxr2 db reset --yes
+docker exec inxr2-dev inxr2 index full --config config.yaml
 
-# Or manually:
-docker exec inxr2-dev bash -c "PGPASSWORD=inxr2_dev_password psql -h postgres -U inxr2_user -d inxr2_dev -c 'TRUNCATE repositories CASCADE;'"
+# Or as a single command:
+docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index full --config config.yaml"
+
+# Index a specific repo only:
+docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index full --config config.yaml --repo inxr2"
+
+# Limit commit history for faster indexing (e.g., last 10 commits):
+docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index full --config config.yaml --history 10"
 ```
 
-**Full Index (from scratch):**
+**Reset Database Only (clears all data):**
 ```bash
-# Index a single repository
-docker exec inxr2-dev inxr2 index full --path /workspace
+docker exec inxr2-dev inxr2 db reset --yes
 
-# Index multiple repositories using config file
-docker exec inxr2-dev inxr2 index full --config /workspace/config.yaml
+# Or using the helper script
+./scripts/dev-reset-db.sh
+```
+
+**Full Index Commands:**
+```bash
+# Index all repositories in config
+docker exec inxr2-dev inxr2 index full --config config.yaml
 
 # Index a specific repository from config
-docker exec inxr2-dev inxr2 index full --config /workspace/config.yaml --repo myrepo
+docker exec inxr2-dev inxr2 index full --config config.yaml --repo myrepo
+
+# Force re-index a single repo (clears its existing data first)
+docker exec inxr2-dev inxr2 index full --config config.yaml --repo myrepo --force
+
+# Limit commit history (useful for large repos)
+docker exec inxr2-dev inxr2 index full --config config.yaml --history 50
 
 # With verbose output
-docker exec inxr2-dev inxr2 index full --path /workspace --verbose
-
-# Index specific languages only (default: python,typescript)
-docker exec inxr2-dev inxr2 index full --path /workspace --languages python,typescript,javascript
+docker exec inxr2-dev inxr2 index full --config config.yaml --verbose
 ```
 
 **Incremental Index (only changed files):**
 ```bash
 # Faster - only indexes files changed since last index
-docker exec inxr2-dev inxr2 index incremental --path /workspace
+docker exec inxr2-dev inxr2 index incremental --config config.yaml
 
-# Specify a branch
-docker exec inxr2-dev inxr2 index incremental --path /workspace --branch main
+# Specify a specific repository
+docker exec inxr2-dev inxr2 index incremental --config config.yaml --repo myrepo
 ```
 
 **Check Index Status:**
 ```bash
-docker exec inxr2-dev inxr2 index status --path /workspace
+docker exec inxr2-dev inxr2 index status --config config.yaml
 ```
+
+**Interactive Shell (alternative):**
+```bash
+# Open a shell inside the container, then run commands directly:
+docker exec -it inxr2-dev bash
+
+# Now you can run without docker exec prefix:
+inxr2 db reset --yes
+inxr2 index full --config config.yaml
+```
+
+**Performance Note:** The indexer uses content-hash based reuse - files with identical content
+across commits are not re-parsed. This provides ~5x speedup for repositories where most files
+don't change between commits. Watch for "Files Reused" in the summary output.
 
 ### Indexing External Repositories
 
@@ -317,18 +346,19 @@ docker exec inxr2-dev inxr2 config validate /workspace/config.yaml
 docker exec inxr2-dev inxr2 config show /workspace/config.yaml
 ```
 
-**Complete Reset and Re-index:**
+### Starting the Servers
+
 ```bash
-# 1. Clear all indexed data
-docker exec inxr2-dev bash -c "PGPASSWORD=inxr2_dev_password psql -h postgres -U inxr2_user -d inxr2_dev -c 'TRUNCATE repositories CASCADE;'"
-
-# 2. Run full index
-docker exec inxr2-dev inxr2 index full --path /workspace
-
-# 3. Start the server (if not running)
+# Start the backend server (runs in background)
 docker exec -d inxr2-dev bash -c "cd /workspace && inxr2 serve --reload"
 
-# 4. Access at http://localhost:5173
+# Start the frontend dev server (runs in background)
+docker exec -d inxr2-dev bash -c "cd /workspace/frontend && npm run dev"
+
+# Or open an interactive shell and run them:
+docker exec -it inxr2-dev bash
+inxr2 serve --reload  # In one terminal
+cd frontend && npm run dev  # In another terminal
 ```
 
 ### Troubleshooting

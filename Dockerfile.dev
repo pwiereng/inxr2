@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y \
     git \
     # PostgreSQL client
     postgresql-client \
+    # Process utilities (pkill, pgrep, ps, top)
+    procps \
     # Node.js (install from NodeSource)
     curl \
     gnupg \

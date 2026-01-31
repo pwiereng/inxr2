@@ -4,6 +4,7 @@ Implements RepositoryPort interface using SQLAlchemy and PostgreSQL.
 """
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import RepositoryPort
@@ -75,3 +76,53 @@ class PostgresRepositoryAdapter(RepositoryPort):
         await self.session.delete(model)
         await self.session.flush()
         return True
+
+    async def get_or_create(
+        self,
+        name: str,
+        url: str | None = None,
+        description: str | None = None,
+        default_branch: str | None = None,
+    ) -> tuple[Repository, bool]:
+        """Get existing repository by name, or create if not exists.
+
+        Uses PostgreSQL INSERT ... ON CONFLICT to atomically handle
+        race conditions where multiple processes might try to create
+        the same repository simultaneously.
+
+        Args:
+            name: Unique repository name
+            url: Repository URL (local path or remote URL)
+            description: Optional description
+            default_branch: Default branch name
+
+        Returns:
+            Tuple of (Repository, created) where created is True if
+            a new repository was created, False if existing was returned.
+        """
+        # Try to insert with ON CONFLICT DO NOTHING
+        stmt = (
+            pg_insert(RepositoryModel)
+            .values(
+                name=name,
+                url=url,
+                description=description,
+                default_branch=default_branch,
+            )
+            .on_conflict_do_nothing(index_elements=["name"])
+        )
+
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+
+        # Check if we inserted (rowcount > 0) or hit conflict (rowcount == 0)
+        # CursorResult has rowcount attribute (mypy doesn't see it in Result type)
+        created = getattr(result, "rowcount", 0) > 0
+
+        # Now fetch the repository (either our new one or the existing one)
+        db_repo = await self.find_by_name(name)
+        if db_repo is None:
+            # Should not happen, but handle gracefully
+            raise RuntimeError(f"Repository '{name}' not found after get_or_create")
+
+        return db_repo, created

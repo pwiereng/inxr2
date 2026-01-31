@@ -88,105 +88,132 @@ describe('useBrowseState', () => {
   })
 
   describe('URL state parsing', () => {
-    it('should parse search query from URL', () => {
+    it('should parse search query from URL', async () => {
       mockSearchParams = new URLSearchParams('q=MyClass')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.searchQuery).toBe('MyClass')
+      // Wait for any async effects to settle
+      await vi.waitFor(() => {
+        expect(result.current.urlState.searchQuery).toBe('MyClass')
+      })
     })
 
-    it('should default search query to empty string', () => {
+    it('should default search query to empty string', async () => {
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.searchQuery).toBe('')
+      await vi.waitFor(() => {
+        expect(result.current.urlState.searchQuery).toBe('')
+      })
     })
 
-    it('should parse drawer state from URL (closed)', () => {
+    it('should parse drawer state from URL (closed)', async () => {
       mockSearchParams = new URLSearchParams('drawer=0')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.drawerOpen).toBe(false)
+      await vi.waitFor(() => {
+        expect(result.current.urlState.drawerOpen).toBe(false)
+      })
     })
 
-    it('should default drawer to open', () => {
+    it('should default drawer to open', async () => {
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.drawerOpen).toBe(true)
+      await vi.waitFor(() => {
+        expect(result.current.urlState.drawerOpen).toBe(true)
+      })
     })
 
-    it('should parse refs panel state from URL (open)', () => {
+    it('should parse refs panel state from URL (open)', async () => {
       mockSearchParams = new URLSearchParams('refs=1')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.refsPanelOpen).toBe(true)
+      await vi.waitFor(() => {
+        expect(result.current.urlState.refsPanelOpen).toBe(true)
+      })
     })
 
-    it('should default refs panel to closed', () => {
+    it('should default refs panel to closed', async () => {
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.refsPanelOpen).toBe(false)
+      await vi.waitFor(() => {
+        expect(result.current.urlState.refsPanelOpen).toBe(false)
+      })
     })
 
-    it('should parse tree panel side from URL', () => {
+    it('should parse tree panel side from URL', async () => {
       mockSearchParams = new URLSearchParams('tp=r')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.treePanel).toBe('right')
+      await vi.waitFor(() => {
+        expect(result.current.urlState.treePanel).toBe('right')
+      })
     })
 
-    it('should default tree panel to left', () => {
+    it('should default tree panel to left', async () => {
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.treePanel).toBe('left')
+      await vi.waitFor(() => {
+        expect(result.current.urlState.treePanel).toBe('left')
+      })
     })
 
-    it('should parse ref panel side from URL', () => {
+    it('should parse ref panel side from URL', async () => {
       mockSearchParams = new URLSearchParams('rp=r')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.refPanel).toBe('right')
+      await vi.waitFor(() => {
+        expect(result.current.urlState.refPanel).toBe('right')
+      })
     })
 
-    it('should parse active panel from URL', () => {
+    it('should parse active panel from URL', async () => {
       mockSearchParams = new URLSearchParams('ap=r')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.activePanel).toBe('right')
+      await vi.waitFor(() => {
+        expect(result.current.urlState.activePanel).toBe('right')
+      })
     })
 
-    it('should parse diff mode from URL', () => {
+    it('should parse diff mode from URL', async () => {
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.diffMode).toBe(true)
-      expect(result.current.urlState.selectedCommit).toBe('abc123')
-      expect(result.current.urlState.diffCommit).toBe('def456')
+      await vi.waitFor(() => {
+        expect(result.current.urlState.diffMode).toBe(true)
+        expect(result.current.urlState.selectedCommit).toBe('abc123')
+        expect(result.current.urlState.diffCommit).toBe('def456')
+      })
     })
 
-    it('should parse highlight line from URL', () => {
+    it('should parse highlight line from URL', async () => {
       mockSearchParams = new URLSearchParams('line=42')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.highlightLine).toBe(42)
+      await vi.waitFor(() => {
+        expect(result.current.urlState.highlightLine).toBe(42)
+      })
     })
 
-    it('should parse all params together', () => {
+    it('should parse all params together', async () => {
       mockSearchParams = new URLSearchParams(
         'q=MyClass&refs=1&drawer=0&tp=r&rp=r&ap=r&commit=abc&diff=def&line=10'
       )
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState).toMatchObject({
-        searchQuery: 'MyClass',
-        refsPanelOpen: true,
-        drawerOpen: false,
-        treePanel: 'right',
-        refPanel: 'right',
-        activePanel: 'right',
-        selectedCommit: 'abc',
-        diffCommit: 'def',
-        diffMode: true,
-        highlightLine: 10,
+      await vi.waitFor(() => {
+        expect(result.current.urlState).toMatchObject({
+          searchQuery: 'MyClass',
+          refsPanelOpen: true,
+          drawerOpen: false,
+          treePanel: 'right',
+          refPanel: 'right',
+          activePanel: 'right',
+          selectedCommit: 'abc',
+          diffCommit: 'def',
+          diffMode: true,
+          highlightLine: 10,
+        })
       })
     })
   })
@@ -259,61 +286,73 @@ describe('useBrowseState', () => {
   })
 
   describe('UI state exposure', () => {
-    it('should expose drawer state through uiState', () => {
+    it('should expose drawer state through uiState', async () => {
       mockSearchParams = new URLSearchParams('drawer=0')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.uiState.drawerOpen).toBe(false)
+      await vi.waitFor(() => {
+        expect(result.current.uiState.drawerOpen).toBe(false)
+      })
     })
 
-    it('should expose refs panel state through uiState', () => {
+    it('should expose refs panel state through uiState', async () => {
       mockSearchParams = new URLSearchParams('refs=1')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.uiState.refsPanelOpen).toBe(true)
+      await vi.waitFor(() => {
+        expect(result.current.uiState.refsPanelOpen).toBe(true)
+      })
     })
 
-    it('should expose search query through uiState', () => {
+    it('should expose search query through uiState', async () => {
       mockSearchParams = new URLSearchParams('q=Test')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.uiState.searchQuery).toBe('Test')
+      await vi.waitFor(() => {
+        expect(result.current.uiState.searchQuery).toBe('Test')
+      })
     })
   })
 
   describe('diff state exposure', () => {
-    it('should expose panel states through diffState', () => {
+    it('should expose panel states through diffState', async () => {
       mockSearchParams = new URLSearchParams('tp=r&rp=r&ap=r')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.diffState.treePanel).toBe('right')
-      expect(result.current.diffState.refPanel).toBe('right')
-      expect(result.current.diffState.activePanel).toBe('right')
+      await vi.waitFor(() => {
+        expect(result.current.diffState.treePanel).toBe('right')
+        expect(result.current.diffState.refPanel).toBe('right')
+        expect(result.current.diffState.activePanel).toBe('right')
+      })
     })
   })
 
   describe('backwards compatibility', () => {
-    it('should work with no URL params (all defaults)', () => {
+    it('should work with no URL params (all defaults)', async () => {
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.searchQuery).toBe('')
-      expect(result.current.urlState.drawerOpen).toBe(true)
-      expect(result.current.urlState.refsPanelOpen).toBe(false)
-      expect(result.current.urlState.treePanel).toBe('left')
-      expect(result.current.urlState.refPanel).toBe('left')
-      expect(result.current.urlState.activePanel).toBe('left')
-      expect(result.current.urlState.diffMode).toBe(false)
+      await vi.waitFor(() => {
+        expect(result.current.urlState.searchQuery).toBe('')
+        expect(result.current.urlState.drawerOpen).toBe(true)
+        expect(result.current.urlState.refsPanelOpen).toBe(false)
+        expect(result.current.urlState.treePanel).toBe('left')
+        expect(result.current.urlState.refPanel).toBe('left')
+        expect(result.current.urlState.activePanel).toBe('left')
+        expect(result.current.urlState.diffMode).toBe(false)
+      })
     })
 
-    it('should work with only legacy params (commit, line)', () => {
+    it('should work with only legacy params (commit, line)', async () => {
       mockSearchParams = new URLSearchParams('commit=abc123&line=50')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.selectedCommit).toBe('abc123')
-      expect(result.current.urlState.highlightLine).toBe(50)
-      // All new params should have defaults
-      expect(result.current.urlState.drawerOpen).toBe(true)
-      expect(result.current.urlState.refsPanelOpen).toBe(false)
+      await vi.waitFor(() => {
+        expect(result.current.urlState.selectedCommit).toBe('abc123')
+        expect(result.current.urlState.highlightLine).toBe(50)
+        // All new params should have defaults
+        expect(result.current.urlState.drawerOpen).toBe(true)
+        expect(result.current.urlState.refsPanelOpen).toBe(false)
+      })
     })
   })
 
@@ -939,40 +978,50 @@ describe('useBrowseState', () => {
   })
 
   describe('branch URL state', () => {
-    it('should parse branch from URL', () => {
+    it('should parse branch from URL', async () => {
       mockSearchParams = new URLSearchParams('branch=feature')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.selectedBranch).toBe('feature')
+      await vi.waitFor(() => {
+        expect(result.current.urlState.selectedBranch).toBe('feature')
+      })
     })
 
-    it('should default branch to null when not in URL', () => {
+    it('should default branch to null when not in URL', async () => {
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.selectedBranch).toBeNull()
+      await vi.waitFor(() => {
+        expect(result.current.urlState.selectedBranch).toBeNull()
+      })
     })
 
-    it('should parse diffBranch from URL', () => {
+    it('should parse diffBranch from URL', async () => {
       mockSearchParams = new URLSearchParams('branch=main&diffBranch=feature')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.diffBranch).toBe('feature')
+      await vi.waitFor(() => {
+        expect(result.current.urlState.diffBranch).toBe('feature')
+      })
     })
 
-    it('should default diffBranch to null when not in URL', () => {
+    it('should default diffBranch to null when not in URL', async () => {
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.diffBranch).toBeNull()
+      await vi.waitFor(() => {
+        expect(result.current.urlState.diffBranch).toBeNull()
+      })
     })
 
-    it('should parse branch with other params', () => {
+    it('should parse branch with other params', async () => {
       mockSearchParams = new URLSearchParams('q=MyClass&refs=1&branch=develop&commit=abc123')
       const { result } = renderHook(() => useBrowseState())
 
-      expect(result.current.urlState.selectedBranch).toBe('develop')
-      expect(result.current.urlState.searchQuery).toBe('MyClass')
-      expect(result.current.urlState.refsPanelOpen).toBe(true)
-      expect(result.current.urlState.selectedCommit).toBe('abc123')
+      await vi.waitFor(() => {
+        expect(result.current.urlState.selectedBranch).toBe('develop')
+        expect(result.current.urlState.searchQuery).toBe('MyClass')
+        expect(result.current.urlState.refsPanelOpen).toBe(true)
+        expect(result.current.urlState.selectedCommit).toBe('abc123')
+      })
     })
   })
 

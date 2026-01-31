@@ -176,6 +176,75 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
             del self._symbols[sid]
         return len(to_delete)
 
+    async def copy_symbols_to_file(
+        self,
+        source_file_id: int,
+        target_file_id: int,
+        target_commit_id: int,
+        target_repository_id: int,
+    ) -> int:
+        """Copy all symbols from source file to target file."""
+        source_symbols = [
+            s for s in self._symbols.values() if s.file_id == source_file_id
+        ]
+        if not source_symbols:
+            return 0
+
+        # Map old symbol IDs to new ones for parent_symbol_id remapping
+        old_to_new_id: dict[int, int] = {}
+
+        for source in source_symbols:
+            new_symbol = Symbol(
+                id=self._next_id,
+                file_id=target_file_id,
+                repository_id=target_repository_id,
+                commit_id=target_commit_id,
+                name=source.name,
+                kind=source.kind,
+                start_line=source.start_line,
+                start_column=source.start_column,
+                end_line=source.end_line,
+                end_column=source.end_column,
+                qualified_name=source.qualified_name,
+                scope=source.scope,
+                signature=source.signature,
+                docstring=source.docstring,
+                metadata=source.metadata,
+                parent_symbol_id=None,  # Will be remapped below
+            )
+            self._symbols[self._next_id] = new_symbol
+            if source.id is not None:
+                old_to_new_id[source.id] = self._next_id
+            self._next_id += 1
+
+        # Remap parent_symbol_id references
+        for source in source_symbols:
+            if source.parent_symbol_id is not None and source.id is not None:
+                new_id = old_to_new_id.get(source.id)
+                new_parent_id = old_to_new_id.get(source.parent_symbol_id)
+                if new_id is not None and new_parent_id is not None:
+                    old_symbol = self._symbols[new_id]
+                    self._symbols[new_id] = Symbol(
+                        id=old_symbol.id,
+                        file_id=old_symbol.file_id,
+                        repository_id=old_symbol.repository_id,
+                        commit_id=old_symbol.commit_id,
+                        name=old_symbol.name,
+                        kind=old_symbol.kind,
+                        start_line=old_symbol.start_line,
+                        start_column=old_symbol.start_column,
+                        end_line=old_symbol.end_line,
+                        end_column=old_symbol.end_column,
+                        qualified_name=old_symbol.qualified_name,
+                        scope=old_symbol.scope,
+                        signature=old_symbol.signature,
+                        docstring=old_symbol.docstring,
+                        metadata=old_symbol.metadata,
+                        parent_symbol_id=new_parent_id,
+                    )
+
+        return len(source_symbols)
+
     # Test helper methods
     def add(self, symbol: Symbol) -> Symbol:
         """Add a symbol for testing (convenience method)."""
@@ -426,6 +495,33 @@ class InMemoryFileRepository(FileRepositoryPort):
         # Return sorted by path
         return sorted(latest_by_path.values(), key=lambda f: f.path)
 
+    async def find_one_by_content_hash_in_repo(
+        self, repository_id: int, content_hash: str
+    ) -> File | None:
+        """Find first file with matching content hash within a repository."""
+        for file in self._files.values():
+            if (
+                file.repository_id == repository_id
+                and file.content_hash == content_hash
+            ):
+                return file
+        return None
+
+    async def get_content_hash_to_file_id_map(
+        self, repository_id: int
+    ) -> dict[str, int]:
+        """Load all content hashes for a repository into memory."""
+        result: dict[str, int] = {}
+        for file in self._files.values():
+            if (
+                file.repository_id == repository_id
+                and file.content_hash
+                and file.id is not None
+                and file.content_hash not in result
+            ):
+                result[file.content_hash] = file.id
+        return result
+
     # Test helper methods
     def add(self, file: File) -> None:
         """Add a file for testing."""
@@ -492,6 +588,31 @@ class InMemoryRepositoryRepository(RepositoryPort):
             del self._repositories[repository_id]
             return True
         return False
+
+    async def get_or_create(
+        self,
+        name: str,
+        url: str | None = None,
+        description: str | None = None,
+        default_branch: str | None = None,
+    ) -> tuple[Repository, bool]:
+        """Get existing repository by name, or create if not exists."""
+        # Check if exists
+        existing = await self.find_by_name(name)
+        if existing is not None:
+            return existing, False
+
+        # Create new (use defaults for required fields)
+        new_repo = Repository(
+            id=self._next_id,
+            name=name,
+            url=url or "",  # Repository requires non-None url
+            description=description,
+            default_branch=default_branch or "main",
+        )
+        self._repositories[self._next_id] = new_repo
+        self._next_id += 1
+        return new_repo, True
 
     def clear(self) -> None:
         """Clear all repositories."""
@@ -828,6 +949,43 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         # Apply updates
         self._references.update(updated_refs)
         return resolved_count
+
+    async def copy_references_to_file(
+        self,
+        source_file_id: int,
+        target_file_id: int,
+        target_commit_id: int,
+        target_repository_id: int,
+    ) -> int:
+        """Copy all references from source file to target file."""
+        source_refs = [
+            r for r in self._references.values() if r.source_file_id == source_file_id
+        ]
+        if not source_refs:
+            return 0
+
+        for source in source_refs:
+            new_ref = Reference(
+                id=self._next_id,
+                repository_id=target_repository_id,
+                commit_id=target_commit_id,
+                source_file_id=target_file_id,
+                source_line=source.source_line,
+                source_column=source.source_column,
+                source_end_column=source.source_end_column,
+                reference_text=source.reference_text,
+                reference_type=source.reference_type,
+                target_symbol_id=None,  # Will be resolved later
+                target_repository_id=None,
+                is_definition=source.is_definition,
+                is_write=source.is_write,
+                resolution_confidence=source.resolution_confidence,
+                metadata=source.metadata,
+            )
+            self._references[self._next_id] = new_ref
+            self._next_id += 1
+
+        return len(source_refs)
 
     # Test helper methods
     def add(self, reference: Reference) -> None:
