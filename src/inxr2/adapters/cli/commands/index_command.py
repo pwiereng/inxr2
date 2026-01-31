@@ -1128,6 +1128,8 @@ def _dict_to_symbol(
         "interface": SymbolKind.INTERFACE,
         "constant": SymbolKind.CONSTANT,
         "variable": SymbolKind.VARIABLE,
+        "field": SymbolKind.FIELD,
+        "property": SymbolKind.PROPERTY,
         "type": SymbolKind.NAMESPACE,  # Map type aliases to namespace for now
         # C-specific kinds
         "struct": SymbolKind.STRUCT,
@@ -1138,6 +1140,10 @@ def _dict_to_symbol(
         "enum_value": SymbolKind.ENUM_VALUE,
         "struct_field": SymbolKind.STRUCT_FIELD,
         "union_field": SymbolKind.UNION_FIELD,
+        # Java-specific kinds
+        "annotation": SymbolKind.ANNOTATION,
+        "record": SymbolKind.RECORD,
+        "constructor": SymbolKind.CONSTRUCTOR,
     }
 
     kind_str = d.get("kind", "function").lower()

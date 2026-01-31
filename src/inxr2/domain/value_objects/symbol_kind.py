@@ -31,3 +31,8 @@ class SymbolKind(str, Enum):
     ENUM_VALUE = "enum_value"
     STRUCT_FIELD = "struct_field"
     UNION_FIELD = "union_field"
+
+    # Java-specific kinds
+    ANNOTATION = "annotation"  # @interface definitions
+    RECORD = "record"  # Java 14+ record types
+    CONSTRUCTOR = "constructor"  # Constructor methods
