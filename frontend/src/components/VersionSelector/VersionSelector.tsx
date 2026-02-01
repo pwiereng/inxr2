@@ -31,12 +31,13 @@ export function VersionSelector({
   defaultBranch,
 }: VersionSelectorProps) {
   const [versions, setVersions] = useState<FileVersion[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true) // Start true to show loading until first fetch completes
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!repoName || !filePath) {
       setVersions([])
+      setLoading(false)
       return
     }
 
@@ -69,7 +70,7 @@ export function VersionSelector({
     return null
   }
 
-  // If only one version, don't show the selector
+  // If only one version, show static display (no dropdown needed)
   if (versions.length === 1) {
     const singleVersion = versions[0]
     return (

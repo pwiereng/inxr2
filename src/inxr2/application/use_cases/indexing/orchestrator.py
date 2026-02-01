@@ -100,10 +100,13 @@ class IndexRepositoryResponse:
         repository_name: Human-readable repository name
         branch: Branch that was indexed
         commits_indexed: Number of commits processed
-        files_total: Total files found across indexed commits
+        files_total: Total changed files found across indexed commits
         files_processed: Files successfully processed
         files_skipped: Files skipped (wrong language, too large, etc.)
         files_failed: Files that failed to process
+        files_unchanged: Files not processed because they didn't change from parent commit
+        files_at_head: Number of files at HEAD commit (total in repo)
+        lines_indexed: Approximate lines of code indexed
         symbols_found: Total symbols extracted
         references_found: Total references extracted
         references_resolved: References successfully resolved to targets
@@ -123,14 +126,17 @@ class IndexRepositoryResponse:
     files_processed: int
     files_skipped: int
     files_failed: int
-    symbols_found: int
-    references_found: int
-    references_resolved: int
-    files_reused: int
-    symbols_reused: int
-    references_reused: int
-    errors: list[str]
-    elapsed_seconds: float
+    files_unchanged: int = 0
+    files_at_head: int = 0
+    lines_indexed: int = 0
+    symbols_found: int = 0
+    references_found: int = 0
+    references_resolved: int = 0
+    files_reused: int = 0
+    symbols_reused: int = 0
+    references_reused: int = 0
+    errors: list[str] = field(default_factory=list)
+    elapsed_seconds: float = 0.0
     db_stats: DBQueryStats = field(default_factory=DBQueryStats)
 
     @property

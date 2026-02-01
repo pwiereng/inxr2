@@ -290,6 +290,8 @@ export default function Browse() {
                       selectedBranch={selectedBranch}
                       defaultBranch={repository.default_branch}
                       onBranchChange={actions.changeBranch}
+                      repoName={repoName}
+                      filePath={filePath}
                     />
                     <VersionSelector
                       repoName={repoName}
@@ -330,6 +332,8 @@ export default function Browse() {
                           selectedBranch={selectedBranch}
                           defaultBranch={repository.default_branch}
                           onBranchChange={actions.changeBranch}
+                          repoName={repoName!}
+                          filePath={filePath!}
                         />
                         <VersionSelector
                           repoName={repoName!}
@@ -348,6 +352,8 @@ export default function Browse() {
                           selectedBranch={diffBranch}
                           defaultBranch={repository.default_branch}
                           onBranchChange={actions.changeDiffBranch}
+                          repoName={repoName!}
+                          filePath={filePath!}
                         />
                         <VersionSelector
                           repoName={repoName!}
@@ -414,6 +420,8 @@ export default function Browse() {
                           selectedBranch={selectedBranch}
                           defaultBranch={repository.default_branch}
                           onBranchChange={actions.changeBranch}
+                          repoName={repoName!}
+                          filePath={filePath!}
                         />
                         <VersionSelector
                           repoName={repoName!}
@@ -463,6 +471,8 @@ export default function Browse() {
                           selectedBranch={diffBranch}
                           defaultBranch={repository.default_branch}
                           onBranchChange={actions.changeDiffBranch}
+                          repoName={repoName!}
+                          filePath={filePath!}
                         />
                         <VersionSelector
                           repoName={repoName!}

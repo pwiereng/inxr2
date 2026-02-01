@@ -188,11 +188,30 @@ class PostgresFileRepository(FileRepositoryPort):
     ) -> File | None:
         """Find file by repository, path, and commit hash (for time travel).
 
-        This is useful when the caller has a commit hash instead of commit_id.
-        Note: Same commit hash may exist for multiple branches, but file content
-        is identical, so we just take the first match.
+        With delta indexing, a file may not have a record at every commit.
+        This method uses fallback lookup: find the most recent file version
+        at or before the target commit.
+
+        The logic is:
+        1. First, try exact match (file was modified at this commit)
+        2. If not found, find the most recent version where commit_date <= target
+
+        This ensures time-travel works correctly even when files weren't
+        modified at the target commit.
         """
-        result = await self.session.execute(
+        # First, get the target commit's date for fallback lookup
+        target_commit_result = await self.session.execute(
+            select(CommitModel).where(
+                CommitModel.repository_id == repository_id,
+                CommitModel.commit_hash == commit_hash,
+            )
+        )
+        target_commit = target_commit_result.scalar_one_or_none()
+        if target_commit is None:
+            return None
+
+        # Try exact match first (most common case - file was modified at this commit)
+        exact_result = await self.session.execute(
             select(FileModel)
             .join(CommitModel, FileModel.commit_id == CommitModel.id)
             .where(
@@ -202,8 +221,25 @@ class PostgresFileRepository(FileRepositoryPort):
             )
             .limit(1)
         )
-        model = result.scalar_one_or_none()
-        return self.mapper.to_domain(model) if model else None
+        exact_model = exact_result.scalar_one_or_none()
+        if exact_model is not None:
+            return self.mapper.to_domain(exact_model)
+
+        # Fallback: find the most recent version at or before the target commit
+        # This handles delta-indexed files that weren't modified at target commit
+        fallback_result = await self.session.execute(
+            select(FileModel)
+            .join(CommitModel, FileModel.commit_id == CommitModel.id)
+            .where(
+                FileModel.repository_id == repository_id,
+                FileModel.path == path,
+                CommitModel.commit_date <= target_commit.commit_date,
+            )
+            .order_by(CommitModel.commit_date.desc(), CommitModel.id.desc())
+            .limit(1)
+        )
+        fallback_model = fallback_result.scalar_one_or_none()
+        return self.mapper.to_domain(fallback_model) if fallback_model else None
 
     async def list_latest_by_branch(
         self, repository_id: int, branch: str

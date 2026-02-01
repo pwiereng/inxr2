@@ -178,6 +178,9 @@ class IndexingStats:
     files_processed: int = 0
     files_skipped: int = 0
     files_failed: int = 0
+    files_unchanged: int = 0  # Files not processed because they didn't change
+    files_at_head: int = 0  # Number of files at HEAD commit (total in repo)
+    lines_indexed: int = 0  # Approximate lines of code indexed
     symbols_found: int = 0
     references_found: int = 0
     references_resolved: int = 0
@@ -468,6 +471,9 @@ async def _run_full_index_async(
                 files_processed=response.files_processed,
                 files_skipped=response.files_skipped,
                 files_failed=response.files_failed,
+                files_unchanged=response.files_unchanged,
+                files_at_head=response.files_at_head,
+                lines_indexed=response.lines_indexed,
                 symbols_found=response.symbols_found,
                 references_found=response.references_found,
                 references_resolved=response.references_resolved,
@@ -483,6 +489,10 @@ async def _run_full_index_async(
                 stats,
                 commits_indexed=response.commits_indexed,
                 elapsed_seconds=response.elapsed_seconds,
+                repo_name=repo_path.name,
+                branch=current_branch,
+                max_history=max_history,
+                since_days=since_days,
             )
 
             await session.commit()
@@ -715,6 +725,9 @@ async def _run_incremental_index_async(
                 files_processed=response.files_processed,
                 files_skipped=response.files_skipped,
                 files_failed=response.files_failed,
+                files_unchanged=response.files_unchanged,
+                files_at_head=response.files_at_head,
+                lines_indexed=response.lines_indexed,
                 symbols_found=response.symbols_found,
                 references_found=response.references_found,
                 references_resolved=response.references_resolved,
@@ -728,8 +741,11 @@ async def _run_incremental_index_async(
             _print_summary(
                 console,
                 stats,
+                is_incremental=True,
                 commits_indexed=response.commits_indexed,
                 elapsed_seconds=response.elapsed_seconds,
+                repo_name=repo_name,
+                branch=current_branch,
             )
 
             await session.commit()
@@ -901,6 +917,10 @@ def _print_summary(
     is_incremental: bool = False,
     commits_indexed: int | None = None,
     elapsed_seconds: float | None = None,
+    repo_name: str | None = None,
+    branch: str | None = None,
+    max_history: int | None = None,
+    since_days: int | None = None,
 ) -> None:
     """Print indexing summary."""
     console.print()
@@ -912,9 +932,29 @@ def _print_summary(
     table.add_column("Metric", style="dim")
     table.add_column("Value", justify="right")
 
+    # Show repo/branch info
+    if repo_name:
+        table.add_row("Repository", f"[bold]{repo_name}[/bold]")
+    if branch:
+        table.add_row("Branch", f"[cyan]{branch}[/cyan]")
+    # Show indexing range
+    if since_days is not None:
+        table.add_row("Range", f"[dim]last {since_days} days[/dim]")
+    elif max_history is not None:
+        table.add_row("Range", f"[dim]last {max_history} commits[/dim]")
+
+    if repo_name or branch:
+        table.add_row("", "")  # Separator after repo info
+
     if commits_indexed is not None:
         table.add_row("Commits Indexed", f"[magenta]{commits_indexed}[/magenta]")
+    if stats.files_at_head > 0:
+        table.add_row("Files at HEAD", f"[cyan]{stats.files_at_head:,}[/cyan]")
+    if stats.lines_indexed > 0:
+        table.add_row("Lines Indexed", f"[cyan]{stats.lines_indexed:,}[/cyan]")
     table.add_row("Files Processed", f"[green]{stats.files_succeeded}[/green]")
+    if stats.files_unchanged > 0:
+        table.add_row("Files Unchanged", f"[dim]{stats.files_unchanged}[/dim]")
     if stats.files_skipped > 0:
         table.add_row("Files Skipped", f"[dim]{stats.files_skipped}[/dim]")
     if stats.files_failed > 0:

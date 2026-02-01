@@ -154,6 +154,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             "files_processed": 0,
             "files_skipped": 0,
             "files_failed": 0,
+            "files_at_head": 0,
+            "lines_indexed": 0,
             "symbols_found": 0,
             "references_found": 0,
             "references_resolved": 0,
@@ -179,7 +181,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         assert repo_id is not None, "Repository must have an ID after save"
 
         # Step 2: Get commits to process
-        # list_commits returns commits from oldest to newest
+        # list_commits returns commits from oldest to newest, we reverse for HEAD-first
         commits_data = self._git_service.list_commits(
             repo_path=request.repository_path,
             branch=request.branch or "main",
@@ -214,21 +216,39 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 }
             ]
 
+        # Reverse commits for HEAD-first indexing:
+        # - HEAD (newest) is processed first with ALL files
+        # - Older commits use delta indexing (only changed files)
+        # This ensures all files have records, and time-travel queries work correctly
+        commits_data = list(reversed(commits_data))
+
         # Step 3: Build content-hash cache for optimization
         content_hash_cache = await self._file_repo.get_content_hash_to_file_id_map(
             repository_id=repo_id
         )
         stats["db_stats"].selects += 1
 
-        # Step 4: Count total files across all commits (for progress)
+        # Step 4: Count total files to process (for progress)
+        # HEAD commit: ALL files; other commits: only changed files
         total_files = 0
-        for commit_data in commits_data:
-            file_paths = self._git_service.list_files(
-                repo_path=request.repository_path,
-                commit_hash=commit_data["hash"],
-            )
-            total_files += len(file_paths)
+        for i, commit_data in enumerate(commits_data):
+            if i == 0:
+                # HEAD commit: count all files
+                file_paths = self._git_service.list_files(
+                    repo_path=request.repository_path,
+                    commit_hash=commit_data["hash"],
+                )
+                total_files += len(file_paths)
+                stats["files_at_head"] = len(file_paths)  # Track HEAD file count
+            else:
+                # Older commits: count only changed files
+                changed = self._git_service.get_changed_files_in_commit(
+                    repo_path=request.repository_path,
+                    commit_hash=commit_data["hash"],
+                )
+                total_files += len(changed["added"]) + len(changed["modified"])
         stats["files_total"] = total_files
+        stats["files_unchanged"] = 0  # Will be tracked per-commit
 
         # Report initial progress
         if progress_callback:
@@ -243,9 +263,12 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 )
             )
 
-        # Step 5: Process each commit
+        # Step 5: Process each commit (HEAD first, then older commits)
         last_commit_hash: str | None = None
-        for commit_data in commits_data:
+        for i, commit_data in enumerate(commits_data):
+            # First commit is HEAD - process ALL files
+            # Subsequent commits use delta indexing (only changed files)
+            is_head_commit = i == 0
             await self._process_commit(
                 repository_id=repo_id,
                 commit_data=commit_data,
@@ -253,6 +276,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 content_hash_cache=content_hash_cache,
                 stats=stats,
                 progress_callback=progress_callback,
+                is_head_commit=is_head_commit,
             )
             stats["commits_indexed"] += 1
             last_commit_hash = commit_data["hash"]
@@ -312,6 +336,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             files_processed=stats["files_processed"],
             files_skipped=stats["files_skipped"],
             files_failed=stats["files_failed"],
+            files_unchanged=stats.get("files_unchanged", 0),
+            files_at_head=stats.get("files_at_head", 0),
+            lines_indexed=stats.get("lines_indexed", 0),
             symbols_found=stats["symbols_found"],
             references_found=stats["references_found"],
             references_resolved=stats["references_resolved"],
@@ -341,6 +368,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             "files_processed": 0,
             "files_skipped": 0,
             "files_failed": 0,
+            "files_at_head": 0,
+            "lines_indexed": 0,
             "symbols_found": 0,
             "references_found": 0,
             "references_resolved": 0,
@@ -426,15 +455,30 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                     continue
             commits_to_process.append(commit_data)
 
-        # Count total files across all commits to process (for progress)
+        # Reverse for HEAD-first indexing (newest commit processed first)
+        commits_to_process = list(reversed(commits_to_process))
+
+        # Count total files to process (for progress)
+        # HEAD commit: ALL files; other commits: only changed files
         total_files = 0
-        for commit_data in commits_to_process:
-            file_paths = self._git_service.list_files(
-                repo_path=request.repository_path,
-                commit_hash=commit_data["hash"],
-            )
-            total_files += len(file_paths)
+        for i, commit_data in enumerate(commits_to_process):
+            if i == 0:
+                # HEAD commit: count all files
+                file_paths = self._git_service.list_files(
+                    repo_path=request.repository_path,
+                    commit_hash=commit_data["hash"],
+                )
+                total_files += len(file_paths)
+                stats["files_at_head"] = len(file_paths)  # Track HEAD file count
+            else:
+                # Older commits: count only changed files
+                changed = self._git_service.get_changed_files_in_commit(
+                    repo_path=request.repository_path,
+                    commit_hash=commit_data["hash"],
+                )
+                total_files += len(changed["added"]) + len(changed["modified"])
         stats["files_total"] = total_files
+        stats["files_unchanged"] = 0  # Will be tracked per-commit
 
         # Report initial progress
         if progress_callback:
@@ -449,9 +493,10 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 )
             )
 
-        # Process each commit
+        # Process each commit (HEAD first, then older commits)
         last_commit_hash: str | None = None
-        for commit_data in commits_to_process:
+        for i, commit_data in enumerate(commits_to_process):
+            is_head_commit = i == 0
             await self._process_commit(
                 repository_id=request.repository_id,
                 commit_data=commit_data,
@@ -459,6 +504,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 content_hash_cache=content_hash_cache,
                 stats=stats,
                 progress_callback=progress_callback,
+                is_head_commit=is_head_commit,
             )
             stats["commits_indexed"] += 1
             last_commit_hash = commit_data["hash"]
@@ -516,6 +562,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             files_processed=stats["files_processed"],
             files_skipped=stats["files_skipped"],
             files_failed=stats["files_failed"],
+            files_unchanged=stats.get("files_unchanged", 0),
+            files_at_head=stats.get("files_at_head", 0),
+            lines_indexed=stats.get("lines_indexed", 0),
             symbols_found=stats["symbols_found"],
             references_found=stats["references_found"],
             references_resolved=stats["references_resolved"],
@@ -535,8 +584,20 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         content_hash_cache: dict[str, int],
         stats: dict,
         progress_callback: ProgressCallback | None = None,
+        is_head_commit: bool = False,
     ) -> None:
-        """Process a single commit."""
+        """Process a single commit.
+
+        Args:
+            repository_id: Database ID of the repository
+            commit_data: Git commit information dict
+            request: The indexing request
+            content_hash_cache: Cache for content-hash optimization
+            stats: Statistics dict to update
+            progress_callback: Optional progress callback
+            is_head_commit: If True, process ALL files (not just changed ones).
+                           This ensures complete coverage at HEAD for time-travel.
+        """
         from datetime import UTC, datetime
 
         commit_hash_str = commit_data["hash"]
@@ -549,7 +610,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         stats["db_stats"].selects += 1
 
         if existing_commit is not None:
-            # Commit already indexed, skip it
+            # Commit already indexed, skip creating but still link to current branch
             commit_id = existing_commit.id
             assert commit_id is not None
             # Still need to process files (they might have been partially indexed)
@@ -592,15 +653,50 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             commit_id = db_commit.id
             assert commit_id is not None, "Commit must have an ID after save"
 
-        # Get files in this commit
-        repo_path = getattr(request, "repository_path", Path("."))
-        file_paths = self._git_service.list_files(
-            repo_path=repo_path,
-            commit_hash=commit_data["hash"],
+        # Link commit to the current branch being indexed
+        branch = request.branch or "main"
+        await self._commit_repo.link_commit_to_branch(
+            repository_id=repository_id,
+            commit_id=commit_id,
+            branch=branch,
         )
+        stats["db_stats"].inserts += 1
+
+        repo_path = getattr(request, "repository_path", Path("."))
+
+        if is_head_commit:
+            # HEAD commit: process ALL files to ensure complete coverage
+            # This is essential for time-travel queries to work correctly
+            files_to_process = self._git_service.list_files(
+                repo_path=repo_path,
+                commit_hash=commit_data["hash"],
+            )
+            # No unchanged files for HEAD - we process everything
+        else:
+            # Older commits: delta indexing - only process changed files
+            # Unchanged files already have records from HEAD or later commits
+            changed = self._git_service.get_changed_files_in_commit(
+                repo_path=repo_path,
+                commit_hash=commit_data["hash"],
+            )
+
+            # Only process added and modified files (deleted files don't need processing)
+            files_to_process = changed["added"] + changed["modified"]
+
+            # Track unchanged files (all files minus changed files)
+            all_files = self._git_service.list_files(
+                repo_path=repo_path,
+                commit_hash=commit_data["hash"],
+            )
+            unchanged_count = (
+                len(all_files) - len(files_to_process) - len(changed["deleted"])
+            )
+            stats["files_unchanged"] = stats.get("files_unchanged", 0) + max(
+                0, unchanged_count
+            )
 
         # Process each file
-        for file_path_str in file_paths:
+        for file_path_str in files_to_process:
             await self._process_file(
                 repository_id=repository_id,
                 commit_id=commit_id,
@@ -767,6 +863,10 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                     stats["files_skipped"] += 1
 
             stats["files_processed"] += 1
+            # Track lines indexed (line_count was calculated when creating file_entity)
+            stats["lines_indexed"] = (
+                stats.get("lines_indexed", 0) + file_entity.line_count
+            )
 
         except Exception as e:
             stats["files_failed"] += 1

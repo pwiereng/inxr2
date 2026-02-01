@@ -65,6 +65,21 @@ class FakeGitService:
             "abc123": ["src/main.py", "src/utils.py"],
             "def456": ["src/main.py", "src/utils.py", "src/new_file.py"],
         }
+        # Changed files per commit for delta indexing
+        # First commit: all files are "added"
+        # Second commit: only new_file.py is added
+        self.changed_files_in_commit: dict[str, dict[str, list[str]]] = {
+            "abc123": {
+                "added": ["src/main.py", "src/utils.py"],
+                "modified": [],
+                "deleted": [],
+            },
+            "def456": {
+                "added": ["src/new_file.py"],
+                "modified": [],
+                "deleted": [],
+            },
+        }
 
     def get_repository_info(self, repo_path: Path) -> dict:
         """Get repository information."""
@@ -111,6 +126,14 @@ class FakeGitService:
     ) -> str:
         """Get file content at specific commit."""
         return f"# Content of {file_path} at {commit_hash}\nprint('hello')"
+
+    def get_changed_files_in_commit(
+        self, repo_path: Path, commit_hash: str
+    ) -> dict[str, list[str]]:
+        """Get files changed in a single commit (vs its parent)."""
+        return self.changed_files_in_commit.get(
+            commit_hash, {"added": [], "modified": [], "deleted": []}
+        )
 
 
 class FakeParserService:
@@ -750,14 +773,10 @@ class TestGitServiceIntegration:
                         "short_hash": "tz123",
                         "author_name": "Test User",
                         "author_email": "test@example.com",
-                        "author_date": datetime(
-                            2024, 1, 1, 12, 0, 0, tzinfo=UTC
-                        ),
+                        "author_date": datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
                         "committer_name": "Test User",
                         "committer_email": "test@example.com",
-                        "commit_date": datetime(
-                            2024, 1, 1, 12, 0, 0, tzinfo=UTC
-                        ),
+                        "commit_date": datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
                         "message": "Commit with timezone",
                         "parent_hashes": [],
                     },
@@ -941,6 +960,11 @@ class TestGitServiceIntegration:
             "abc123": ["main.c"],
             "def456": ["main.c"],
         }
+        # Also update changed_files_in_commit for delta indexing
+        git_service.changed_files_in_commit = {
+            "abc123": {"added": ["main.c"], "modified": [], "deleted": []},
+            "def456": {"added": [], "modified": [], "deleted": []},  # No changes
+        }
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
@@ -1033,6 +1057,11 @@ class TestGitServiceIntegration:
             "abc123": ["main.c"],
             "def456": ["main.c"],
         }
+        # Also update changed_files_in_commit for delta indexing
+        git_service.changed_files_in_commit = {
+            "abc123": {"added": ["main.c"], "modified": [], "deleted": []},
+            "def456": {"added": [], "modified": [], "deleted": []},  # No changes
+        }
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
@@ -1116,3 +1145,429 @@ class TestGitServiceIntegration:
         assert (
             len(commits_after_second) == first_commit_count
         ), "Commits should not be duplicated on re-index"
+
+
+class TestHeadFirstIndexing:
+    """Tests for HEAD-first indexing optimization.
+
+    HEAD-first indexing ensures:
+    1. HEAD (newest commit) is processed first with ALL files
+    2. Older commits use delta indexing (only changed files)
+
+    This guarantees complete file coverage at HEAD for time-travel queries.
+    """
+
+    @pytest.mark.asyncio
+    async def test_head_first_processes_all_files_at_head(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """
+        Test that HEAD commit processes ALL files, not just changed ones.
+
+        With HEAD-first indexing:
+        - HEAD (def456): Processes ALL files (main.py, utils.py, new_file.py)
+        - Older (abc123): Only processes changed files (main.py, utils.py - added)
+
+        Total: 5 files processed (3 at HEAD + 2 at older commit)
+        """
+
+        class TrackingGitService(FakeGitService):
+            """Git service that tracks which files are processed."""
+
+            def __init__(self) -> None:
+                super().__init__()
+                self.files_processed_per_commit: dict[str, list[str]] = {}
+
+            def get_file_content(
+                self, repo_path: Path, commit_hash: str, file_path: str
+            ) -> str:
+                # Track which files were actually processed
+                if commit_hash not in self.files_processed_per_commit:
+                    self.files_processed_per_commit[commit_hash] = []
+                self.files_processed_per_commit[commit_hash].append(file_path)
+                return super().get_file_content(repo_path, commit_hash, file_path)
+
+        tracking_git = TrackingGitService()
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=tracking_git,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert - HEAD (def456) processes ALL files
+        assert sorted(tracking_git.files_processed_per_commit.get("def456", [])) == [
+            "src/main.py",
+            "src/new_file.py",
+            "src/utils.py",
+        ], "HEAD commit should process ALL files"
+
+        # Older commit (abc123) processes only changed files (both added in initial)
+        assert sorted(tracking_git.files_processed_per_commit.get("abc123", [])) == [
+            "src/main.py",
+            "src/utils.py",
+        ], "Older commit should process only changed files"
+
+        # Total: 3 at HEAD + 2 at older = 5 files
+        assert response.files_processed == 5, "Should process 5 files total"
+
+    @pytest.mark.asyncio
+    async def test_head_first_delta_for_older_commits(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that older commits use delta indexing (only changed files)."""
+        from datetime import datetime
+
+        # Create a git service with 3 commits
+        three_commit_git = FakeGitService(
+            commits=[
+                {
+                    "hash": "commit1",
+                    "short_hash": "commit1",
+                    "author_name": "Test User",
+                    "author_email": "test@example.com",
+                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "committer_name": "Test User",
+                    "committer_email": "test@example.com",
+                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "message": "Initial",
+                    "parent_hashes": [],
+                },
+                {
+                    "hash": "commit2",
+                    "short_hash": "commit2",
+                    "author_name": "Test User",
+                    "author_email": "test@example.com",
+                    "author_date": datetime(2024, 1, 2, 0, 0, 0),
+                    "committer_name": "Test User",
+                    "committer_email": "test@example.com",
+                    "commit_date": datetime(2024, 1, 2, 0, 0, 0),
+                    "message": "Add file",
+                    "parent_hashes": ["commit1"],
+                },
+                {
+                    "hash": "commit3",
+                    "short_hash": "commit3",
+                    "author_name": "Test User",
+                    "author_email": "test@example.com",
+                    "author_date": datetime(2024, 1, 3, 0, 0, 0),
+                    "committer_name": "Test User",
+                    "committer_email": "test@example.com",
+                    "commit_date": datetime(2024, 1, 3, 0, 0, 0),
+                    "message": "HEAD",
+                    "parent_hashes": ["commit2"],
+                },
+            ]
+        )
+        three_commit_git.files_in_commit = {
+            "commit1": ["a.py"],
+            "commit2": ["a.py", "b.py"],
+            "commit3": ["a.py", "b.py", "c.py"],
+        }
+        three_commit_git.changed_files_in_commit = {
+            "commit1": {"added": ["a.py"], "modified": [], "deleted": []},
+            "commit2": {"added": ["b.py"], "modified": [], "deleted": []},
+            "commit3": {"added": ["c.py"], "modified": [], "deleted": []},
+        }
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=three_commit_git,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert
+        # HEAD (commit3): ALL files → 3 processed
+        # commit2: only b.py (added) → 1 processed
+        # commit1: only a.py (added) → 1 processed
+        # Total: 5 files processed
+        assert response.files_processed == 5, "Should process 5 files"
+
+        # Unchanged files:
+        # HEAD: 0 (we process all)
+        # commit2: 1 unchanged (a.py)
+        # commit1: 0 (all files are "added")
+        assert response.files_unchanged == 1, "Should have 1 unchanged file"
+
+    @pytest.mark.asyncio
+    async def test_head_first_single_commit_processes_all(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that a single commit (HEAD only) processes all files."""
+        from datetime import datetime
+
+        single_commit_git = FakeGitService(
+            commits=[
+                {
+                    "hash": "only",
+                    "short_hash": "only",
+                    "author_name": "Test User",
+                    "author_email": "test@example.com",
+                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "committer_name": "Test User",
+                    "committer_email": "test@example.com",
+                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "message": "Only commit",
+                    "parent_hashes": [],
+                },
+            ]
+        )
+        single_commit_git.files_in_commit = {
+            "only": ["a.py", "b.py", "c.py"],
+        }
+        single_commit_git.changed_files_in_commit = {
+            "only": {"added": ["a.py", "b.py", "c.py"], "modified": [], "deleted": []},
+        }
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=single_commit_git,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert - single commit processes all files
+        assert response.files_processed == 3, "Should process all 3 files"
+        assert response.files_unchanged == 0, "No unchanged files for single commit"
+
+
+class TestBranchCommitsPopulation:
+    """Tests for branch_commits table population during indexing."""
+
+    @pytest.fixture
+    def repository_adapter(self) -> InMemoryRepositoryRepository:
+        return InMemoryRepositoryRepository()
+
+    @pytest.fixture
+    def commit_repo(self) -> InMemoryCommitRepository:
+        return InMemoryCommitRepository()
+
+    @pytest.fixture
+    def file_repo(self) -> InMemoryFileRepository:
+        return InMemoryFileRepository()
+
+    @pytest.fixture
+    def symbol_repo(self) -> InMemorySymbolRepository:
+        return InMemorySymbolRepository()
+
+    @pytest.fixture
+    def reference_repo(self) -> InMemoryReferenceRepository:
+        return InMemoryReferenceRepository()
+
+    @pytest.fixture
+    def index_status_repo(self) -> InMemoryIndexStatusRepository:
+        return InMemoryIndexStatusRepository()
+
+    @pytest.fixture
+    def parser_service(self) -> FakeParserService:
+        return FakeParserService()
+
+    @pytest.mark.asyncio
+    async def test_full_index_populates_branch_commits(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that full indexing populates the branch_commits junction table."""
+        git_service = FakeGitService()
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert - branch_commits should be populated
+        assert response.commits_indexed > 0
+
+        # Check that commits are linked to the branch
+        for commit in commit_repo._commits.values():
+            if commit.id is not None:
+                branches = await commit_repo.get_branches_for_commit(commit.id)
+                assert (
+                    "main" in branches
+                ), f"Commit {commit.id} should be linked to main branch"
+
+    @pytest.mark.asyncio
+    async def test_incremental_index_populates_branch_commits(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that incremental indexing also populates branch_commits."""
+        git_service = FakeGitService()
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        # First do a full index
+        full_request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+        )
+        full_response = await orchestrator.index_repository(full_request)
+        repo_id = full_response.repository_id
+
+        # Now do incremental index
+        incremental_request = IncrementalIndexRequest(
+            repository_id=repo_id,
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+        )
+        await orchestrator.index_incremental(incremental_request)
+
+        # Assert - all commits should be linked to the branch
+        for commit in commit_repo._commits.values():
+            if commit.id is not None:
+                branches = await commit_repo.get_branches_for_commit(commit.id)
+                assert "main" in branches
+
+    @pytest.mark.asyncio
+    async def test_indexing_different_branches_creates_separate_links(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that indexing different branches creates correct branch links."""
+        git_service = FakeGitService()
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        # Index main branch
+        main_request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+        )
+        await orchestrator.index_repository(main_request)
+
+        # Index feature branch (same commits, different branch name)
+        feature_request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="feature",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+        )
+        await orchestrator.index_repository(feature_request)
+
+        # Assert - commits should be linked to both branches
+        for commit in commit_repo._commits.values():
+            if commit.id is not None:
+                branches = await commit_repo.get_branches_for_commit(commit.id)
+                assert "main" in branches, "Commit should be linked to main"
+                assert "feature" in branches, "Commit should also be linked to feature"
