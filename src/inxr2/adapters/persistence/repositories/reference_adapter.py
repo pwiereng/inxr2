@@ -249,12 +249,12 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                         SELECT s.id
                         FROM symbols s
                         JOIN files sf ON s.file_id = sf.id
-                        JOIN files rf ON r.file_id = rf.id
+                        JOIN files rf ON r.source_file_id = rf.id
                         WHERE s.name = r.reference_text
                           AND s.repository_id = r.repository_id
                           AND s.commit_id = r.commit_id
                         ORDER BY
-                            (s.file_id = r.file_id) DESC,
+                            (s.file_id = r.source_file_id) DESC,
                             (sf.language = rf.language) DESC,
                             s.id
                         LIMIT 1
@@ -281,11 +281,11 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                         SELECT s.id
                         FROM symbols s
                         JOIN files sf ON s.file_id = sf.id
-                        JOIN files rf ON r.file_id = rf.id
+                        JOIN files rf ON r.source_file_id = rf.id
                         WHERE s.name = r.reference_text
                           AND s.repository_id = r.repository_id
                         ORDER BY
-                            (s.file_id = r.file_id) DESC,
+                            (s.file_id = r.source_file_id) DESC,
                             (sf.language = rf.language) DESC,
                             s.id
                         LIMIT 1

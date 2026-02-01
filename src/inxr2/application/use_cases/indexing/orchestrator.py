@@ -146,8 +146,16 @@ class IndexRepositoryResponse:
 
     @property
     def files_succeeded(self) -> int:
-        """Calculate successfully processed files (processed - failed)."""
-        return max(0, self.files_processed - self.files_failed)
+        """Number of successfully processed files.
+
+        With the current counting logic:
+        - files_processed: incremented only for successfully parsed/reused files
+        - files_failed: incremented for files that threw exceptions
+        - files_skipped: incremented for unsupported languages
+
+        So files_succeeded = files_processed (they're equivalent now).
+        """
+        return self.files_processed
 
     @property
     def has_errors(self) -> bool:

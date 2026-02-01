@@ -943,23 +943,25 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         1. Same file - most likely the correct local symbol
         2. Same language - cross-file but same language preferred
         3. Symbol ID - deterministic tiebreaker for consistency
+
+        This matches the real DB implementation which only selects refs
+        that have a matching symbol (via JOIN), so batch_size limits
+        the number of resolvable refs processed, not just examined.
         """
         if self._symbol_repo is None:
             return 0
 
         resolved_count = 0
         updated_refs: dict[int, Reference] = {}
-        processed = 0
 
         for ref_id, ref in self._references.items():
-            if processed >= batch_size:
+            # Stop when we've resolved batch_size refs
+            if resolved_count >= batch_size:
                 break
 
             # Skip if already resolved or wrong repository
             if ref.target_symbol_id is not None or ref.repository_id != repository_id:
                 continue
-
-            processed += 1
 
             # Find all matching symbols
             candidates: list[Symbol] = []

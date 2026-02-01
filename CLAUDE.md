@@ -309,7 +309,7 @@ def test_search_symbols():
     # Test use case without database
 ```
 
-See `tests/unit/application/test_use_cases.py` for complete examples.
+See `tests/unit/application/test_resolve_references_use_case.py` for complete examples.
 
 ## Project Structure
 

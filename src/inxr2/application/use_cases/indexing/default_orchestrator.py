@@ -810,6 +810,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             if optimization_result.optimization_applied:
                 # Reused symbols/references from donor file
                 stats["files_reused"] += 1
+                stats["files_processed"] += 1
                 stats["symbols_reused"] += optimization_result.symbols_copied
                 stats["references_reused"] += optimization_result.references_copied
                 stats["symbols_found"] += optimization_result.symbols_copied
@@ -820,6 +821,10 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 stats["db_stats"].inserts += (
                     optimization_result.symbols_copied
                     + optimization_result.references_copied
+                )
+                # Track lines indexed
+                stats["lines_indexed"] = (
+                    stats.get("lines_indexed", 0) + file_entity.line_count
                 )
                 # Add to cache for future files
                 content_hash_cache[content_hash] = file_id
@@ -891,14 +896,13 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
                     # Add to cache
                     content_hash_cache[content_hash] = file_id
+                    stats["files_processed"] += 1
+                    # Track lines indexed
+                    stats["lines_indexed"] = (
+                        stats.get("lines_indexed", 0) + file_entity.line_count
+                    )
                 else:
                     stats["files_skipped"] += 1
-
-            stats["files_processed"] += 1
-            # Track lines indexed (line_count was calculated when creating file_entity)
-            stats["lines_indexed"] = (
-                stats.get("lines_indexed", 0) + file_entity.line_count
-            )
 
         except Exception as e:
             stats["files_failed"] += 1
