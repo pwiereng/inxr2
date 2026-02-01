@@ -224,7 +224,8 @@ class JavaParser(BaseLanguageParser):
                     "is_abstract": is_abstract(modifiers),
                     "is_final": is_final(modifiers),
                     "is_static": is_static(modifiers),
-                    "is_inner": is_inner,
+                    # In Java, static nested classes are not "inner" classes
+                    "is_inner": is_inner and not is_static(modifiers),
                 }
             )
 
@@ -610,11 +611,20 @@ class JavaParser(BaseLanguageParser):
                     "void_type",
                     "generic_type",
                     "array_type",
+                    "integral_type",
+                    "floating_point_type",
+                    "boolean_type",
                 ):
                     if child.type == "void_type":
                         return_type = "void"
                     else:
                         return_type = get_text(child)
+
+            # Fallback: try to get return type from the "type" field
+            if return_type is None:
+                type_node = node.child_by_field_name("type")
+                if type_node is not None:
+                    return_type = get_text(type_node)
 
             if not method_name:
                 return
@@ -641,7 +651,12 @@ class JavaParser(BaseLanguageParser):
                     "qualified_name": f"{scope}.{method_name}",
                     "signature": signature,
                     "is_static": is_static(modifiers),
-                    "is_abstract": is_abstract(modifiers) or is_interface,
+                    # Interface methods are abstract only if explicitly abstract or lacking a body
+                    "is_abstract": is_abstract(modifiers)
+                    or (
+                        is_interface
+                        and not any(child.type == "block" for child in node.children)
+                    ),
                 }
             )
 

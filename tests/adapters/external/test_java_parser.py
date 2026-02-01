@@ -115,6 +115,8 @@ public class Outer {
         assert len(static_inner) == 1
         assert static_inner[0]["scope"] == "Outer"
         assert static_inner[0]["is_static"] is True
+        # Static nested classes are NOT inner classes in Java terminology
+        assert static_inner[0]["is_inner"] is False
 
 
 class TestJavaInterfaces:
@@ -170,6 +172,14 @@ public interface Vehicle {
         interface_symbols = [s for s in symbols if s["name"] == "Vehicle"]
         assert len(interface_symbols) == 1
         assert interface_symbols[0]["kind"] == "interface"
+
+        # Check that abstract method (no body) is marked abstract
+        start_method = [s for s in symbols if s["name"] == "start"][0]
+        assert start_method["is_abstract"] is True
+
+        # Check that default method (has body) is NOT marked abstract
+        stop_method = [s for s in symbols if s["name"] == "stop"][0]
+        assert stop_method["is_abstract"] is False
 
     @pytest.mark.asyncio
     async def test_parse_interface_constants(
@@ -228,6 +238,11 @@ public class Calculator {
         add_method = [s for s in methods if s["name"] == "add"][0]
         assert add_method["scope"] == "Calculator"
         assert add_method["is_static"] is False
+        # Verify primitive return type is captured in signature
+        assert "int add(" in add_method["signature"]
+
+        multiply_method = [s for s in methods if s["name"] == "multiply"][0]
+        assert "double multiply(" in multiply_method["signature"]
 
     @pytest.mark.asyncio
     async def test_parse_static_method(self, parser_service: TreeSitterService) -> None:
