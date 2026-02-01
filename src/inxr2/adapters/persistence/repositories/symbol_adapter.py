@@ -218,9 +218,10 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         preserving all other symbol attributes. Parent symbol IDs are
         remapped to point to the newly created symbols.
 
-        Performance: Uses batched operations - single flush for all inserts,
-        then batch update for parent references. This reduces database
-        round-trips from O(N) to O(1) for files with many symbols.
+        Performance: Uses a single flush for all inserts (O(1) for inserts),
+        then individual UPDATE statements for parent_symbol_id remapping
+        (O(N) for symbols with parents). Most files have few nested symbols,
+        so this is acceptable for typical use cases.
         """
         # Fetch source symbols ordered by ID to maintain parent-child ordering
         result = await self.session.execute(

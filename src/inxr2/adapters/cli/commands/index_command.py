@@ -1455,6 +1455,8 @@ def _dict_to_reference(
         "usage": ReferenceType.USAGE,
         "include": ReferenceType.INCLUDE,  # C/C++ #include
         "type_annotation": ReferenceType.TYPE_ANNOTATION,
+        "inheritance": ReferenceType.INHERITANCE,  # Class inheritance (extends/implements)
+        "instantiation": ReferenceType.INSTANTIATION,  # new ClassName()
     }
 
     type_str = d.get("type", "usage").lower()

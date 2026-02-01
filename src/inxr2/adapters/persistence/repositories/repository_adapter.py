@@ -105,22 +105,22 @@ class PostgresRepositoryAdapter(RepositoryPort):
         if existing is not None:
             return existing, False
 
-        # Not found, try to create
+        # Not found, try to create using savepoint to isolate potential IntegrityError
+        model = RepositoryModel(
+            name=name,
+            url=url,
+            description=description,
+            default_branch=default_branch,
+        )
         try:
-            model = RepositoryModel(
-                name=name,
-                url=url,
-                description=description,
-                default_branch=default_branch,
-            )
-            self.session.add(model)
+            async with self.session.begin_nested():
+                self.session.add(model)
             await self.session.flush()
             await self.session.refresh(model)
             return self.mapper.to_domain(model), True
         except IntegrityError:
             # Race condition: another process created it between our check and insert
-            # Rollback the failed insert and fetch the existing record
-            await self.session.rollback()
+            # Savepoint was rolled back, main transaction is still valid
             existing = await self.find_by_name(name)
             if existing is None:
                 raise RuntimeError(
