@@ -49,7 +49,7 @@ def _run_single_repo_index(
     verbose: bool,
     index_func: Callable[..., Any],
     index_type: str,
-    max_history: int = 100,
+    max_history: int | None = 100,
     force: bool = False,
     since_days: int | None = None,
 ) -> None:
@@ -417,7 +417,8 @@ def index_full(
             verbose=verbose,
             index_func=run_full_index,
             index_type="Full",
-            max_history=history or 100,
+            # --days overrides --history: disable commit cap when filtering by date
+            max_history=None if days else (history or 100),
             force=force,
             since_days=days,
         )

@@ -1004,12 +1004,20 @@ class JavaParser(BaseLanguageParser):
                 if node.type == "class_declaration":
                     for name_child in node.children:
                         if name_child.type == "identifier":
-                            child_scope = get_text(name_child)
+                            child_scope = (
+                                f"{scope}.{get_text(name_child)}"
+                                if scope
+                                else get_text(name_child)
+                            )
                             break
                 elif node.type == "interface_declaration":
                     for name_child in node.children:
                         if name_child.type == "identifier":
-                            child_scope = get_text(name_child)
+                            child_scope = (
+                                f"{scope}.{get_text(name_child)}"
+                                if scope
+                                else get_text(name_child)
+                            )
                             break
                 elif node.type == "method_declaration":
                     for name_child in node.children:
