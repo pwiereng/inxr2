@@ -138,6 +138,11 @@ class IndexRepositoryResponse:
     errors: list[str] = field(default_factory=list)
     elapsed_seconds: float = 0.0
     db_stats: DBQueryStats = field(default_factory=DBQueryStats)
+    # Commit range info for summary
+    oldest_commit_hash: str | None = None
+    oldest_commit_date: str | None = None
+    newest_commit_hash: str | None = None
+    newest_commit_date: str | None = None
 
     @property
     def files_succeeded(self) -> int:

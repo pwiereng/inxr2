@@ -7,6 +7,7 @@ Uses Click for CLI framework and Rich for beautiful progress output.
 
 import logging
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -14,9 +15,25 @@ from typing import Any
 import click
 from rich.console import Console
 from rich.logging import RichHandler
+from rich.table import Table
+
+from inxr2.adapters.cli.commands import IndexingResult
 
 # Initialize rich console for output
 console = Console()
+
+
+def _format_duration(seconds: float) -> str:
+    """Format duration in seconds to human-readable string."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes = int(seconds // 60)
+    secs = seconds % 60
+    if minutes < 60:
+        return f"{minutes}m {secs:.1f}s"
+    hours = minutes // 60
+    mins = minutes % 60
+    return f"{hours}h {mins}m {secs:.0f}s"
 
 
 def setup_logging(verbose: bool, log_level: str) -> None:
@@ -166,8 +183,8 @@ def _run_config_based_index(
     console.print()
 
     # Track overall stats
-    successful = 0
-    failed = 0
+    results: list[IndexingResult] = []
+    start_time = time.time()
 
     for idx, repo in enumerate(repos_with_paths, 1):
         # Resolve path
@@ -213,7 +230,7 @@ def _run_config_based_index(
             max_history = max_history_override or config.indexing.max_commit_history
 
             try:
-                index_func(
+                result = index_func(
                     repo_path=resolved_path,
                     branch=branch,
                     languages=lang_list,
@@ -222,21 +239,90 @@ def _run_config_based_index(
                     force=force,
                     since_days=since_days,
                 )
-                successful += 1
+                if result:
+                    results.append(result)
             except Exception as e:
                 console.print(f"  [red]Error:[/red] {e}")
                 if verbose:
                     console.print_exception()
-                failed += 1
+                results.append(
+                    IndexingResult(
+                        repo_name=repo.name,
+                        branch=branch or "(current)",
+                        success=False,
+                        error_message=str(e),
+                    )
+                )
                 # Continue with next branch/repository
 
             console.print()
 
-    # Summary
+    # Calculate totals
+    total_time = time.time() - start_time
+    successful = sum(1 for r in results if r.success)
+    failed = sum(1 for r in results if not r.success)
+    total_files = sum(r.files_total for r in results)
+    total_lines = sum(r.lines_indexed for r in results)
+    total_refs = sum(r.references_found for r in results)
+    total_resolved = sum(r.references_resolved for r in results)
+    overall_resolution = (total_resolved / total_refs * 100) if total_refs > 0 else 0
+
+    # Print summary table
+    console.print()
     console.print("[bold]Indexing Summary:[/bold]")
-    console.print(f"  Successful: [green]{successful}[/green]")
+
+    # Create detailed results table
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Repository", style="cyan")
+    table.add_column("Branch", style="dim")
+    table.add_column("Oldest Commit", style="dim")
+    table.add_column("Newest Commit", style="dim")
+    table.add_column("Files", justify="right")
+    table.add_column("Lines", justify="right")
+    table.add_column("Resolution", justify="right")
+    table.add_column("Time", justify="right")
+    table.add_column("Status", justify="center")
+
+    for r in results:
+        status = "[green]OK[/green]" if r.success else "[red]FAIL[/red]"
+        resolution = f"{r.resolution_rate:.1f}%" if r.references_found > 0 else "-"
+        # Format commit info: hash (date)
+        oldest = (
+            f"{r.oldest_commit_hash} ({r.oldest_commit_date})"
+            if r.oldest_commit_hash and r.oldest_commit_date
+            else "-"
+        )
+        newest = (
+            f"{r.newest_commit_hash} ({r.newest_commit_date})"
+            if r.newest_commit_hash and r.newest_commit_date
+            else "-"
+        )
+        table.add_row(
+            r.repo_name,
+            r.branch,
+            oldest,
+            newest,
+            f"{r.files_total:,}" if r.files_total > 0 else "-",
+            f"{r.lines_indexed:,}" if r.lines_indexed > 0 else "-",
+            resolution,
+            _format_duration(r.elapsed_seconds) if r.elapsed_seconds > 0 else "-",
+            status,
+        )
+
+    console.print(table)
+
+    # Print totals
+    console.print()
+    console.print(f"  [bold]Total:[/bold] {len(results)} repo/branch combinations")
+    console.print(f"  [green]Successful:[/green] {successful}")
     if failed > 0:
-        console.print(f"  Failed: [red]{failed}[/red]")
+        console.print(f"  [red]Failed:[/red] {failed}")
+    console.print(f"  [cyan]Files:[/cyan] {total_files:,}")
+    console.print(f"  [cyan]Lines:[/cyan] {total_lines:,}")
+    console.print(
+        f"  [cyan]Resolution:[/cyan] {total_resolved:,}/{total_refs:,} ({overall_resolution:.1f}%)"
+    )
+    console.print(f"  [blue]Total Time:[/blue] {_format_duration(total_time)}")
 
 
 @click.group()

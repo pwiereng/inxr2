@@ -222,6 +222,10 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         # This ensures all files have records, and time-travel queries work correctly
         commits_data = list(reversed(commits_data))
 
+        # Capture commit range info for summary (after reversing: [0]=newest, [-1]=oldest)
+        newest_commit = commits_data[0] if commits_data else None
+        oldest_commit = commits_data[-1] if commits_data else None
+
         # Step 3: Build content-hash cache for optimization
         content_hash_cache = await self._file_repo.get_content_hash_to_file_id_map(
             repository_id=repo_id
@@ -348,6 +352,18 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             errors=stats["errors"],
             elapsed_seconds=elapsed_seconds,
             db_stats=stats["db_stats"],
+            oldest_commit_hash=oldest_commit["short_hash"] if oldest_commit else None,
+            oldest_commit_date=(
+                oldest_commit["commit_date"].strftime("%Y-%m-%d %H:%M UTC")
+                if oldest_commit and oldest_commit.get("commit_date")
+                else None
+            ),
+            newest_commit_hash=newest_commit["short_hash"] if newest_commit else None,
+            newest_commit_date=(
+                newest_commit["commit_date"].strftime("%Y-%m-%d %H:%M UTC")
+                if newest_commit and newest_commit.get("commit_date")
+                else None
+            ),
         )
 
     async def index_incremental(
@@ -457,6 +473,10 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
         # Reverse for HEAD-first indexing (newest commit processed first)
         commits_to_process = list(reversed(commits_to_process))
+
+        # Capture commit range info for summary (after reversing: [0]=newest, [-1]=oldest)
+        newest_commit = commits_to_process[0] if commits_to_process else None
+        oldest_commit = commits_to_process[-1] if commits_to_process else None
 
         # Count total files to process (for progress)
         # HEAD commit: ALL files; other commits: only changed files
@@ -574,6 +594,18 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             errors=stats["errors"],
             elapsed_seconds=elapsed_seconds,
             db_stats=stats["db_stats"],
+            oldest_commit_hash=oldest_commit["short_hash"] if oldest_commit else None,
+            oldest_commit_date=(
+                oldest_commit["commit_date"].strftime("%Y-%m-%d %H:%M UTC")
+                if oldest_commit and oldest_commit.get("commit_date")
+                else None
+            ),
+            newest_commit_hash=newest_commit["short_hash"] if newest_commit else None,
+            newest_commit_date=(
+                newest_commit["commit_date"].strftime("%Y-%m-%d %H:%M UTC")
+                if newest_commit and newest_commit.get("commit_date")
+                else None
+            ),
         )
 
     async def _process_commit(

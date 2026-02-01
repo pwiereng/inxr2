@@ -197,6 +197,38 @@ class IndexingStats:
         return max(0, self.files_processed - self.files_failed)
 
 
+@dataclass
+class IndexingResult:
+    """Result of indexing a single repository/branch.
+
+    Used for final summary display across multiple repos/branches.
+    """
+
+    repo_name: str
+    branch: str
+    success: bool
+    files_total: int = 0
+    commits_indexed: int = 0
+    symbols_found: int = 0
+    references_found: int = 0
+    references_resolved: int = 0
+    lines_indexed: int = 0
+    elapsed_seconds: float = 0.0
+    error_message: str | None = None
+    # Commit range info
+    oldest_commit_hash: str | None = None
+    oldest_commit_date: str | None = None
+    newest_commit_hash: str | None = None
+    newest_commit_date: str | None = None
+
+    @property
+    def resolution_rate(self) -> float:
+        """Calculate reference resolution rate as percentage."""
+        if self.references_found == 0:
+            return 0.0
+        return (self.references_resolved / self.references_found) * 100
+
+
 def create_progress() -> Progress:
     """Create a rich Progress instance with custom columns."""
     return Progress(
@@ -220,7 +252,7 @@ def run_full_index(
     max_history: int | None = 100,
     force: bool = False,
     since_days: int | None = None,
-) -> None:
+) -> IndexingResult | None:
     """
     Run full indexing of a repository with time travel support.
 
@@ -235,13 +267,16 @@ def run_full_index(
         max_history: Maximum number of commits to index (None = all commits)
         force: If True, clear existing data for this repository before indexing
         since_days: Only index commits from the last N days (overrides max_history)
+
+    Returns:
+        IndexingResult with stats for the final summary, or None if interrupted
     """
     # Set up signal handlers for clean shutdown on Ctrl+C
     _setup_signal_handlers()
 
     # Run the async indexing in an event loop with proper cleanup on Ctrl+C
     try:
-        asyncio.run(
+        return asyncio.run(
             _run_full_index_async(
                 repo_path=repo_path,
                 branch=branch,
@@ -255,6 +290,7 @@ def run_full_index(
     except KeyboardInterrupt:
         # Signal handler should have already exited, but just in case
         _cleanup_and_exit()
+        return None
 
 
 async def _run_full_index_async(
@@ -265,7 +301,7 @@ async def _run_full_index_async(
     max_history: int | None = 100,
     force: bool = False,
     since_days: int | None = None,
-) -> None:
+) -> IndexingResult:
     """Async implementation of full indexing using the orchestrator."""
     from inxr2.adapters.external.git_service import GitService
     from inxr2.adapters.external.treesitter import TreeSitterService
@@ -497,8 +533,34 @@ async def _run_full_index_async(
 
             await session.commit()
 
+            # Return result for final summary
+            return IndexingResult(
+                repo_name=repo_path.name,
+                branch=current_branch,
+                success=True,
+                files_total=response.files_total,
+                commits_indexed=response.commits_indexed,
+                symbols_found=response.symbols_found,
+                references_found=response.references_found,
+                references_resolved=response.references_resolved,
+                lines_indexed=response.lines_indexed,
+                elapsed_seconds=response.elapsed_seconds,
+                oldest_commit_hash=response.oldest_commit_hash,
+                oldest_commit_date=response.oldest_commit_date,
+                newest_commit_hash=response.newest_commit_hash,
+                newest_commit_date=response.newest_commit_date,
+            )
+
     finally:
         await db.close()
+
+    # Should not reach here, but return empty result for type safety
+    return IndexingResult(
+        repo_name=repo_path.name,
+        branch=branch or "unknown",
+        success=False,
+        error_message="Unexpected error",
+    )
 
 
 def run_incremental_index(
@@ -508,19 +570,22 @@ def run_incremental_index(
     console: Console,
     max_history: int = 1,  # Ignored for incremental - only indexes since last commit
     force: bool = False,  # Ignored for incremental - accepted for API compatibility
-) -> None:
+) -> IndexingResult | None:
     """
     Run incremental indexing of a repository.
 
     Only indexes files that have changed since the last index.
     The max_history and force parameters are accepted for API compatibility
     but ignored (incremental always indexes from the last indexed commit to HEAD).
+
+    Returns:
+        IndexingResult with stats for the final summary, or None if interrupted
     """
     # Set up signal handlers for clean shutdown on Ctrl+C
     _setup_signal_handlers()
 
     try:
-        asyncio.run(
+        return asyncio.run(
             _run_incremental_index_async(
                 repo_path=repo_path,
                 branch=branch,
@@ -531,6 +596,7 @@ def run_incremental_index(
     except KeyboardInterrupt:
         # Signal handler should have already exited, but just in case
         _cleanup_and_exit()
+        return None
 
 
 async def _run_incremental_index_async(
@@ -538,7 +604,7 @@ async def _run_incremental_index_async(
     branch: str | None,
     languages: list[str],
     console: Console,
-) -> None:
+) -> IndexingResult:
     """Async implementation of incremental indexing using the orchestrator."""
     from inxr2.adapters.external.git_service import GitService
     from inxr2.adapters.external.treesitter import TreeSitterService
@@ -587,7 +653,12 @@ async def _run_incremental_index_async(
                 console.print(
                     "[dim]Run full index first: inxr2 index full --config config.yaml[/dim]"
                 )
-                return
+                return IndexingResult(
+                    repo_name=repo_name,
+                    branch=current_branch,
+                    success=False,
+                    error_message="Repository not found in database",
+                )
 
             # Create orchestrator
             orchestrator = DefaultIndexingOrchestrator(
@@ -717,7 +788,12 @@ async def _run_incremental_index_async(
             # Check if there were new commits
             if response.commits_indexed == 0:
                 console.print("[green]Already up to date.[/green]")
-                return
+                return IndexingResult(
+                    repo_name=repo_name,
+                    branch=current_branch,
+                    success=True,
+                    commits_indexed=0,
+                )
 
             # Print summary
             stats = IndexingStats(
@@ -750,8 +826,34 @@ async def _run_incremental_index_async(
 
             await session.commit()
 
+            # Return result for final summary
+            return IndexingResult(
+                repo_name=repo_name,
+                branch=current_branch,
+                success=True,
+                files_total=response.files_total,
+                commits_indexed=response.commits_indexed,
+                symbols_found=response.symbols_found,
+                references_found=response.references_found,
+                references_resolved=response.references_resolved,
+                lines_indexed=response.lines_indexed,
+                elapsed_seconds=response.elapsed_seconds,
+                oldest_commit_hash=response.oldest_commit_hash,
+                oldest_commit_date=response.oldest_commit_date,
+                newest_commit_hash=response.newest_commit_hash,
+                newest_commit_date=response.newest_commit_date,
+            )
+
     finally:
         await db.close()
+
+    # Should not reach here, but return empty result for type safety
+    return IndexingResult(
+        repo_name=repo_path.name,
+        branch=branch or "unknown",
+        success=False,
+        error_message="Unexpected error",
+    )
 
 
 def show_index_status(repo_path: Path, console: Console) -> None:
