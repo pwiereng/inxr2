@@ -18,7 +18,7 @@ from inxr2.domain.entities import (
     Reference,
     Symbol,
 )
-from inxr2.domain.value_objects import CommitHash
+from inxr2.domain.value_objects import CommitHash, SymbolKind
 
 from ...ports.repositories import (
     CommitRepositoryPort,
@@ -516,31 +516,31 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             else:
                 # Parse file and extract symbols/references
                 if language and self._parser_service.supports_language(language):
-                    symbols, references_data = await self._parser_service.parse_file(
-                        file_path=Path(file_path_str),
+                    symbols_data, references_data = await self._parser_service.parse_file(
                         content=content,
                         language=language,
+                        file_path=file_path_str,
                     )
 
-                    # Save symbols
-                    for symbol in symbols:
-                        # Update symbol with correct IDs
-                        updated_symbol = Symbol(
+                    # Save symbols (parse_file returns dicts, not Symbol objects)
+                    for symbol_data in symbols_data:
+                        # Create Symbol from dict data
+                        symbol = Symbol(
                             id=None,
                             file_id=file_id,
                             repository_id=repository_id,
                             commit_id=commit_id,
-                            name=symbol.name,
-                            kind=symbol.kind,
-                            start_line=symbol.start_line,
-                            start_column=symbol.start_column,
-                            end_line=symbol.end_line,
-                            end_column=symbol.end_column,
-                            parent_symbol_id=symbol.parent_symbol_id,
-                            signature=symbol.signature,
-                            metadata=symbol.metadata,
+                            name=symbol_data["name"],
+                            kind=SymbolKind(symbol_data["kind"]),
+                            start_line=symbol_data["start_line"],
+                            start_column=symbol_data["start_column"],
+                            end_line=symbol_data["end_line"],
+                            end_column=symbol_data["end_column"],
+                            parent_symbol_id=symbol_data.get("parent_symbol_id"),
+                            signature=symbol_data.get("signature"),
+                            metadata=symbol_data.get("metadata", {}),
                         )
-                        await self._symbol_repo.save(updated_symbol)
+                        await self._symbol_repo.save(symbol)
                         stats["symbols_found"] += 1
 
                     # Save references

@@ -12,8 +12,6 @@ from inxr2.application.use_cases.indexing.orchestrator import (
     IndexingStrategy,
     IndexRepositoryRequest,
 )
-from inxr2.domain.entities import Symbol
-from inxr2.domain.value_objects import SymbolKind
 from tests.fixtures.test_doubles import (
     InMemoryCommitRepository,
     InMemoryFileRepository,
@@ -122,23 +120,28 @@ class FakeParserService:
         return language in ["python", "typescript", "java"]
 
     async def parse_file(
-        self, file_path: Path, content: str, language: str
-    ) -> tuple[list[Symbol], list[dict]]:
-        """Parse file and return symbols and references."""
-        # Return fake symbols
+        self, content: str, language: str, file_path: str
+    ) -> tuple[list[dict], list[dict]]:
+        """
+        Parse file and return symbols and references as dicts.
+
+        Note: Signature matches TreeSitterService.parse_file() which returns
+        dicts, not Symbol objects.
+        """
+        # Return fake symbols as dicts (matching real TreeSitterService)
+        file_name = Path(file_path).name
         symbols = [
-            Symbol(
-                id=None,
-                file_id=0,  # Will be set by caller
-                repository_id=0,
-                commit_id=0,
-                name=f"function_in_{file_path.name}",
-                kind=SymbolKind.FUNCTION,
-                start_line=1,
-                start_column=0,
-                end_line=5,
-                end_column=0,
-            )
+            {
+                "name": f"function_in_{file_name}",
+                "kind": "function",
+                "start_line": 1,
+                "start_column": 0,
+                "end_line": 5,
+                "end_column": 0,
+                "parent_symbol_id": None,
+                "signature": None,
+                "metadata": {},
+            }
         ]
         # Return fake references
         references = [
@@ -785,3 +788,81 @@ class TestGitServiceIntegration:
         saved_commit = commits[0]
         assert saved_commit.author_date.tzinfo is None, "author_date should be naive"
         assert saved_commit.commit_date.tzinfo is None, "commit_date should be naive"
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_handles_dict_symbols_from_parser(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        git_service: FakeGitService,
+    ) -> None:
+        """
+        Regression test: Orchestrator must handle dict symbols from TreeSitterService.
+
+        The TreeSitterService.parse_file() returns tuple[list[dict], list[dict]],
+        not tuple[list[Symbol], list[dict]]. The orchestrator must convert these
+        dicts to Symbol objects.
+        """
+
+        class DictReturningParserService:
+            """Parser that returns dicts (like real TreeSitterService)."""
+
+            def supports_language(self, language: str) -> bool:
+                return language == "python"
+
+            async def parse_file(
+                self, content: str, language: str, file_path: str
+            ) -> tuple[list[dict], list[dict]]:
+                # Return dicts, not Symbol objects
+                symbols = [
+                    {
+                        "name": "test_function",
+                        "kind": "function",
+                        "start_line": 1,
+                        "start_column": 0,
+                        "end_line": 5,
+                        "end_column": 0,
+                    }
+                ]
+                references = [
+                    {
+                        "reference_text": "print",
+                        "reference_type": "call",
+                        "source_line": 2,
+                        "source_column": 0,
+                        "source_end_column": 5,
+                    }
+                ]
+                return symbols, references
+
+        dict_parser = DictReturningParserService()
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+            parser_service=dict_parser,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+        )
+
+        # Act - should not raise "'dict' object has no attribute 'name'"
+        response = await orchestrator.index_repository(request)
+
+        # Assert - symbols were created from dicts
+        assert response.symbols_found > 0, "Should have found symbols"
+        all_symbols = list(symbol_repo._symbols.values())
+        assert len(all_symbols) > 0, "Symbols should be saved"
+        assert all_symbols[0].name == "test_function"
