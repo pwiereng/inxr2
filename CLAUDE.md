@@ -57,6 +57,7 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
    - ❌ NEVER run `git push` - the user will manually push all changes
    - ✅ Rebase is OK for resolving conflicts on feature branches
    - Keep commits simple and straightforward
+   - ⚠️ **ALWAYS ask the user** if they want to test before committing - don't assume
 
 ## Common Commands
 

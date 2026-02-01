@@ -910,6 +910,82 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             del self._references[ref_id]
         return len(to_delete)
 
+    async def count_unresolved_references(self, repository_id: int) -> int:
+        """Count references that don't have a target_symbol_id set."""
+        return len(
+            [
+                r
+                for r in self._references.values()
+                if r.repository_id == repository_id and r.target_symbol_id is None
+            ]
+        )
+
+    async def resolve_references_batch(
+        self,
+        repository_id: int,
+        batch_size: int = 1000,
+        commit_aware: bool = False,
+    ) -> int:
+        """Resolve a batch of unlinked references.
+
+        For the fake, this just calls resolve_unlinked_references with a limit.
+        """
+        if self._symbol_repo is None:
+            return 0
+
+        resolved_count = 0
+        updated_refs: dict[int, Reference] = {}
+        processed = 0
+
+        for ref_id, ref in self._references.items():
+            if processed >= batch_size:
+                break
+
+            # Skip if already resolved or wrong repository
+            if ref.target_symbol_id is not None or ref.repository_id != repository_id:
+                continue
+
+            processed += 1
+
+            # Find matching symbol
+            matching_symbol = None
+            for symbol in self._symbol_repo.get_all_symbols():
+                if (
+                    symbol.repository_id == repository_id
+                    and symbol.name == ref.reference_text
+                ):
+                    if commit_aware:
+                        if symbol.commit_id == ref.commit_id:
+                            matching_symbol = symbol
+                            break
+                    else:
+                        matching_symbol = symbol
+                        break
+
+            if matching_symbol is not None and matching_symbol.id is not None:
+                updated_refs[ref_id] = Reference(
+                    id=ref.id,
+                    repository_id=ref.repository_id,
+                    commit_id=ref.commit_id,
+                    source_file_id=ref.source_file_id,
+                    source_line=ref.source_line,
+                    source_column=ref.source_column,
+                    source_end_column=ref.source_end_column,
+                    reference_text=ref.reference_text,
+                    reference_type=ref.reference_type,
+                    target_symbol_id=matching_symbol.id,
+                    target_repository_id=ref.target_repository_id,
+                    is_definition=ref.is_definition,
+                    is_write=ref.is_write,
+                    resolution_confidence=ref.resolution_confidence,
+                    metadata=ref.metadata,
+                    indexed_at=ref.indexed_at,
+                )
+                resolved_count += 1
+
+        self._references.update(updated_refs)
+        return resolved_count
+
     async def resolve_unlinked_references(
         self, repository_id: int, commit_aware: bool = False
     ) -> int:

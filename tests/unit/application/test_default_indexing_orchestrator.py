@@ -1,5 +1,6 @@
 """Tests for DefaultIndexingOrchestrator implementation."""
 
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -648,7 +649,9 @@ class TestGitServiceIntegration:
         response = await orchestrator.index_repository(request)
 
         # Assert - should still index HEAD commit
-        assert empty_git.get_commit_info_called, "get_commit_info should be called for HEAD"
+        assert (
+            empty_git.get_commit_info_called
+        ), "get_commit_info should be called for HEAD"
         assert response.commits_indexed == 1, "HEAD commit should be indexed"
         assert response.files_processed > 0, "HEAD files should be processed"
 
@@ -713,7 +716,9 @@ class TestGitServiceIntegration:
         await orchestrator.index_repository(request)
 
         # Assert - verify list_files was called
-        assert spy_git.list_files_called, "list_files should be called (not get_files_in_commit)"
+        assert (
+            spy_git.list_files_called
+        ), "list_files should be called (not get_files_in_commit)"
 
     @pytest.mark.asyncio
     async def test_orchestrator_handles_timezone_aware_datetimes(
@@ -733,7 +738,7 @@ class TestGitServiceIntegration:
         commit_date. The orchestrator must convert these to naive UTC datetimes
         for database storage.
         """
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         class TimezoneAwareGitService(FakeGitService):
             def __init__(self) -> None:
@@ -745,10 +750,14 @@ class TestGitServiceIntegration:
                         "short_hash": "tz123",
                         "author_name": "Test User",
                         "author_email": "test@example.com",
-                        "author_date": datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+                        "author_date": datetime(
+                            2024, 1, 1, 12, 0, 0, tzinfo=UTC
+                        ),
                         "committer_name": "Test User",
                         "committer_email": "test@example.com",
-                        "commit_date": datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+                        "commit_date": datetime(
+                            2024, 1, 1, 12, 0, 0, tzinfo=UTC
+                        ),
                         "message": "Commit with timezone",
                         "parent_hashes": [],
                     },
@@ -1104,6 +1113,6 @@ class TestGitServiceIntegration:
 
         # Commits should not be duplicated
         commits_after_second = await commit_repo.list_by_repository(repository_id=1)
-        assert len(commits_after_second) == first_commit_count, (
-            "Commits should not be duplicated on re-index"
-        )
+        assert (
+            len(commits_after_second) == first_commit_count
+        ), "Commits should not be duplicated on re-index"

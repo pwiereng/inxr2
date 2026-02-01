@@ -211,6 +211,76 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         await self.session.flush()
         return result.rowcount or 0  # type: ignore[attr-defined]
 
+    async def count_unresolved_references(self, repository_id: int) -> int:
+        """Count references that don't have a target_symbol_id set."""
+        result = await self.session.execute(
+            select(func.count(ReferenceModel.id)).where(
+                ReferenceModel.repository_id == repository_id,
+                ReferenceModel.target_symbol_id.is_(None),
+            )
+        )
+        return result.scalar() or 0
+
+    async def resolve_references_batch(
+        self,
+        repository_id: int,
+        batch_size: int = 1000,
+        commit_aware: bool = False,
+    ) -> int:
+        """Resolve a batch of unlinked references.
+
+        Uses a subquery to limit the update to batch_size references at a time.
+        """
+        if commit_aware:
+            # Time travel mode: only match references to symbols from same commit
+            # The subquery ensures we only select refs that HAVE a matching symbol,
+            # so the batch will actually resolve (avoiding early loop exit)
+            result = await self.session.execute(
+                text("""
+                    UPDATE "references" r
+                    SET target_symbol_id = s.id
+                    FROM symbols s
+                    WHERE r.id IN (
+                        SELECT r2.id FROM "references" r2
+                        JOIN symbols s2 ON r2.reference_text = s2.name
+                            AND r2.repository_id = s2.repository_id
+                            AND r2.commit_id = s2.commit_id
+                        WHERE r2.repository_id = :repo_id
+                          AND r2.target_symbol_id IS NULL
+                        LIMIT :batch_size
+                    )
+                      AND s.repository_id = :repo_id
+                      AND r.commit_id = s.commit_id
+                      AND r.reference_text = s.name
+                """),
+                {"repo_id": repository_id, "batch_size": batch_size},
+            )
+        else:
+            # Cross-commit mode: match references to any symbol in repository
+            # The subquery ensures we only select refs that HAVE a matching symbol,
+            # so the batch will actually resolve (avoiding early loop exit)
+            result = await self.session.execute(
+                text("""
+                    UPDATE "references" r
+                    SET target_symbol_id = s.id
+                    FROM symbols s
+                    WHERE r.id IN (
+                        SELECT r2.id FROM "references" r2
+                        JOIN symbols s2 ON r2.reference_text = s2.name
+                            AND r2.repository_id = s2.repository_id
+                        WHERE r2.repository_id = :repo_id
+                          AND r2.target_symbol_id IS NULL
+                        LIMIT :batch_size
+                    )
+                      AND s.repository_id = :repo_id
+                      AND r.reference_text = s.name
+                """),
+                {"repo_id": repository_id, "batch_size": batch_size},
+            )
+
+        await self.session.flush()
+        return result.rowcount or 0  # type: ignore[attr-defined]
+
     async def resolve_unlinked_references(
         self, repository_id: int, commit_aware: bool = False
     ) -> int:

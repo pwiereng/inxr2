@@ -5,9 +5,38 @@ This module defines the request/response objects for the indexing
 orchestration port, separating indexing concerns from CLI adapter.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+
+
+@dataclass
+class DBQueryStats:
+    """
+    Statistics about database queries during indexing.
+
+    Tracks the number of database operations by type to help
+    identify optimization opportunities.
+    """
+
+    selects: int = 0
+    inserts: int = 0
+    updates: int = 0
+    deletes: int = 0
+
+    def __add__(self, other: "DBQueryStats") -> "DBQueryStats":
+        """Allow adding stats together."""
+        return DBQueryStats(
+            selects=self.selects + other.selects,
+            inserts=self.inserts + other.inserts,
+            updates=self.updates + other.updates,
+            deletes=self.deletes + other.deletes,
+        )
+
+    @property
+    def total(self) -> int:
+        """Total number of queries."""
+        return self.selects + self.inserts + self.updates + self.deletes
 
 
 class IndexingStrategy(str, Enum):
@@ -83,6 +112,7 @@ class IndexRepositoryResponse:
         references_reused: References reused via content-hash optimization
         errors: List of error messages (non-fatal)
         elapsed_seconds: Time taken to complete indexing
+        db_stats: Database query statistics (selects, inserts, updates)
     """
 
     repository_id: int
@@ -101,6 +131,7 @@ class IndexRepositoryResponse:
     references_reused: int
     errors: list[str]
     elapsed_seconds: float
+    db_stats: DBQueryStats = field(default_factory=DBQueryStats)
 
     @property
     def files_succeeded(self) -> int:

@@ -31,6 +31,7 @@ from inxr2.application.use_cases.indexing import (
     GetIndexStatusRequest,
     GetIndexStatusUseCase,
 )
+from inxr2.application.use_cases.indexing.orchestrator import DBQueryStats
 from inxr2.infrastructure.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ def _cleanup_and_exit(signum: int | None = None, frame: Any = None) -> None:
 
     # Print message directly to stderr to ensure it shows
     import sys
+
     sys.stderr.write("\nInterrupted. Exiting...\n")
     sys.stderr.flush()
 
@@ -184,6 +186,8 @@ class IndexingStats:
     symbols_reused: int = 0
     references_reused: int = 0
     errors: list[str] = field(default_factory=list)
+    # Database query statistics
+    db_stats: DBQueryStats = field(default_factory=DBQueryStats)
 
     @property
     def files_succeeded(self) -> int:
@@ -335,16 +339,16 @@ async def _run_full_index_async(
                 oldest = commits[0]
                 newest = commits[-1]
                 console.print(f"  Commits: {len(commits)}")
-                oldest_date = oldest.get("author_date", oldest.get("commit_date"))
-                newest_date = newest.get("author_date", newest.get("commit_date"))
-                if hasattr(oldest_date, "strftime"):
+                oldest_date = oldest.get("author_date") or oldest.get("commit_date")
+                newest_date = newest.get("author_date") or newest.get("commit_date")
+                if oldest_date is not None and hasattr(oldest_date, "strftime"):
                     oldest_str = oldest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
                 else:
-                    oldest_str = str(oldest_date)
-                if hasattr(newest_date, "strftime"):
+                    oldest_str = str(oldest_date) if oldest_date else "unknown"
+                if newest_date is not None and hasattr(newest_date, "strftime"):
                     newest_str = newest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
                 else:
-                    newest_str = str(newest_date)
+                    newest_str = str(newest_date) if newest_date else "unknown"
                 console.print(f"  Oldest: {oldest['hash'][:10]} ({oldest_str})")
                 console.print(f"  Newest: {newest['hash'][:10]} ({newest_str})")
             console.print()
@@ -360,21 +364,51 @@ async def _run_full_index_async(
             )
 
             # Import progress types
+            # Progress at specific percentages: 0, 1, 2, 5, 10, 15, 20, ...
+            import sys
+
             from inxr2.application.use_cases.indexing.default_orchestrator import (
                 IndexingProgress,
             )
 
-            # Progress at specific percentages: 0, 1, 2, 5, 10, 15, 20, ...
-            import sys
+            milestones = {
+                0,
+                1,
+                2,
+                5,
+                10,
+                15,
+                20,
+                25,
+                30,
+                35,
+                40,
+                45,
+                50,
+                55,
+                60,
+                65,
+                70,
+                75,
+                80,
+                85,
+                90,
+                95,
+                100,
+            }
 
-            milestones = {0, 1, 2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50,
-                          55, 60, 65, 70, 75, 80, 85, 90, 95, 100}
-            printed = {"pcts": set(), "phase": "", "shown_start": False}
+            # Mutable progress state (using class for proper typing)
+            class ProgressState:
+                pcts: set[int] = set()
+                phase: str = ""
+                shown_start: bool = False
+
+            state = ProgressState()
 
             def on_progress(p: IndexingProgress) -> None:
                 # Show initial info at start
-                if not printed["shown_start"] and p.files_total > 0:
-                    printed["shown_start"] = True
+                if not state.shown_start and p.files_total > 0:
+                    state.shown_start = True
                     console.print(
                         f"  [dim]Files to process: {p.files_total} | "
                         f"Cache size: {p.cache_size}[/dim]"
@@ -382,23 +416,51 @@ async def _run_full_index_async(
 
                 if p.phase == "files" and p.files_total > 0:
                     pct = int((p.files_processed / p.files_total) * 100)
-                    if pct in milestones and pct not in printed["pcts"]:
-                        printed["pcts"].add(pct)
+                    if pct in milestones and pct not in state.pcts:
+                        state.pcts.add(pct)
                         sys.stdout.write(
                             f"\r  {pct}% ({p.files_processed}/{p.files_total}) | "
                             f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
                             f"Cache: {p.cache_size}    "
                         )
                         sys.stdout.flush()
-                elif p.phase == "resolving" and printed["phase"] != "resolving":
-                    printed["phase"] = "resolving"
-                    sys.stdout.write("\n")
-                    console.print(f"  [cyan]Resolving references...[/cyan]")
+                elif p.phase == "resolving":
+                    if state.phase != "resolving":
+                        # First resolving update - print header
+                        state.phase = "resolving"
+                        state.pcts = set()  # Reset milestones for resolution
+                        sys.stdout.write("\n")
+                        if p.refs_total > 0:
+                            console.print(
+                                f"  [cyan]Resolving references "
+                                f"({p.refs_total} to process)...[/cyan]"
+                            )
+                        else:
+                            console.print("  [cyan]Resolving references...[/cyan]")
+                    # Show resolution progress at milestone percentages
+                    if p.refs_total > 0:
+                        pct = int((p.refs_resolved / p.refs_total) * 100)
+                        if pct in milestones and pct not in state.pcts:
+                            state.pcts.add(pct)
+                            sys.stdout.write(
+                                f"\r  Resolving: {pct}% "
+                                f"({p.refs_resolved}/{p.refs_total})    "
+                            )
+                            sys.stdout.flush()
 
             # Run indexing with progress callback
             response = await orchestrator.index_repository(
                 request, progress_callback=on_progress
             )
+
+            # Show final resolution result if we were in resolving phase
+            if state.phase == "resolving" and response.references_found > 0:
+                pct = response.references_resolved * 100 // response.references_found
+                sys.stdout.write(
+                    f"\r  Resolved: {response.references_resolved}/"
+                    f"{response.references_found} ({pct}%)    \n"
+                )
+                sys.stdout.flush()
 
             # Print summary
             stats = IndexingStats(
@@ -413,6 +475,7 @@ async def _run_full_index_async(
                 symbols_reused=response.symbols_reused,
                 references_reused=response.references_reused,
                 errors=response.errors,
+                db_stats=response.db_stats,
             )
 
             _print_summary(
@@ -543,21 +606,51 @@ async def _run_incremental_index_async(
             )
 
             # Import progress types
+            # Progress at specific percentages: 0, 1, 2, 5, 10, 15, 20, ...
+            import sys
+
             from inxr2.application.use_cases.indexing.default_orchestrator import (
                 IndexingProgress,
             )
 
-            # Progress at specific percentages: 0, 1, 2, 5, 10, 15, 20, ...
-            import sys
+            milestones = {
+                0,
+                1,
+                2,
+                5,
+                10,
+                15,
+                20,
+                25,
+                30,
+                35,
+                40,
+                45,
+                50,
+                55,
+                60,
+                65,
+                70,
+                75,
+                80,
+                85,
+                90,
+                95,
+                100,
+            }
 
-            milestones = {0, 1, 2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50,
-                          55, 60, 65, 70, 75, 80, 85, 90, 95, 100}
-            printed = {"pcts": set(), "phase": "", "shown_start": False}
+            # Mutable progress state (using class for proper typing)
+            class ProgressState:
+                pcts: set[int] = set()
+                phase: str = ""
+                shown_start: bool = False
+
+            state = ProgressState()
 
             def on_progress(p: IndexingProgress) -> None:
                 # Show initial info at start
-                if not printed["shown_start"] and p.files_total > 0:
-                    printed["shown_start"] = True
+                if not state.shown_start and p.files_total > 0:
+                    state.shown_start = True
                     console.print(
                         f"  [dim]Files to process: {p.files_total} | "
                         f"Cache size: {p.cache_size}[/dim]"
@@ -565,23 +658,51 @@ async def _run_incremental_index_async(
 
                 if p.phase == "files" and p.files_total > 0:
                     pct = int((p.files_processed / p.files_total) * 100)
-                    if pct in milestones and pct not in printed["pcts"]:
-                        printed["pcts"].add(pct)
+                    if pct in milestones and pct not in state.pcts:
+                        state.pcts.add(pct)
                         sys.stdout.write(
                             f"\r  {pct}% ({p.files_processed}/{p.files_total}) | "
                             f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
                             f"Cache: {p.cache_size}    "
                         )
                         sys.stdout.flush()
-                elif p.phase == "resolving" and printed["phase"] != "resolving":
-                    printed["phase"] = "resolving"
-                    sys.stdout.write("\n")
-                    console.print(f"  [cyan]Resolving references...[/cyan]")
+                elif p.phase == "resolving":
+                    if state.phase != "resolving":
+                        # First resolving update - print header
+                        state.phase = "resolving"
+                        state.pcts = set()  # Reset milestones for resolution
+                        sys.stdout.write("\n")
+                        if p.refs_total > 0:
+                            console.print(
+                                f"  [cyan]Resolving references "
+                                f"({p.refs_total} to process)...[/cyan]"
+                            )
+                        else:
+                            console.print("  [cyan]Resolving references...[/cyan]")
+                    # Show resolution progress at milestone percentages
+                    if p.refs_total > 0:
+                        pct = int((p.refs_resolved / p.refs_total) * 100)
+                        if pct in milestones and pct not in state.pcts:
+                            state.pcts.add(pct)
+                            sys.stdout.write(
+                                f"\r  Resolving: {pct}% "
+                                f"({p.refs_resolved}/{p.refs_total})    "
+                            )
+                            sys.stdout.flush()
 
             # Run indexing with progress callback
             response = await orchestrator.index_incremental(
                 request, progress_callback=on_progress
             )
+
+            # Show final resolution result if we were in resolving phase
+            if state.phase == "resolving" and response.references_found > 0:
+                pct = response.references_resolved * 100 // response.references_found
+                sys.stdout.write(
+                    f"\r  Resolved: {response.references_resolved}/"
+                    f"{response.references_found} ({pct}%)    \n"
+                )
+                sys.stdout.flush()
 
             # Check if there were new commits
             if response.commits_indexed == 0:
@@ -601,6 +722,7 @@ async def _run_incremental_index_async(
                 symbols_reused=response.symbols_reused,
                 references_reused=response.references_reused,
                 errors=response.errors,
+                db_stats=response.db_stats,
             )
 
             _print_summary(
@@ -799,7 +921,17 @@ def _print_summary(
         table.add_row("Files Failed", f"[red]{stats.files_failed}[/red]")
     table.add_row("Symbols Found", f"[cyan]{stats.symbols_found}[/cyan]")
     table.add_row("References Found", f"[cyan]{stats.references_found}[/cyan]")
-    table.add_row("References Resolved", f"[cyan]{stats.references_resolved}[/cyan]")
+    # Show resolution count with rate percentage
+    if stats.references_found > 0:
+        resolution_rate = stats.references_resolved * 100 / stats.references_found
+        table.add_row(
+            "References Resolved",
+            f"[cyan]{stats.references_resolved}[/cyan] [dim]({resolution_rate:.1f}%)[/dim]",
+        )
+    else:
+        table.add_row(
+            "References Resolved", f"[cyan]{stats.references_resolved}[/cyan]"
+        )
 
     # Show reuse statistics if content-hash optimization was used
     if stats.files_reused > 0:
@@ -814,6 +946,18 @@ def _print_summary(
     if elapsed_seconds is not None:
         table.add_row("", "")  # Separator
         table.add_row("Total Time", f"[blue]{_format_duration(elapsed_seconds)}[/blue]")
+
+    # Show DB query statistics
+    db = stats.db_stats
+    if db.total > 0:
+        table.add_row("", "")  # Separator
+        table.add_row("DB Queries", f"[dim]{db.total} total[/dim]")
+        table.add_row("  Selects", f"[dim]{db.selects}[/dim]")
+        table.add_row("  Inserts", f"[dim]{db.inserts}[/dim]")
+        if db.updates > 0:
+            table.add_row("  Updates", f"[dim]{db.updates}[/dim]")
+        if db.deletes > 0:
+            table.add_row("  Deletes", f"[dim]{db.deletes}[/dim]")
 
     console.print(Panel(table, border_style="green"))
 

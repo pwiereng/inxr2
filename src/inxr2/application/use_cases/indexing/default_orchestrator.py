@@ -8,25 +8,10 @@ logic separate from CLI concerns.
 
 import hashlib
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
-
-
-@dataclass
-class IndexingProgress:
-    """Progress information during indexing."""
-
-    phase: str  # "files", "resolving"
-    files_processed: int
-    files_total: int
-    symbols_found: int = 0
-    references_found: int = 0
-    cache_size: int = 0
-
-
-# Type alias for progress callback
-ProgressCallback = Callable[[IndexingProgress], None]
+from typing import Any
 
 from inxr2.domain.entities import (
     Commit,
@@ -51,11 +36,35 @@ from .optimize_file_indexing import (
     OptimizeFileIndexingUseCase,
 )
 from .orchestrator import (
+    DBQueryStats,
     IncrementalIndexRequest,
     IndexRepositoryRequest,
     IndexRepositoryResponse,
 )
-from .resolve_references import ResolveReferencesRequest, ResolveReferencesUseCase
+from .resolve_references import (
+    ResolutionProgress,
+    ResolveReferencesRequest,
+    ResolveReferencesUseCase,
+)
+
+
+@dataclass
+class IndexingProgress:
+    """Progress information during indexing."""
+
+    phase: str  # "files", "resolving"
+    files_processed: int
+    files_total: int
+    symbols_found: int = 0
+    references_found: int = 0
+    cache_size: int = 0
+    # Resolution progress (only set during "resolving" phase)
+    refs_resolved: int = 0
+    refs_total: int = 0
+
+
+# Type alias for progress callback
+ProgressCallback = Callable[[IndexingProgress], None]
 
 
 class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
@@ -152,15 +161,20 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             "symbols_reused": 0,
             "references_reused": 0,
             "errors": [],
+            "db_stats": DBQueryStats(),
         }
 
         # Step 1: Prepare repository
         repo_name = request.repository_path.name
+        # get_or_create: 1 SELECT + 1 INSERT (if new)
         repository, created = await self._repository_repo.get_or_create(
             name=repo_name,
             url=str(request.repository_path),
             default_branch=request.branch or "main",
         )
+        stats["db_stats"].selects += 1
+        if created:
+            stats["db_stats"].inserts += 1
         repo_id = repository.id
         assert repo_id is not None, "Repository must have an ID after save"
 
@@ -204,6 +218,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         content_hash_cache = await self._file_repo.get_content_hash_to_file_id_map(
             repository_id=repo_id
         )
+        stats["db_stats"].selects += 1
 
         # Step 4: Count total files across all commits (for progress)
         total_files = 0
@@ -242,23 +257,36 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             stats["commits_indexed"] += 1
             last_commit_hash = commit_data["hash"]
 
-        # Step 6: Resolve references
-        if progress_callback:
-            progress_callback(
-                IndexingProgress(
-                    phase="resolving",
-                    files_processed=stats["files_processed"],
-                    files_total=stats["files_total"],
-                    symbols_found=stats["symbols_found"],
-                    references_found=stats["references_found"],
-                    cache_size=len(content_hash_cache),
+        # Step 6: Resolve references with progress
+        def on_resolution_progress(p: ResolutionProgress) -> None:
+            if progress_callback:
+                progress_callback(
+                    IndexingProgress(
+                        phase="resolving",
+                        files_processed=stats["files_processed"],
+                        files_total=stats["files_total"],
+                        symbols_found=stats["symbols_found"],
+                        references_found=stats["references_found"],
+                        cache_size=len(content_hash_cache),
+                        refs_resolved=p.resolved,
+                        refs_total=p.total,
+                    )
                 )
-            )
+            # Track DB operations: each batch is 1 UPDATE
+            stats["db_stats"].updates += 1
+
+        # Initial count query
+        stats["db_stats"].selects += 1
+
         resolve_request = ResolveReferencesRequest(
             repository_id=repo_id,
             commit_aware=False,  # Cross-commit resolution by default
         )
-        resolve_response = await self._resolve_refs_use_case.execute(resolve_request)
+        resolve_response = await self._resolve_refs_use_case.execute_with_progress(
+            resolve_request,
+            progress_callback=on_resolution_progress,
+            batch_size=1000,
+        )
         stats["references_resolved"] = resolve_response.resolved_count
 
         # Step 6: Update index status
@@ -269,6 +297,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             files_indexed=stats["files_processed"],
             last_indexed_commit=last_commit_hash,
         )
+        # index_status save: 1 INSERT/UPSERT
+        stats["db_stats"].inserts += 1
 
         # Calculate elapsed time
         elapsed_seconds = time.monotonic() - start_time
@@ -290,6 +320,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             references_reused=stats["references_reused"],
             errors=stats["errors"],
             elapsed_seconds=elapsed_seconds,
+            db_stats=stats["db_stats"],
         )
 
     async def index_incremental(
@@ -317,10 +348,12 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             "symbols_reused": 0,
             "references_reused": 0,
             "errors": [],
+            "db_stats": DBQueryStats(),
         }
 
         # Get repository
         repository = await self._repository_repo.find_by_id(request.repository_id)
+        stats["db_stats"].selects += 1
         if repository is None:
             raise ValueError(f"Repository {request.repository_id} not found")
 
@@ -330,6 +363,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         all_statuses = await self._index_status_repo.list_by_repository(
             repository_id=request.repository_id
         )
+        stats["db_stats"].selects += 1
         filtered_statuses = [
             s for s in all_statuses if s.branch == (request.branch or "main")
         ]
@@ -363,6 +397,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 references_reused=0,
                 errors=[],
                 elapsed_seconds=elapsed_seconds,
+                db_stats=stats["db_stats"],
             )
 
         # Get commits since last indexed
@@ -377,6 +412,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         content_hash_cache = await self._file_repo.get_content_hash_to_file_id_map(
             repository_id=request.repository_id
         )
+        stats["db_stats"].selects += 1
 
         # Filter to commits that need processing
         found_last_indexed = False
@@ -427,23 +463,36 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             stats["commits_indexed"] += 1
             last_commit_hash = commit_data["hash"]
 
-        # Resolve references
-        if progress_callback:
-            progress_callback(
-                IndexingProgress(
-                    phase="resolving",
-                    files_processed=stats["files_processed"],
-                    files_total=stats["files_total"],
-                    symbols_found=stats["symbols_found"],
-                    references_found=stats["references_found"],
-                    cache_size=len(content_hash_cache),
+        # Resolve references with progress
+        def on_resolution_progress(p: ResolutionProgress) -> None:
+            if progress_callback:
+                progress_callback(
+                    IndexingProgress(
+                        phase="resolving",
+                        files_processed=stats["files_processed"],
+                        files_total=stats["files_total"],
+                        symbols_found=stats["symbols_found"],
+                        references_found=stats["references_found"],
+                        cache_size=len(content_hash_cache),
+                        refs_resolved=p.resolved,
+                        refs_total=p.total,
+                    )
                 )
-            )
+            # Track DB operations: each batch is 1 UPDATE
+            stats["db_stats"].updates += 1
+
+        # Initial count query
+        stats["db_stats"].selects += 1
+
         resolve_request = ResolveReferencesRequest(
             repository_id=request.repository_id,
             commit_aware=False,
         )
-        resolve_response = await self._resolve_refs_use_case.execute(resolve_request)
+        resolve_response = await self._resolve_refs_use_case.execute_with_progress(
+            resolve_request,
+            progress_callback=on_resolution_progress,
+            batch_size=1000,
+        )
         stats["references_resolved"] = resolve_response.resolved_count
 
         # Update index status (use last indexed hash if we processed new commits, else keep the old one)
@@ -454,6 +503,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             files_indexed=stats["files_processed"],
             last_indexed_commit=last_commit_hash or last_indexed_hash,
         )
+        stats["db_stats"].inserts += 1
 
         elapsed_seconds = time.monotonic() - start_time
 
@@ -474,6 +524,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             references_reused=stats["references_reused"],
             errors=stats["errors"],
             elapsed_seconds=elapsed_seconds,
+            db_stats=stats["db_stats"],
         )
 
     async def _process_commit(
@@ -495,6 +546,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             repository_id=repository_id,
             commit_hash=commit_hash_str,
         )
+        stats["db_stats"].selects += 1
 
         if existing_commit is not None:
             # Commit already indexed, skip it
@@ -512,13 +564,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
             # Handle both datetime objects (from GitPython) and strings (from tests)
             if isinstance(author_date, str):
-                author_date = datetime.fromisoformat(
-                    author_date.replace("Z", "+00:00")
-                )
+                author_date = datetime.fromisoformat(author_date.replace("Z", "+00:00"))
             if isinstance(commit_date, str):
-                commit_date = datetime.fromisoformat(
-                    commit_date.replace("Z", "+00:00")
-                )
+                commit_date = datetime.fromisoformat(commit_date.replace("Z", "+00:00"))
 
             # If not provided, use current time
             if author_date is None:
@@ -540,6 +588,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 commit_date=commit_date,
             )
             db_commit = await self._commit_repo.save(commit)
+            stats["db_stats"].inserts += 1
             commit_id = db_commit.id
             assert commit_id is not None, "Commit must have an ID after save"
 
@@ -614,6 +663,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 line_count=content.count("\n") + 1,
             )
             db_file = await self._file_repo.save(file_entity)
+            stats["db_stats"].inserts += 1
             file_id = db_file.id
             assert file_id is not None, "File must have an ID after save"
 
@@ -636,15 +686,24 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 stats["references_reused"] += optimization_result.references_copied
                 stats["symbols_found"] += optimization_result.symbols_copied
                 stats["references_found"] += optimization_result.references_copied
+                # copy_symbols_to_file: 1 SELECT + N INSERTs
+                # copy_references_to_file: 1 SELECT + N INSERTs
+                stats["db_stats"].selects += 2
+                stats["db_stats"].inserts += (
+                    optimization_result.symbols_copied
+                    + optimization_result.references_copied
+                )
                 # Add to cache for future files
                 content_hash_cache[content_hash] = file_id
             else:
                 # Parse file and extract symbols/references
                 if language and self._parser_service.supports_language(language):
-                    symbols_data, references_data = await self._parser_service.parse_file(
-                        content=content,
-                        language=language,
-                        file_path=file_path_str,
+                    symbols_data, references_data = (
+                        await self._parser_service.parse_file(
+                            content=content,
+                            language=language,
+                            file_path=file_path_str,
+                        )
                     )
 
                     # Save symbols (parse_file returns dicts, not Symbol objects)
@@ -666,6 +725,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                             metadata=symbol_data.get("metadata", {}),
                         )
                         await self._symbol_repo.save(symbol)
+                        stats["db_stats"].inserts += 1
                         stats["symbols_found"] += 1
 
                     # Save references
@@ -698,6 +758,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                             target_symbol_id=None,  # Will be resolved later
                         )
                         await self._reference_repo.save(reference)
+                        stats["db_stats"].inserts += 1
                         stats["references_found"] += 1
 
                     # Add to cache
