@@ -30,6 +30,14 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
      - Any external data that could change
    - Use `tmp_path` fixtures and create controlled test data (e.g., temp git repos)
    - Tests must pass regardless of which repositories are configured
+   - **TDD Approach**: Follow Test-Driven Development where practical:
+     1. Write a failing test first
+     2. Implement the minimum code to pass
+     3. Refactor while keeping tests green
+   - **Bug Fix Testing**: Every bug fix MUST include a regression test
+     - Write a test that reproduces the bug BEFORE fixing it
+     - The test should fail before the fix and pass after
+     - If a regression test is complex or hard to write, ask the user if it's worth the effort
 
 3. **Code Quality**
    - Zero tolerance for linting errors
