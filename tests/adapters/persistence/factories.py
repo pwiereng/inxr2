@@ -1,6 +1,6 @@
 """Test data factories for creating domain entities."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from inxr2.domain.entities import Commit, File, Repository, Symbol
@@ -49,8 +49,12 @@ class CommitFactory:
         return Commit(
             repository_id=repository_id,
             commit_hash=CommitHash(value=commit_hash),
-            author_date=kwargs.get("author_date", datetime.utcnow()),
-            commit_date=kwargs.get("commit_date", datetime.utcnow()),
+            author_date=kwargs.get(
+                "author_date", datetime.now(UTC).replace(tzinfo=None)
+            ),
+            commit_date=kwargs.get(
+                "commit_date", datetime.now(UTC).replace(tzinfo=None)
+            ),
             id=kwargs.get("id"),
             indexed_at=kwargs.get("indexed_at"),
         )

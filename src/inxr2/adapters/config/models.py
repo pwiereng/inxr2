@@ -6,6 +6,7 @@ After validation, they are converted to domain value objects.
 
 from pydantic import BaseModel, Field, model_validator
 
+from ...domain.constants import DEFAULT_INDEXING_LANGUAGES
 from ...domain.value_objects import (
     AppConfig,
     IndexingConfig,
@@ -26,7 +27,7 @@ class RepositoryConfigModel(BaseModel):
     )
     branches: list[str] = Field(default=["main"], description="Branches to index")
     languages: list[str] = Field(
-        default=["python", "typescript", "javascript"],
+        default=list(DEFAULT_INDEXING_LANGUAGES),
         description="Languages to extract symbols from",
     )
     exclude_patterns: list[str] = Field(

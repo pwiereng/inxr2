@@ -7,6 +7,8 @@ Validation is handled by the adapter layer (Pydantic models in adapters/config/)
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..constants import DEFAULT_INDEXING_LANGUAGES
+
 
 @dataclass(frozen=True)
 class RepositoryConfig:
@@ -16,7 +18,7 @@ class RepositoryConfig:
     path: str | None = None
     url: str | None = None
     branches: tuple[str, ...] = ("main",)
-    languages: tuple[str, ...] = ("python", "typescript", "javascript")
+    languages: tuple[str, ...] = DEFAULT_INDEXING_LANGUAGES
     exclude_patterns: tuple[str, ...] = ()
 
     def get_resolved_path(self) -> Path | None:

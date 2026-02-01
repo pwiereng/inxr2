@@ -4,7 +4,7 @@ Clean Architecture requires separation between domain entities and persistence m
 These mappers handle the conversion in both directions.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from ...domain.entities import (
     Commit,
@@ -52,8 +52,10 @@ class RepositoryMapper:
             description=entity.description,
             default_branch=entity.default_branch,
             config=entity.config,
-            created_at=entity.created_at or datetime.utcnow(),
-            updated_at=entity.updated_at or datetime.utcnow(),
+            created_at=entity.created_at
+            or datetime.now(UTC).replace(tzinfo=None),
+            updated_at=entity.updated_at
+            or datetime.now(UTC).replace(tzinfo=None),
         )
 
 
@@ -85,7 +87,8 @@ class CommitMapper:
             commit_hash=entity.commit_hash.value,
             author_date=entity.author_date,
             commit_date=entity.commit_date,
-            indexed_at=entity.indexed_at or datetime.utcnow(),
+            indexed_at=entity.indexed_at
+            or datetime.now(UTC).replace(tzinfo=None),
         )
 
 
@@ -123,7 +126,8 @@ class FileMapper:
             encoding=entity.encoding,
             is_binary=entity.is_binary,
             line_count=entity.line_count,
-            indexed_at=entity.indexed_at or datetime.utcnow(),
+            indexed_at=entity.indexed_at
+            or datetime.now(UTC).replace(tzinfo=None),
         )
 
 
@@ -173,7 +177,8 @@ class SymbolMapper:
             signature=entity.signature,
             docstring=entity.docstring,
             extra_metadata=entity.metadata,
-            indexed_at=entity.indexed_at or datetime.utcnow(),
+            indexed_at=entity.indexed_at
+            or datetime.now(UTC).replace(tzinfo=None),
         )
 
 
@@ -221,7 +226,8 @@ class ReferenceMapper:
             is_write=entity.is_write,
             resolution_confidence=entity.resolution_confidence,
             extra_metadata=entity.metadata,
-            indexed_at=entity.indexed_at or datetime.utcnow(),
+            indexed_at=entity.indexed_at
+            or datetime.now(UTC).replace(tzinfo=None),
         )
 
 
@@ -272,6 +278,8 @@ class IndexStatusMapper:
             error_count=entity.error_count,
             indexer_version=entity.indexer_version,
             extra_metadata=entity.metadata,
-            created_at=entity.created_at or datetime.utcnow(),
-            updated_at=entity.updated_at or datetime.utcnow(),
+            created_at=entity.created_at
+            or datetime.now(UTC).replace(tzinfo=None),
+            updated_at=entity.updated_at
+            or datetime.now(UTC).replace(tzinfo=None),
         )
