@@ -5,6 +5,12 @@ from .get_index_status import (
     GetIndexStatusResponse,
     GetIndexStatusUseCase,
 )
+from .orchestrator import (
+    IndexingStrategy,
+    IndexRepositoryRequest,
+    IndexRepositoryResponse,
+    IncrementalIndexRequest,
+)
 from .resolve_references import (
     ResolveReferencesRequest,
     ResolveReferencesResponse,
@@ -15,6 +21,10 @@ __all__ = [
     "GetIndexStatusRequest",
     "GetIndexStatusResponse",
     "GetIndexStatusUseCase",
+    "IndexingStrategy",
+    "IndexRepositoryRequest",
+    "IndexRepositoryResponse",
+    "IncrementalIndexRequest",
     "ResolveReferencesRequest",
     "ResolveReferencesResponse",
     "ResolveReferencesUseCase",

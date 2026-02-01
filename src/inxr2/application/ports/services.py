@@ -5,10 +5,17 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import TYPE_CHECKING, BinaryIO
 
 from ...domain.entities import Symbol
 from ...domain.value_objects import AppConfig
+
+if TYPE_CHECKING:
+    from ..use_cases.indexing.orchestrator import (
+        IncrementalIndexRequest,
+        IndexRepositoryRequest,
+        IndexRepositoryResponse,
+    )
 
 
 @dataclass(frozen=True)
@@ -259,5 +266,55 @@ class FileSystemPort(ABC):
             with filesystem.open_binary(path) as f:
                 for chunk in iter(lambda: f.read(8192), b""):
                     process(chunk)
+        """
+        pass
+
+
+class IndexingOrchestratorPort(ABC):
+    """
+    Port for indexing orchestration.
+
+    This port defines the interface for repository indexing operations,
+    allowing different indexing strategies and implementations to be swapped.
+    """
+
+    @abstractmethod
+    async def index_repository(
+        self, request: "IndexRepositoryRequest"
+    ) -> "IndexRepositoryResponse":
+        """
+        Index a repository with specified strategy.
+
+        Args:
+            request: Indexing request parameters
+
+        Returns:
+            Indexing results with statistics
+
+        Raises:
+            ValueError: If request parameters are invalid
+            RuntimeError: If indexing fails critically
+        """
+        pass
+
+    @abstractmethod
+    async def index_incremental(
+        self, request: "IncrementalIndexRequest"
+    ) -> "IndexRepositoryResponse":
+        """
+        Incrementally index changes since last index.
+
+        Only processes commits that haven't been indexed yet,
+        reusing content-hash optimization where possible.
+
+        Args:
+            request: Incremental indexing request parameters
+
+        Returns:
+            Indexing results with statistics
+
+        Raises:
+            ValueError: If request parameters are invalid or repository not found
+            RuntimeError: If incremental indexing fails
         """
         pass
