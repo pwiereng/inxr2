@@ -88,6 +88,7 @@ docker exec -it inxr2-dev bash
 ./scripts/dev-start.sh   # Start containers
 ./scripts/dev-shell.sh   # Open shell
 ./scripts/dev-stop.sh    # Stop containers
+./scripts/dev-serve.sh   # Start both backend and frontend servers (run inside container)
 ```
 
 The dev container automatically installs all dependencies and includes:
@@ -219,46 +220,78 @@ For detailed development workflows and troubleshooting, see [DEVELOPMENT.md](DEV
 
 If you need to rebuild the database from scratch or re-index a repository:
 
-**Reset Database (clears all data):**
+**Complete Fresh Start (reset DB + full index):**
 ```bash
-# Inside dev container
-./scripts/dev-reset-db.sh
+# From your host machine - reset database then index all repos:
+docker exec inxr2-dev inxr2 db reset --yes
+docker exec inxr2-dev inxr2 index full --config config.yaml
 
-# Or manually:
-docker exec inxr2-dev bash -c "PGPASSWORD=inxr2_dev_password psql -h postgres -U inxr2_user -d inxr2_dev -c 'TRUNCATE repositories CASCADE;'"
+# Or as a single command:
+docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index full --config config.yaml"
+
+# Index a specific repo only:
+docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index full --config config.yaml --repo inxr2"
+
+# Limit commit history for faster indexing (e.g., last 10 commits):
+docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index full --config config.yaml --history 10"
 ```
 
-**Full Index (from scratch):**
+**Reset Database Only (clears all data):**
 ```bash
-# Index a single repository
-docker exec inxr2-dev inxr2 index full --path /workspace
+docker exec inxr2-dev inxr2 db reset --yes
 
-# Index multiple repositories using config file
-docker exec inxr2-dev inxr2 index full --config /workspace/config.yaml
+# Or using the helper script
+./scripts/dev-reset-db.sh
+```
+
+**Full Index Commands:**
+```bash
+# Index all repositories in config
+docker exec inxr2-dev inxr2 index full --config config.yaml
 
 # Index a specific repository from config
-docker exec inxr2-dev inxr2 index full --config /workspace/config.yaml --repo myrepo
+docker exec inxr2-dev inxr2 index full --config config.yaml --repo myrepo
+
+# Force re-index a single repo (clears its existing data first)
+docker exec inxr2-dev inxr2 index full --config config.yaml --repo myrepo --force
+
+# Limit commit history (useful for large repos)
+docker exec inxr2-dev inxr2 index full --config config.yaml --history 50
+
+# Index only commits from last 30 days
+docker exec inxr2-dev inxr2 index full --config config.yaml --days 30
 
 # With verbose output
-docker exec inxr2-dev inxr2 index full --path /workspace --verbose
-
-# Index specific languages only (default: python,typescript)
-docker exec inxr2-dev inxr2 index full --path /workspace --languages python,typescript,javascript
+docker exec inxr2-dev inxr2 index full --config config.yaml --verbose
 ```
 
 **Incremental Index (only changed files):**
 ```bash
 # Faster - only indexes files changed since last index
-docker exec inxr2-dev inxr2 index incremental --path /workspace
+docker exec inxr2-dev inxr2 index incremental --config config.yaml
 
-# Specify a branch
-docker exec inxr2-dev inxr2 index incremental --path /workspace --branch main
+# Specify a specific repository
+docker exec inxr2-dev inxr2 index incremental --config config.yaml --repo myrepo
 ```
 
 **Check Index Status:**
 ```bash
-docker exec inxr2-dev inxr2 index status --path /workspace
+docker exec inxr2-dev inxr2 index status --config config.yaml
 ```
+
+**Interactive Shell (alternative):**
+```bash
+# Open a shell inside the container, then run commands directly:
+docker exec -it inxr2-dev bash
+
+# Now you can run without docker exec prefix:
+inxr2 db reset --yes
+inxr2 index full --config config.yaml
+```
+
+**Performance Note:** The indexer uses content-hash based reuse - files with identical content
+across commits are not re-parsed. This can provide up to ~5x speedup for repositories where most
+files don't change between commits. Watch for "Files Reused" in the summary output.
 
 ### Indexing External Repositories
 
@@ -317,18 +350,31 @@ docker exec inxr2-dev inxr2 config validate /workspace/config.yaml
 docker exec inxr2-dev inxr2 config show /workspace/config.yaml
 ```
 
-**Complete Reset and Re-index:**
+### Starting the Servers
+
+**Recommended: Use the helper script to start both servers at once:**
 ```bash
-# 1. Clear all indexed data
-docker exec inxr2-dev bash -c "PGPASSWORD=inxr2_dev_password psql -h postgres -U inxr2_user -d inxr2_dev -c 'TRUNCATE repositories CASCADE;'"
+# Inside the dev container
+./scripts/dev-serve.sh
 
-# 2. Run full index
-docker exec inxr2-dev inxr2 index full --path /workspace
+# Or from the host
+docker exec -it inxr2-dev ./scripts/dev-serve.sh
+```
 
-# 3. Start the server (if not running)
+This starts both backend (port 8000) and frontend (port 5173) with hot reload. Press Ctrl+C to stop both.
+
+**Alternative: Start servers separately:**
+```bash
+# Start the backend server (runs in background)
 docker exec -d inxr2-dev bash -c "cd /workspace && inxr2 serve --reload"
 
-# 4. Access at http://localhost:5173
+# Start the frontend dev server (runs in background)
+docker exec -d inxr2-dev bash -c "cd /workspace/frontend && npm run dev"
+
+# Or open an interactive shell and run them:
+docker exec -it inxr2-dev bash
+inxr2 serve --reload  # In one terminal
+cd frontend && npm run dev  # In another terminal
 ```
 
 ### Troubleshooting
@@ -482,9 +528,9 @@ See `config.example.yaml` for a complete example.
 
 ## Project Status
 
-**Current Phase**: Phase 1.7 Complete (Configuration System)
+**Current Phase**: Phase 1.11 Complete (Multi-Branch Support)
 
-INXR2 has completed Phase 1.7 with multi-repository configuration support. You can now define multiple repositories in a YAML config file and index them all with a single command. The implementation includes 195 tests passing.
+INXR2 has completed Phase 1.11 with multi-branch support. You can now browse and compare code across different branches, with full URL state management for bookmarkable views.
 
 ### Roadmap
 
@@ -495,25 +541,23 @@ INXR2 has completed Phase 1.7 with multi-repository configuration support. You c
 - [x] Phase 1.4: Vertical Slice - Basic File Indexing (2026-01-05)
 - [x] Phase 1.5: CLI Indexing Engine - Python & TypeScript (2026-01-10)
 - [x] Phase 1.6: Cross-Reference Code Browser UI (2026-01-11)
-  - Symbol search with autocomplete and filters
-  - Go to Definition (click symbol to navigate)
-  - Find References panel with type annotations
-  - Syntax highlighting with Prism.js (20+ languages)
-  - File tree navigation with language icons
-  - Symbol disambiguation for multiple definitions
 - [x] Phase 1.7: Configuration System (2026-01-13)
-  - YAML configuration with Pydantic validation
-  - Multi-repository indexing via `--config` flag
-  - Environment variable expansion (`${VAR}` and `${VAR:-default}`)
-  - Config validation and show commands
-  - Repository selector in UI
-  - 195 tests passing (178 backend + 17 frontend)
+- [x] Phase 1.8: Tree-sitter Integration (2026-01-14)
+  - AST-based parsing for Python, TypeScript, JavaScript, Java, C
+  - Proper scope tracking for nested symbols
+- [x] Phase 1.9: Time Travel & Temporal Navigation (2026-01-17)
+  - Browse code at any indexed commit
+  - Side-by-side diff viewer
+- [x] Phase 1.10: URL State & Permalinks (2026-01-20)
+  - Full URL state management for bookmarkable views
+  - Line numbers, commit, diff mode in URL
+- [x] Phase 1.11: Multi-Branch Support (2026-01-24)
+  - Branch selector component
+  - Cross-branch diff comparison
+  - File history filtered by branch
 
-**Next Phases:**
-- [ ] Phase 1.8: Tree-sitter Integration (replace regex extraction)
-- [ ] Phase 1.9: Remote Repository Support (clone from URLs)
-- [ ] Phase 1.10: Improved Reference Resolution (scope-aware, import-aware)
-- [ ] Phase 2: Additional Language Support (Java, C#, Go, C/C++)
+**Next Phase:**
+- [ ] Phase 1.12: Remote Repository Support (clone and index from URLs)
 
 ## Contributing
 

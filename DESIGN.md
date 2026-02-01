@@ -1,6 +1,6 @@
 # Cross-Reference Code Browser - Design Document
 
-> **⚠️ CRITICAL:** Before making any code changes, read [.claude-guidelines](.claude-guidelines) and [CONTRIBUTING.md](CONTRIBUTING.md).
+> **⚠️ CRITICAL:** Before making any code changes, read [CLAUDE.md](CLAUDE.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 > All development MUST follow Docker-only workflow, testing requirements, and code quality standards.
 
 ## 1. Goals & Vision
@@ -499,16 +499,16 @@ If scale grows beyond initial targets:
 - Background job queue (Celery/RQ) for async indexing
 - Elasticsearch for advanced search capabilities
 
-## 12. Open Questions & Decisions Needed
+## 12. Implementation Decisions (Resolved)
 
-### 12.1 Implementation Details to Determine
+### 12.1 Implementation Details (Decided)
 
-- **Syntax Highlighting**: Which library? (Prism.js, highlight.js, or server-side with Pygments?)
-- **Git Operations**: Use GitPython, pygit2, or subprocess calls to git CLI?
-- **Frontend Build**: Vite vs Create React App vs Next.js?
-- **Database Migrations**: Alembic for schema versioning?
-- **Testing Strategy**: Unit tests, integration tests, e2e tests?
-- **Documentation**: How to document API endpoints, configuration options?
+- **Syntax Highlighting**: Prism.js (20+ languages supported)
+- **Git Operations**: GitPython for git integration
+- **Frontend Build**: Vite with React + TypeScript
+- **Database Migrations**: Alembic for schema versioning
+- **Testing Strategy**: Unit tests with fakes (not mocks), integration tests with SQLite/PostgreSQL
+- **Code Parsing**: Tree-sitter for AST-based symbol extraction
 
 ### 12.2 Future Architectural Decisions
 
@@ -561,6 +561,6 @@ If scale grows beyond initial targets:
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2025-12-29
-**Status**: Initial Design
+**Document Version**: 1.1
+**Last Updated**: 2026-01-31
+**Status**: Implemented (Phase 1.11 Complete)

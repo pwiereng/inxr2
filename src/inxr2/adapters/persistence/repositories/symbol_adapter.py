@@ -1,6 +1,8 @@
 """PostgreSQL symbol repository adapter."""
 
-from sqlalchemy import delete, func, select
+from datetime import UTC, datetime
+
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import SymbolRepositoryPort
@@ -202,3 +204,89 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         )
         await self.session.flush()
         return result.rowcount or 0  # type: ignore[attr-defined]
+
+    async def copy_symbols_to_file(
+        self,
+        source_file_id: int,
+        target_file_id: int,
+        target_commit_id: int,
+        target_repository_id: int,
+    ) -> int:
+        """Copy all symbols from source file to target file.
+
+        Creates new symbol records with the target file/commit IDs while
+        preserving all other symbol attributes. Parent symbol IDs are
+        remapped to point to the newly created symbols.
+
+        Performance: Uses a single flush for all inserts (O(1) for inserts),
+        then individual UPDATE statements for parent_symbol_id remapping
+        (O(N) for symbols with parents). Most files have few nested symbols,
+        so this is acceptable for typical use cases.
+        """
+        # Fetch source symbols ordered by ID to maintain parent-child ordering
+        result = await self.session.execute(
+            select(SymbolModel)
+            .where(SymbolModel.file_id == source_file_id)
+            .order_by(SymbolModel.id)
+        )
+        source_symbols = list(result.scalars().all())
+
+        if not source_symbols:
+            return 0
+
+        # Track source symbols that have parents (for second pass)
+        symbols_with_parents: list[tuple[int, int]] = []  # (source_id, parent_id)
+
+        # Create all new symbols and add to session (no flush yet)
+        new_symbols: list[SymbolModel] = []
+        indexed_at = datetime.now(UTC).replace(tzinfo=None)
+
+        for source in source_symbols:
+            new_symbol = SymbolModel(
+                file_id=target_file_id,
+                repository_id=target_repository_id,
+                commit_id=target_commit_id,
+                name=source.name,
+                qualified_name=source.qualified_name,
+                kind=source.kind,
+                start_line=source.start_line,
+                start_column=source.start_column,
+                end_line=source.end_line,
+                end_column=source.end_column,
+                scope=source.scope,
+                signature=source.signature,
+                docstring=source.docstring,
+                extra_metadata=source.extra_metadata,
+                parent_symbol_id=None,  # Set in second pass
+                indexed_at=indexed_at,
+            )
+            self.session.add(new_symbol)
+            new_symbols.append(new_symbol)
+
+            # Track symbols that need parent remapping
+            if source.parent_symbol_id is not None and source.id is not None:
+                symbols_with_parents.append((source.id, source.parent_symbol_id))
+
+        # Single flush to insert all symbols at once
+        await self.session.flush()
+
+        # Build old->new ID mapping (symbols maintain order after flush)
+        old_to_new_id: dict[int, int] = {}
+        for source, new_symbol in zip(source_symbols, new_symbols, strict=True):
+            if source.id is not None and new_symbol.id is not None:
+                old_to_new_id[source.id] = new_symbol.id
+
+        # Second pass: batch update parent_symbol_id references
+        if symbols_with_parents:
+            for source_id, old_parent_id in symbols_with_parents:
+                new_id = old_to_new_id.get(source_id)
+                new_parent_id = old_to_new_id.get(old_parent_id)
+                if new_id is not None and new_parent_id is not None:
+                    await self.session.execute(
+                        update(SymbolModel)
+                        .where(SymbolModel.id == new_id)
+                        .values(parent_symbol_id=new_parent_id)
+                    )
+            await self.session.flush()
+
+        return len(source_symbols)

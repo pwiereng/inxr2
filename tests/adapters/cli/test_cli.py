@@ -96,6 +96,18 @@ class TestIndexCommands:
             assert result.exit_code != 0
             assert "No .git directory" in result.output
 
+    def test_index_full_days_must_be_positive(self, runner: CliRunner) -> None:
+        """Test that --days rejects zero or negative values."""
+        # Test zero
+        result = runner.invoke(main, ["index", "full", "--path", ".", "--days", "0"])
+        assert result.exit_code != 0
+        assert "positive integer" in result.output.lower()
+
+        # Test negative
+        result = runner.invoke(main, ["index", "full", "--path", ".", "--days", "-5"])
+        assert result.exit_code != 0
+        assert "positive integer" in result.output.lower()
+
 
 class TestIndexOnTempRepo:
     """Tests that run indexing on a temporary git repository."""

@@ -33,6 +33,15 @@ def setup_logging(verbose: bool, log_level: str) -> None:
     )
 
 
+def validate_positive_days(
+    ctx: click.Context, param: click.Parameter, value: int | None
+) -> int | None:
+    """Validate that --days is a positive integer when provided."""
+    if value is not None and value <= 0:
+        raise click.BadParameter("must be a positive integer (greater than 0)")
+    return value
+
+
 def _run_single_repo_index(
     path: Path,
     branch: str | None,
@@ -40,8 +49,9 @@ def _run_single_repo_index(
     verbose: bool,
     index_func: Callable[..., Any],
     index_type: str,
-    max_history: int = 100,
+    max_history: int | None = 100,
     force: bool = False,
+    since_days: int | None = None,
 ) -> None:
     """Run indexing for a single repository path."""
     # Validate git repository
@@ -72,6 +82,8 @@ def _run_single_repo_index(
     console.print(f"  Repository: {path.absolute()}")
     console.print(f"  Branch: {branch or '(current)'}")
     console.print(f"  Languages: {', '.join(lang_list)}")
+    if since_days is not None:
+        console.print(f"  Date filter: last {since_days} days")
     console.print()
 
     try:
@@ -82,6 +94,7 @@ def _run_single_repo_index(
             console=console,
             max_history=max_history,
             force=force,
+            since_days=since_days,
         )
     except Exception as e:
         console.print(f"\n[red]Error during indexing:[/red] {e}")
@@ -100,6 +113,7 @@ def _run_config_based_index(
     index_type: str,
     max_history_override: int | None = None,
     force: bool = False,
+    since_days: int | None = None,
 ) -> None:
     """Run indexing for repositories defined in config file."""
     from inxr2.adapters.config.yaml_config import YamlConfigService
@@ -147,6 +161,8 @@ def _run_config_based_index(
     console.print(f"\n[bold blue]INXR2 {index_type} Index[/bold blue]")
     console.print(f"  Config: {config_path}")
     console.print(f"  Repositories: {total_repos}")
+    if since_days is not None:
+        console.print(f"  Date filter: last {since_days} days")
     console.print()
 
     # Track overall stats
@@ -204,6 +220,7 @@ def _run_config_based_index(
                     console=console,
                     max_history=max_history,
                     force=force,
+                    since_days=since_days,
                 )
                 successful += 1
             except Exception as e:
@@ -281,6 +298,14 @@ def index() -> None:
     help="Maximum number of commits to index for time travel (default: from config or 100)",
 )
 @click.option(
+    "--days",
+    "-d",
+    type=int,
+    default=None,
+    callback=validate_positive_days,
+    help="Only index commits from the last N days (overrides --history when specified)",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
@@ -316,6 +341,7 @@ def index_full(
     branch: str | None,
     languages: str | None,
     history: int | None,
+    days: int | None,
     verbose: bool,
     log_level: str,
     force: bool,
@@ -379,6 +405,7 @@ def index_full(
             index_type="Full",
             max_history_override=history,
             force=force,
+            since_days=days,
         )
     else:
         # Single repository path-based indexing
@@ -390,8 +417,10 @@ def index_full(
             verbose=verbose,
             index_func=run_full_index,
             index_type="Full",
-            max_history=history or 100,
+            # --days overrides --history: disable commit cap when filtering by date
+            max_history=None if days else (history or 100),
             force=force,
+            since_days=days,
         )
 
 
@@ -635,6 +664,53 @@ def config_show(config_path: Path) -> None:
     console.print("[bold]Server Settings:[/bold]")
     console.print(f"  Host: {app_config.server.host}")
     console.print(f"  Port: {app_config.server.port}")
+
+
+# =============================================================================
+# Database Command Group
+# =============================================================================
+
+
+@main.group()
+def db() -> None:
+    """Database management commands."""
+    pass
+
+
+@db.command("reset")
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Confirm reset without prompting",
+)
+def db_reset(yes: bool) -> None:
+    """
+    Reset the database by truncating all tables.
+
+    This permanently deletes ALL indexed data including repositories,
+    commits, files, symbols, and references.
+
+    Example:
+        inxr2 db reset --yes
+    """
+    if not yes:
+        console.print(
+            "[red]Error:[/red] --yes flag required to confirm. "
+            "This will permanently delete ALL indexed data."
+        )
+        sys.exit(1)
+
+    console.print("[yellow]Resetting database...[/yellow]")
+
+    from inxr2.adapters.cli.commands.index_command import reset_database
+
+    try:
+        reset_database(console=console)
+        console.print("[green]Database reset complete[/green]")
+    except Exception as e:
+        console.print(f"[red]Error resetting database:[/red] {e}")
+        sys.exit(1)
 
 
 # =============================================================================

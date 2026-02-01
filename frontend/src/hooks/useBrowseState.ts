@@ -618,10 +618,10 @@ export function useBrowseState() {
         params.set('line', line.toString())
         if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
         if (urlState.diffCommit) params.set('diff', urlState.diffCommit)
-        // Preserve UI state
+        // Preserve UI state (but close refs panel and clear search query)
         if (!urlState.drawerOpen) params.set('drawer', '0')
-        if (urlState.refsPanelOpen) params.set('refs', '1')
-        if (urlState.searchQuery) params.set('q', urlState.searchQuery)
+        // Note: We intentionally do NOT preserve refsPanelOpen or searchQuery
+        // when clicking a line number - the user wants to focus on that line
         // Preserve diff mode panel states
         if (urlState.treePanel === 'right') params.set('tp', 'r')
         if (urlState.refPanel === 'right') params.set('rp', 'r')

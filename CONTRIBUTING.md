@@ -160,7 +160,6 @@ docker exec inxr2-dev bash -c "cd /workspace/frontend && npm run type-check"
 
 - **Minimum coverage**: 80% overall (enforced in CI)
 - **Target coverage**: 90%+
-- **Current coverage**: 85% with 92 tests (as of Phase 1.4 completion)
 - All new features must include tests BEFORE code review
 - All bug fixes must include regression tests
 - Coverage must not decrease with any PR
@@ -239,20 +238,20 @@ docker exec inxr2-dev bash -c "cd /workspace/frontend && npm test -- --watch"
 ```
 tests/
 ├── unit/              # Fast, isolated unit tests
-│   ├── backend/
-│   │   ├── parsers/
-│   │   ├── indexing/
-│   │   └── api/
-│   └── frontend/
-│       ├── components/
-│       └── utils/
+│   ├── domain/        # Domain entity tests
+│   ├── application/   # Use case tests with fakes
+│   └── adapters/      # Adapter-specific tests
 ├── integration/       # Tests with real dependencies (DB, file system)
-│   ├── indexing/
-│   ├── api/
-│   └── database/
+│   ├── adapters/      # Database integration tests
+│   └── api/           # API endpoint tests
+├── adapters/          # Adapter tests
+│   ├── cli/           # CLI command tests
+│   └── external/      # External service tests (Git, TreeSitter)
 └── fixtures/          # Shared test data and factories
-    ├── repositories/
-    └── data/
+
+frontend/              # Frontend tests (separate)
+└── src/
+    └── test/          # Vitest tests
 ```
 
 ## Development Workflow
@@ -329,25 +328,28 @@ docker exec inxr2-dev bash -c "cd /workspace && pre-commit run --all-files"
 
 ## Python Backend Standards
 
-### Code Organization
+### Code Organization (Clean Architecture)
 
 ```
-backend/
-├── src/
-│   ├── api/              # FastAPI routes and endpoints
-│   ├── core/             # Core business logic
-│   │   ├── indexing/     # Indexing engine
-│   │   ├── parsing/      # Tree-sitter parsers
-│   │   └── search/       # Search functionality
-│   ├── db/               # Database models and queries
-│   │   ├── models.py
-│   │   └── repositories.py
-│   ├── config/           # Configuration management
-│   └── utils/            # Shared utilities
-└── tests/
-    ├── unit/
-    ├── integration/
-    └── fixtures/
+src/inxr2/
+├── domain/                # Layer 1: Pure business logic
+│   ├── entities/          # Repository, Commit, File, Symbol, Reference
+│   ├── value_objects/     # SymbolKind, CommitHash, ReferenceType
+│   ├── exceptions/        # Domain-specific exceptions
+│   └── services/          # Domain services (LanguageDetector)
+├── application/           # Layer 2: Use cases & ports
+│   ├── use_cases/         # Business workflows
+│   ├── ports/             # Abstract interfaces (ABC)
+│   └── dtos/              # Data Transfer Objects
+├── adapters/              # Layer 3: Interface adapters
+│   ├── api/               # FastAPI controllers
+│   ├── cli/               # CLI commands
+│   ├── persistence/       # Database adapters & ORM models
+│   └── external/          # Git, TreeSitter, filesystem
+└── infrastructure/        # Layer 4: Framework setup
+    ├── fastapi/           # FastAPI app configuration
+    ├── database/          # Database connection & migrations
+    └── config/            # Settings & DI container
 ```
 
 ### Type Hints
@@ -428,12 +430,12 @@ def test_index_repository_extracts_symbols():
 **pyproject.toml:**
 ```toml
 [tool.black]
-line-length = 100
+line-length = 88
 target-version = ['py311']
 
 [tool.isort]
 profile = "black"
-line_length = 100
+line_length = 88
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

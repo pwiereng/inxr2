@@ -1,5 +1,7 @@
 """PostgreSQL reference repository adapter."""
 
+from datetime import UTC, datetime
+
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -229,8 +231,7 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         if commit_aware:
             # Time travel mode: only match references to symbols from same commit
             result = await self.session.execute(
-                text(
-                    """
+                text("""
                     UPDATE "references" r
                     SET target_symbol_id = s.id
                     FROM symbols s
@@ -239,15 +240,13 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                       AND r.commit_id = s.commit_id
                       AND r.reference_text = s.name
                       AND r.target_symbol_id IS NULL
-                """
-                ),
+                """),
                 {"repo_id": repository_id},
             )
         else:
             # Cross-commit mode: match references to any symbol in repository
             result = await self.session.execute(
-                text(
-                    """
+                text("""
                     UPDATE "references" r
                     SET target_symbol_id = s.id
                     FROM symbols s
@@ -255,10 +254,62 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                       AND s.repository_id = :repo_id
                       AND r.reference_text = s.name
                       AND r.target_symbol_id IS NULL
-                """
-                ),
+                """),
                 {"repo_id": repository_id},
             )
 
         await self.session.flush()
         return result.rowcount or 0  # type: ignore[attr-defined]
+
+    async def copy_references_to_file(
+        self,
+        source_file_id: int,
+        target_file_id: int,
+        target_commit_id: int,
+        target_repository_id: int,
+    ) -> int:
+        """Copy all references from source file to target file.
+
+        Creates new reference records with the target file/commit IDs while
+        preserving all other reference attributes. target_symbol_id is set to
+        NULL and will be resolved later by resolve_unlinked_references.
+        """
+        # Fetch source references
+        result = await self.session.execute(
+            select(ReferenceModel).where(
+                ReferenceModel.source_file_id == source_file_id
+            )
+        )
+        source_refs = list(result.scalars().all())
+
+        if not source_refs:
+            return 0
+
+        # Create new references with updated file/commit/repository IDs
+        now = datetime.now(UTC).replace(tzinfo=None)
+        new_refs = [
+            ReferenceModel(
+                repository_id=target_repository_id,
+                commit_id=target_commit_id,
+                source_file_id=target_file_id,
+                source_line=ref.source_line,
+                source_column=ref.source_column,
+                source_end_column=ref.source_end_column,
+                reference_text=ref.reference_text,
+                reference_type=ref.reference_type,
+                is_definition=ref.is_definition,
+                is_write=ref.is_write,
+                resolution_confidence=ref.resolution_confidence,
+                extra_metadata=ref.extra_metadata,
+                # target_symbol_id set to NULL for later resolution
+                target_symbol_id=None,
+                target_repository_id=None,
+                # Explicitly set indexed_at for SQLite compatibility in tests
+                indexed_at=now,
+            )
+            for ref in source_refs
+        ]
+
+        self.session.add_all(new_refs)
+        await self.session.flush()
+        return len(new_refs)

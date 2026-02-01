@@ -1,7 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, RenderHookResult } from '@testing-library/react'
 import { useBrowseState } from './useBrowseState'
 import * as api from '@/lib/api'
+
+/**
+ * Helper to properly render hooks with async effects.
+ *
+ * The useBrowseState hook has multiple useEffect hooks that fire asynchronously,
+ * causing state updates after initial render. Wrapping the entire render + settling
+ * in act() ensures React properly handles all async updates without warnings.
+ */
+async function renderBrowseStateHook(): Promise<
+  RenderHookResult<ReturnType<typeof useBrowseState>, unknown>
+> {
+  let result: RenderHookResult<ReturnType<typeof useBrowseState>, unknown>
+  await act(async () => {
+    result = renderHook(() => useBrowseState())
+    // Allow time for all async effects to settle
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  })
+  return result!
+}
 
 // Mock react-router-dom
 const mockNavigate = vi.fn()
@@ -88,94 +107,81 @@ describe('useBrowseState', () => {
   })
 
   describe('URL state parsing', () => {
-    it('should parse search query from URL', () => {
+    it('should parse search query from URL', async () => {
       mockSearchParams = new URLSearchParams('q=MyClass')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.searchQuery).toBe('MyClass')
     })
 
-    it('should default search query to empty string', () => {
-      const { result } = renderHook(() => useBrowseState())
-
+    it('should default search query to empty string', async () => {
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.searchQuery).toBe('')
     })
 
-    it('should parse drawer state from URL (closed)', () => {
+    it('should parse drawer state from URL (closed)', async () => {
       mockSearchParams = new URLSearchParams('drawer=0')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.drawerOpen).toBe(false)
     })
 
-    it('should default drawer to open', () => {
-      const { result } = renderHook(() => useBrowseState())
-
+    it('should default drawer to open', async () => {
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.drawerOpen).toBe(true)
     })
 
-    it('should parse refs panel state from URL (open)', () => {
+    it('should parse refs panel state from URL (open)', async () => {
       mockSearchParams = new URLSearchParams('refs=1')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.refsPanelOpen).toBe(true)
     })
 
-    it('should default refs panel to closed', () => {
-      const { result } = renderHook(() => useBrowseState())
-
+    it('should default refs panel to closed', async () => {
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.refsPanelOpen).toBe(false)
     })
 
-    it('should parse tree panel side from URL', () => {
+    it('should parse tree panel side from URL', async () => {
       mockSearchParams = new URLSearchParams('tp=r')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.treePanel).toBe('right')
     })
 
-    it('should default tree panel to left', () => {
-      const { result } = renderHook(() => useBrowseState())
-
+    it('should default tree panel to left', async () => {
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.treePanel).toBe('left')
     })
 
-    it('should parse ref panel side from URL', () => {
+    it('should parse ref panel side from URL', async () => {
       mockSearchParams = new URLSearchParams('rp=r')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.refPanel).toBe('right')
     })
 
-    it('should parse active panel from URL', () => {
+    it('should parse active panel from URL', async () => {
       mockSearchParams = new URLSearchParams('ap=r')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.activePanel).toBe('right')
     })
 
-    it('should parse diff mode from URL', () => {
+    it('should parse diff mode from URL', async () => {
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.diffMode).toBe(true)
       expect(result.current.urlState.selectedCommit).toBe('abc123')
       expect(result.current.urlState.diffCommit).toBe('def456')
     })
 
-    it('should parse highlight line from URL', () => {
+    it('should parse highlight line from URL', async () => {
       mockSearchParams = new URLSearchParams('line=42')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.highlightLine).toBe(42)
     })
 
-    it('should parse all params together', () => {
+    it('should parse all params together', async () => {
       mockSearchParams = new URLSearchParams(
         'q=MyClass&refs=1&drawer=0&tp=r&rp=r&ap=r&commit=abc&diff=def&line=10'
       )
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState).toMatchObject({
         searchQuery: 'MyClass',
         refsPanelOpen: true,
@@ -193,7 +199,7 @@ describe('useBrowseState', () => {
 
   describe('URL state updates', () => {
     it('should update search query in URL', async () => {
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.setSearchQuery('NewSearch')
@@ -205,7 +211,7 @@ describe('useBrowseState', () => {
 
     it('should remove search query from URL when empty', async () => {
       mockSearchParams = new URLSearchParams('q=OldSearch')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.setSearchQuery('')
@@ -215,7 +221,7 @@ describe('useBrowseState', () => {
     })
 
     it('should toggle drawer state in URL', async () => {
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       // Initially open (no drawer param)
       expect(result.current.urlState.drawerOpen).toBe(true)
@@ -228,7 +234,7 @@ describe('useBrowseState', () => {
     })
 
     it('should update tree panel in URL', async () => {
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.setTreePanel('right')
@@ -238,7 +244,7 @@ describe('useBrowseState', () => {
     })
 
     it('should update ref panel in URL', async () => {
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.setRefPanel('right')
@@ -248,7 +254,7 @@ describe('useBrowseState', () => {
     })
 
     it('should update active panel in URL', async () => {
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.setActivePanel('right')
@@ -259,33 +265,29 @@ describe('useBrowseState', () => {
   })
 
   describe('UI state exposure', () => {
-    it('should expose drawer state through uiState', () => {
+    it('should expose drawer state through uiState', async () => {
       mockSearchParams = new URLSearchParams('drawer=0')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.uiState.drawerOpen).toBe(false)
     })
 
-    it('should expose refs panel state through uiState', () => {
+    it('should expose refs panel state through uiState', async () => {
       mockSearchParams = new URLSearchParams('refs=1')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.uiState.refsPanelOpen).toBe(true)
     })
 
-    it('should expose search query through uiState', () => {
+    it('should expose search query through uiState', async () => {
       mockSearchParams = new URLSearchParams('q=Test')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.uiState.searchQuery).toBe('Test')
     })
   })
 
   describe('diff state exposure', () => {
-    it('should expose panel states through diffState', () => {
+    it('should expose panel states through diffState', async () => {
       mockSearchParams = new URLSearchParams('tp=r&rp=r&ap=r')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.diffState.treePanel).toBe('right')
       expect(result.current.diffState.refPanel).toBe('right')
       expect(result.current.diffState.activePanel).toBe('right')
@@ -293,9 +295,8 @@ describe('useBrowseState', () => {
   })
 
   describe('backwards compatibility', () => {
-    it('should work with no URL params (all defaults)', () => {
-      const { result } = renderHook(() => useBrowseState())
-
+    it('should work with no URL params (all defaults)', async () => {
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.searchQuery).toBe('')
       expect(result.current.urlState.drawerOpen).toBe(true)
       expect(result.current.urlState.refsPanelOpen).toBe(false)
@@ -305,10 +306,9 @@ describe('useBrowseState', () => {
       expect(result.current.urlState.diffMode).toBe(false)
     })
 
-    it('should work with only legacy params (commit, line)', () => {
+    it('should work with only legacy params (commit, line)', async () => {
       mockSearchParams = new URLSearchParams('commit=abc123&line=50')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.selectedCommit).toBe('abc123')
       expect(result.current.urlState.highlightLine).toBe(50)
       // All new params should have defaults
@@ -353,7 +353,7 @@ describe('useBrowseState', () => {
         total: 3,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       // Wait for fileVersions to load
       await vi.waitFor(() => {
@@ -376,7 +376,7 @@ describe('useBrowseState', () => {
         total: 1,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       // Wait for fileVersions to load
       await vi.waitFor(() => {
@@ -403,7 +403,7 @@ describe('useBrowseState', () => {
         total: 3,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(3)
@@ -431,7 +431,7 @@ describe('useBrowseState', () => {
         total: 3,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(3)
@@ -457,7 +457,7 @@ describe('useBrowseState', () => {
         total: 3,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(3)
@@ -487,7 +487,7 @@ describe('useBrowseState', () => {
         total: 3,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(3)
@@ -535,7 +535,7 @@ describe('useBrowseState', () => {
         total: 2,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(2)
@@ -557,7 +557,7 @@ describe('useBrowseState', () => {
         total: 2,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(2)
@@ -583,7 +583,7 @@ describe('useBrowseState', () => {
         total: 2,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(2)
@@ -606,7 +606,7 @@ describe('useBrowseState', () => {
         total: 2,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(2)
@@ -628,7 +628,7 @@ describe('useBrowseState', () => {
         total: 2,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(2)
@@ -661,7 +661,7 @@ describe('useBrowseState', () => {
         total: 2,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(2)
@@ -691,7 +691,7 @@ describe('useBrowseState', () => {
         total: 2,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(2)
@@ -715,12 +715,9 @@ describe('useBrowseState', () => {
     it('should clear refs panel React state', async () => {
       mockSearchParams = new URLSearchParams('refs=1&q=TestSymbol')
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
-      // Wait for initial load
-      await vi.waitFor(() => {
-        expect(result.current.urlState.refsPanelOpen).toBe(true)
-      })
+      expect(result.current.urlState.refsPanelOpen).toBe(true)
 
       act(() => {
         result.current.actions.closeRefsPanel()
@@ -735,11 +732,9 @@ describe('useBrowseState', () => {
     it('should remove refs param from URL', async () => {
       mockSearchParams = new URLSearchParams('refs=1&q=TestSymbol')
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
-      await vi.waitFor(() => {
-        expect(result.current.urlState.refsPanelOpen).toBe(true)
-      })
+      expect(result.current.urlState.refsPanelOpen).toBe(true)
 
       act(() => {
         result.current.actions.closeRefsPanel()
@@ -753,12 +748,10 @@ describe('useBrowseState', () => {
     it('should preserve search query when closing refs panel', async () => {
       mockSearchParams = new URLSearchParams('refs=1&q=TestSymbol')
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
-      await vi.waitFor(() => {
-        expect(result.current.urlState.refsPanelOpen).toBe(true)
-        expect(result.current.urlState.searchQuery).toBe('TestSymbol')
-      })
+      expect(result.current.urlState.refsPanelOpen).toBe(true)
+      expect(result.current.urlState.searchQuery).toBe('TestSymbol')
 
       act(() => {
         result.current.actions.closeRefsPanel()
@@ -773,7 +766,7 @@ describe('useBrowseState', () => {
     it('should initialize searchByName from URL when refs panel is open', async () => {
       mockSearchParams = new URLSearchParams('refs=1&q=TestSymbol')
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       // Wait for repository to load and restoration effect to run
       await vi.waitFor(() => {
@@ -793,7 +786,7 @@ describe('useBrowseState', () => {
       // refs=0 or no refs param means closed
       mockSearchParams = new URLSearchParams('q=TestSymbol')
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.repository).not.toBeNull()
@@ -809,7 +802,7 @@ describe('useBrowseState', () => {
     it('should not restore if no search query in URL', async () => {
       mockSearchParams = new URLSearchParams('refs=1')
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.repository).not.toBeNull()
@@ -825,7 +818,7 @@ describe('useBrowseState', () => {
     it('should not restore if searchByName is already set', async () => {
       mockSearchParams = new URLSearchParams('refs=1&q=TestSymbol')
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.repository).not.toBeNull()
@@ -870,8 +863,8 @@ describe('useBrowseState', () => {
       docstring: null,
     }
 
-    it('should navigate to symbol file and open refs panel', () => {
-      const { result } = renderHook(() => useBrowseState())
+    it('should navigate to symbol file and open refs panel', async () => {
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.navigateToSymbol(mockSymbol)
@@ -888,8 +881,8 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('q=__init__'))
     })
 
-    it('should set refs panel state when navigating to symbol', () => {
-      const { result } = renderHook(() => useBrowseState())
+    it('should set refs panel state when navigating to symbol', async () => {
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.navigateToSymbol(mockSymbol)
@@ -903,13 +896,13 @@ describe('useBrowseState', () => {
       expect(result.current.refsState.isDirectDefinition).toBe(true)
     })
 
-    it('should open refs panel by name when symbol has no file_path', () => {
+    it('should open refs panel by name when symbol has no file_path', async () => {
       const symbolWithoutPath = {
         ...mockSymbol,
         file_path: null,
       }
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.navigateToSymbol(symbolWithoutPath)
@@ -924,10 +917,10 @@ describe('useBrowseState', () => {
       expect(mockSearchParams.get('q')).toBe('__init__')
     })
 
-    it('should preserve drawer state when navigating', () => {
+    it('should preserve drawer state when navigating', async () => {
       mockSearchParams = new URLSearchParams('drawer=0')
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.navigateToSymbol(mockSymbol)
@@ -939,36 +932,31 @@ describe('useBrowseState', () => {
   })
 
   describe('branch URL state', () => {
-    it('should parse branch from URL', () => {
+    it('should parse branch from URL', async () => {
       mockSearchParams = new URLSearchParams('branch=feature')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.selectedBranch).toBe('feature')
     })
 
-    it('should default branch to null when not in URL', () => {
-      const { result } = renderHook(() => useBrowseState())
-
+    it('should default branch to null when not in URL', async () => {
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.selectedBranch).toBeNull()
     })
 
-    it('should parse diffBranch from URL', () => {
+    it('should parse diffBranch from URL', async () => {
       mockSearchParams = new URLSearchParams('branch=main&diffBranch=feature')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.diffBranch).toBe('feature')
     })
 
-    it('should default diffBranch to null when not in URL', () => {
-      const { result } = renderHook(() => useBrowseState())
-
+    it('should default diffBranch to null when not in URL', async () => {
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.diffBranch).toBeNull()
     })
 
-    it('should parse branch with other params', () => {
+    it('should parse branch with other params', async () => {
       mockSearchParams = new URLSearchParams('q=MyClass&refs=1&branch=develop&commit=abc123')
-      const { result } = renderHook(() => useBrowseState())
-
+      const { result } = await renderBrowseStateHook()
       expect(result.current.urlState.selectedBranch).toBe('develop')
       expect(result.current.urlState.searchQuery).toBe('MyClass')
       expect(result.current.urlState.refsPanelOpen).toBe(true)
@@ -978,7 +966,7 @@ describe('useBrowseState', () => {
 
   describe('branch change actions', () => {
     it('should change branch by navigating with branch param', async () => {
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.changeBranch('feature')
@@ -989,7 +977,7 @@ describe('useBrowseState', () => {
 
     it('should remove branch param when changing to null (default)', async () => {
       mockSearchParams = new URLSearchParams('branch=feature')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.changeBranch(null)
@@ -1001,7 +989,7 @@ describe('useBrowseState', () => {
 
     it('should clear commit when changing branch', async () => {
       mockSearchParams = new URLSearchParams('branch=main&commit=abc123')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.changeBranch('feature')
@@ -1014,7 +1002,7 @@ describe('useBrowseState', () => {
 
     it('should preserve drawer state when changing branch', async () => {
       mockSearchParams = new URLSearchParams('drawer=0&branch=main')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.changeBranch('feature')
@@ -1025,7 +1013,7 @@ describe('useBrowseState', () => {
 
     it('should change diffBranch by navigating with diffBranch param', async () => {
       mockSearchParams = new URLSearchParams('branch=main&diff=abc123')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.changeDiffBranch('feature')
@@ -1036,7 +1024,7 @@ describe('useBrowseState', () => {
 
     it('should remove diffBranch param when changing to null', async () => {
       mockSearchParams = new URLSearchParams('diffBranch=feature')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.changeDiffBranch(null)
@@ -1050,7 +1038,7 @@ describe('useBrowseState', () => {
   describe('branch preservation in navigation', () => {
     it('should preserve branch when navigating to file', async () => {
       mockSearchParams = new URLSearchParams('branch=feature')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.navigateToFile('src/other.py')
@@ -1085,7 +1073,7 @@ describe('useBrowseState', () => {
         total: 2,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(2)
@@ -1124,7 +1112,7 @@ describe('useBrowseState', () => {
         total: 2,
       })
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       await vi.waitFor(() => {
         expect(result.current.dataState.fileVersions.length).toBe(2)
@@ -1139,10 +1127,10 @@ describe('useBrowseState', () => {
   })
 
   describe('handleRefPanelClick in diff mode', () => {
-    it('should use diffCommit when refPanel is right', () => {
+    it('should use diffCommit when refPanel is right', async () => {
       // In diff mode with refs panel showing the right (diff) side
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&rp=r&refs=1')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.handleRefPanelClick({
@@ -1156,10 +1144,10 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('line=42'))
     })
 
-    it('should use selectedCommit when refPanel is left', () => {
+    it('should use selectedCommit when refPanel is left', async () => {
       // In diff mode with refs panel showing the left (selected) side
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&refs=1')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.handleRefPanelClick({
@@ -1172,12 +1160,12 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
     })
 
-    it('should use refPanel not activePanel to determine commit', () => {
+    it('should use refPanel not activePanel to determine commit', async () => {
       // Bug regression test: activePanel is right (user last clicked right panel),
       // but refPanel is left (references are for left panel's code).
       // Should use left side's commit.
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&ap=r&refs=1')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       // Verify initial state: activePanel is right, refPanel is left
       expect(result.current.urlState.activePanel).toBe('right')
@@ -1195,11 +1183,11 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
     })
 
-    it('should preserve diffBranch when refPanel is right', () => {
+    it('should preserve diffBranch when refPanel is right', async () => {
       // Bug regression test: when viewing references for the right (diff) panel
       // which is on a different branch, clicking should navigate to that branch
       mockSearchParams = new URLSearchParams('commit=abc123&diffBranch=feature-branch&rp=r&refs=1')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.handleRefPanelClick({
@@ -1212,10 +1200,10 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature-branch'))
     })
 
-    it('should preserve selectedBranch when refPanel is left', () => {
+    it('should preserve selectedBranch when refPanel is left', async () => {
       // When viewing references for the left panel on a specific branch
       mockSearchParams = new URLSearchParams('branch=develop&diffBranch=feature&rp=l&refs=1')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.handleRefPanelClick({
@@ -1248,10 +1236,10 @@ describe('useBrowseState', () => {
       docstring: null,
     }
 
-    it('should use diffCommit when refPanel is right', () => {
+    it('should use diffCommit when refPanel is right', async () => {
       // In diff mode with refs panel showing the right (diff) side
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&rp=r&refs=1')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.handleDefinitionClick(mockSymbol)
@@ -1263,10 +1251,10 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('src/target.py'))
     })
 
-    it('should use selectedCommit when refPanel is left', () => {
+    it('should use selectedCommit when refPanel is left', async () => {
       // In diff mode with refs panel showing the left (selected) side
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&refs=1')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.handleDefinitionClick(mockSymbol)
@@ -1276,12 +1264,12 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
     })
 
-    it('should use refPanel not activePanel to determine commit', () => {
+    it('should use refPanel not activePanel to determine commit', async () => {
       // Bug regression test: activePanel is right (user last clicked right panel),
       // but refPanel is left (references are for left panel's code).
       // Should use left side's commit.
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&ap=r&refs=1')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       // Verify initial state: activePanel is right, refPanel is left
       expect(result.current.urlState.activePanel).toBe('right')
@@ -1296,9 +1284,9 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
     })
 
-    it('should not navigate if symbol has no file_path', () => {
+    it('should not navigate if symbol has no file_path', async () => {
       const symbolWithoutPath = { ...mockSymbol, file_path: null }
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.handleDefinitionClick(symbolWithoutPath)
@@ -1307,11 +1295,11 @@ describe('useBrowseState', () => {
       expect(mockNavigate).not.toHaveBeenCalled()
     })
 
-    it('should preserve diffBranch when refPanel is right', () => {
+    it('should preserve diffBranch when refPanel is right', async () => {
       // Bug regression test: when viewing definition for the right (diff) panel
       // which is on a different branch, clicking should navigate to that branch
       mockSearchParams = new URLSearchParams('commit=abc123&diffBranch=feature-branch&rp=r&refs=1')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.handleDefinitionClick(mockSymbol)
@@ -1321,10 +1309,10 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature-branch'))
     })
 
-    it('should preserve selectedBranch when refPanel is left', () => {
+    it('should preserve selectedBranch when refPanel is left', async () => {
       // When viewing definition for the left panel on a specific branch
       mockSearchParams = new URLSearchParams('branch=develop&diffBranch=feature&rp=l&refs=1')
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.handleDefinitionClick(mockSymbol)
@@ -1337,8 +1325,8 @@ describe('useBrowseState', () => {
   })
 
   describe('file path encoding', () => {
-    it('should encode special characters in file paths when navigating to file', () => {
-      const { result } = renderHook(() => useBrowseState())
+    it('should encode special characters in file paths when navigating to file', async () => {
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.navigateToFile('src/my file.ts')
@@ -1348,8 +1336,8 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('src/my%20file.ts'))
     })
 
-    it('should encode hash and question mark in file paths', () => {
-      const { result } = renderHook(() => useBrowseState())
+    it('should encode hash and question mark in file paths', async () => {
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.navigateToFile('src/file#1.ts')
@@ -1359,8 +1347,8 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('src/file%231.ts'))
     })
 
-    it('should preserve directory separators when encoding file paths', () => {
-      const { result } = renderHook(() => useBrowseState())
+    it('should preserve directory separators when encoding file paths', async () => {
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.navigateToFile('src/components/MyComponent.tsx')
@@ -1374,7 +1362,7 @@ describe('useBrowseState', () => {
       expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('%2F'))
     })
 
-    it('should encode special characters in symbol file paths', () => {
+    it('should encode special characters in symbol file paths', async () => {
       const symbolWithSpecialPath = {
         id: 123,
         name: 'TestSymbol',
@@ -1392,7 +1380,7 @@ describe('useBrowseState', () => {
         docstring: null,
       }
 
-      const { result } = renderHook(() => useBrowseState())
+      const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.navigateToSymbol(symbolWithSpecialPath)

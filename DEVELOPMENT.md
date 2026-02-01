@@ -104,6 +104,8 @@ The dev container runs as a non-root user (`devuser`). If you encounter permissi
 
 ## Local Development (Without Docker)
 
+> **⚠️ NOT RECOMMENDED:** Docker-based development is the supported workflow. Local development may have environment inconsistencies and is not officially supported. Use at your own risk.
+
 If you prefer to develop without Docker:
 
 ### Quick Start

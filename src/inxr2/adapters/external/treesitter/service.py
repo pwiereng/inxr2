@@ -12,6 +12,7 @@ from tree_sitter import Language, Parser
 
 from .base import BaseLanguageParser
 from .c_parser import CParser
+from .java_parser import JavaParser
 from .python_parser import PythonParser
 from .typescript_parser import TypeScriptParser
 
@@ -33,6 +34,7 @@ class TreeSitterService:
         "typescript": [".ts", ".tsx"],
         "javascript": [".js", ".jsx", ".mjs", ".cjs"],
         "c": [".c", ".h"],
+        "java": [".java"],
     }
 
     def __init__(self) -> None:
@@ -48,6 +50,7 @@ class TreeSitterService:
 
         try:
             import tree_sitter_c as tsc
+            import tree_sitter_java as tsjava
             import tree_sitter_javascript as tsjavascript
             import tree_sitter_python as tspython
             import tree_sitter_typescript as tstypescript
@@ -58,6 +61,7 @@ class TreeSitterService:
             tsx_language = Language(tstypescript.language_tsx())
             js_language = Language(tsjavascript.language())
             c_language = Language(tsc.language())
+            java_language = Language(tsjava.language())
 
             # Create parsers for each language
             self._parsers["python"] = Parser(py_language)
@@ -65,12 +69,14 @@ class TreeSitterService:
             self._parsers["tsx"] = Parser(tsx_language)
             self._parsers["javascript"] = Parser(js_language)
             self._parsers["c"] = Parser(c_language)
+            self._parsers["java"] = Parser(java_language)
 
             # Create language-specific extraction parsers
             self._language_parsers["python"] = PythonParser()
             self._language_parsers["typescript"] = TypeScriptParser("typescript")
             self._language_parsers["javascript"] = TypeScriptParser("javascript")
             self._language_parsers["c"] = CParser()
+            self._language_parsers["java"] = JavaParser()
 
             logger.info("Tree-sitter parsers initialized successfully")
 
@@ -109,6 +115,8 @@ class TreeSitterService:
             return self._parsers.get("javascript")
         elif language == "c":
             return self._parsers.get("c")
+        elif language == "java":
+            return self._parsers.get("java")
 
         return None
 
