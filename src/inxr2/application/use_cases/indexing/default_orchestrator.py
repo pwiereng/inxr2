@@ -142,12 +142,12 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         assert repo_id is not None, "Repository must have an ID after save"
 
         # Step 2: Get commits to process
-        commits_data = self._git_service.get_commits(
+        # list_commits returns commits from oldest to newest
+        commits_data = self._git_service.list_commits(
             repo_path=request.repository_path,
             branch=request.branch or "main",
             max_count=request.max_history,
             since_days=request.since_days,
-            oldest_first=True,  # Process oldest first for time-travel
         )
 
         # Step 3: Build content-hash cache for optimization
@@ -279,12 +279,11 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             )
 
         # Get commits since last indexed
-        # (This would require git log filtering - simplified for now)
-        commits_data = self._git_service.get_commits(
+        # list_commits returns commits from oldest to newest
+        commits_data = self._git_service.list_commits(
             repo_path=request.repository_path,
             branch=request.branch or "main",
             max_count=100,  # Reasonable default
-            oldest_first=True,
         )
 
         # Build content-hash cache

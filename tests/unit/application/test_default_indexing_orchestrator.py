@@ -66,20 +66,17 @@ class FakeGitService:
         commit_hash: str = self.commits[-1]["hash"]
         return commit_hash
 
-    def get_commits(
+    def list_commits(
         self,
         repo_path: Path,
         branch: str,
         max_count: int | None = None,
         since_days: int | None = None,
-        oldest_first: bool = True,
     ) -> list[dict]:
-        """Get commit history."""
+        """Get commit history (oldest to newest)."""
         commits = self.commits.copy()
         if max_count:
             commits = commits[:max_count]
-        if not oldest_first:
-            commits = list(reversed(commits))
         return commits
 
     def get_files_in_commit(self, repo_path: Path, commit_hash: str) -> list[str]:
@@ -418,3 +415,132 @@ class TestDefaultIndexingOrchestrator:
         assert len(all_statuses) > 0
         status = all_statuses[0]
         assert status.indexing_status == "completed"
+
+
+class TestGitServiceIntegration:
+    """Tests for git service integration - regression tests for API compatibility."""
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_calls_list_commits_not_get_commits(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """
+        Regression test: Orchestrator must call list_commits, not get_commits.
+
+        This test verifies the fix for the bug where the orchestrator was
+        calling git_service.get_commits() which doesn't exist - the correct
+        method is git_service.list_commits().
+        """
+
+        # Arrange - create a spy git service that tracks method calls
+        class SpyGitService(FakeGitService):
+            def __init__(self) -> None:
+                super().__init__()
+                self.list_commits_called = False
+                self.list_commits_args: dict = {}
+
+            def list_commits(
+                self,
+                repo_path: Path,
+                branch: str,
+                max_count: int | None = None,
+                since_days: int | None = None,
+            ) -> list[dict]:
+                self.list_commits_called = True
+                self.list_commits_args = {
+                    "repo_path": repo_path,
+                    "branch": branch,
+                    "max_count": max_count,
+                    "since_days": since_days,
+                }
+                return super().list_commits(repo_path, branch, max_count, since_days)
+
+        spy_git = SpyGitService()
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=spy_git,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            max_history=100,
+            since_days=15,
+        )
+
+        # Act
+        await orchestrator.index_repository(request)
+
+        # Assert - verify list_commits was called with correct arguments
+        assert spy_git.list_commits_called, "list_commits should be called"
+        assert spy_git.list_commits_args["branch"] == "main"
+        assert spy_git.list_commits_args["max_count"] == 100
+        assert spy_git.list_commits_args["since_days"] == 15
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_passes_since_days_to_git_service(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that since_days filter is passed to git service correctly."""
+
+        class SpyGitService(FakeGitService):
+            def __init__(self) -> None:
+                super().__init__()
+                self.since_days_received: int | None = None
+
+            def list_commits(
+                self,
+                repo_path: Path,
+                branch: str,
+                max_count: int | None = None,
+                since_days: int | None = None,
+            ) -> list[dict]:
+                self.since_days_received = since_days
+                return super().list_commits(repo_path, branch, max_count, since_days)
+
+        spy_git = SpyGitService()
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=spy_git,
+            parser_service=parser_service,
+        )
+
+        # Test with since_days=30
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            since_days=30,
+        )
+
+        await orchestrator.index_repository(request)
+
+        assert spy_git.since_days_received == 30
