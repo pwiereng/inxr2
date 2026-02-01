@@ -649,3 +649,139 @@ class TestGitServiceIntegration:
         assert empty_git.get_commit_info_called, "get_commit_info should be called for HEAD"
         assert response.commits_indexed == 1, "HEAD commit should be indexed"
         assert response.files_processed > 0, "HEAD files should be processed"
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_calls_list_files_not_get_files_in_commit(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """
+        Regression test: Orchestrator must call list_files, not get_files_in_commit.
+
+        This test verifies the fix for the bug where the orchestrator was
+        calling git_service.get_files_in_commit() which doesn't exist - the
+        correct method is git_service.list_files().
+        """
+
+        class SpyGitService(FakeGitService):
+            def __init__(self) -> None:
+                super().__init__()
+                self.list_files_called = False
+                self.list_files_args: dict = {}
+
+            def list_files(
+                self,
+                repo_path: Path,
+                commit_hash: str,
+                patterns: list[str] | None = None,
+            ) -> list[str]:
+                self.list_files_called = True
+                self.list_files_args = {
+                    "repo_path": repo_path,
+                    "commit_hash": commit_hash,
+                }
+                return super().list_files(repo_path, commit_hash, patterns)
+
+        spy_git = SpyGitService()
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=spy_git,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+        )
+
+        # Act
+        await orchestrator.index_repository(request)
+
+        # Assert - verify list_files was called
+        assert spy_git.list_files_called, "list_files should be called (not get_files_in_commit)"
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_handles_timezone_aware_datetimes(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """
+        Regression test: Orchestrator must handle timezone-aware datetimes from GitPython.
+
+        GitPython returns timezone-aware datetime objects for author_date and
+        commit_date. The orchestrator must convert these to naive UTC datetimes
+        for database storage.
+        """
+        from datetime import datetime, timezone
+
+        class TimezoneAwareGitService(FakeGitService):
+            def __init__(self) -> None:
+                super().__init__()
+                # Override commits with timezone-aware datetimes (like GitPython returns)
+                self.commits = [
+                    {
+                        "hash": "tz123",
+                        "short_hash": "tz123",
+                        "author_name": "Test User",
+                        "author_email": "test@example.com",
+                        "author_date": datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+                        "committer_name": "Test User",
+                        "committer_email": "test@example.com",
+                        "commit_date": datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+                        "message": "Commit with timezone",
+                        "parent_hashes": [],
+                    },
+                ]
+                self.files_in_commit = {
+                    "tz123": ["src/main.py"],
+                }
+
+        tz_git = TimezoneAwareGitService()
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=tz_git,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+        )
+
+        # Act - should not raise "can't subtract offset-naive and offset-aware datetimes"
+        response = await orchestrator.index_repository(request)
+
+        # Assert - indexing succeeded
+        assert response.commits_indexed == 1
+        # Verify commit was saved with naive datetime
+        commits = await commit_repo.list_by_repository(repository_id=1)
+        assert len(commits) >= 1
+        saved_commit = commits[0]
+        assert saved_commit.author_date.tzinfo is None, "author_date should be naive"
+        assert saved_commit.commit_date.tzinfo is None, "commit_date should be naive"
