@@ -219,10 +219,19 @@ def _run_config_based_index(
             continue
 
         # Index each branch
-        for branch in branches_to_index:
-            console.print(
-                f"[bold cyan][{idx}/{total_repos}][/bold cyan] {repo.name} ({resolved_path})"
-            )
+        total_branches = len(branches_to_index)
+        for branch_idx, branch in enumerate(branches_to_index, 1):
+            # Show progress: [repo/total_repos] [branch/total_branches] repo_name
+            if total_branches > 1:
+                progress_str = (
+                    f"[bold cyan][{idx}/{total_repos}][/bold cyan] "
+                    f"[dim][{branch_idx}/{total_branches}][/dim] {repo.name}"
+                )
+            else:
+                progress_str = (
+                    f"[bold cyan][{idx}/{total_repos}][/bold cyan] {repo.name}"
+                )
+            console.print(f"{progress_str} ({resolved_path})")
             console.print(f"  Branch: {branch or '(current)'}")
             console.print()
 
