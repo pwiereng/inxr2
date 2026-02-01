@@ -276,3 +276,7 @@ coverage/
 .coverage
 .pytest_cache/
 htmlcov/
+
+# Claude Code
+.claude/settings.local.json
+.claude/*.local.json
