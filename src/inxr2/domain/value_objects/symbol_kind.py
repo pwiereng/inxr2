@@ -40,3 +40,7 @@ class SymbolKind(str, Enum):
     # Python-specific kinds
     INSTANCE_VARIABLE = "instance_variable"  # self.x assignments in __init__
     CLASS_VARIABLE = "class_variable"  # Class-level variable assignments
+
+    # TypeScript-specific kinds
+    INTERFACE_PROPERTY = "interface_property"  # Properties in TypeScript interfaces
+    TYPE = "type"  # TypeScript type aliases

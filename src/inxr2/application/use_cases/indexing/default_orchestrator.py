@@ -17,13 +17,9 @@ from typing import Any, Callable
 class IndexingProgress:
     """Progress information during indexing."""
 
-    phase: str  # "commits", "files", "resolving"
-    current: int
-    total: int | None
-    message: str
-    # Detailed stats
-    files_processed: int = 0
-    files_skipped: int = 0
+    phase: str  # "files", "resolving"
+    files_processed: int
+    files_total: int
     symbols_found: int = 0
     references_found: int = 0
     cache_size: int = 0
@@ -209,26 +205,32 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             repository_id=repo_id
         )
 
-        # Step 4: Process each commit
-        total_commits = len(commits_data)
-        last_commit_hash: str | None = None
-        for i, commit_data in enumerate(commits_data):
-            # Report progress before processing
-            if progress_callback:
-                progress_callback(
-                    IndexingProgress(
-                        phase="commits",
-                        current=i + 1,
-                        total=total_commits,
-                        message=f"Commit {commit_data['hash'][:7]}",
-                        files_processed=stats["files_processed"],
-                        files_skipped=stats["files_skipped"],
-                        symbols_found=stats["symbols_found"],
-                        references_found=stats["references_found"],
-                        cache_size=len(content_hash_cache),
-                    )
-                )
+        # Step 4: Count total files across all commits (for progress)
+        total_files = 0
+        for commit_data in commits_data:
+            file_paths = self._git_service.list_files(
+                repo_path=request.repository_path,
+                commit_hash=commit_data["hash"],
+            )
+            total_files += len(file_paths)
+        stats["files_total"] = total_files
 
+        # Report initial progress
+        if progress_callback:
+            progress_callback(
+                IndexingProgress(
+                    phase="files",
+                    files_processed=0,
+                    files_total=total_files,
+                    symbols_found=0,
+                    references_found=0,
+                    cache_size=len(content_hash_cache),
+                )
+            )
+
+        # Step 5: Process each commit
+        last_commit_hash: str | None = None
+        for commit_data in commits_data:
             await self._process_commit(
                 repository_id=repo_id,
                 commit_data=commit_data,
@@ -240,16 +242,13 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             stats["commits_indexed"] += 1
             last_commit_hash = commit_data["hash"]
 
-        # Step 5: Resolve references
+        # Step 6: Resolve references
         if progress_callback:
             progress_callback(
                 IndexingProgress(
                     phase="resolving",
-                    current=0,
-                    total=None,
-                    message="Resolving references...",
                     files_processed=stats["files_processed"],
-                    files_skipped=stats["files_skipped"],
+                    files_total=stats["files_total"],
                     symbols_found=stats["symbols_found"],
                     references_found=stats["references_found"],
                     cache_size=len(content_hash_cache),
@@ -379,10 +378,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             repository_id=request.repository_id
         )
 
-        # Process each new commit
+        # Filter to commits that need processing
         found_last_indexed = False
-        last_commit_hash: str | None = None
-        # Count commits to process (for progress)
         commits_to_process = []
         for commit_data in commits_data:
             if last_indexed_hash:
@@ -393,24 +390,32 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                     continue
             commits_to_process.append(commit_data)
 
-        total_commits = len(commits_to_process)
-        for i, commit_data in enumerate(commits_to_process):
-            # Report progress
-            if progress_callback:
-                progress_callback(
-                    IndexingProgress(
-                        phase="commits",
-                        current=i + 1,
-                        total=total_commits,
-                        message=f"Commit {commit_data['hash'][:7]}",
-                        files_processed=stats["files_processed"],
-                        files_skipped=stats["files_skipped"],
-                        symbols_found=stats["symbols_found"],
-                        references_found=stats["references_found"],
-                        cache_size=len(content_hash_cache),
-                    )
-                )
+        # Count total files across all commits to process (for progress)
+        total_files = 0
+        for commit_data in commits_to_process:
+            file_paths = self._git_service.list_files(
+                repo_path=request.repository_path,
+                commit_hash=commit_data["hash"],
+            )
+            total_files += len(file_paths)
+        stats["files_total"] = total_files
 
+        # Report initial progress
+        if progress_callback:
+            progress_callback(
+                IndexingProgress(
+                    phase="files",
+                    files_processed=0,
+                    files_total=total_files,
+                    symbols_found=0,
+                    references_found=0,
+                    cache_size=len(content_hash_cache),
+                )
+            )
+
+        # Process each commit
+        last_commit_hash: str | None = None
+        for commit_data in commits_to_process:
             await self._process_commit(
                 repository_id=request.repository_id,
                 commit_data=commit_data,
@@ -427,11 +432,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             progress_callback(
                 IndexingProgress(
                     phase="resolving",
-                    current=0,
-                    total=None,
-                    message="Resolving references...",
                     files_processed=stats["files_processed"],
-                    files_skipped=stats["files_skipped"],
+                    files_total=stats["files_total"],
                     symbols_found=stats["symbols_found"],
                     references_found=stats["references_found"],
                     cache_size=len(content_hash_cache),
@@ -548,27 +550,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             commit_hash=commit_data["hash"],
         )
 
-        stats["files_total"] += len(file_paths)
-        total_files = len(file_paths)
-
         # Process each file
-        for i, file_path_str in enumerate(file_paths):
-            # Report file progress
-            if progress_callback:
-                progress_callback(
-                    IndexingProgress(
-                        phase="files",
-                        current=i + 1,
-                        total=total_files,
-                        message=file_path_str,
-                        files_processed=stats["files_processed"],
-                        files_skipped=stats["files_skipped"],
-                        symbols_found=stats["symbols_found"],
-                        references_found=stats["references_found"],
-                        cache_size=len(content_hash_cache),
-                    )
-                )
-
+        for file_path_str in file_paths:
             await self._process_file(
                 repository_id=repository_id,
                 commit_id=commit_id,
@@ -579,6 +562,19 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 request=request,
                 stats=stats,
             )
+
+            # Report progress after each file
+            if progress_callback:
+                progress_callback(
+                    IndexingProgress(
+                        phase="files",
+                        files_processed=stats["files_processed"],
+                        files_total=stats["files_total"],
+                        symbols_found=stats["symbols_found"],
+                        references_found=stats["references_found"],
+                        cache_size=len(content_hash_cache),
+                    )
+                )
 
     async def _process_file(
         self,

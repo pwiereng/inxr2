@@ -468,6 +468,12 @@ def test_with_fake():
 - No framework overhead
 - Fake follows real interface contract
 
+**Avoid Low-Value Tests:**
+- Don't test language features (e.g., Python enum behavior, dataclass immutability)
+- Don't write tests that just verify static values exist
+- Tests should verify actual behavior, not that Python works correctly
+- If a test would pass even with broken business logic, it's low-value
+
 See `tests/unit/application/test_use_cases.py` for complete examples.
 
 ## Environment Configuration

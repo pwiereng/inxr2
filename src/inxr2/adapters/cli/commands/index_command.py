@@ -61,23 +61,13 @@ def _cleanup_and_exit(signum: int | None = None, frame: Any = None) -> None:
 
     _cleanup_in_progress = True
 
-    console = Console()
-    console.print("\n[yellow]Interrupted. Cleaning up and exiting...[/yellow]")
+    # Print message directly to stderr to ensure it shows
+    import sys
+    sys.stderr.write("\nInterrupted. Exiting...\n")
+    sys.stderr.flush()
 
-    # Try to clean up database connections
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            db = DatabaseConnection()
-            loop.run_until_complete(db.close())
-        finally:
-            loop.close()
-    except Exception:
-        pass  # Ignore cleanup errors
-
-    # Force exit - don't let anything continue
-    console.print("[dim]Exiting.[/dim]")
+    # Force exit immediately - don't try to clean up database
+    # The DB connection will be cleaned up when process terminates
     os._exit(1)
 
 
@@ -85,9 +75,12 @@ def _setup_signal_handlers() -> None:
     """Set up signal handlers for clean shutdown."""
     # Handle SIGINT (Ctrl+C)
     signal.signal(signal.SIGINT, _cleanup_and_exit)
-    # Handle SIGTERM (not available on all platforms, e.g., Windows)
+    # Handle SIGTERM
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, _cleanup_and_exit)
+    # Handle SIGHUP (terminal disconnect)
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, _cleanup_and_exit)
 
 
 def reset_database(console: Console) -> None:
@@ -324,6 +317,36 @@ async def _run_full_index_async(
                 console.print(f"  Max history: {max_history} commits")
             if since_days:
                 console.print(f"  Since: last {since_days} days")
+
+            # Show commit range being indexed
+            commits = git_service.list_commits(
+                repo_path=repo_path,
+                branch=current_branch,
+                max_count=max_history,
+                since_days=since_days,
+            )
+            if not commits:
+                # Fall back to HEAD if no commits in range
+                head_hash = git_service.get_current_commit(repo_path, current_branch)
+                head_info = git_service.get_commit_info(repo_path, head_hash)
+                commits = [head_info]
+
+            if commits:
+                oldest = commits[0]
+                newest = commits[-1]
+                console.print(f"  Commits: {len(commits)}")
+                oldest_date = oldest.get("author_date", oldest.get("commit_date"))
+                newest_date = newest.get("author_date", newest.get("commit_date"))
+                if hasattr(oldest_date, "strftime"):
+                    oldest_str = oldest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
+                else:
+                    oldest_str = str(oldest_date)
+                if hasattr(newest_date, "strftime"):
+                    newest_str = newest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
+                else:
+                    newest_str = str(newest_date)
+                console.print(f"  Oldest: {oldest['hash'][:10]} ({oldest_str})")
+                console.print(f"  Newest: {newest['hash'][:10]} ({newest_str})")
             console.print()
 
             # Create indexing request
@@ -341,38 +364,35 @@ async def _run_full_index_async(
                 IndexingProgress,
             )
 
-            # Track last printed values to avoid spamming
-            last_print = {"files": -1, "phase": ""}
+            # Progress at specific percentages: 0, 1, 2, 5, 10, 15, 20, ...
+            import sys
 
-            # Create progress callback that prints status
+            milestones = {0, 1, 2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50,
+                          55, 60, 65, 70, 75, 80, 85, 90, 95, 100}
+            printed = {"pcts": set(), "phase": "", "shown_start": False}
+
             def on_progress(p: IndexingProgress) -> None:
-                # Print on phase change or every 5 files
-                should_print = (
-                    p.phase != last_print["phase"]
-                    or p.files_processed >= last_print["files"] + 5
-                )
-                if not should_print:
-                    return
-
-                last_print["phase"] = p.phase
-                last_print["files"] = p.files_processed
-
-                if p.phase == "commits" and p.total:
-                    pct = int((p.current / p.total) * 100)
+                # Show initial info at start
+                if not printed["shown_start"] and p.files_total > 0:
+                    printed["shown_start"] = True
                     console.print(
-                        f"  [cyan]Commit {p.current}/{p.total} ({pct}%) | "
-                        f"Files: {p.files_processed} | "
-                        f"Symbols: {p.symbols_found} | "
-                        f"Refs: {p.references_found} | "
-                        f"Cache: {p.cache_size}[/cyan]"
+                        f"  [dim]Files to process: {p.files_total} | "
+                        f"Cache size: {p.cache_size}[/dim]"
                     )
-                elif p.phase == "files":
-                    console.print(
-                        f"  [dim]{p.message[:60]}[/dim] | "
-                        f"Files: {p.files_processed} | "
-                        f"Symbols: {p.symbols_found}"
-                    )
-                elif p.phase == "resolving":
+
+                if p.phase == "files" and p.files_total > 0:
+                    pct = int((p.files_processed / p.files_total) * 100)
+                    if pct in milestones and pct not in printed["pcts"]:
+                        printed["pcts"].add(pct)
+                        sys.stdout.write(
+                            f"\r  {pct}% ({p.files_processed}/{p.files_total}) | "
+                            f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
+                            f"Cache: {p.cache_size}    "
+                        )
+                        sys.stdout.flush()
+                elif p.phase == "resolving" and printed["phase"] != "resolving":
+                    printed["phase"] = "resolving"
+                    sys.stdout.write("\n")
                     console.print(f"  [cyan]Resolving references...[/cyan]")
 
             # Run indexing with progress callback
@@ -527,38 +547,35 @@ async def _run_incremental_index_async(
                 IndexingProgress,
             )
 
-            # Track last printed values to avoid spamming
-            last_print = {"files": -1, "phase": ""}
+            # Progress at specific percentages: 0, 1, 2, 5, 10, 15, 20, ...
+            import sys
 
-            # Create progress callback that prints status
+            milestones = {0, 1, 2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50,
+                          55, 60, 65, 70, 75, 80, 85, 90, 95, 100}
+            printed = {"pcts": set(), "phase": "", "shown_start": False}
+
             def on_progress(p: IndexingProgress) -> None:
-                # Print on phase change or every 5 files
-                should_print = (
-                    p.phase != last_print["phase"]
-                    or p.files_processed >= last_print["files"] + 5
-                )
-                if not should_print:
-                    return
-
-                last_print["phase"] = p.phase
-                last_print["files"] = p.files_processed
-
-                if p.phase == "commits" and p.total:
-                    pct = int((p.current / p.total) * 100)
+                # Show initial info at start
+                if not printed["shown_start"] and p.files_total > 0:
+                    printed["shown_start"] = True
                     console.print(
-                        f"  [cyan]Commit {p.current}/{p.total} ({pct}%) | "
-                        f"Files: {p.files_processed} | "
-                        f"Symbols: {p.symbols_found} | "
-                        f"Refs: {p.references_found} | "
-                        f"Cache: {p.cache_size}[/cyan]"
+                        f"  [dim]Files to process: {p.files_total} | "
+                        f"Cache size: {p.cache_size}[/dim]"
                     )
-                elif p.phase == "files":
-                    console.print(
-                        f"  [dim]{p.message[:60]}[/dim] | "
-                        f"Files: {p.files_processed} | "
-                        f"Symbols: {p.symbols_found}"
-                    )
-                elif p.phase == "resolving":
+
+                if p.phase == "files" and p.files_total > 0:
+                    pct = int((p.files_processed / p.files_total) * 100)
+                    if pct in milestones and pct not in printed["pcts"]:
+                        printed["pcts"].add(pct)
+                        sys.stdout.write(
+                            f"\r  {pct}% ({p.files_processed}/{p.files_total}) | "
+                            f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
+                            f"Cache: {p.cache_size}    "
+                        )
+                        sys.stdout.flush()
+                elif p.phase == "resolving" and printed["phase"] != "resolving":
+                    printed["phase"] = "resolving"
+                    sys.stdout.write("\n")
                     console.print(f"  [cyan]Resolving references...[/cyan]")
 
             # Run indexing with progress callback
