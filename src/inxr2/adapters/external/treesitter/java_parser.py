@@ -796,27 +796,35 @@ class JavaParser(BaseLanguageParser):
             is_static_import = False
             is_wildcard = False
             import_path = None
+            path_node: Node | None = None
 
             for child in node.children:
                 if child.type == "static":
                     is_static_import = True
                 elif child.type == "scoped_identifier":
                     import_path = get_text(child)
+                    path_node = child
                 elif child.type == "identifier":
                     import_path = get_text(child)
+                    path_node = child
                 elif child.type == "asterisk":
                     is_wildcard = True
+                    if path_node is None:
+                        path_node = child
 
             if import_path:
                 if is_wildcard:
                     import_path = f"{import_path}.*"
 
+                # Use path_node location for accurate click targets
+                location_node = path_node or node
+
                 add_reference(
                     {
                         "text": import_path,
                         "type": "import",
-                        "source_line": node.start_point[0] + 1,
-                        "source_column": node.start_point[1],
+                        "source_line": location_node.start_point[0] + 1,
+                        "source_column": location_node.start_point[1],
                         "is_static": is_static_import,
                     }
                 )

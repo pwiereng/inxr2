@@ -1423,6 +1423,13 @@ def _dict_to_symbol(
     kind_str = d.get("kind", "function").lower()
     kind = kind_mapping.get(kind_str, SymbolKind.FUNCTION)
 
+    # Build metadata from language-specific flags (e.g., Java)
+    metadata: dict[str, Any] | None = None
+    flag_keys = ["is_static", "is_abstract", "is_final", "is_inner"]
+    flags = {k: d[k] for k in flag_keys if k in d}
+    if flags:
+        metadata = flags
+
     return Symbol(
         file_id=file_id,
         repository_id=repository_id,
@@ -1435,6 +1442,8 @@ def _dict_to_symbol(
         end_column=d.get("end_column", 0),
         qualified_name=d.get("qualified_name"),
         scope=d.get("scope"),
+        signature=d.get("signature"),
+        metadata=metadata,
     )
 
 
