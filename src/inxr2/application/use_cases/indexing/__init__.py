@@ -5,11 +5,16 @@ from .get_index_status import (
     GetIndexStatusResponse,
     GetIndexStatusUseCase,
 )
+from .optimize_file_indexing import (
+    OptimizationResult,
+    OptimizeFileIndexingRequest,
+    OptimizeFileIndexingUseCase,
+)
 from .orchestrator import (
+    IncrementalIndexRequest,
     IndexingStrategy,
     IndexRepositoryRequest,
     IndexRepositoryResponse,
-    IncrementalIndexRequest,
 )
 from .resolve_references import (
     ResolveReferencesRequest,
@@ -21,10 +26,13 @@ __all__ = [
     "GetIndexStatusRequest",
     "GetIndexStatusResponse",
     "GetIndexStatusUseCase",
+    "IncrementalIndexRequest",
     "IndexingStrategy",
     "IndexRepositoryRequest",
     "IndexRepositoryResponse",
-    "IncrementalIndexRequest",
+    "OptimizationResult",
+    "OptimizeFileIndexingRequest",
+    "OptimizeFileIndexingUseCase",
     "ResolveReferencesRequest",
     "ResolveReferencesResponse",
     "ResolveReferencesUseCase",
