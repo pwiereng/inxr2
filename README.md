@@ -528,9 +528,9 @@ See `config.example.yaml` for a complete example.
 
 ## Project Status
 
-**Current Phase**: Phase 1.7 Complete (Configuration System)
+**Current Phase**: Phase 1.11 Complete (Multi-Branch Support)
 
-INXR2 has completed Phase 1.7 with multi-repository configuration support. You can now define multiple repositories in a YAML config file and index them all with a single command. The implementation includes 195 tests passing.
+INXR2 has completed Phase 1.11 with multi-branch support. You can now browse and compare code across different branches, with full URL state management for bookmarkable views.
 
 ### Roadmap
 
@@ -541,25 +541,23 @@ INXR2 has completed Phase 1.7 with multi-repository configuration support. You c
 - [x] Phase 1.4: Vertical Slice - Basic File Indexing (2026-01-05)
 - [x] Phase 1.5: CLI Indexing Engine - Python & TypeScript (2026-01-10)
 - [x] Phase 1.6: Cross-Reference Code Browser UI (2026-01-11)
-  - Symbol search with autocomplete and filters
-  - Go to Definition (click symbol to navigate)
-  - Find References panel with type annotations
-  - Syntax highlighting with Prism.js (20+ languages)
-  - File tree navigation with language icons
-  - Symbol disambiguation for multiple definitions
 - [x] Phase 1.7: Configuration System (2026-01-13)
-  - YAML configuration with Pydantic validation
-  - Multi-repository indexing via `--config` flag
-  - Environment variable expansion (`${VAR}` and `${VAR:-default}`)
-  - Config validation and show commands
-  - Repository selector in UI
-  - 195 tests passing (178 backend + 17 frontend)
+- [x] Phase 1.8: Tree-sitter Integration (2026-01-14)
+  - AST-based parsing for Python, TypeScript, JavaScript, Java, C
+  - Proper scope tracking for nested symbols
+- [x] Phase 1.9: Time Travel & Temporal Navigation (2026-01-17)
+  - Browse code at any indexed commit
+  - Side-by-side diff viewer
+- [x] Phase 1.10: URL State & Permalinks (2026-01-20)
+  - Full URL state management for bookmarkable views
+  - Line numbers, commit, diff mode in URL
+- [x] Phase 1.11: Multi-Branch Support (2026-01-24)
+  - Branch selector component
+  - Cross-branch diff comparison
+  - File history filtered by branch
 
-**Next Phases:**
-- [ ] Phase 1.8: Tree-sitter Integration (replace regex extraction)
-- [ ] Phase 1.9: Remote Repository Support (clone from URLs)
-- [ ] Phase 1.10: Improved Reference Resolution (scope-aware, import-aware)
-- [ ] Phase 2: Additional Language Support (Java, C#, Go, C/C++)
+**Next Phase:**
+- [ ] Phase 1.12: Remote Repository Support (clone and index from URLs)
 
 ## Contributing
 

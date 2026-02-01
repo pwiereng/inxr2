@@ -38,7 +38,7 @@ public class HelloWorld {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="HelloWorld.java"
         )
 
@@ -57,7 +57,7 @@ public abstract class Shape {
     public abstract double perimeter();
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Shape.java"
         )
 
@@ -74,7 +74,7 @@ public final class Constants {
     public static final int MAX_SIZE = 100;
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Constants.java"
         )
 
@@ -97,7 +97,7 @@ public class Outer {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Outer.java"
         )
 
@@ -138,7 +138,7 @@ public interface Drawable {
     void resize(int width, int height);
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Drawable.java"
         )
 
@@ -165,7 +165,7 @@ public interface Vehicle {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Vehicle.java"
         )
 
@@ -192,7 +192,7 @@ public interface Config {
     String DEFAULT_HOST = "localhost";
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Config.java"
         )
 
@@ -226,7 +226,7 @@ public class Calculator {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Calculator.java"
         )
 
@@ -258,7 +258,7 @@ public class MathUtils {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="MathUtils.java"
         )
 
@@ -277,7 +277,7 @@ public abstract class Animal {
     public abstract void move();
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Animal.java"
         )
 
@@ -295,7 +295,7 @@ public class Service {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Service.java"
         )
 
@@ -331,7 +331,7 @@ public class Person {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Person.java"
         )
 
@@ -362,7 +362,7 @@ public class User {
     protected int age;
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="User.java"
         )
 
@@ -385,7 +385,7 @@ public class Counter {
     private static String prefix = "item_";
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Counter.java"
         )
 
@@ -403,7 +403,7 @@ public class Constants {
     private static final double PI = 3.14159;
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Constants.java"
         )
 
@@ -432,7 +432,7 @@ public enum Color {
     BLUE
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Color.java"
         )
 
@@ -470,7 +470,7 @@ public enum Planet {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Planet.java"
         )
 
@@ -499,7 +499,7 @@ public enum Direction {
     NORTH, SOUTH, EAST, WEST
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Direction.java"
         )
 
@@ -527,7 +527,7 @@ public @interface MyAnnotation {
     int priority() default 0;
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="MyAnnotation.java"
         )
 
@@ -551,7 +551,7 @@ class TestJavaRecords:
 public record Point(int x, int y) {
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Point.java"
         )
 
@@ -577,7 +577,7 @@ public record Person(String name, int age) {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Person.java"
         )
 
@@ -837,7 +837,7 @@ public class Box<T> {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Box.java"
         )
 
@@ -882,7 +882,7 @@ public class StreamProcessor {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="StreamProcessor.java"
         )
 
@@ -954,7 +954,7 @@ class Utility {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Main.java"
         )
 
@@ -973,7 +973,7 @@ class Utility {
 public class MyClass {
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="MyClass.java"
         )
 
@@ -993,7 +993,7 @@ public class MyClass {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Test.java"
         )
 
@@ -1014,7 +1014,7 @@ public class Formatter {
     }
 }
 """
-        symbols, references = await parser_service.parse_file(
+        symbols, _ = await parser_service.parse_file(
             content=code, language="java", file_path="Formatter.java"
         )
 
