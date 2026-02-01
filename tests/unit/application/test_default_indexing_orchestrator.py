@@ -143,14 +143,13 @@ class FakeParserService:
                 "metadata": {},
             }
         ]
-        # Return fake references
+        # Return fake references (using "text" and "type" like real parsers)
         references = [
             {
-                "reference_text": "print",
-                "reference_type": "call",
+                "text": "print",
+                "type": "call",
                 "source_line": 2,
                 "source_column": 0,
-                "source_end_column": 5,
             }
         ]
         return symbols, references
@@ -830,11 +829,10 @@ class TestGitServiceIntegration:
                 ]
                 references = [
                     {
-                        "reference_text": "print",
-                        "reference_type": "call",
+                        "text": "print",
+                        "type": "call",
                         "source_line": 2,
                         "source_column": 0,
-                        "source_end_column": 5,
                     }
                 ]
                 return symbols, references
@@ -866,3 +864,246 @@ class TestGitServiceIntegration:
         all_symbols = list(symbol_repo._symbols.values())
         assert len(all_symbols) > 0, "Symbols should be saved"
         assert all_symbols[0].name == "test_function"
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_calculates_source_end_column_if_missing(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        git_service: FakeGitService,
+    ) -> None:
+        """
+        Regression test: Orchestrator must calculate source_end_column if not provided.
+
+        Some parsers (like C parser) don't provide source_end_column in reference
+        data. The orchestrator should calculate it from source_column + len(reference_text).
+        """
+
+        class ParserWithoutEndColumn:
+            """Parser that doesn't provide source_end_column (like real C parser)."""
+
+            def supports_language(self, language: str) -> bool:
+                return language == "c"
+
+            async def parse_file(
+                self, content: str, language: str, file_path: str
+            ) -> tuple[list[dict], list[dict]]:
+                symbols = [
+                    {
+                        "name": "main",
+                        "kind": "function",
+                        "start_line": 1,
+                        "start_column": 0,
+                        "end_line": 5,
+                        "end_column": 0,
+                    }
+                ]
+                # References WITHOUT source_end_column
+                # References WITHOUT source_end_column (like real C parser)
+                references = [
+                    {
+                        "text": "printf",  # 6 chars
+                        "type": "call",
+                        "source_line": 3,
+                        "source_column": 4,
+                        # source_end_column is NOT provided
+                    }
+                ]
+                return symbols, references
+
+        no_end_parser = ParserWithoutEndColumn()
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+            parser_service=no_end_parser,
+        )
+
+        # Update git service to return .c files
+        git_service.files_in_commit = {
+            "abc123": ["main.c"],
+            "def456": ["main.c"],
+        }
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["c"],
+            strategy=IndexingStrategy.FULL,
+        )
+
+        # Act - should not raise "'source_end_column'" KeyError
+        response = await orchestrator.index_repository(request)
+
+        # Assert - references were created with calculated end column
+        assert response.references_found > 0, "Should have found references"
+        all_refs = list(reference_repo._references.values())
+        assert len(all_refs) > 0, "References should be saved"
+        ref = all_refs[0]
+        # source_end_column should be calculated: 4 + len("printf") = 10
+        assert ref.source_end_column == 10, "source_end_column should be calculated"
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_converts_reference_type_string_to_enum(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        git_service: FakeGitService,
+    ) -> None:
+        """
+        Regression test: Orchestrator must convert reference_type string to ReferenceType enum.
+
+        Parsers return reference type as a string (e.g., "call", "usage", "import"),
+        but the Reference entity expects a ReferenceType enum. Without conversion,
+        the mapper will fail with "'str' object has no attribute 'value'".
+        """
+        from inxr2.domain.value_objects import ReferenceType
+
+        class ParserWithStringReferenceType:
+            """Parser that returns reference type as string (like all real parsers)."""
+
+            def supports_language(self, language: str) -> bool:
+                return language == "c"
+
+            async def parse_file(
+                self, content: str, language: str, file_path: str
+            ) -> tuple[list[dict], list[dict]]:
+                symbols = [
+                    {
+                        "name": "main",
+                        "kind": "function",
+                        "start_line": 1,
+                        "start_column": 0,
+                        "end_line": 5,
+                        "end_column": 0,
+                    }
+                ]
+                # References with string type (like all real parsers)
+                references = [
+                    {
+                        "text": "printf",
+                        "type": "call",  # String, not ReferenceType.CALL
+                        "source_line": 3,
+                        "source_column": 4,
+                    },
+                    {
+                        "text": "count",
+                        "type": "usage",  # String, not ReferenceType.USAGE
+                        "source_line": 4,
+                        "source_column": 0,
+                    },
+                ]
+                return symbols, references
+
+        string_type_parser = ParserWithStringReferenceType()
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+            parser_service=string_type_parser,
+        )
+
+        # Update git service to return .c files
+        git_service.files_in_commit = {
+            "abc123": ["main.c"],
+            "def456": ["main.c"],
+        }
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["c"],
+            strategy=IndexingStrategy.FULL,
+        )
+
+        # Act - should not raise "'str' object has no attribute 'value'"
+        response = await orchestrator.index_repository(request)
+
+        # Assert - references were created with proper ReferenceType enum
+        assert response.references_found > 0, "Should have found references"
+        all_refs = list(reference_repo._references.values())
+        assert len(all_refs) > 0, "References should be saved"
+
+        # Verify reference_type is ReferenceType enum, not string
+        for ref in all_refs:
+            assert isinstance(
+                ref.reference_type, ReferenceType
+            ), f"reference_type should be ReferenceType enum, got {type(ref.reference_type)}"
+
+        # Check specific types were converted correctly
+        ref_types = {ref.reference_type for ref in all_refs}
+        assert ReferenceType.CALL in ref_types, "Should have CALL reference"
+        assert ReferenceType.USAGE in ref_types, "Should have USAGE reference"
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_skips_existing_commits_on_reindex(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        git_service: FakeGitService,
+        parser_service: FakeParserService,
+    ) -> None:
+        """
+        Regression test: Re-indexing should not fail on duplicate commits.
+
+        When re-running indexing without resetting the database, commits that
+        already exist should be skipped (reused) rather than causing a
+        UniqueViolation error on the uq_repo_commit_hash constraint.
+        """
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+        )
+
+        # First indexing run
+        response1 = await orchestrator.index_repository(request)
+        assert response1.commits_indexed == 2
+
+        # Count commits after first run
+        commits_after_first = await commit_repo.list_by_repository(repository_id=1)
+        first_commit_count = len(commits_after_first)
+
+        # Second indexing run - should NOT raise UniqueViolation
+        response2 = await orchestrator.index_repository(request)
+
+        # Should still report commits processed (even if skipped)
+        assert response2.commits_indexed == 2
+
+        # Commits should not be duplicated
+        commits_after_second = await commit_repo.list_by_repository(repository_id=1)
+        assert len(commits_after_second) == first_commit_count, (
+            "Commits should not be duplicated on re-index"
+        )

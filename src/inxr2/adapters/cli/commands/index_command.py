@@ -336,17 +336,49 @@ async def _run_full_index_async(
                 since_days=since_days,
             )
 
-            # Create progress bar
-            with create_progress() as progress:
-                task = progress.add_task(
-                    f"[cyan]Indexing {repo_path.name}",
-                    total=None,  # Indeterminate progress
+            # Import progress types
+            from inxr2.application.use_cases.indexing.default_orchestrator import (
+                IndexingProgress,
+            )
+
+            # Track last printed values to avoid spamming
+            last_print = {"files": -1, "phase": ""}
+
+            # Create progress callback that prints status
+            def on_progress(p: IndexingProgress) -> None:
+                # Print on phase change or every 5 files
+                should_print = (
+                    p.phase != last_print["phase"]
+                    or p.files_processed >= last_print["files"] + 5
                 )
+                if not should_print:
+                    return
 
-                # Run indexing
-                response = await orchestrator.index_repository(request)
+                last_print["phase"] = p.phase
+                last_print["files"] = p.files_processed
 
-                progress.update(task, completed=True)
+                if p.phase == "commits" and p.total:
+                    pct = int((p.current / p.total) * 100)
+                    console.print(
+                        f"  [cyan]Commit {p.current}/{p.total} ({pct}%) | "
+                        f"Files: {p.files_processed} | "
+                        f"Symbols: {p.symbols_found} | "
+                        f"Refs: {p.references_found} | "
+                        f"Cache: {p.cache_size}[/cyan]"
+                    )
+                elif p.phase == "files":
+                    console.print(
+                        f"  [dim]{p.message[:60]}[/dim] | "
+                        f"Files: {p.files_processed} | "
+                        f"Symbols: {p.symbols_found}"
+                    )
+                elif p.phase == "resolving":
+                    console.print(f"  [cyan]Resolving references...[/cyan]")
+
+            # Run indexing with progress callback
+            response = await orchestrator.index_repository(
+                request, progress_callback=on_progress
+            )
 
             # Print summary
             stats = IndexingStats(
@@ -490,17 +522,49 @@ async def _run_incremental_index_async(
                 languages=languages,
             )
 
-            # Create progress bar
-            with create_progress() as progress:
-                task = progress.add_task(
-                    f"[cyan]Indexing {repo_path.name}",
-                    total=None,  # Indeterminate progress
+            # Import progress types
+            from inxr2.application.use_cases.indexing.default_orchestrator import (
+                IndexingProgress,
+            )
+
+            # Track last printed values to avoid spamming
+            last_print = {"files": -1, "phase": ""}
+
+            # Create progress callback that prints status
+            def on_progress(p: IndexingProgress) -> None:
+                # Print on phase change or every 5 files
+                should_print = (
+                    p.phase != last_print["phase"]
+                    or p.files_processed >= last_print["files"] + 5
                 )
+                if not should_print:
+                    return
 
-                # Run indexing
-                response = await orchestrator.index_incremental(request)
+                last_print["phase"] = p.phase
+                last_print["files"] = p.files_processed
 
-                progress.update(task, completed=True)
+                if p.phase == "commits" and p.total:
+                    pct = int((p.current / p.total) * 100)
+                    console.print(
+                        f"  [cyan]Commit {p.current}/{p.total} ({pct}%) | "
+                        f"Files: {p.files_processed} | "
+                        f"Symbols: {p.symbols_found} | "
+                        f"Refs: {p.references_found} | "
+                        f"Cache: {p.cache_size}[/cyan]"
+                    )
+                elif p.phase == "files":
+                    console.print(
+                        f"  [dim]{p.message[:60]}[/dim] | "
+                        f"Files: {p.files_processed} | "
+                        f"Symbols: {p.symbols_found}"
+                    )
+                elif p.phase == "resolving":
+                    console.print(f"  [cyan]Resolving references...[/cyan]")
+
+            # Run indexing with progress callback
+            response = await orchestrator.index_incremental(
+                request, progress_callback=on_progress
+            )
 
             # Check if there were new commits
             if response.commits_indexed == 0:

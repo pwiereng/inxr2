@@ -36,3 +36,7 @@ class SymbolKind(str, Enum):
     ANNOTATION = "annotation"  # @interface definitions
     RECORD = "record"  # Java 14+ record types
     CONSTRUCTOR = "constructor"  # Constructor methods
+
+    # Python-specific kinds
+    INSTANCE_VARIABLE = "instance_variable"  # self.x assignments in __init__
+    CLASS_VARIABLE = "class_variable"  # Class-level variable assignments

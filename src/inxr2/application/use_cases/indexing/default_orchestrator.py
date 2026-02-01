@@ -8,8 +8,29 @@ logic separate from CLI concerns.
 
 import hashlib
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+
+@dataclass
+class IndexingProgress:
+    """Progress information during indexing."""
+
+    phase: str  # "commits", "files", "resolving"
+    current: int
+    total: int | None
+    message: str
+    # Detailed stats
+    files_processed: int = 0
+    files_skipped: int = 0
+    symbols_found: int = 0
+    references_found: int = 0
+    cache_size: int = 0
+
+
+# Type alias for progress callback
+ProgressCallback = Callable[[IndexingProgress], None]
 
 from inxr2.domain.entities import (
     Commit,
@@ -18,7 +39,7 @@ from inxr2.domain.entities import (
     Reference,
     Symbol,
 )
-from inxr2.domain.value_objects import CommitHash, SymbolKind
+from inxr2.domain.value_objects import CommitHash, ReferenceType, SymbolKind
 
 from ...ports.repositories import (
     CommitRepositoryPort,
@@ -106,12 +127,18 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         )
 
     async def index_repository(
-        self, request: IndexRepositoryRequest
+        self,
+        request: IndexRepositoryRequest,
+        progress_callback: ProgressCallback | None = None,
     ) -> IndexRepositoryResponse:
         """
         Index a repository with specified strategy.
 
         This is the main entry point for repository indexing.
+
+        Args:
+            request: The indexing request parameters
+            progress_callback: Optional callback for progress updates
         """
         start_time = time.monotonic()
 
@@ -183,19 +210,51 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         )
 
         # Step 4: Process each commit
+        total_commits = len(commits_data)
         last_commit_hash: str | None = None
-        for commit_data in commits_data:
+        for i, commit_data in enumerate(commits_data):
+            # Report progress before processing
+            if progress_callback:
+                progress_callback(
+                    IndexingProgress(
+                        phase="commits",
+                        current=i + 1,
+                        total=total_commits,
+                        message=f"Commit {commit_data['hash'][:7]}",
+                        files_processed=stats["files_processed"],
+                        files_skipped=stats["files_skipped"],
+                        symbols_found=stats["symbols_found"],
+                        references_found=stats["references_found"],
+                        cache_size=len(content_hash_cache),
+                    )
+                )
+
             await self._process_commit(
                 repository_id=repo_id,
                 commit_data=commit_data,
                 request=request,
                 content_hash_cache=content_hash_cache,
                 stats=stats,
+                progress_callback=progress_callback,
             )
             stats["commits_indexed"] += 1
             last_commit_hash = commit_data["hash"]
 
         # Step 5: Resolve references
+        if progress_callback:
+            progress_callback(
+                IndexingProgress(
+                    phase="resolving",
+                    current=0,
+                    total=None,
+                    message="Resolving references...",
+                    files_processed=stats["files_processed"],
+                    files_skipped=stats["files_skipped"],
+                    symbols_found=stats["symbols_found"],
+                    references_found=stats["references_found"],
+                    cache_size=len(content_hash_cache),
+                )
+            )
         resolve_request = ResolveReferencesRequest(
             repository_id=repo_id,
             commit_aware=False,  # Cross-commit resolution by default
@@ -235,7 +294,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         )
 
     async def index_incremental(
-        self, request: IncrementalIndexRequest
+        self,
+        request: IncrementalIndexRequest,
+        progress_callback: ProgressCallback | None = None,
     ) -> IndexRepositoryResponse:
         """
         Incrementally index changes since last index.
@@ -321,14 +382,34 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         # Process each new commit
         found_last_indexed = False
         last_commit_hash: str | None = None
+        # Count commits to process (for progress)
+        commits_to_process = []
         for commit_data in commits_data:
-            # Skip commits until we pass the last indexed commit
             if last_indexed_hash:
                 if commit_data["hash"] == last_indexed_hash:
                     found_last_indexed = True
-                    continue  # Skip this exact commit (already indexed)
+                    continue
                 if not found_last_indexed:
-                    continue  # Skip all commits before the last indexed
+                    continue
+            commits_to_process.append(commit_data)
+
+        total_commits = len(commits_to_process)
+        for i, commit_data in enumerate(commits_to_process):
+            # Report progress
+            if progress_callback:
+                progress_callback(
+                    IndexingProgress(
+                        phase="commits",
+                        current=i + 1,
+                        total=total_commits,
+                        message=f"Commit {commit_data['hash'][:7]}",
+                        files_processed=stats["files_processed"],
+                        files_skipped=stats["files_skipped"],
+                        symbols_found=stats["symbols_found"],
+                        references_found=stats["references_found"],
+                        cache_size=len(content_hash_cache),
+                    )
+                )
 
             await self._process_commit(
                 repository_id=request.repository_id,
@@ -336,11 +417,26 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 request=request,
                 content_hash_cache=content_hash_cache,
                 stats=stats,
+                progress_callback=progress_callback,
             )
             stats["commits_indexed"] += 1
             last_commit_hash = commit_data["hash"]
 
         # Resolve references
+        if progress_callback:
+            progress_callback(
+                IndexingProgress(
+                    phase="resolving",
+                    current=0,
+                    total=None,
+                    message="Resolving references...",
+                    files_processed=stats["files_processed"],
+                    files_skipped=stats["files_skipped"],
+                    symbols_found=stats["symbols_found"],
+                    references_found=stats["references_found"],
+                    cache_size=len(content_hash_cache),
+                )
+            )
         resolve_request = ResolveReferencesRequest(
             repository_id=request.repository_id,
             commit_aware=False,
@@ -385,49 +481,65 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         request: IndexRepositoryRequest | IncrementalIndexRequest,
         content_hash_cache: dict[str, int],
         stats: dict,
+        progress_callback: ProgressCallback | None = None,
     ) -> None:
         """Process a single commit."""
-        # Save commit to database
-        # Note: Commit entity only stores hash and dates, not author/message
         from datetime import UTC, datetime
 
-        # Get datetime values from commit data
-        # GitPython returns timezone-aware datetimes, DB expects naive UTC
-        author_date = commit_data.get("author_date")
-        commit_date = commit_data.get("commit_date")
+        commit_hash_str = commit_data["hash"]
 
-        # Handle both datetime objects (from GitPython) and strings (from tests)
-        if isinstance(author_date, str):
-            author_date = datetime.fromisoformat(
-                author_date.replace("Z", "+00:00")
-            )
-        if isinstance(commit_date, str):
-            commit_date = datetime.fromisoformat(
-                commit_date.replace("Z", "+00:00")
-            )
-
-        # If not provided, use current time
-        if author_date is None:
-            author_date = datetime.now(UTC)
-        if commit_date is None:
-            commit_date = datetime.now(UTC)
-
-        # Convert to naive UTC for database storage
-        if author_date.tzinfo is not None:
-            author_date = author_date.replace(tzinfo=None)
-        if commit_date.tzinfo is not None:
-            commit_date = commit_date.replace(tzinfo=None)
-
-        commit = Commit(
-            id=None,
+        # Check if commit already exists (for re-indexing scenarios)
+        existing_commit = await self._commit_repo.find_by_hash(
             repository_id=repository_id,
-            commit_hash=CommitHash(commit_data["hash"]),
-            author_date=author_date,
-            commit_date=commit_date,
+            commit_hash=commit_hash_str,
         )
-        db_commit = await self._commit_repo.save(commit)
-        commit_id = db_commit.id
-        assert commit_id is not None, "Commit must have an ID after save"
+
+        if existing_commit is not None:
+            # Commit already indexed, skip it
+            commit_id = existing_commit.id
+            assert commit_id is not None
+            # Still need to process files (they might have been partially indexed)
+        else:
+            # Save new commit to database
+            # Note: Commit entity only stores hash and dates, not author/message
+
+            # Get datetime values from commit data
+            # GitPython returns timezone-aware datetimes, DB expects naive UTC
+            author_date = commit_data.get("author_date")
+            commit_date = commit_data.get("commit_date")
+
+            # Handle both datetime objects (from GitPython) and strings (from tests)
+            if isinstance(author_date, str):
+                author_date = datetime.fromisoformat(
+                    author_date.replace("Z", "+00:00")
+                )
+            if isinstance(commit_date, str):
+                commit_date = datetime.fromisoformat(
+                    commit_date.replace("Z", "+00:00")
+                )
+
+            # If not provided, use current time
+            if author_date is None:
+                author_date = datetime.now(UTC)
+            if commit_date is None:
+                commit_date = datetime.now(UTC)
+
+            # Convert to naive UTC for database storage
+            if author_date.tzinfo is not None:
+                author_date = author_date.replace(tzinfo=None)
+            if commit_date.tzinfo is not None:
+                commit_date = commit_date.replace(tzinfo=None)
+
+            commit = Commit(
+                id=None,
+                repository_id=repository_id,
+                commit_hash=CommitHash(commit_hash_str),
+                author_date=author_date,
+                commit_date=commit_date,
+            )
+            db_commit = await self._commit_repo.save(commit)
+            commit_id = db_commit.id
+            assert commit_id is not None, "Commit must have an ID after save"
 
         # Get files in this commit
         repo_path = getattr(request, "repository_path", Path("."))
@@ -437,9 +549,26 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         )
 
         stats["files_total"] += len(file_paths)
+        total_files = len(file_paths)
 
         # Process each file
-        for file_path_str in file_paths:
+        for i, file_path_str in enumerate(file_paths):
+            # Report file progress
+            if progress_callback:
+                progress_callback(
+                    IndexingProgress(
+                        phase="files",
+                        current=i + 1,
+                        total=total_files,
+                        message=file_path_str,
+                        files_processed=stats["files_processed"],
+                        files_skipped=stats["files_skipped"],
+                        symbols_found=stats["symbols_found"],
+                        references_found=stats["references_found"],
+                        cache_size=len(content_hash_cache),
+                    )
+                )
+
             await self._process_file(
                 repository_id=repository_id,
                 commit_id=commit_id,
@@ -545,16 +674,31 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
                     # Save references
                     for ref_data in references_data:
+                        # Parsers use "text" and "type", not "reference_text" and "reference_type"
+                        reference_text = ref_data.get("text") or ref_data.get(
+                            "reference_text", ""
+                        )
+                        reference_type = ref_data.get("type") or ref_data.get(
+                            "reference_type", "usage"
+                        )
+                        source_column = ref_data["source_column"]
+
+                        # Calculate source_end_column if not provided
+                        source_end_column = ref_data.get(
+                            "source_end_column",
+                            source_column + len(reference_text),
+                        )
+
                         reference = Reference(
                             id=None,
                             repository_id=repository_id,
                             commit_id=commit_id,
                             source_file_id=file_id,
                             source_line=ref_data["source_line"],
-                            source_column=ref_data["source_column"],
-                            source_end_column=ref_data["source_end_column"],
-                            reference_text=ref_data["reference_text"],
-                            reference_type=ref_data["reference_type"],
+                            source_column=source_column,
+                            source_end_column=source_end_column,
+                            reference_text=reference_text,
+                            reference_type=ReferenceType(reference_type),
                             target_symbol_id=None,  # Will be resolved later
                         )
                         await self._reference_repo.save(reference)
