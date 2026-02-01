@@ -32,20 +32,34 @@ class FakeGitService:
         Initialize with test commits.
 
         Args:
-            commits: List of dicts with 'hash', 'author', 'message', 'timestamp'
+            commits: List of dicts matching GitService.list_commits() output
         """
+        from datetime import datetime
+
         self.commits = commits or [
             {
                 "hash": "abc123",
-                "author": "Test User",
+                "short_hash": "abc123",
+                "author_name": "Test User",
+                "author_email": "test@example.com",
+                "author_date": datetime(2024, 1, 1, 0, 0, 0),
+                "committer_name": "Test User",
+                "committer_email": "test@example.com",
+                "commit_date": datetime(2024, 1, 1, 0, 0, 0),
                 "message": "Initial commit",
-                "timestamp": "2024-01-01T00:00:00Z",
+                "parent_hashes": [],
             },
             {
                 "hash": "def456",
-                "author": "Test User",
+                "short_hash": "def456",
+                "author_name": "Test User",
+                "author_email": "test@example.com",
+                "author_date": datetime(2024, 1, 2, 0, 0, 0),
+                "committer_name": "Test User",
+                "committer_email": "test@example.com",
+                "commit_date": datetime(2024, 1, 2, 0, 0, 0),
                 "message": "Add feature",
-                "timestamp": "2024-01-02T00:00:00Z",
+                "parent_hashes": ["abc123"],
             },
         ]
         self.files_in_commit: dict[str, list[str]] = {
@@ -61,10 +75,18 @@ class FakeGitService:
             "remote_url": str(repo_path),
         }
 
-    def get_current_commit(self, repo_path: Path, branch: str) -> str:
+    def get_current_commit(self, repo_path: Path, branch: str | None = None) -> str:
         """Get current commit hash."""
         commit_hash: str = self.commits[-1]["hash"]
         return commit_hash
+
+    def get_commit_info(self, repo_path: Path, commit_hash: str) -> dict:
+        """Get detailed information about a commit."""
+        for commit in self.commits:
+            if commit["hash"] == commit_hash:
+                return commit
+        # Return the last commit if not found
+        return self.commits[-1]
 
     def list_commits(
         self,
@@ -79,7 +101,9 @@ class FakeGitService:
             commits = commits[:max_count]
         return commits
 
-    def get_files_in_commit(self, repo_path: Path, commit_hash: str) -> list[str]:
+    def list_files(
+        self, repo_path: Path, commit_hash: str, patterns: list[str] | None = None
+    ) -> list[str]:
         """Get list of files in a commit."""
         return self.files_in_commit.get(commit_hash, [])
 
@@ -544,3 +568,84 @@ class TestGitServiceIntegration:
         await orchestrator.index_repository(request)
 
         assert spy_git.since_days_received == 30
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_indexes_head_when_no_commits_in_date_range(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """
+        Regression test: When since_days filters out all commits, still index HEAD.
+
+        Even if there are no commits in the last N days, we should still
+        index the current HEAD state to capture the repository's contents.
+        """
+        from datetime import datetime
+
+        class EmptyCommitsGitService(FakeGitService):
+            """Git service that returns no commits for date filter."""
+
+            def __init__(self) -> None:
+                super().__init__()
+                self.get_commit_info_called = False
+
+            def list_commits(
+                self,
+                repo_path: Path,
+                branch: str,
+                max_count: int | None = None,
+                since_days: int | None = None,
+            ) -> list[dict]:
+                # Return empty list to simulate no commits in date range
+                if since_days is not None:
+                    return []
+                return super().list_commits(repo_path, branch, max_count, since_days)
+
+            def get_commit_info(self, repo_path: Path, commit_hash: str) -> dict:
+                self.get_commit_info_called = True
+                return {
+                    "hash": "def456",
+                    "short_hash": "def456",
+                    "author_name": "Test User",
+                    "author_email": "test@example.com",
+                    "author_date": datetime(2024, 1, 2, 0, 0, 0),
+                    "committer_name": "Test User",
+                    "committer_email": "test@example.com",
+                    "commit_date": datetime(2024, 1, 2, 0, 0, 0),
+                    "message": "HEAD commit",
+                    "parent_hashes": [],
+                }
+
+        empty_git = EmptyCommitsGitService()
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=empty_git,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            since_days=15,  # No commits in last 15 days
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert - should still index HEAD commit
+        assert empty_git.get_commit_info_called, "get_commit_info should be called for HEAD"
+        assert response.commits_indexed == 1, "HEAD commit should be indexed"
+        assert response.files_processed > 0, "HEAD files should be processed"

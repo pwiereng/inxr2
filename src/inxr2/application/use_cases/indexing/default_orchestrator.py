@@ -150,6 +150,33 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             since_days=request.since_days,
         )
 
+        # If no commits match the filter (e.g., no commits in last N days),
+        # still index the HEAD commit to capture current state
+        if not commits_data:
+            head_commit_hash = self._git_service.get_current_commit(
+                repo_path=request.repository_path,
+                branch=request.branch or "main",
+            )
+            head_commit_info = self._git_service.get_commit_info(
+                repo_path=request.repository_path,
+                commit_hash=head_commit_hash,
+            )
+            # Convert to the format expected by _process_commit
+            commits_data = [
+                {
+                    "hash": head_commit_info["hash"],
+                    "short_hash": head_commit_info["short_hash"],
+                    "author_name": head_commit_info["author_name"],
+                    "author_email": head_commit_info["author_email"],
+                    "author_date": head_commit_info["author_date"],
+                    "committer_name": head_commit_info["committer_name"],
+                    "committer_email": head_commit_info["committer_email"],
+                    "commit_date": head_commit_info["commit_date"],
+                    "message": head_commit_info["message"],
+                    "parent_hashes": head_commit_info["parent_hashes"],
+                }
+            ]
+
         # Step 3: Build content-hash cache for optimization
         content_hash_cache = await self._file_repo.get_content_hash_to_file_id_map(
             repository_id=repo_id
@@ -364,17 +391,38 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         # Note: Commit entity only stores hash and dates, not author/message
         from datetime import UTC, datetime
 
-        commit_date = datetime.fromisoformat(
-            commit_data.get("timestamp", datetime.now(UTC).isoformat()).replace(
-                "Z", "+00:00"
+        # Get datetime values from commit data
+        # GitPython returns timezone-aware datetimes, DB expects naive UTC
+        author_date = commit_data.get("author_date")
+        commit_date = commit_data.get("commit_date")
+
+        # Handle both datetime objects (from GitPython) and strings (from tests)
+        if isinstance(author_date, str):
+            author_date = datetime.fromisoformat(
+                author_date.replace("Z", "+00:00")
             )
-        )
+        if isinstance(commit_date, str):
+            commit_date = datetime.fromisoformat(
+                commit_date.replace("Z", "+00:00")
+            )
+
+        # If not provided, use current time
+        if author_date is None:
+            author_date = datetime.now(UTC)
+        if commit_date is None:
+            commit_date = datetime.now(UTC)
+
+        # Convert to naive UTC for database storage
+        if author_date.tzinfo is not None:
+            author_date = author_date.replace(tzinfo=None)
+        if commit_date.tzinfo is not None:
+            commit_date = commit_date.replace(tzinfo=None)
 
         commit = Commit(
             id=None,
             repository_id=repository_id,
             commit_hash=CommitHash(commit_data["hash"]),
-            author_date=commit_date,
+            author_date=author_date,
             commit_date=commit_date,
         )
         db_commit = await self._commit_repo.save(commit)
@@ -383,7 +431,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
         # Get files in this commit
         repo_path = getattr(request, "repository_path", Path("."))
-        file_paths = self._git_service.get_files_in_commit(
+        file_paths = self._git_service.list_files(
             repo_path=repo_path,
             commit_hash=commit_data["hash"],
         )
