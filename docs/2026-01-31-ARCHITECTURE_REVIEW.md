@@ -944,3 +944,84 @@ The INXR2 codebase demonstrates **excellent architectural discipline** with Clea
 4. Implement features in order: faster indexing → free text search → SQLite support
 
 The architecture is fundamentally sound. With focused refactoring on the identified issues, INXR2 will be well-positioned for rapid feature development while maintaining high code quality.
+
+---
+
+## Addendum: Implementation Progress (2026-02-01)
+
+This section documents what was implemented from the recommendations above.
+
+### Completed Items
+
+#### Phase 1: Quick Wins ✅
+
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| M3 | Remove legacy search use case | ✅ Done | Deleted `search_symbols.py` with TODOs |
+| L2 | Fix datetime.utcnow() deprecations | ✅ Done | Using `datetime.now(UTC)` throughout |
+| M4 | Centralize language list | ✅ Done | Single source in `TreeSitterService.SUPPORTED_LANGUAGES` |
+
+#### Phase 2: Architectural Improvements ✅
+
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| C2 | Extract IndexingOrchestrator port | ✅ Done | `IndexingOrchestratorPort` in `application/use_cases/indexing/orchestrator.py` |
+| H1 | Extract content-hash optimization | ✅ Done | `OptimizeFileIndexingUseCase` created |
+| H2 | Deduplicate full/incremental logic | ✅ Done | Shared workflow in `DefaultIndexingOrchestrator` |
+| C1 | Refactor monolithic index command | ✅ Done | CLI is now thin adapter, orchestrator handles logic |
+
+#### Additional Improvements (Not in Original Plan)
+
+| Item | Description |
+|------|-------------|
+| CLI Summary Table | Comprehensive summary after multi-repo indexing with files, lines, resolution %, time per repo/branch |
+| Commit Range Display | Shows oldest/newest commit hash and timestamp (UTC) for each indexed branch |
+| Branch Progress Display | Shows `[repo/total] [branch/total]` progress for multi-branch repos |
+| TDD Guidance | Added regression testing requirements to CLAUDE.md |
+| Bug Fixes | Multiple fixes for TypeScript SymbolKind values, reference resolution batch queries, dict symbol handling |
+
+### Remaining Items
+
+#### From Original Plan (Not Yet Implemented)
+
+| ID | Item | Priority | Notes |
+|----|------|----------|-------|
+| H3 | Add pagination support | Medium | Still using simple limit without offset/cursor |
+| H4 | Database connection pooling config | Low | Using defaults |
+| M2 | Extract parser utilities | Low | Parsers still have some duplication |
+| M5 | Centralize error handling | Low | Still using scattered try/except |
+
+#### New Optimization Opportunity Identified
+
+**Branch-Specific Indexing Efficiency**
+
+Currently, when indexing a feature branch, we process all commits reachable from that branch within the `--days`/`max_history` filters. This includes commits inherited from the parent branch (e.g., main) that were already indexed.
+
+**Proposed optimization:**
+1. Detect merge-base between feature branch and default branch (main/master)
+2. Only index commits unique to the feature branch (after divergence point)
+3. Show accurate oldest/newest for branch-specific commits only
+
+This would significantly reduce indexing time for feature branches that inherit long histories from main. Consider implementing on a separate branch.
+
+### Metrics
+
+**Before Refactoring:**
+- `index_command.py`: 1,489 lines (monolithic)
+- Indexing logic mixed with CLI infrastructure
+- No orchestrator abstraction
+
+**After Refactoring:**
+- `index_command.py`: ~860 lines (CLI adapter only)
+- `default_orchestrator.py`: ~920 lines (business logic)
+- `orchestrator.py`: ~170 lines (port + DTOs)
+- `optimize_file_indexing.py`: ~145 lines (reusable optimization)
+- Clear separation of concerns
+- Testable orchestrator independent of CLI
+
+### Test Coverage
+
+- Added 1,573 lines of tests for `DefaultIndexingOrchestrator`
+- Added 446 lines of tests for `OptimizeFileIndexingUseCase`
+- Added 338 lines of tests for orchestrator port/DTOs
+- Regression tests for all bug fixes
