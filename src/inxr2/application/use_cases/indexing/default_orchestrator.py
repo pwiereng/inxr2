@@ -669,9 +669,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
             # Convert to naive UTC for database storage
             if author_date.tzinfo is not None:
-                author_date = author_date.replace(tzinfo=None)
+                author_date = author_date.astimezone(UTC).replace(tzinfo=None)
             if commit_date.tzinfo is not None:
-                commit_date = commit_date.replace(tzinfo=None)
+                commit_date = commit_date.astimezone(UTC).replace(tzinfo=None)
 
             commit = Commit(
                 id=None,

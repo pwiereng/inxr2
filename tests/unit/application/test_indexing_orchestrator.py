@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from inxr2.application.ports.services import IndexingOrchestratorPort
+from inxr2.application.ports.services import IndexingOrchestratorPort, ProgressCallback
 from inxr2.application.use_cases.indexing.orchestrator import (
     IncrementalIndexRequest,
     IndexingStrategy,
@@ -25,7 +25,9 @@ class FakeIndexingOrchestrator(IndexingOrchestratorPort):
         self.incremental_updates: list[dict] = []
 
     async def index_repository(
-        self, request: IndexRepositoryRequest
+        self,
+        request: IndexRepositoryRequest,
+        progress_callback: ProgressCallback | None = None,
     ) -> IndexRepositoryResponse:
         """Simulate full repository indexing."""
         # Record the indexing request
@@ -59,7 +61,9 @@ class FakeIndexingOrchestrator(IndexingOrchestratorPort):
         )
 
     async def index_incremental(
-        self, request: IncrementalIndexRequest
+        self,
+        request: IncrementalIndexRequest,
+        progress_callback: ProgressCallback | None = None,
     ) -> IndexRepositoryResponse:
         """Simulate incremental indexing."""
         # Record the incremental request
@@ -215,9 +219,11 @@ class TestIndexingOrchestratorPort:
         # Create a custom fake that simulates errors
         class ErrorSimulatingOrchestrator(FakeIndexingOrchestrator):
             async def index_repository(
-                self, request: IndexRepositoryRequest
+                self,
+                request: IndexRepositoryRequest,
+                progress_callback: ProgressCallback | None = None,
             ) -> IndexRepositoryResponse:
-                response = await super().index_repository(request)
+                response = await super().index_repository(request, progress_callback)
                 # Simulate some errors
                 return IndexRepositoryResponse(
                     repository_id=response.repository_id,

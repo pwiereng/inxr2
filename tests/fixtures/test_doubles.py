@@ -107,6 +107,9 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 indexed_at=symbol.indexed_at,
             )
             self._next_id += 1
+        else:
+            # Update _next_id to avoid collisions when symbols with explicit IDs are inserted
+            self._next_id = max(self._next_id, symbol.id + 1)
         assert symbol.id is not None, "Symbol must have an ID after assignment"
         self._symbols[symbol.id] = symbol
         return symbol

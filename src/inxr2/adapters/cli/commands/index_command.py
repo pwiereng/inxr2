@@ -554,14 +554,6 @@ async def _run_full_index_async(
     finally:
         await db.close()
 
-    # Should not reach here, but return empty result for type safety
-    return IndexingResult(
-        repo_name=repo_path.name,
-        branch=branch or "unknown",
-        success=False,
-        error_message="Unexpected error",
-    )
-
 
 def run_incremental_index(
     repo_path: Path,
@@ -846,14 +838,6 @@ async def _run_incremental_index_async(
 
     finally:
         await db.close()
-
-    # Should not reach here, but return empty result for type safety
-    return IndexingResult(
-        repo_name=repo_path.name,
-        branch=branch or "unknown",
-        success=False,
-        error_message="Unexpected error",
-    )
 
 
 def show_index_status(repo_path: Path, console: Console) -> None:

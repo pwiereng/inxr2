@@ -1,7 +1,7 @@
 """Service port interfaces - external service abstractions."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,11 +11,15 @@ from ...domain.entities import Symbol
 from ...domain.value_objects import AppConfig
 
 if TYPE_CHECKING:
+    from ..use_cases.indexing.default_orchestrator import IndexingProgress
     from ..use_cases.indexing.orchestrator import (
         IncrementalIndexRequest,
         IndexRepositoryRequest,
         IndexRepositoryResponse,
     )
+
+# Progress callback type for indexing operations
+ProgressCallback = Callable[["IndexingProgress"], None]
 
 
 @dataclass(frozen=True)
@@ -280,13 +284,16 @@ class IndexingOrchestratorPort(ABC):
 
     @abstractmethod
     async def index_repository(
-        self, request: "IndexRepositoryRequest"
+        self,
+        request: "IndexRepositoryRequest",
+        progress_callback: ProgressCallback | None = None,
     ) -> "IndexRepositoryResponse":
         """
         Index a repository with specified strategy.
 
         Args:
             request: Indexing request parameters
+            progress_callback: Optional callback for progress updates
 
         Returns:
             Indexing results with statistics
@@ -299,7 +306,9 @@ class IndexingOrchestratorPort(ABC):
 
     @abstractmethod
     async def index_incremental(
-        self, request: "IncrementalIndexRequest"
+        self,
+        request: "IncrementalIndexRequest",
+        progress_callback: ProgressCallback | None = None,
     ) -> "IndexRepositoryResponse":
         """
         Incrementally index changes since last index.
@@ -309,6 +318,7 @@ class IndexingOrchestratorPort(ABC):
 
         Args:
             request: Incremental indexing request parameters
+            progress_callback: Optional callback for progress updates
 
         Returns:
             Indexing results with statistics

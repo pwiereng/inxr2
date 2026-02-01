@@ -475,7 +475,7 @@ def test_with_fake():
 - Tests should verify actual behavior, not that Python works correctly
 - If a test would pass even with broken business logic, it's low-value
 
-See `tests/unit/application/test_use_cases.py` for complete examples.
+See `tests/unit/application/test_default_indexing_orchestrator.py` for complete examples.
 
 ## Environment Configuration
 
