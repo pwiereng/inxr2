@@ -85,8 +85,30 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
 
     async def save(self, symbol: Symbol) -> Symbol:
         """Save symbol to in-memory storage."""
-        if symbol.id is not None:
-            self._symbols[symbol.id] = symbol
+        if symbol.id is None:
+            # Assign a new ID
+            symbol = Symbol(
+                id=self._next_id,
+                file_id=symbol.file_id,
+                repository_id=symbol.repository_id,
+                commit_id=symbol.commit_id,
+                name=symbol.name,
+                kind=symbol.kind,
+                start_line=symbol.start_line,
+                start_column=symbol.start_column,
+                end_line=symbol.end_line,
+                end_column=symbol.end_column,
+                qualified_name=symbol.qualified_name,
+                parent_symbol_id=symbol.parent_symbol_id,
+                scope=symbol.scope,
+                signature=symbol.signature,
+                docstring=symbol.docstring,
+                metadata=symbol.metadata,
+                indexed_at=symbol.indexed_at,
+            )
+            self._next_id += 1
+        assert symbol.id is not None, "Symbol must have an ID after assignment"
+        self._symbols[symbol.id] = symbol
         return symbol
 
     async def find_by_id(self, symbol_id: int) -> Symbol | None:

@@ -63,7 +63,8 @@ class FakeGitService:
 
     def get_current_commit(self, repo_path: Path, branch: str) -> str:
         """Get current commit hash."""
-        return self.commits[-1]["hash"]
+        commit_hash: str = self.commits[-1]["hash"]
+        return commit_hash
 
     def get_commits(
         self,
@@ -132,64 +133,66 @@ class FakeParserService:
 
 
 @pytest.fixture
-def repository_adapter():
+def repository_adapter() -> InMemoryRepositoryRepository:
     """Create in-memory repository adapter."""
     return InMemoryRepositoryRepository()
 
 
 @pytest.fixture
-def commit_repo():
+def commit_repo() -> InMemoryCommitRepository:
     """Create in-memory commit repository."""
     return InMemoryCommitRepository()
 
 
 @pytest.fixture
-def file_repo():
+def file_repo() -> InMemoryFileRepository:
     """Create in-memory file repository."""
     return InMemoryFileRepository()
 
 
 @pytest.fixture
-def symbol_repo():
+def symbol_repo() -> InMemorySymbolRepository:
     """Create in-memory symbol repository."""
     return InMemorySymbolRepository()
 
 
 @pytest.fixture
-def reference_repo(symbol_repo):
+def reference_repo(
+    symbol_repo: InMemorySymbolRepository,
+) -> InMemoryReferenceRepository:
     """Create in-memory reference repository."""
     return InMemoryReferenceRepository(symbol_repo=symbol_repo)
 
 
 @pytest.fixture
-def index_status_repo():
+def index_status_repo() -> InMemoryIndexStatusRepository:
     """Create in-memory index status repository."""
     return InMemoryIndexStatusRepository()
 
 
 @pytest.fixture
-def git_service():
+def git_service() -> FakeGitService:
     """Create fake git service."""
     return FakeGitService()
 
 
 @pytest.fixture
-def parser_service():
+def parser_service() -> FakeParserService:
     """Create fake parser service."""
     return FakeParserService()
 
 
 @pytest.fixture
 def orchestrator(
-    repository_adapter,
-    commit_repo,
-    file_repo,
-    symbol_repo,
-    reference_repo,
-    index_status_repo,
-    git_service,
-    parser_service,
-):
+    repository_adapter: InMemoryRepositoryRepository,
+    commit_repo: InMemoryCommitRepository,
+    file_repo: InMemoryFileRepository,
+    symbol_repo: InMemorySymbolRepository,
+    reference_repo: InMemoryReferenceRepository,
+    index_status_repo: InMemoryIndexStatusRepository,
+    git_service: FakeGitService,
+    parser_service: FakeParserService,
+) -> DefaultIndexingOrchestrator:
     """Create orchestrator with all dependencies."""
     return DefaultIndexingOrchestrator(
         repository_repo=repository_adapter,
@@ -347,6 +350,7 @@ class TestDefaultIndexingOrchestrator:
         # Get repository ID
         repo = await repository_adapter.find_by_name("test-repo")
         assert repo is not None
+        assert repo.id is not None
 
         # Now do incremental index
         incremental_request = IncrementalIndexRequest(

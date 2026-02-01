@@ -156,6 +156,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         )
 
         # Step 4: Process each commit
+        last_commit_hash: str | None = None
         for commit_data in commits_data:
             await self._process_commit(
                 repository_id=repo_id,
@@ -165,6 +166,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 stats=stats,
             )
             stats["commits_indexed"] += 1
+            last_commit_hash = commit_data["hash"]
 
         # Step 5: Resolve references
         resolve_request = ResolveReferencesRequest(
@@ -180,6 +182,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             branch=request.branch or "main",
             commits_indexed=stats["commits_indexed"],
             files_indexed=stats["files_processed"],
+            last_indexed_commit=last_commit_hash,
         )
 
         # Calculate elapsed time
@@ -290,10 +293,16 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         )
 
         # Process each new commit
+        found_last_indexed = False
+        last_commit_hash: str | None = None
         for commit_data in commits_data:
-            # Skip commits we've already indexed
-            if last_indexed_hash and commit_data["hash"] == last_indexed_hash:
-                continue
+            # Skip commits until we pass the last indexed commit
+            if last_indexed_hash:
+                if commit_data["hash"] == last_indexed_hash:
+                    found_last_indexed = True
+                    continue  # Skip this exact commit (already indexed)
+                if not found_last_indexed:
+                    continue  # Skip all commits before the last indexed
 
             await self._process_commit(
                 repository_id=request.repository_id,
@@ -303,6 +312,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 stats=stats,
             )
             stats["commits_indexed"] += 1
+            last_commit_hash = commit_data["hash"]
 
         # Resolve references
         resolve_request = ResolveReferencesRequest(
@@ -312,12 +322,13 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         resolve_response = await self._resolve_refs_use_case.execute(resolve_request)
         stats["references_resolved"] = resolve_response.resolved_count
 
-        # Update index status
+        # Update index status (use last indexed hash if we processed new commits, else keep the old one)
         await self._update_index_status(
             repository_id=request.repository_id,
             branch=request.branch or "main",
             commits_indexed=stats["commits_indexed"],
             files_indexed=stats["files_processed"],
+            last_indexed_commit=last_commit_hash or last_indexed_hash,
         )
 
         elapsed_seconds = time.monotonic() - start_time
@@ -519,6 +530,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         branch: str,
         commits_indexed: int,
         files_indexed: int,
+        last_indexed_commit: str | None = None,
     ) -> None:
         """Update index status after indexing."""
         status = IndexStatus(
@@ -528,6 +540,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             indexing_status="completed",
             total_commits_indexed=commits_indexed,
             total_files_indexed=files_indexed,
+            last_indexed_commit=last_indexed_commit,
             indexer_version="0.1.0",
         )
         await self._index_status_repo.save(status)
