@@ -230,16 +230,35 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         """Resolve a batch of unlinked references.
 
         Uses a subquery to limit the update to batch_size references at a time.
+
+        Resolution priority (deterministic):
+        1. Same file - most likely the correct local symbol
+        2. Same language - cross-file but same language preferred
+        3. Symbol ID - deterministic tiebreaker for consistency
+
+        This ensures clicking on a reference always goes to the same symbol,
+        rather than an arbitrary one when multiple symbols share the same name.
         """
         if commit_aware:
             # Time travel mode: only match references to symbols from same commit
-            # The subquery ensures we only select refs that HAVE a matching symbol,
-            # so the batch will actually resolve (avoiding early loop exit)
+            # Uses correlated subquery to pick best match per reference
             result = await self.session.execute(
                 text("""
                     UPDATE "references" r
-                    SET target_symbol_id = s.id
-                    FROM symbols s
+                    SET target_symbol_id = (
+                        SELECT s.id
+                        FROM symbols s
+                        JOIN files sf ON s.file_id = sf.id
+                        JOIN files rf ON r.file_id = rf.id
+                        WHERE s.name = r.reference_text
+                          AND s.repository_id = r.repository_id
+                          AND s.commit_id = r.commit_id
+                        ORDER BY
+                            (s.file_id = r.file_id) DESC,
+                            (sf.language = rf.language) DESC,
+                            s.id
+                        LIMIT 1
+                    )
                     WHERE r.id IN (
                         SELECT r2.id FROM "references" r2
                         JOIN symbols s2 ON r2.reference_text = s2.name
@@ -249,21 +268,28 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                           AND r2.target_symbol_id IS NULL
                         LIMIT :batch_size
                     )
-                      AND s.repository_id = :repo_id
-                      AND r.commit_id = s.commit_id
-                      AND r.reference_text = s.name
                 """),
                 {"repo_id": repository_id, "batch_size": batch_size},
             )
         else:
             # Cross-commit mode: match references to any symbol in repository
-            # The subquery ensures we only select refs that HAVE a matching symbol,
-            # so the batch will actually resolve (avoiding early loop exit)
+            # Uses correlated subquery to pick best match per reference
             result = await self.session.execute(
                 text("""
                     UPDATE "references" r
-                    SET target_symbol_id = s.id
-                    FROM symbols s
+                    SET target_symbol_id = (
+                        SELECT s.id
+                        FROM symbols s
+                        JOIN files sf ON s.file_id = sf.id
+                        JOIN files rf ON r.file_id = rf.id
+                        WHERE s.name = r.reference_text
+                          AND s.repository_id = r.repository_id
+                        ORDER BY
+                            (s.file_id = r.file_id) DESC,
+                            (sf.language = rf.language) DESC,
+                            s.id
+                        LIMIT 1
+                    )
                     WHERE r.id IN (
                         SELECT r2.id FROM "references" r2
                         JOIN symbols s2 ON r2.reference_text = s2.name
@@ -272,8 +298,6 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                           AND r2.target_symbol_id IS NULL
                         LIMIT :batch_size
                     )
-                      AND s.repository_id = :repo_id
-                      AND r.reference_text = s.name
                 """),
                 {"repo_id": repository_id, "batch_size": batch_size},
             )

@@ -104,15 +104,18 @@ def _run_single_repo_index(
     console.print()
 
     try:
-        index_func(
-            repo_path=path,
-            branch=branch,
-            languages=lang_list,
-            console=console,
-            max_history=max_history,
-            force=force,
-            since_days=since_days,
-        )
+        # Only pass since_days for full indexing (incremental doesn't support it)
+        kwargs: dict[str, Any] = {
+            "repo_path": path,
+            "branch": branch,
+            "languages": lang_list,
+            "console": console,
+            "max_history": max_history,
+            "force": force,
+        }
+        if index_type == "Full" and since_days is not None:
+            kwargs["since_days"] = since_days
+        index_func(**kwargs)
     except Exception as e:
         console.print(f"\n[red]Error during indexing:[/red] {e}")
         if verbose:
@@ -239,15 +242,18 @@ def _run_config_based_index(
             max_history = max_history_override or config.indexing.max_commit_history
 
             try:
-                result = index_func(
-                    repo_path=resolved_path,
-                    branch=branch,
-                    languages=lang_list,
-                    console=console,
-                    max_history=max_history,
-                    force=force,
-                    since_days=since_days,
-                )
+                # Only pass since_days for full indexing (incremental doesn't support it)
+                kwargs: dict[str, Any] = {
+                    "repo_path": resolved_path,
+                    "branch": branch,
+                    "languages": lang_list,
+                    "console": console,
+                    "max_history": max_history,
+                    "force": force,
+                }
+                if index_type == "Full" and since_days is not None:
+                    kwargs["since_days"] = since_days
+                result = index_func(**kwargs)
                 if result:
                     results.append(result)
             except Exception as e:

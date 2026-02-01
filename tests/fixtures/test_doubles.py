@@ -806,21 +806,29 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
 
     Example:
         symbol_repo = InMemorySymbolRepository()
-        ref_repo = InMemoryReferenceRepository(symbol_repo=symbol_repo)
+        file_repo = InMemoryFileRepository()
+        ref_repo = InMemoryReferenceRepository(symbol_repo=symbol_repo, file_repo=file_repo)
         ref_repo.add(Reference(...))
         count = await ref_repo.resolve_unlinked_references(repository_id=1)
     """
 
-    def __init__(self, symbol_repo: "InMemorySymbolRepository | None" = None) -> None:
+    def __init__(
+        self,
+        symbol_repo: "InMemorySymbolRepository | None" = None,
+        file_repo: "InMemoryFileRepository | None" = None,
+    ) -> None:
         """Initialize with empty storage.
 
         Args:
             symbol_repo: Optional symbol repository for resolving references.
                         Required for resolve_unlinked_references to work properly.
+            file_repo: Optional file repository for language-aware resolution.
+                      When provided, enables same-file and same-language priority.
         """
         self._references: dict[int, Reference] = {}
         self._next_id = 1
         self._symbol_repo = symbol_repo
+        self._file_repo = file_repo
 
     async def save(self, reference: Reference) -> Reference:
         """Save reference to in-memory storage."""
@@ -931,7 +939,10 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     ) -> int:
         """Resolve a batch of unlinked references.
 
-        For the fake, this just calls resolve_unlinked_references with a limit.
+        Resolution priority (matches real implementation):
+        1. Same file - most likely the correct local symbol
+        2. Same language - cross-file but same language preferred
+        3. Symbol ID - deterministic tiebreaker for consistency
         """
         if self._symbol_repo is None:
             return 0
@@ -950,8 +961,8 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
 
             processed += 1
 
-            # Find matching symbol
-            matching_symbol = None
+            # Find all matching symbols
+            candidates: list[Symbol] = []
             for symbol in self._symbol_repo.get_all_symbols():
                 if (
                     symbol.repository_id == repository_id
@@ -959,11 +970,15 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 ):
                     if commit_aware:
                         if symbol.commit_id == ref.commit_id:
-                            matching_symbol = symbol
-                            break
+                            candidates.append(symbol)
                     else:
-                        matching_symbol = symbol
-                        break
+                        candidates.append(symbol)
+
+            if not candidates:
+                continue
+
+            # Pick best match using priority: same-file, same-language, symbol ID
+            matching_symbol = self._pick_best_symbol(ref, candidates)
 
             if matching_symbol is not None and matching_symbol.id is not None:
                 updated_refs[ref_id] = Reference(
@@ -989,6 +1004,51 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         self._references.update(updated_refs)
         return resolved_count
 
+    def _pick_best_symbol(
+        self, ref: Reference, candidates: list[Symbol]
+    ) -> Symbol | None:
+        """Pick the best matching symbol using priority rules.
+
+        Priority:
+        1. Same file (file_id matches)
+        2. Same language (requires file_repo)
+        3. Lowest symbol ID (deterministic tiebreaker)
+        """
+        if not candidates:
+            return None
+
+        if len(candidates) == 1:
+            return candidates[0]
+
+        # Get reference file language if file_repo is available
+        ref_file_language: str | None = None
+        if self._file_repo is not None:
+            for file in self._file_repo._files.values():
+                if file.id == ref.source_file_id:
+                    ref_file_language = file.language
+                    break
+
+        def sort_key(symbol: Symbol) -> tuple[int, int, int]:
+            # Lower values = higher priority
+            same_file = 0 if symbol.file_id == ref.source_file_id else 1
+
+            # Same language check (requires file_repo)
+            same_language = 1  # Default: not same language
+            if self._file_repo is not None and ref_file_language is not None:
+                for file in self._file_repo._files.values():
+                    if file.id == symbol.file_id:
+                        if file.language == ref_file_language:
+                            same_language = 0
+                        break
+
+            # Symbol ID as tiebreaker
+            symbol_id = symbol.id if symbol.id is not None else 999999
+
+            return (same_file, same_language, symbol_id)
+
+        candidates.sort(key=sort_key)
+        return candidates[0]
+
     async def resolve_unlinked_references(
         self, repository_id: int, commit_aware: bool = False
     ) -> int:
@@ -996,6 +1056,11 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
 
         This fake implementation matches references to symbols by name.
         Requires symbol_repo to be set for proper functionality.
+
+        Uses the same priority logic as resolve_references_batch:
+        1. Same file - most likely the correct local symbol
+        2. Same language - cross-file but same language preferred
+        3. Symbol ID - deterministic tiebreaker for consistency
         """
         if self._symbol_repo is None:
             # Without a symbol repo, we can't resolve anything
@@ -1009,8 +1074,8 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             if ref.target_symbol_id is not None or ref.repository_id != repository_id:
                 continue
 
-            # Find matching symbol
-            matching_symbol = None
+            # Find all matching symbols
+            candidates: list[Symbol] = []
             for symbol in self._symbol_repo.get_all_symbols():
                 if (
                     symbol.repository_id == repository_id
@@ -1019,11 +1084,12 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                     if commit_aware:
                         # Only match if same commit
                         if symbol.commit_id == ref.commit_id:
-                            matching_symbol = symbol
-                            break
+                            candidates.append(symbol)
                     else:
-                        matching_symbol = symbol
-                        break
+                        candidates.append(symbol)
+
+            # Pick best match using priority: same-file, same-language, symbol ID
+            matching_symbol = self._pick_best_symbol(ref, candidates)
 
             if matching_symbol is not None and matching_symbol.id is not None:
                 # Create updated reference with target_symbol_id set
