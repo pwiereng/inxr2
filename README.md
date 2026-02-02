@@ -265,6 +265,25 @@ docker exec inxr2-dev inxr2 index full --config config.yaml --days 30
 docker exec inxr2-dev inxr2 index full --config config.yaml --verbose
 ```
 
+**Branch Indexing Behavior:**
+
+When using `--days` to filter by date, the indexer applies these rules:
+
+- **Primary branch** (first branch listed in config): Always indexed at HEAD, regardless of `--days` filter
+- **Other branches**: Only indexed if they have commits within the `--days` window; skipped otherwise
+
+This ensures your main branch is always current while stale feature branches are automatically skipped.
+
+Example with multiple branches:
+```yaml
+repositories:
+  - name: myrepo
+    branches:
+      - main        # Primary - always indexed (at least HEAD)
+      - feature-a   # Only indexed if has commits within --days
+      - feature-b   # Only indexed if has commits within --days
+```
+
 **Incremental Index (only changed files):**
 ```bash
 # Faster - only indexes files changed since last index

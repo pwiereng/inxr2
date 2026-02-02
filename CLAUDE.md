@@ -38,6 +38,19 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
      - Write a test that reproduces the bug BEFORE fixing it
      - The test should fail before the fix and pass after
      - If a regression test is complex or hard to write, ask the user if it's worth the effort
+   - **Fixing Failing Tests**: When a test fails, ALWAYS investigate the root cause:
+     - ❌ DON'T just make the test pass with a quick workaround
+     - ✅ DO investigate whether the bug is in the test or in the code being tested
+     - ✅ DO fix the actual root cause, not the symptom
+     - If the test is wrong, fix the test and explain why
+     - If the code is wrong, fix the code properly
+     - Always fix test failures immediately, even if unrelated to current work
+   - **Database Isolation**: Tests MUST NEVER touch the live database:
+     - Unit tests: Use `TEST_DATABASE_URL` (SQLite in-memory) via fixtures in `tests/adapters/persistence/conftest.py`
+     - CLI tests: Use CliRunner's `env` parameter to set `DATABASE_URL` to test database
+     - Integration tests: Use proper test database fixtures
+     - If a test needs database access, it MUST use the isolated test database fixtures
+     - ❌ NEVER let tests hit the production/development PostgreSQL database
 
 3. **Code Quality**
    - Zero tolerance for linting errors

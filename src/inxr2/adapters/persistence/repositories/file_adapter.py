@@ -143,7 +143,7 @@ class PostgresFileRepository(FileRepositoryPort):
 
         Returns files with this path from different commits, ordered by
         commit date descending (newest first). Deduplicates by content_hash
-        to avoid showing identical versions.
+        to only show versions where the file actually changed.
 
         Args:
             repository_id: The repository ID
