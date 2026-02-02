@@ -8,6 +8,10 @@ Changes:
 - Add unique constraint on index_status (repository_id, branch)
 - Drop orphaned ix_branch_commits_repo_branch index (not in model)
 - Drop orphaned symbols.name_tsvector column (excluded from ORM)
+
+Note: This migration assumes a fresh database (full rebuild via DROP SCHEMA +
+alembic upgrade head). It does not handle incremental upgrades from databases
+with existing duplicates or missing artifacts.
 """
 
 from collections.abc import Sequence
