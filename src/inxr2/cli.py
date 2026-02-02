@@ -15,7 +15,6 @@ from typing import Any
 import click
 from rich.console import Console
 from rich.logging import RichHandler
-from rich.table import Table
 
 from inxr2.adapters.cli.commands import IndexingResult
 
@@ -190,8 +189,10 @@ def _run_config_based_index(
     start_time = time.time()
 
     for idx, repo in enumerate(repos_with_paths, 1):
-        # Resolve path
+        # Resolve path (guaranteed to be non-None since repos_with_paths filters by r.path)
         resolved_path = repo.get_resolved_path()
+        if resolved_path is None:
+            continue  # Should never happen, but satisfies type checker
 
         # Determine branches to index (override > all config branches > None for current)
         branches_to_index: list[str | None]
@@ -221,9 +222,64 @@ def _run_config_based_index(
             )
             continue
 
+        # Create git service for branch activity checks
+        from inxr2.adapters.external.git_service import GitService
+
+        git_service = GitService()
+
         # Index each branch
+        # First branch in config is the primary branch (main/master/trunk)
+        # Primary branch is always indexed; other branches filtered by --days
         total_branches = len(branches_to_index)
+
         for branch_idx, branch in enumerate(branches_to_index, 1):
+            is_primary_branch = branch_idx == 1
+
+            # Resolve branch name for activity checks
+            # Note: get_repository_info returns current_branch=None in detached HEAD state,
+            # so we use `or` to handle both missing key and None value
+            repo_info = git_service.get_repository_info(resolved_path)
+            branch_name = branch or repo_info.get("current_branch") or "main"
+
+            # Determine indexing parameters based on branch type and --days
+            max_history = max_history_override or config.indexing.max_commit_history
+            use_since_days: int | None = None
+            primary_fallback_to_head = False
+
+            if since_days is not None:
+                # Check if branch has commits within the --days window
+                commits = git_service.list_commits(
+                    repo_path=resolved_path,
+                    branch=branch_name,
+                    max_count=1,
+                    since_days=since_days,
+                )
+                has_recent_commits = len(commits) > 0
+
+                if is_primary_branch:
+                    # Primary branch: use --days if has recent commits, else fall back to HEAD
+                    if has_recent_commits:
+                        use_since_days = since_days
+                    else:
+                        # Fall back to HEAD only
+                        max_history = 1
+                        primary_fallback_to_head = True
+                else:
+                    # Non-primary branch: skip if no recent commits
+                    if not has_recent_commits:
+                        console.print(
+                            f"[bold cyan][{idx}/{total_repos}][/bold cyan] "
+                            f"[dim][{branch_idx}/{total_branches}][/dim] {repo.name}"
+                        )
+                        console.print(f"  Branch: {branch_name}")
+                        console.print(
+                            f"  [yellow]Skipped:[/yellow] No commits within "
+                            f"last {since_days} days"
+                        )
+                        console.print()
+                        continue
+                    use_since_days = since_days
+
             # Show progress: [repo/total_repos] [branch/total_branches] repo_name
             if total_branches > 1:
                 progress_str = (
@@ -235,14 +291,36 @@ def _run_config_based_index(
                     f"[bold cyan][{idx}/{total_repos}][/bold cyan] {repo.name}"
                 )
             console.print(f"{progress_str} ({resolved_path})")
-            console.print(f"  Branch: {branch or '(current)'}")
+
+            # Build branch line with role indicator
+            branch_display = branch or "(current)"
+            if is_primary_branch:
+                branch_line = (
+                    f"  Branch: {branch_display} [bold magenta](primary)[/bold magenta]"
+                )
+            else:
+                branch_line = f"  Branch: {branch_display}"
+            console.print(branch_line)
+
+            # Show indexing strategy based on branch type and --days
+            if since_days is not None:
+                if is_primary_branch:
+                    if primary_fallback_to_head:
+                        console.print(
+                            f"  [dim]Strategy: HEAD only "
+                            f"(no commits in last {since_days} days)[/dim]"
+                        )
+                    else:
+                        console.print(
+                            f"  [dim]Strategy: last {since_days} days "
+                            f"(has recent commits)[/dim]"
+                        )
+                else:
+                    # Non-primary with recent commits (if we got here, it wasn't skipped)
+                    console.print(f"  [dim]Strategy: last {since_days} days[/dim]")
             console.print()
 
-            # Determine max_history (override > config)
-            max_history = max_history_override or config.indexing.max_commit_history
-
             try:
-                # Only pass since_days for full indexing (incremental doesn't support it)
                 kwargs: dict[str, Any] = {
                     "repo_path": resolved_path,
                     "branch": branch,
@@ -251,8 +329,17 @@ def _run_config_based_index(
                     "max_history": max_history,
                     "force": force,
                 }
-                if index_type == "Full" and since_days is not None:
-                    kwargs["since_days"] = since_days
+                if index_type == "Full" and use_since_days is not None:
+                    kwargs["since_days"] = use_since_days
+
+                # Feature branch optimization: if indexing a non-default branch,
+                # use the first branch in config as base_branch to only index
+                # commits unique to this branch (after merge-base)
+                if index_type == "Full" and len(repo.branches) > 1:
+                    default_branch = repo.branches[0]  # First branch is the default
+                    if branch and branch != default_branch:
+                        kwargs["base_branch"] = default_branch
+
                 result = index_func(**kwargs)
                 if result:
                     results.append(result)
@@ -282,49 +369,50 @@ def _run_config_based_index(
     total_resolved = sum(r.references_resolved for r in results)
     overall_resolution = (total_resolved / total_refs * 100) if total_refs > 0 else 0
 
-    # Print summary table
+    # Print summary
     console.print()
     console.print("[bold]Indexing Summary:[/bold]")
-
-    # Create detailed results table
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("Repository", style="cyan")
-    table.add_column("Branch", style="dim")
-    table.add_column("Oldest Commit", style="dim")
-    table.add_column("Newest Commit", style="dim")
-    table.add_column("Files", justify="right")
-    table.add_column("Lines", justify="right")
-    table.add_column("Resolution", justify="right")
-    table.add_column("Time", justify="right")
-    table.add_column("Status", justify="center")
+    console.print()
 
     for r in results:
         status = "[green]OK[/green]" if r.success else "[red]FAIL[/red]"
         resolution = f"{r.resolution_rate:.1f}%" if r.references_found > 0 else "-"
-        # Format commit info: hash (date)
-        oldest = (
-            f"{r.oldest_commit_hash} ({r.oldest_commit_date})"
-            if r.oldest_commit_hash and r.oldest_commit_date
-            else "-"
-        )
-        newest = (
-            f"{r.newest_commit_hash} ({r.newest_commit_date})"
-            if r.newest_commit_hash and r.newest_commit_date
-            else "-"
-        )
-        table.add_row(
-            r.repo_name,
-            r.branch,
-            oldest,
-            newest,
-            f"{r.files_total:,}" if r.files_total > 0 else "-",
-            f"{r.lines_indexed:,}" if r.lines_indexed > 0 else "-",
-            resolution,
-            _format_duration(r.elapsed_seconds) if r.elapsed_seconds > 0 else "-",
-            status,
-        )
 
-    console.print(table)
+        # Repository/branch header
+        console.print(f"[cyan]{r.repo_name}[/cyan] / {r.branch}  {status}")
+
+        if r.success:
+            # Commit range (short hashes)
+            if r.oldest_commit_hash and r.newest_commit_hash:
+                oldest_short = r.oldest_commit_hash[:7]
+                newest_short = r.newest_commit_hash[:7]
+                if oldest_short == newest_short:
+                    console.print(f"  Commit: {oldest_short} ({r.oldest_commit_date})")
+                else:
+                    console.print(
+                        f"  Commits: {oldest_short}..{newest_short} "
+                        f"({r.oldest_commit_date} to {r.newest_commit_date})"
+                    )
+
+            # Stats line
+            files_str = f"{r.files_total:,} files" if r.files_total > 0 else ""
+            lines_str = f"{r.lines_indexed:,} lines" if r.lines_indexed > 0 else ""
+            time_str = (
+                _format_duration(r.elapsed_seconds) if r.elapsed_seconds > 0 else ""
+            )
+            stats_parts = [
+                p
+                for p in [files_str, lines_str, f"resolution {resolution}", time_str]
+                if p
+            ]
+            if stats_parts:
+                console.print(f"  {', '.join(stats_parts)}")
+        else:
+            # Error message
+            if r.error_message:
+                console.print(f"  [red]Error:[/red] {r.error_message}")
+
+        console.print()
 
     # Print totals
     console.print()

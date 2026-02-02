@@ -424,8 +424,9 @@ class TestIndexCommandIntegration:
 
         This fixture creates an isolated git repo with a single commit,
         making tests independent of external test repositories.
+        Uses unique repo name to avoid database collisions.
         """
-        repo_path = tmp_path / "test-repo"
+        repo_path = tmp_path / "idx-cmd-test-repo"
         repo_path.mkdir()
 
         # Initialize repo

@@ -3,7 +3,16 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import CHAR, JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    CHAR,
+    JSON,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
@@ -16,6 +25,9 @@ class IndexStatusModel(Base, TimestampMixin):
     """SQLAlchemy ORM model for index_status table."""
 
     __tablename__ = "index_status"
+    __table_args__ = (
+        UniqueConstraint("repository_id", "branch", name="uq_index_status_repo_branch"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     repository_id: Mapped[int] = mapped_column(

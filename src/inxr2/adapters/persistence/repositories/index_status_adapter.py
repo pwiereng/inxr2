@@ -23,7 +23,40 @@ class PostgresIndexStatusRepository(IndexStatusRepositoryPort):
         self.mapper = IndexStatusMapper()
 
     async def save(self, status: IndexStatus) -> IndexStatus:
-        """Save or update an index status."""
+        """Save or update an index status.
+
+        Uses upsert logic: if an entry already exists for this repository+branch,
+        update it instead of creating a duplicate.
+        """
+        # Check if an entry already exists for this repo+branch
+        if status.id is None:
+            existing = await self.find_by_repository_and_branch(
+                status.repository_id, status.branch
+            )
+            if existing and existing.id is not None:
+                # Update the existing entry instead of creating a new one
+                # Preserve original created_at timestamp
+                status = IndexStatus(
+                    id=existing.id,
+                    repository_id=status.repository_id,
+                    branch=status.branch,
+                    last_indexed_commit=status.last_indexed_commit,
+                    oldest_indexed_commit=status.oldest_indexed_commit,
+                    last_indexed_at=status.last_indexed_at,
+                    indexing_started_at=status.indexing_started_at,
+                    indexing_status=status.indexing_status,
+                    total_commits_indexed=status.total_commits_indexed,
+                    total_files_indexed=status.total_files_indexed,
+                    total_symbols_indexed=status.total_symbols_indexed,
+                    total_references_indexed=status.total_references_indexed,
+                    error_message=status.error_message,
+                    error_count=status.error_count,
+                    indexer_version=status.indexer_version,
+                    metadata=status.metadata,
+                    created_at=existing.created_at,
+                    updated_at=existing.updated_at,
+                )
+
         model = self.mapper.to_model(status)
 
         if status.id is None:

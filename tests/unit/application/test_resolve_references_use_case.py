@@ -187,7 +187,9 @@ class TestResolveReferencesUseCase:
         # Verify ref 1 is now resolved to symbol 3 (same file as reference)
         ref1 = await reference_repo.find_by_id(1)
         assert ref1 is not None
-        assert ref1.target_symbol_id == 3  # Same file priority: symbol 3 is in file 2, like ref 1
+        assert (
+            ref1.target_symbol_id == 3
+        )  # Same file priority: symbol 3 is in file 2, like ref 1
 
         # Verify ref 2 is now resolved
         ref2 = await reference_repo.find_by_id(2)

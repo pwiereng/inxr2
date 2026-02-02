@@ -80,6 +80,9 @@ class FakeGitService:
                 "deleted": [],
             },
         }
+        # Tracking for list_branch_commits calls (for test verification)
+        self._list_branch_commits_called = False
+        self._list_branch_commits_args: dict[str, str] = {}
 
     def get_repository_info(self, repo_path: Path) -> dict:
         """Get repository information."""
@@ -134,6 +137,31 @@ class FakeGitService:
         return self.changed_files_in_commit.get(
             commit_hash, {"added": [], "modified": [], "deleted": []}
         )
+
+    def list_branch_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        base_branch: str,
+        max_count: int | None = None,
+        since_days: int | None = None,
+    ) -> list[dict]:
+        """
+        Get commits unique to a branch (after merge-base with base_branch).
+
+        For testing, returns only the last commit to simulate feature branch
+        optimization - as if all earlier commits are shared with base_branch.
+        """
+        # Track that this method was called for test verification
+        self._list_branch_commits_called = True
+        self._list_branch_commits_args = {
+            "branch": branch,
+            "base_branch": base_branch,
+        }
+        # Return only the last commit to simulate branch-specific commits
+        if self.commits:
+            return [self.commits[-1]]
+        return []
 
 
 class FakeParserService:
@@ -1571,3 +1599,176 @@ class TestBranchCommitsPopulation:
                 branches = await commit_repo.get_branches_for_commit(commit.id)
                 assert "main" in branches, "Commit should be linked to main"
                 assert "feature" in branches, "Commit should also be linked to feature"
+
+
+class TestBranchIndexingOptimization:
+    """Tests for branch indexing optimization using merge-base."""
+
+    @pytest.mark.asyncio
+    async def test_uses_list_branch_commits_when_base_branch_set(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that list_branch_commits is called when base_branch is set and differs from branch."""
+        git_service = FakeGitService()
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        # Request with base_branch different from branch
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="feature",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            base_branch="main",  # Different from branch
+        )
+
+        await orchestrator.index_repository(request)
+
+        # Assert - list_branch_commits should have been called
+        assert (
+            git_service._list_branch_commits_called
+        ), "list_branch_commits should be called when base_branch differs from branch"
+        assert git_service._list_branch_commits_args["branch"] == "feature"
+        assert git_service._list_branch_commits_args["base_branch"] == "main"
+
+    @pytest.mark.asyncio
+    async def test_uses_list_commits_when_base_branch_equals_branch(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that list_commits (not list_branch_commits) is used when base_branch equals branch."""
+        git_service = FakeGitService()
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        # Request with base_branch same as branch (no optimization needed)
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            base_branch="main",  # Same as branch
+        )
+
+        await orchestrator.index_repository(request)
+
+        # Assert - list_branch_commits should NOT have been called
+        assert (
+            not git_service._list_branch_commits_called
+        ), "list_branch_commits should NOT be called when base_branch equals branch"
+
+    @pytest.mark.asyncio
+    async def test_uses_list_commits_when_no_base_branch(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that list_commits (not list_branch_commits) is used when base_branch is None."""
+        git_service = FakeGitService()
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        # Request without base_branch
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="feature",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            base_branch=None,  # No base branch
+        )
+
+        await orchestrator.index_repository(request)
+
+        # Assert - list_branch_commits should NOT have been called
+        assert (
+            not git_service._list_branch_commits_called
+        ), "list_branch_commits should NOT be called when base_branch is None"
+
+    @pytest.mark.asyncio
+    async def test_fewer_commits_indexed_with_optimization(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that fewer commits are indexed when branch optimization is active."""
+        git_service = FakeGitService()
+        # FakeGitService has 2 commits by default
+        # list_branch_commits returns only the last commit (simulating feature branch)
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        # Index with optimization (base_branch set)
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="feature",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            base_branch="main",
+        )
+
+        response = await orchestrator.index_repository(request)
+
+        # Assert - only 1 commit should be indexed (the branch-specific one)
+        # list_branch_commits returns only the last commit
+        assert (
+            response.commits_indexed == 1
+        ), "Should index only 1 commit when using branch optimization"
