@@ -59,6 +59,9 @@ class IndexRepositoryRequest:
         max_history: Maximum number of commits to index (None = all)
         since_days: Only index commits from last N days (overrides max_history)
         force: If True, clear existing data before indexing (FULL only)
+        base_branch: Base branch to compare against for feature branch indexing.
+                     When set, only commits unique to this branch (after merge-base)
+                     will be indexed. If None, all reachable commits are indexed.
     """
 
     repository_path: Path
@@ -68,6 +71,7 @@ class IndexRepositoryRequest:
     max_history: int | None = 100
     since_days: int | None = None
     force: bool = False
+    base_branch: str | None = None
 
 
 @dataclass

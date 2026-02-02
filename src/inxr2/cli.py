@@ -253,6 +253,15 @@ def _run_config_based_index(
                 }
                 if index_type == "Full" and since_days is not None:
                     kwargs["since_days"] = since_days
+
+                # Feature branch optimization: if indexing a non-default branch,
+                # use the first branch in config as base_branch to only index
+                # commits unique to this branch (after merge-base)
+                if index_type == "Full" and len(repo.branches) > 1:
+                    default_branch = repo.branches[0]  # First branch is the default
+                    if branch and branch != default_branch:
+                        kwargs["base_branch"] = default_branch
+
                 result = index_func(**kwargs)
                 if result:
                     results.append(result)

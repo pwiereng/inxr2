@@ -182,12 +182,25 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
         # Step 2: Get commits to process
         # list_commits returns commits from oldest to newest, we reverse for HEAD-first
-        commits_data = self._git_service.list_commits(
-            repo_path=request.repository_path,
-            branch=request.branch or "main",
-            max_count=request.max_history,
-            since_days=request.since_days,
-        )
+        branch = request.branch or "main"
+        if request.base_branch and request.base_branch != branch:
+            # Feature branch optimization: only index commits unique to this branch
+            # (commits after the merge-base with base_branch)
+            commits_data = self._git_service.list_branch_commits(
+                repo_path=request.repository_path,
+                branch=branch,
+                base_branch=request.base_branch,
+                max_count=request.max_history,
+                since_days=request.since_days,
+            )
+        else:
+            # Default: index all reachable commits on this branch
+            commits_data = self._git_service.list_commits(
+                repo_path=request.repository_path,
+                branch=branch,
+                max_count=request.max_history,
+                since_days=request.since_days,
+            )
 
         # If no commits match the filter (e.g., no commits in last N days),
         # still index the HEAD commit to capture current state

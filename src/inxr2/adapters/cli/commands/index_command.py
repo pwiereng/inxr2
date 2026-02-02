@@ -252,6 +252,7 @@ def run_full_index(
     max_history: int | None = 100,
     force: bool = False,
     since_days: int | None = None,
+    base_branch: str | None = None,
 ) -> IndexingResult | None:
     """
     Run full indexing of a repository with time travel support.
@@ -267,6 +268,8 @@ def run_full_index(
         max_history: Maximum number of commits to index (None = all commits)
         force: If True, clear existing data for this repository before indexing
         since_days: Only index commits from the last N days (overrides max_history)
+        base_branch: Base branch for feature branch optimization. When set,
+                     only commits unique to this branch (after merge-base) are indexed.
 
     Returns:
         IndexingResult with stats for the final summary, or None if interrupted
@@ -285,6 +288,7 @@ def run_full_index(
                 max_history=max_history,
                 force=force,
                 since_days=since_days,
+                base_branch=base_branch,
             )
         )
     except KeyboardInterrupt:
@@ -301,6 +305,7 @@ async def _run_full_index_async(
     max_history: int | None = 100,
     force: bool = False,
     since_days: int | None = None,
+    base_branch: str | None = None,
 ) -> IndexingResult:
     """Async implementation of full indexing using the orchestrator."""
     from inxr2.adapters.external.git_service import GitService
@@ -362,12 +367,22 @@ async def _run_full_index_async(
                 console.print(f"  Since: last {since_days} days")
 
             # Show commit range being indexed
-            commits = git_service.list_commits(
-                repo_path=repo_path,
-                branch=current_branch,
-                max_count=max_history,
-                since_days=since_days,
-            )
+            # Use list_branch_commits when base_branch optimization is active
+            if base_branch and base_branch != current_branch:
+                commits = git_service.list_branch_commits(
+                    repo_path=repo_path,
+                    branch=current_branch,
+                    base_branch=base_branch,
+                    max_count=max_history,
+                    since_days=since_days,
+                )
+            else:
+                commits = git_service.list_commits(
+                    repo_path=repo_path,
+                    branch=current_branch,
+                    max_count=max_history,
+                    since_days=since_days,
+                )
             if not commits:
                 # Fall back to HEAD if no commits in range
                 head_hash = git_service.get_current_commit(repo_path, current_branch)
@@ -400,6 +415,7 @@ async def _run_full_index_async(
                 strategy=IndexingStrategy.FULL,
                 max_history=max_history,
                 since_days=since_days,
+                base_branch=base_branch,
             )
 
             # Import progress types
