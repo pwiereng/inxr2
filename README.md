@@ -269,8 +269,8 @@ docker exec inxr2-dev inxr2 index full --config config.yaml --verbose
 
 When using `--days` to filter by date, the indexer applies these rules:
 
-- **Primary branch** (first branch listed in config): Always indexed at HEAD, regardless of `--days` filter
-- **Other branches**: Only indexed if they have commits within the `--days` window; skipped otherwise
+- **Primary branch** (first branch listed in config): Always indexed. If it has commits within the `--days` window, those are indexed; otherwise falls back to HEAD only
+- **Other branches**: Only indexed if they have commits within the `--days` window; skipped entirely otherwise
 
 This ensures your main branch is always current while stale feature branches are automatically skipped.
 

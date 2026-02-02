@@ -16,13 +16,14 @@ When indexing multiple repositories with multiple branches, stale feature branch
 When using `--days` to filter by commit age:
 
 1. **Primary branch** (first branch listed in config):
-   - Always indexed, regardless of `--days` filter
-   - Only indexes HEAD (one commit) to minimize database size
+   - Always indexed, never skipped
+   - If it has commits within the `--days` window: indexes those commits (respects `--days`)
+   - If it has NO commits within `--days`: falls back to HEAD only (`max_history=1`)
    - Ensures every configured repository has at least its main branch current
 
 2. **Feature branches** (all other branches):
    - Only indexed if they have commits within the `--days` window
-   - Skipped with a message if no recent activity
+   - Skipped entirely with a message if no recent activity
    - When indexed, use merge-base optimization to only index commits unique to that branch
 
 ### Rationale
@@ -30,8 +31,8 @@ When using `--days` to filter by commit age:
 This approach balances several concerns:
 
 1. **Always have current code**: The primary branch is always indexed, so users can always browse the latest code
-2. **Skip stale branches**: Feature branches that haven't been touched in N days are likely merged or abandoned
-3. **Efficient storage**: Only indexing HEAD for primary branches minimizes database growth
+2. **Smart history depth**: Primary branches with recent activity get full `--days` history; stale ones just get HEAD
+3. **Skip stale branches**: Feature branches that haven't been touched in N days are likely merged or abandoned
 4. **Clear configuration**: First branch in config is the "primary" - simple to understand and configure
 
 ### Example Configuration
@@ -67,10 +68,13 @@ inxr2 index full --config config.yaml --days 10
 
 Changes in `src/inxr2/cli.py`:
 - First branch in config list is treated as primary
-- Primary branch skips the `--days` activity check
-- Primary branch uses `max_history=1` (HEAD only) unless overridden
-- Feature branches use normal `--days` filtering
+- Primary branch checks for recent commits within `--days` window
+- If primary has recent commits: uses `--days` filter (indexes recent history)
+- If primary has no recent commits: falls back to `max_history=1` (HEAD only)
+- Feature branches use normal `--days` filtering and are skipped if no recent activity
 
 Tests in `tests/adapters/cli/test_cli.py`:
 - `test_old_branch_skipped_with_days_filter`: Verifies non-primary branches are skipped
 - `test_primary_branch_always_indexed_with_days_filter`: Verifies primary branch is never skipped
+- `test_primary_branch_with_recent_commits_uses_days_filter`: Verifies primary uses `--days` when active
+- `test_primary_branch_no_recent_commits_falls_back_to_head`: Verifies primary falls back to HEAD when stale
