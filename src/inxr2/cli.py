@@ -236,9 +236,10 @@ def _run_config_based_index(
             is_primary_branch = branch_idx == 1
 
             # Resolve branch name for activity checks
-            branch_name = branch or git_service.get_repository_info(resolved_path).get(
-                "current_branch", "main"
-            )
+            # Note: get_repository_info returns current_branch=None in detached HEAD state,
+            # so we use `or` to handle both missing key and None value
+            repo_info = git_service.get_repository_info(resolved_path)
+            branch_name = branch or repo_info.get("current_branch") or "main"
 
             # Determine indexing parameters based on branch type and --days
             max_history = max_history_override or config.indexing.max_commit_history

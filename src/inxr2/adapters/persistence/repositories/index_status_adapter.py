@@ -35,6 +35,7 @@ class PostgresIndexStatusRepository(IndexStatusRepositoryPort):
             )
             if existing and existing.id is not None:
                 # Update the existing entry instead of creating a new one
+                # Preserve original created_at timestamp
                 status = IndexStatus(
                     id=existing.id,
                     repository_id=status.repository_id,
@@ -52,6 +53,8 @@ class PostgresIndexStatusRepository(IndexStatusRepositoryPort):
                     error_count=status.error_count,
                     indexer_version=status.indexer_version,
                     metadata=status.metadata,
+                    created_at=existing.created_at,
+                    updated_at=existing.updated_at,
                 )
 
         model = self.mapper.to_model(status)
