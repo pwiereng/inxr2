@@ -308,7 +308,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
         resolve_request = ResolveReferencesRequest(
             repository_id=repo_id,
-            commit_aware=True,  # Time-travel consistent: resolve to symbols at same commit
+            commit_aware=False,  # Cross-commit resolution: better resolution rate, see docs/2026-02-01-reference-resolution-investigation.md
         )
         resolve_response = await self._resolve_refs_use_case.execute_with_progress(
             resolve_request,
@@ -559,7 +559,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
         resolve_request = ResolveReferencesRequest(
             repository_id=request.repository_id,
-            commit_aware=True,  # Time-travel consistent: resolve to symbols at same commit
+            commit_aware=False,  # Cross-commit resolution: better resolution rate, see docs/2026-02-01-reference-resolution-investigation.md
         )
         resolve_response = await self._resolve_refs_use_case.execute_with_progress(
             resolve_request,
