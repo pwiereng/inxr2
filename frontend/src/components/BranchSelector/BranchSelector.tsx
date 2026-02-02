@@ -11,13 +11,17 @@ import {
 } from '@mui/material'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import { getRepositoryBranches, type BranchInfo } from '@/lib/api'
+import EditIcon from '@mui/icons-material/Edit'
+import { getRepositoryBranches, getFileHistory, type BranchInfo } from '@/lib/api'
 
 interface BranchSelectorProps {
   repositoryId: number
   selectedBranch: string | null
   defaultBranch: string
   onBranchChange: (branchName: string | null) => void
+  // Optional: when provided, indicators show file status per branch
+  repoName?: string
+  filePath?: string
 }
 
 export function BranchSelector({
@@ -25,10 +29,16 @@ export function BranchSelector({
   selectedBranch,
   defaultBranch,
   onBranchChange,
+  repoName,
+  filePath,
 }: BranchSelectorProps) {
   const [branches, setBranches] = useState<BranchInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Track which branches have the file (for checkmark)
+  const [branchesWithFile, setBranchesWithFile] = useState<Set<string>>(new Set())
+  // Track which branches have changes to the file (different content than default branch)
+  const [branchesWithChanges, setBranchesWithChanges] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!repositoryId) {
@@ -57,6 +67,60 @@ export function BranchSelector({
     loadBranches()
   }, [repositoryId])
 
+  // Check which branches have the file and which have changes
+  useEffect(() => {
+    if (!repoName || !filePath || branches.length === 0) {
+      setBranchesWithFile(new Set())
+      setBranchesWithChanges(new Set())
+      return
+    }
+
+    const checkBranchesForFile = async () => {
+      const branchesWithVersions = new Set<string>()
+      const branchesWithUniqueChanges = new Set<string>()
+      // Store content hashes per branch for comparison
+      const branchContentHashes: Map<string, Set<string>> = new Map()
+
+      // Fetch file history for each branch in parallel
+      await Promise.all(
+        branches.map(async (branch) => {
+          try {
+            const response = await getFileHistory(repoName, filePath, branch.name)
+            if (response.versions && response.versions.length > 0) {
+              branchesWithVersions.add(branch.name)
+              // Collect content hashes for this branch
+              const hashes = new Set(response.versions.map((v) => v.content_hash))
+              branchContentHashes.set(branch.name, hashes)
+            }
+          } catch {
+            // If API fails for a branch, assume file doesn't exist there
+          }
+        })
+      )
+
+      // Get default branch's content hashes for comparison
+      const defaultHashes = branchContentHashes.get(defaultBranch) || new Set<string>()
+
+      // Check which branches have content hashes not in the default branch
+      for (const [branchName, hashes] of branchContentHashes) {
+        if (branchName !== defaultBranch) {
+          // Branch has changes if it has any content hash not in the default branch
+          for (const hash of hashes) {
+            if (!defaultHashes.has(hash)) {
+              branchesWithUniqueChanges.add(branchName)
+              break
+            }
+          }
+        }
+      }
+
+      setBranchesWithFile(branchesWithVersions)
+      setBranchesWithChanges(branchesWithUniqueChanges)
+    }
+
+    checkBranchesForFile()
+  }, [repoName, filePath, branches, defaultBranch])
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -72,13 +136,17 @@ export function BranchSelector({
   // If only one branch, show as plain text
   if (branches.length === 1) {
     const singleBranch = branches[0]
-    const isIndexed = singleBranch?.commit_count && singleBranch.commit_count > 0
+    // Show checkmark if: no file context (branch is indexed) OR file exists in this branch
+    const hasFile = branchesWithFile.has(singleBranch?.name || '')
+    const showCheckmark = filePath
+      ? hasFile
+      : singleBranch?.commit_count && singleBranch.commit_count > 0
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
         <AccountTreeIcon fontSize="small" />
         <Typography variant="caption">{singleBranch?.name}</Typography>
-        {isIndexed && (
-          <Tooltip title="Branch is indexed">
+        {showCheckmark && (
+          <Tooltip title={filePath ? 'File exists in this branch' : 'Branch is indexed'}>
             <CheckCircleIcon sx={{ fontSize: '0.9rem', color: 'success.main' }} />
           </Tooltip>
         )}
@@ -121,6 +189,12 @@ export function BranchSelector({
         {branches.map((branch) => {
           const isSelected = branch.name === currentValue
           const isDefault = branch.name === defaultBranch
+          // File exists in this branch (show checkmark)
+          const hasFile = branchesWithFile.has(branch.name)
+          // File was changed on this branch (show edit icon) - only for non-default branches
+          const hasChanges = branchesWithChanges.has(branch.name)
+          // Show checkmark if: no file context (branch is indexed) OR file exists in this branch
+          const showCheckmark = filePath ? hasFile : true
 
           return (
             <MenuItem
@@ -149,9 +223,22 @@ export function BranchSelector({
                 {isDefault && (
                   <Chip label="default" size="small" sx={{ height: 18, fontSize: '0.7rem' }} />
                 )}
-                <Tooltip title={`${branch.commit_count} commits indexed`}>
-                  <CheckCircleIcon sx={{ fontSize: '1rem', color: 'success.main' }} />
-                </Tooltip>
+                {filePath && hasChanges && (
+                  <Tooltip title="File was modified on this branch">
+                    <EditIcon sx={{ fontSize: '0.9rem', color: 'warning.main' }} />
+                  </Tooltip>
+                )}
+                {showCheckmark && (
+                  <Tooltip
+                    title={
+                      filePath
+                        ? 'File exists in this branch'
+                        : `${branch.commit_count} commits indexed`
+                    }
+                  >
+                    <CheckCircleIcon sx={{ fontSize: '1rem', color: 'success.main' }} />
+                  </Tooltip>
+                )}
               </Box>
             </MenuItem>
           )

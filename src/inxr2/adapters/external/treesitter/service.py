@@ -78,7 +78,7 @@ class TreeSitterService:
             self._language_parsers["c"] = CParser()
             self._language_parsers["java"] = JavaParser()
 
-            logger.info("Tree-sitter parsers initialized successfully")
+            logger.debug("Tree-sitter parsers initialized successfully")
 
         except ImportError as e:
             logger.warning(f"Tree-sitter grammars not available: {e}")

@@ -1,6 +1,6 @@
 """Integration tests for PostgresFileRepository."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,7 +35,7 @@ class TestPostgresFileRepositoryVersions:
         assert repo.id is not None
 
         # Create commits with different dates
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         commit1 = await commit_adapter.save(
             CommitFactory.create(
                 repository_id=repo.id,
@@ -114,7 +114,7 @@ class TestPostgresFileRepositoryVersions:
         )
         assert repo.id is not None
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         # Create commits on different branches
         main_commit = await commit_adapter.save(
             CommitFactory.create(
@@ -224,7 +224,7 @@ class TestPostgresFileRepositoryVersions:
         )
         assert repo.id is not None
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         # Create multiple commits on main branch
         commits = []
         for i in range(3):
@@ -301,7 +301,7 @@ class TestPostgresFileRepositoryLatestByBranch:
         )
         assert repo.id is not None
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         # Create commits at different times
         old_commit = await commit_adapter.save(
@@ -382,7 +382,7 @@ class TestPostgresFileRepositoryLatestByBranch:
         )
         assert repo.id is not None
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         # Create commit on main branch
         main_commit = await commit_adapter.save(
@@ -481,7 +481,7 @@ class TestPostgresFileRepositoryLatestByBranch:
         )
         assert repo.id is not None
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         # Create a commit that's on both branches (like a merge base)
         shared_commit = await commit_adapter.save(

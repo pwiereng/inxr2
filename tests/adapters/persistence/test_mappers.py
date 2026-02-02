@@ -1,6 +1,6 @@
 """Unit tests for entity-to-model mappers."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from inxr2.adapters.persistence.mappers import (
     CommitMapper,
@@ -43,8 +43,8 @@ class TestRepositoryMapper:
             description="Test repository",
             default_branch="main",
             config={"key": "value"},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+            updated_at=datetime.now(UTC).replace(tzinfo=None),
         )
 
         entity = RepositoryMapper.to_domain(model)
@@ -102,8 +102,8 @@ class TestCommitMapper:
             id=1,
             repository_id=1,
             commit_hash="a" * 40,
-            author_date=datetime.utcnow(),
-            commit_date=datetime.utcnow(),
+            author_date=datetime.now(UTC).replace(tzinfo=None),
+            commit_date=datetime.now(UTC).replace(tzinfo=None),
         )
 
         entity = CommitMapper.to_domain(model)

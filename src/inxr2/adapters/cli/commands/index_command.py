@@ -5,7 +5,6 @@ Handles full and incremental indexing with rich progress output.
 """
 
 import asyncio
-import hashlib
 import logging
 import os
 import signal
@@ -31,9 +30,8 @@ from rich.table import Table
 from inxr2.application.use_cases.indexing import (
     GetIndexStatusRequest,
     GetIndexStatusUseCase,
-    ResolveReferencesRequest,
-    ResolveReferencesUseCase,
 )
+from inxr2.application.use_cases.indexing.orchestrator import DBQueryStats
 from inxr2.infrastructure.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
@@ -64,23 +62,14 @@ def _cleanup_and_exit(signum: int | None = None, frame: Any = None) -> None:
 
     _cleanup_in_progress = True
 
-    console = Console()
-    console.print("\n[yellow]Interrupted. Cleaning up and exiting...[/yellow]")
+    # Print message directly to stderr to ensure it shows
+    import sys
 
-    # Try to clean up database connections
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            db = DatabaseConnection()
-            loop.run_until_complete(db.close())
-        finally:
-            loop.close()
-    except Exception:
-        pass  # Ignore cleanup errors
+    sys.stderr.write("\nInterrupted. Exiting...\n")
+    sys.stderr.flush()
 
-    # Force exit - don't let anything continue
-    console.print("[dim]Exiting.[/dim]")
+    # Force exit immediately - don't try to clean up database
+    # The DB connection will be cleaned up when process terminates
     os._exit(1)
 
 
@@ -88,9 +77,12 @@ def _setup_signal_handlers() -> None:
     """Set up signal handlers for clean shutdown."""
     # Handle SIGINT (Ctrl+C)
     signal.signal(signal.SIGINT, _cleanup_and_exit)
-    # Handle SIGTERM (not available on all platforms, e.g., Windows)
+    # Handle SIGTERM
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, _cleanup_and_exit)
+    # Handle SIGHUP (terminal disconnect)
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, _cleanup_and_exit)
 
 
 def reset_database(console: Console) -> None:
@@ -186,6 +178,9 @@ class IndexingStats:
     files_processed: int = 0
     files_skipped: int = 0
     files_failed: int = 0
+    files_unchanged: int = 0  # Files not processed because they didn't change
+    files_at_head: int = 0  # Number of files at HEAD commit (total in repo)
+    lines_indexed: int = 0  # Approximate lines of code indexed
     symbols_found: int = 0
     references_found: int = 0
     references_resolved: int = 0
@@ -194,10 +189,44 @@ class IndexingStats:
     symbols_reused: int = 0
     references_reused: int = 0
     errors: list[str] = field(default_factory=list)
+    # Database query statistics
+    db_stats: DBQueryStats = field(default_factory=DBQueryStats)
 
     @property
     def files_succeeded(self) -> int:
         return max(0, self.files_processed - self.files_failed)
+
+
+@dataclass
+class IndexingResult:
+    """Result of indexing a single repository/branch.
+
+    Used for final summary display across multiple repos/branches.
+    """
+
+    repo_name: str
+    branch: str
+    success: bool
+    files_total: int = 0
+    commits_indexed: int = 0
+    symbols_found: int = 0
+    references_found: int = 0
+    references_resolved: int = 0
+    lines_indexed: int = 0
+    elapsed_seconds: float = 0.0
+    error_message: str | None = None
+    # Commit range info
+    oldest_commit_hash: str | None = None
+    oldest_commit_date: str | None = None
+    newest_commit_hash: str | None = None
+    newest_commit_date: str | None = None
+
+    @property
+    def resolution_rate(self) -> float:
+        """Calculate reference resolution rate as percentage."""
+        if self.references_found == 0:
+            return 0.0
+        return (self.references_resolved / self.references_found) * 100
 
 
 def create_progress() -> Progress:
@@ -223,7 +252,7 @@ def run_full_index(
     max_history: int | None = 100,
     force: bool = False,
     since_days: int | None = None,
-) -> None:
+) -> IndexingResult | None:
     """
     Run full indexing of a repository with time travel support.
 
@@ -238,13 +267,16 @@ def run_full_index(
         max_history: Maximum number of commits to index (None = all commits)
         force: If True, clear existing data for this repository before indexing
         since_days: Only index commits from the last N days (overrides max_history)
+
+    Returns:
+        IndexingResult with stats for the final summary, or None if interrupted
     """
     # Set up signal handlers for clean shutdown on Ctrl+C
     _setup_signal_handlers()
 
     # Run the async indexing in an event loop with proper cleanup on Ctrl+C
     try:
-        asyncio.run(
+        return asyncio.run(
             _run_full_index_async(
                 repo_path=repo_path,
                 branch=branch,
@@ -258,6 +290,7 @@ def run_full_index(
     except KeyboardInterrupt:
         # Signal handler should have already exited, but just in case
         _cleanup_and_exit()
+        return None
 
 
 async def _run_full_index_async(
@@ -268,10 +301,8 @@ async def _run_full_index_async(
     max_history: int | None = 100,
     force: bool = False,
     since_days: int | None = None,
-) -> None:
-    """Async implementation of full indexing with multi-commit support."""
-    import time
-
+) -> IndexingResult:
+    """Async implementation of full indexing using the orchestrator."""
     from inxr2.adapters.external.git_service import GitService
     from inxr2.adapters.external.treesitter import TreeSitterService
     from inxr2.adapters.persistence.repositories import (
@@ -282,495 +313,246 @@ async def _run_full_index_async(
         PostgresRepositoryAdapter,
         PostgresSymbolRepository,
     )
-    from inxr2.domain.entities import Commit, File, IndexStatus
-    from inxr2.domain.value_objects import CommitHash
-
-    start_time = time.monotonic()
-    stats = IndexingStats()
-
-    # Initialize services
-    git_service = GitService()
-    parser_service = TreeSitterService()
-
-    # Get repository info
-    console.print("[dim]Analyzing repository...[/dim]")
-    repo_info = git_service.get_repository_info(repo_path)
-    current_branch = branch or repo_info.get("current_branch", "main")
-    default_branch = repo_info.get("default_branch", "main")
-
-    # Get list of commits for time travel (oldest first)
-    # For non-default branches, only index commits unique to that branch (delta)
-    if since_days is not None:
-        history_msg = f"last {since_days} days"
-    elif max_history:
-        history_msg = f"max {max_history}"
-    else:
-        history_msg = "all"
-    console.print(f"[dim]Loading commit history ({history_msg})...[/dim]")
-
-    is_default_branch = current_branch in (default_branch, "main", "master")
-    if is_default_branch:
-        # Default branch: index all commits
-        commits_to_index = git_service.list_commits(
-            repo_path, current_branch, max_history, since_days=since_days
-        )
-    else:
-        # Feature branch: only index commits unique to this branch (delta from default)
-        console.print(f"  [dim]Getting branch delta from {default_branch}...[/dim]")
-        commits_to_index = git_service.list_branch_commits(
-            repo_path,
-            current_branch,
-            default_branch,
-            max_history,
-            since_days=since_days,
-        )
-
-    if not commits_to_index:
-        if since_days is not None:
-            # No commits in date range, but always index HEAD
-            console.print(
-                f"[yellow]No commits in last {since_days} days. "
-                f"Indexing HEAD only.[/yellow]"
-            )
-            head_commit = git_service.get_current_commit(repo_path, current_branch)
-            head_info = git_service.get_commit_info(repo_path, head_commit)
-            commits_to_index = [head_info]
-        else:
-            console.print("[yellow]No commits found for this branch.[/yellow]")
-            if not is_default_branch:
-                console.print(
-                    f"[dim]This may mean the branch has no unique commits vs {default_branch}.[/dim]"
-                )
-            return
-
-    oldest_commit = commits_to_index[0]
-    newest_commit = commits_to_index[-1]
-
-    console.print(f"  Branch: [cyan]{current_branch}[/cyan]")
-    if not is_default_branch:
-        console.print(f"  [dim]Branch delta from: {default_branch}[/dim]")
-    console.print(f"  Commits to index: [green]{len(commits_to_index)}[/green]")
-    oldest_date = oldest_commit["commit_date"].strftime("%Y-%m-%d")
-    newest_date = newest_commit["commit_date"].strftime("%Y-%m-%d")
-    console.print(
-        f"  Oldest commit: [dim]{oldest_commit['short_hash']} ({oldest_date})[/dim]"
+    from inxr2.application.use_cases.indexing.default_orchestrator import (
+        DefaultIndexingOrchestrator,
     )
-    console.print(
-        f"  Newest commit: [cyan]{newest_commit['short_hash']} ({newest_date})[/cyan]"
+    from inxr2.application.use_cases.indexing.orchestrator import (
+        IndexingStrategy,
+        IndexRepositoryRequest,
     )
-    console.print()
 
-    # Set up database connection
-    console.print("[dim]Connecting to database...[/dim]")
+    # Initialize database connection
     db = DatabaseConnection()
-
     try:
+        # Initialize services
+        git_service = GitService()
+        parser_service = TreeSitterService()
+
+        # Initialize repositories
         async with db.session() as session:
-            console.print("  [dim]Initializing...[/dim]")
-            # Initialize repositories
-            repo_repository = PostgresRepositoryAdapter(session)
-            commit_repository = PostgresCommitRepository(session)
-            file_repository = PostgresFileRepository(session)
-            symbol_repository = PostgresSymbolRepository(session)
-            reference_repository = PostgresReferenceRepository(session)
-            index_status_repository = PostgresIndexStatusRepository(session)
+            repository_repo = PostgresRepositoryAdapter(session)
+            commit_repo = PostgresCommitRepository(session)
+            file_repo = PostgresFileRepository(session)
+            symbol_repo = PostgresSymbolRepository(session)
+            reference_repo = PostgresReferenceRepository(session)
+            index_status_repo = PostgresIndexStatusRepository(session)
 
-            # Get or create repository record (atomic upsert to avoid race conditions)
-            repo_name = repo_info.get("name", repo_path.name)
-            db_repo, created = await repo_repository.get_or_create(
-                name=repo_name,
-                url=str(repo_path.absolute()),
-                description=f"Indexed from {repo_path}",
-                default_branch=current_branch,
-            )
-            if created:
-                console.print(f"  Created repository: [green]{repo_name}[/green]")
-            else:
-                console.print(f"  Using repository: [cyan]{repo_name}[/cyan]")
-
-            # Ensure repository has an ID after save (for downstream operations)
-            if db_repo.id is None:
-                raise RuntimeError("Repository record missing database ID after save")
-            repo_id = db_repo.id
-
-            # If force flag is set, clear all existing data for this repository
-            if force:
-                console.print(
-                    "  [yellow]Force mode:[/yellow] Clearing existing data..."
-                )
-                # Use raw SQL for faster bulk deletion
-                from sqlalchemy import text
-
-                await session.execute(
-                    text('DELETE FROM "references" WHERE repository_id = :repo_id'),
-                    {"repo_id": repo_id},
-                )
-                console.print("    Cleared references")
-                await session.execute(
-                    text("DELETE FROM symbols WHERE repository_id = :repo_id"),
-                    {"repo_id": repo_id},
-                )
-                console.print("    Cleared symbols")
-                await session.execute(
-                    text("DELETE FROM files WHERE repository_id = :repo_id"),
-                    {"repo_id": repo_id},
-                )
-                console.print("    Cleared files")
-                await session.execute(
-                    text("DELETE FROM commits WHERE repository_id = :repo_id"),
-                    {"repo_id": repo_id},
-                )
-                console.print("    Cleared commits")
-                await session.execute(
-                    text("DELETE FROM index_status WHERE repository_id = :repo_id"),
-                    {"repo_id": repo_id},
-                )
-                console.print("    Cleared index status")
-                await session.flush()
-                console.print("  [green]Existing data cleared[/green]")
-
-            # Update index status to in_progress
-            index_status = await index_status_repository.find_by_repository_and_branch(
-                repo_id, current_branch
-            )
-            if index_status is None:
-                index_status = IndexStatus(
-                    repository_id=repo_id,
-                    branch=current_branch,
-                    indexing_status="in_progress",
-                    indexing_started_at=_utc_now(),
-                    indexer_version=INDEXER_VERSION,
-                )
-            else:
-                # Create updated status (frozen dataclass)
-                index_status = IndexStatus(
-                    id=index_status.id,
-                    repository_id=repo_id,
-                    branch=current_branch,
-                    indexing_status="in_progress",
-                    indexing_started_at=_utc_now(),
-                    last_indexed_commit=index_status.last_indexed_commit,
-                    oldest_indexed_commit=index_status.oldest_indexed_commit,
-                    last_indexed_at=index_status.last_indexed_at,
-                    total_commits_indexed=index_status.total_commits_indexed,
-                    total_files_indexed=0,  # Reset for full index
-                    total_symbols_indexed=0,
-                    total_references_indexed=0,
-                    error_count=0,
-                    indexer_version=INDEXER_VERSION,
-                )
-            index_status = await index_status_repository.save(index_status)
-
-            console.print()
-
-            # Pre-calculate total files for progress tracking
-            console.print("[dim]Calculating files to index...[/dim]")
-            total_files_estimate = 0
-            num_commits = len(commits_to_index)
-            for i, commit_info in enumerate(commits_to_index):
-                all_files = git_service.list_files(repo_path, commit_info["hash"])
-                total_files_estimate += len(
-                    _filter_files_by_language(all_files, languages)
-                )
-                # Show progress every 10 commits or at the end
-                if (i + 1) % 10 == 0 or i == num_commits - 1:
-                    console.print(
-                        f"  [dim]Scanned {i + 1}/{num_commits} commits "
-                        f"({total_files_estimate} files so far)[/dim]"
-                    )
-            console.print(
-                f"  Total: [cyan]{num_commits}[/cyan] commits, "
-                f"[cyan]{total_files_estimate}[/cyan] files"
-            )
-            console.print()
-
-            # Load content hash -> file_id map for fast donor lookup
-            with console.status("[dim]Loading content hash cache...[/dim]"):
-                content_hash_cache: dict[str, int] = (
-                    await file_repository.get_content_hash_to_file_id_map(repo_id)
-                )
-            console.print(f"  Cached hashes: [cyan]{len(content_hash_cache)}[/cyan]")
-            console.print()
-
-            # Initialize Tree-sitter parsers before starting (shows INFO message)
-            _ = parser_service
-
-            # Index each commit from oldest to newest
-            console.print("[dim]Indexing files...[/dim]")
-            files_indexed_so_far = 0
-            last_progress_pct = -1  # Start at -1 so 0% is printed
-            with create_progress() as progress:
-                commit_task = progress.add_task(
-                    "[green]Indexing commits...",
-                    total=len(commits_to_index),
-                )
-                file_task = progress.add_task(
-                    "[cyan]Files...",
-                    total=total_files_estimate,
-                    visible=True,
-                )
-
-                for commit_info in commits_to_index:
-                    commit_hash = commit_info["hash"]
-                    short_hash = commit_info["short_hash"]
-
-                    # Get or create commit record
-                    # Commits are unique by (repository_id, commit_hash) - same
-                    # commit on multiple branches shares the same record
-                    db_commit = await commit_repository.find_by_hash(
-                        repo_id, commit_hash
-                    )
-                    if db_commit is None:
-                        # Note: Author info, message, parent_hashes are NOT stored.
-                        # They are queried from git on-demand. See ARCHITECTURAL_REVIEW.md.
-                        db_commit = await commit_repository.save(
-                            Commit(
-                                repository_id=repo_id,
-                                commit_hash=CommitHash(value=commit_hash),
-                                author_date=_to_naive_utc(
-                                    commit_info.get("author_date")
-                                )
-                                or _utc_now(),
-                                commit_date=_to_naive_utc(
-                                    commit_info.get("commit_date")
-                                )
-                                or _utc_now(),
-                            )
-                        )
-                    if db_commit.id is None:
-                        raise RuntimeError(
-                            "Commit record missing database ID after save"
-                        )
-                    commit_id = db_commit.id
-
-                    # Link commit to the current branch (idempotent)
-                    await commit_repository.link_commit_to_branch(
-                        repo_id, commit_id, current_branch
-                    )
-
-                    # Get files at this commit
-                    all_files = git_service.list_files(repo_path, commit_hash)
-                    files_to_index = _filter_files_by_language(all_files, languages)
-
-                    # Index each file at this commit
-                    for file_path in files_to_index:
-                        try:
-                            # Check if file already exists for this commit
-                            existing_file = await file_repository.find_by_path(
-                                repo_id, commit_id, file_path
-                            )
-
-                            if existing_file:
-                                # Skip - already indexed, but still count for progress
-                                files_indexed_so_far += 1
-                                progress.update(
-                                    file_task, completed=files_indexed_so_far
-                                )
-                                continue
-
-                            # Get file content
-                            content = git_service.get_file_content(
-                                repo_path, commit_hash, file_path
-                            )
-
-                            # Calculate content hash
-                            content_hash = hashlib.sha1(
-                                content.encode("utf-8")
-                            ).hexdigest()
-
-                            # Detect language
-                            language = _detect_language(file_path)
-
-                            # Check cache for donor file with same content (in-memory lookup)
-                            donor_file_id = content_hash_cache.get(content_hash)
-
-                            # Create new file record
-                            db_file = await file_repository.save(
-                                File(
-                                    repository_id=repo_id,
-                                    commit_id=commit_id,
-                                    path=file_path,
-                                    content_hash=content_hash,
-                                    size_bytes=len(content.encode("utf-8")),
-                                    language=language,
-                                    line_count=content.count("\n") + 1,
-                                )
-                            )
-                            if db_file.id is None:
-                                raise RuntimeError(
-                                    "File record missing database ID after save"
-                                )
-                            file_id = db_file.id
-
-                            # Content-hash reuse: copy symbols/refs from donor
-                            if donor_file_id is not None:
-                                # REUSE: Copy symbols/references from donor file
-                                symbols_copied = (
-                                    await symbol_repository.copy_symbols_to_file(
-                                        source_file_id=donor_file_id,
-                                        target_file_id=file_id,
-                                        target_commit_id=commit_id,
-                                        target_repository_id=repo_id,
-                                    )
-                                )
-                                refs_copied = (
-                                    await reference_repository.copy_references_to_file(
-                                        source_file_id=donor_file_id,
-                                        target_file_id=file_id,
-                                        target_commit_id=commit_id,
-                                        target_repository_id=repo_id,
-                                    )
-                                )
-                                stats.files_reused += 1
-                                stats.symbols_reused += symbols_copied
-                                stats.references_reused += refs_copied
-                                # Also count for overall stats (for index_status)
-                                stats.symbols_found += symbols_copied
-                                stats.references_found += refs_copied
-                                # Add to cache so later files can chain-reuse
-                                content_hash_cache[content_hash] = file_id
-                            else:
-                                # PARSE: No donor, use Tree-sitter as usual
-                                if language and parser_service.supports_language(
-                                    language
-                                ):
-                                    symbol_dicts, ref_dicts = (
-                                        await parser_service.parse_file(
-                                            content=content,
-                                            language=language,
-                                            file_path=file_path,
-                                        )
-                                    )
-
-                                    # Convert and save symbols
-                                    if symbol_dicts:
-                                        symbols = [
-                                            _dict_to_symbol(
-                                                s,
-                                                file_id=file_id,
-                                                repository_id=db_repo.id,
-                                                commit_id=commit_id,
-                                            )
-                                            for s in symbol_dicts
-                                        ]
-                                        await symbol_repository.save_many(symbols)
-                                        stats.symbols_found += len(symbols)
-
-                                    # Convert and save references
-                                    if ref_dicts:
-                                        references = [
-                                            _dict_to_reference(
-                                                r,
-                                                source_file_id=file_id,
-                                                repository_id=repo_id,
-                                                commit_id=commit_id,
-                                            )
-                                            for r in ref_dicts
-                                        ]
-                                        await reference_repository.save_many(references)
-                                        stats.references_found += len(references)
-
-                                # Add to cache so later files can reuse
-                                content_hash_cache[content_hash] = file_id
-
-                            stats.files_processed += 1
-
-                        except Exception as e:
-                            stats.files_failed += 1
-                            stats.errors.append(f"{file_path}@{short_hash}: {str(e)}")
-                            logger.warning(
-                                f"Failed to index {file_path}@{short_hash}: {e}"
-                            )
-
-                        # Update file progress after each file
-                        files_indexed_so_far += 1
-                        progress.update(file_task, completed=files_indexed_so_far)
-
-                        # Print progress: 0%, 1%, 2%, 5%, then every 10%
-                        if total_files_estimate > 0:
-                            current_pct = (
-                                files_indexed_so_far * 100
-                            ) // total_files_estimate
-                            # Milestones: 0, 1, 2, 5, 10, 20, 30, ...
-                            milestones = {
-                                0,
-                                1,
-                                2,
-                                5,
-                                10,
-                                20,
-                                30,
-                                40,
-                                50,
-                                60,
-                                70,
-                                80,
-                                90,
-                                100,
-                            }
-                            if (
-                                current_pct in milestones
-                                and current_pct > last_progress_pct
-                            ):
-                                last_progress_pct = current_pct
-                                progress.console.print(
-                                    f"  [dim]{current_pct}% complete "
-                                    f"({files_indexed_so_far}/{total_files_estimate} files, "
-                                    f"{stats.symbols_found} symbols, "
-                                    f"cache: {len(content_hash_cache)})[/dim]"
-                                )
-                    progress.update(commit_task, advance=1)
-
-                progress.update(
-                    file_task,
-                    description="[green]Complete[/green]",
-                    completed=total_files_estimate,
-                )
-
-            # Resolve references to symbols (commit-aware for time travel consistency)
-            console.print("[cyan]Resolving references (commit-aware)...[/cyan]")
-            resolve_use_case = ResolveReferencesUseCase(
-                reference_repository=reference_repository
-            )
-            resolve_result = await resolve_use_case.execute(
-                ResolveReferencesRequest(repository_id=repo_id, commit_aware=True)
-            )
-            stats.references_resolved = resolve_result.resolved_count
-            console.print(
-                f"[green]Resolved {stats.references_resolved} references to symbols[/green]"
+            # Create orchestrator
+            orchestrator = DefaultIndexingOrchestrator(
+                repository_repo=repository_repo,
+                commit_repo=commit_repo,
+                file_repo=file_repo,
+                symbol_repo=symbol_repo,
+                reference_repo=reference_repo,
+                index_status_repo=index_status_repo,
+                git_service=git_service,
+                parser_service=parser_service,
             )
 
-            # Update index status to completed
-            index_status = IndexStatus(
-                id=index_status.id,
-                repository_id=repo_id,
+            # Get repository info for display
+            repo_info = git_service.get_repository_info(repo_path)
+            current_branch = branch or repo_info.get("current_branch", "main")
+
+            # Show what were about to index
+            console.print(f"[cyan]Indexing {repo_path.name}[/cyan]")
+            console.print(f"  Branch: [cyan]{current_branch}[/cyan]")
+            if max_history:
+                console.print(f"  Max history: {max_history} commits")
+            if since_days:
+                console.print(f"  Since: last {since_days} days")
+
+            # Show commit range being indexed
+            commits = git_service.list_commits(
+                repo_path=repo_path,
                 branch=current_branch,
-                indexing_status="completed",
-                last_indexed_commit=newest_commit["hash"],
-                oldest_indexed_commit=oldest_commit["hash"],
-                last_indexed_at=_utc_now(),
-                indexing_started_at=index_status.indexing_started_at,
-                total_commits_indexed=len(commits_to_index),
-                total_files_indexed=stats.files_succeeded,
-                total_symbols_indexed=stats.symbols_found,
-                total_references_indexed=stats.references_found,
-                error_count=stats.files_failed,
-                error_message=(stats.errors[0] if stats.errors else None),
-                indexer_version=INDEXER_VERSION,
+                max_count=max_history,
+                since_days=since_days,
             )
-            await index_status_repository.save(index_status)
+            if not commits:
+                # Fall back to HEAD if no commits in range
+                head_hash = git_service.get_current_commit(repo_path, current_branch)
+                head_info = git_service.get_commit_info(repo_path, head_hash)
+                commits = [head_info]
+
+            if commits:
+                oldest = commits[0]
+                newest = commits[-1]
+                console.print(f"  Commits: {len(commits)}")
+                oldest_date = oldest.get("author_date") or oldest.get("commit_date")
+                newest_date = newest.get("author_date") or newest.get("commit_date")
+                if oldest_date is not None and hasattr(oldest_date, "strftime"):
+                    oldest_str = oldest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
+                else:
+                    oldest_str = str(oldest_date) if oldest_date else "unknown"
+                if newest_date is not None and hasattr(newest_date, "strftime"):
+                    newest_str = newest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
+                else:
+                    newest_str = str(newest_date) if newest_date else "unknown"
+                console.print(f"  Oldest: {oldest['hash'][:10]} ({oldest_str})")
+                console.print(f"  Newest: {newest['hash'][:10]} ({newest_str})")
+            console.print()
+
+            # Create indexing request
+            request = IndexRepositoryRequest(
+                repository_path=repo_path,
+                branch=current_branch,
+                languages=languages,
+                strategy=IndexingStrategy.FULL,
+                max_history=max_history,
+                since_days=since_days,
+            )
+
+            # Import progress types
+            # Progress at specific percentages: 0, 1, 2, 5, 10, 15, 20, ...
+            import sys
+
+            from inxr2.application.use_cases.indexing.default_orchestrator import (
+                IndexingProgress,
+            )
+
+            milestones = {
+                0,
+                1,
+                2,
+                5,
+                10,
+                15,
+                20,
+                25,
+                30,
+                35,
+                40,
+                45,
+                50,
+                55,
+                60,
+                65,
+                70,
+                75,
+                80,
+                85,
+                90,
+                95,
+                100,
+            }
+
+            # Mutable progress state (using class for proper typing)
+            class ProgressState:
+                pcts: set[int] = set()
+                phase: str = ""
+                shown_start: bool = False
+
+            state = ProgressState()
+
+            def on_progress(p: IndexingProgress) -> None:
+                # Show initial info at start
+                if not state.shown_start and p.files_total > 0:
+                    state.shown_start = True
+                    console.print(
+                        f"  [dim]Files to process: {p.files_total} | "
+                        f"Cache size: {p.cache_size}[/dim]"
+                    )
+
+                if p.phase == "files" and p.files_total > 0:
+                    pct = int((p.files_processed / p.files_total) * 100)
+                    if pct in milestones and pct not in state.pcts:
+                        state.pcts.add(pct)
+                        sys.stdout.write(
+                            f"\r  {pct}% ({p.files_processed}/{p.files_total}) | "
+                            f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
+                            f"Cache: {p.cache_size}    "
+                        )
+                        sys.stdout.flush()
+                elif p.phase == "resolving":
+                    if state.phase != "resolving":
+                        # First resolving update - print header
+                        state.phase = "resolving"
+                        state.pcts = set()  # Reset milestones for resolution
+                        sys.stdout.write("\n")
+                        if p.refs_total > 0:
+                            console.print(
+                                f"  [cyan]Resolving references "
+                                f"({p.refs_total} to process)...[/cyan]"
+                            )
+                        else:
+                            console.print("  [cyan]Resolving references...[/cyan]")
+                    # Show resolution progress at milestone percentages
+                    if p.refs_total > 0:
+                        pct = int((p.refs_resolved / p.refs_total) * 100)
+                        if pct in milestones and pct not in state.pcts:
+                            state.pcts.add(pct)
+                            sys.stdout.write(
+                                f"\r  Resolving: {pct}% "
+                                f"({p.refs_resolved}/{p.refs_total})    "
+                            )
+                            sys.stdout.flush()
+
+            # Run indexing with progress callback
+            response = await orchestrator.index_repository(
+                request, progress_callback=on_progress
+            )
+
+            # Show final resolution result if we were in resolving phase
+            if state.phase == "resolving" and response.references_found > 0:
+                pct = response.references_resolved * 100 // response.references_found
+                sys.stdout.write(
+                    f"\r  Resolved: {response.references_resolved}/"
+                    f"{response.references_found} ({pct}%)    \n"
+                )
+                sys.stdout.flush()
+
+            # Print summary
+            stats = IndexingStats(
+                files_total=response.files_total,
+                files_processed=response.files_processed,
+                files_skipped=response.files_skipped,
+                files_failed=response.files_failed,
+                files_unchanged=response.files_unchanged,
+                files_at_head=response.files_at_head,
+                lines_indexed=response.lines_indexed,
+                symbols_found=response.symbols_found,
+                references_found=response.references_found,
+                references_resolved=response.references_resolved,
+                files_reused=response.files_reused,
+                symbols_reused=response.symbols_reused,
+                references_reused=response.references_reused,
+                errors=response.errors,
+                db_stats=response.db_stats,
+            )
+
+            _print_summary(
+                console,
+                stats,
+                commits_indexed=response.commits_indexed,
+                elapsed_seconds=response.elapsed_seconds,
+                repo_name=repo_path.name,
+                branch=current_branch,
+                max_history=max_history,
+                since_days=since_days,
+            )
+
+            await session.commit()
+
+            # Return result for final summary
+            return IndexingResult(
+                repo_name=repo_path.name,
+                branch=current_branch,
+                success=True,
+                files_total=response.files_total,
+                commits_indexed=response.commits_indexed,
+                symbols_found=response.symbols_found,
+                references_found=response.references_found,
+                references_resolved=response.references_resolved,
+                lines_indexed=response.lines_indexed,
+                elapsed_seconds=response.elapsed_seconds,
+                oldest_commit_hash=response.oldest_commit_hash,
+                oldest_commit_date=response.oldest_commit_date,
+                newest_commit_hash=response.newest_commit_hash,
+                newest_commit_date=response.newest_commit_date,
+            )
 
     finally:
         await db.close()
-
-    # Print summary with commit info and elapsed time
-    elapsed_seconds = time.monotonic() - start_time
-    _print_summary(
-        console,
-        stats,
-        commits_indexed=len(commits_to_index),
-        elapsed_seconds=elapsed_seconds,
-    )
 
 
 def run_incremental_index(
@@ -780,19 +562,22 @@ def run_incremental_index(
     console: Console,
     max_history: int = 1,  # Ignored for incremental - only indexes since last commit
     force: bool = False,  # Ignored for incremental - accepted for API compatibility
-) -> None:
+) -> IndexingResult | None:
     """
     Run incremental indexing of a repository.
 
     Only indexes files that have changed since the last index.
     The max_history and force parameters are accepted for API compatibility
     but ignored (incremental always indexes from the last indexed commit to HEAD).
+
+    Returns:
+        IndexingResult with stats for the final summary, or None if interrupted
     """
     # Set up signal handlers for clean shutdown on Ctrl+C
     _setup_signal_handlers()
 
     try:
-        asyncio.run(
+        return asyncio.run(
             _run_incremental_index_async(
                 repo_path=repo_path,
                 branch=branch,
@@ -803,6 +588,7 @@ def run_incremental_index(
     except KeyboardInterrupt:
         # Signal handler should have already exited, but just in case
         _cleanup_and_exit()
+        return None
 
 
 async def _run_incremental_index_async(
@@ -810,10 +596,8 @@ async def _run_incremental_index_async(
     branch: str | None,
     languages: list[str],
     console: Console,
-) -> None:
-    """Async implementation of incremental indexing."""
-    import time
-
+) -> IndexingResult:
+    """Async implementation of incremental indexing using the orchestrator."""
     from inxr2.adapters.external.git_service import GitService
     from inxr2.adapters.external.treesitter import TreeSitterService
     from inxr2.adapters.persistence.repositories import (
@@ -824,354 +608,236 @@ async def _run_incremental_index_async(
         PostgresRepositoryAdapter,
         PostgresSymbolRepository,
     )
-    from inxr2.domain.entities import Commit, File, IndexStatus
-    from inxr2.domain.value_objects import CommitHash
+    from inxr2.application.use_cases.indexing.default_orchestrator import (
+        DefaultIndexingOrchestrator,
+    )
+    from inxr2.application.use_cases.indexing.orchestrator import (
+        IncrementalIndexRequest,
+    )
 
-    start_time = time.monotonic()
-    stats = IndexingStats()
-
-    # Initialize services
-    git_service = GitService()
-    parser_service = TreeSitterService()
-
-    # Get repository info
-    console.print("[dim]Analyzing repository...[/dim]")
-    repo_info = git_service.get_repository_info(repo_path)
-    current_branch = branch or repo_info.get("current_branch", "main")
-    current_commit = git_service.get_current_commit(repo_path, current_branch)
-
-    console.print(f"  Current commit: [cyan]{current_commit[:8]}[/cyan]")
-    console.print(f"  Branch: [cyan]{current_branch}[/cyan]")
-
-    # Connect to database and check last indexed commit
-    console.print("[dim]Checking index status...[/dim]")
+    # Initialize database connection
     db = DatabaseConnection()
-
     try:
+        # Initialize services
+        git_service = GitService()
+        parser_service = TreeSitterService()
+
+        # Get repository info
+        repo_info = git_service.get_repository_info(repo_path)
+        current_branch = branch or repo_info.get("current_branch", "main")
+        repo_name = repo_info.get("name", repo_path.name)
+
+        # Initialize repositories
         async with db.session() as session:
-            repo_repository = PostgresRepositoryAdapter(session)
-            index_status_repository = PostgresIndexStatusRepository(session)
+            repository_repo = PostgresRepositoryAdapter(session)
+            commit_repo = PostgresCommitRepository(session)
+            file_repo = PostgresFileRepository(session)
+            symbol_repo = PostgresSymbolRepository(session)
+            reference_repo = PostgresReferenceRepository(session)
+            index_status_repo = PostgresIndexStatusRepository(session)
 
-            # Find repository
-            repo_name = repo_info.get("name", repo_path.name)
-            db_repo = await repo_repository.find_by_name(repo_name)
-
+            # Find repository in database
+            db_repo = await repository_repo.find_by_name(repo_name)
             if db_repo is None:
-                msg = "[yellow]No previous index. Running full index.[/yellow]"
-                console.print(f"\n{msg}")
-                await db.close()
-                await _run_full_index_async(repo_path, branch, languages, console)
-                return
-
-            # Ensure repository ID is available
-            if db_repo.id is None:
-                msg = "[red]Repository record missing database ID; aborting incremental index.[/red]"
-                console.print(f"\n{msg}")
-                await db.close()
-                raise RuntimeError("Repository record missing database ID")
-
-            repo_id = db_repo.id
-
-            # Check index status
-            index_status = await index_status_repository.find_by_repository_and_branch(
-                repo_id, current_branch
-            )
-
-            if index_status is None or index_status.last_indexed_commit is None:
-                msg = "[yellow]No previous index. Running full index.[/yellow]"
-                console.print(f"\n{msg}")
-                await db.close()
-                await _run_full_index_async(repo_path, branch, languages, console)
-                return
-
-            last_indexed_commit = index_status.last_indexed_commit
-
-            if last_indexed_commit == current_commit:
                 console.print(
-                    "\n[green]Already up to date![/green] No changes since last index."
+                    f"[yellow]Repository {repo_name} not found in database.[/yellow]"
                 )
-                return
-
-            console.print(f"  Last indexed: [dim]{last_indexed_commit[:8]}[/dim]")
-            console.print()
-
-            # Get changed files
-            console.print("[dim]Detecting changes...[/dim]")
-            changed_files = git_service.get_changed_files(
-                repo_path, last_indexed_commit, current_commit
-            )
-
-            # Filter by languages
-            added_modified = _filter_files_by_language(
-                changed_files.get("added", []) + changed_files.get("modified", []),
-                languages,
-            )
-            deleted = changed_files.get("deleted", [])
-
-            console.print(f"  Added/Modified: [green]{len(added_modified)}[/green]")
-            console.print(f"  Deleted: [red]{len(deleted)}[/red]")
-            console.print()
-
-            stats.files_total = len(added_modified)
-
-            if stats.files_total == 0 and len(deleted) == 0:
-                console.print("[green]No relevant changes found.[/green]")
-                return
-
-            # Initialize remaining repositories
-            commit_repository = PostgresCommitRepository(session)
-            file_repository = PostgresFileRepository(session)
-            symbol_repository = PostgresSymbolRepository(session)
-            reference_repository = PostgresReferenceRepository(session)
-
-            # Get commit info and create commit record
-            commit_info = git_service.get_commit_info(repo_path, current_commit)
-
-            db_commit = await commit_repository.find_by_hash(repo_id, current_commit)
-            if db_commit is None:
-                # Note: Author info, message, parent_hashes are NOT stored.
-                # They are queried from git on-demand. See ARCHITECTURAL_REVIEW.md.
-                db_commit = await commit_repository.save(
-                    Commit(
-                        repository_id=repo_id,
-                        commit_hash=CommitHash(value=current_commit),
-                        author_date=_to_naive_utc(commit_info.get("author_date"))
-                        or _utc_now(),
-                        commit_date=_to_naive_utc(commit_info.get("commit_date"))
-                        or _utc_now(),
-                    )
+                console.print(
+                    "[dim]Run full index first: inxr2 index full --config config.yaml[/dim]"
+                )
+                return IndexingResult(
+                    repo_name=repo_name,
+                    branch=current_branch,
+                    success=False,
+                    error_message="Repository not found in database",
                 )
 
-            if db_commit.id is None:
-                raise RuntimeError("Commit record missing database ID after save")
-            commit_id = db_commit.id
-
-            # Link commit to the current branch (idempotent)
-            await commit_repository.link_commit_to_branch(
-                repo_id, commit_id, current_branch
+            # Create orchestrator
+            orchestrator = DefaultIndexingOrchestrator(
+                repository_repo=repository_repo,
+                commit_repo=commit_repo,
+                file_repo=file_repo,
+                symbol_repo=symbol_repo,
+                reference_repo=reference_repo,
+                index_status_repo=index_status_repo,
+                git_service=git_service,
+                parser_service=parser_service,
             )
 
-            # Update index status to in_progress
-            index_status = IndexStatus(
-                id=index_status.id,
-                repository_id=repo_id,
+            # Show what were about to index
+            console.print(f"[cyan]Incremental indexing {repo_path.name}[/cyan]")
+            console.print(f"  Branch: [cyan]{current_branch}[/cyan]")
+            console.print()
+
+            # Create incremental index request
+            assert db_repo.id is not None, "Repository must have an ID"
+            request = IncrementalIndexRequest(
+                repository_id=db_repo.id,
+                repository_path=repo_path,
                 branch=current_branch,
-                indexing_status="in_progress",
-                indexing_started_at=_utc_now(),
-                last_indexed_commit=last_indexed_commit,
-                last_indexed_at=index_status.last_indexed_at,
-                total_commits_indexed=index_status.total_commits_indexed,
-                total_files_indexed=index_status.total_files_indexed,
-                total_symbols_indexed=index_status.total_symbols_indexed,
-                total_references_indexed=index_status.total_references_indexed,
-                indexer_version=INDEXER_VERSION,
+                languages=languages,
             )
-            await index_status_repository.save(index_status)
 
-            # Process deletions first (find and delete by path)
-            if deleted:
-                console.print("[dim]Processing deletions...[/dim]")
-                for file_path in deleted:
-                    # Find file by path and delete its symbols/references
-                    db_file = await file_repository.find_by_path(
-                        repo_id, db_commit.id, file_path
+            # Import progress types
+            # Progress at specific percentages: 0, 1, 2, 5, 10, 15, 20, ...
+            import sys
+
+            from inxr2.application.use_cases.indexing.default_orchestrator import (
+                IndexingProgress,
+            )
+
+            milestones = {
+                0,
+                1,
+                2,
+                5,
+                10,
+                15,
+                20,
+                25,
+                30,
+                35,
+                40,
+                45,
+                50,
+                55,
+                60,
+                65,
+                70,
+                75,
+                80,
+                85,
+                90,
+                95,
+                100,
+            }
+
+            # Mutable progress state (using class for proper typing)
+            class ProgressState:
+                pcts: set[int] = set()
+                phase: str = ""
+                shown_start: bool = False
+
+            state = ProgressState()
+
+            def on_progress(p: IndexingProgress) -> None:
+                # Show initial info at start
+                if not state.shown_start and p.files_total > 0:
+                    state.shown_start = True
+                    console.print(
+                        f"  [dim]Files to process: {p.files_total} | "
+                        f"Cache size: {p.cache_size}[/dim]"
                     )
-                    if db_file:
-                        if db_file.id is None:
-                            raise RuntimeError(
-                                "Existing file record missing database ID"
-                            )
-                        await symbol_repository.delete_by_file(db_file.id)
-                        await reference_repository.delete_by_file(db_file.id)
 
-            # Index changed files with progress
-            if added_modified:
-                import hashlib
-
-                # Load content hash -> file_id map for fast donor lookup
-                with console.status("[dim]Loading content hash cache...[/dim]"):
-                    content_hash_cache: dict[str, int] = (
-                        await file_repository.get_content_hash_to_file_id_map(repo_id)
-                    )
-                console.print(
-                    f"  Cached hashes: [cyan]{len(content_hash_cache)}[/cyan]"
-                )
-
-                with create_progress() as progress:
-                    main_task = progress.add_task(
-                        "[green]Indexing changed files...",
-                        total=stats.files_total,
-                    )
-                    file_task = progress.add_task("[dim]Preparing...", total=100)
-
-                    for file_path in added_modified:
-                        short_path = _shorten_path(file_path, max_len=50)
-                        progress.update(
-                            file_task,
-                            description=f"[cyan]{short_path}[/cyan]",
-                            completed=0,
+                if p.phase == "files" and p.files_total > 0:
+                    pct = int((p.files_processed / p.files_total) * 100)
+                    if pct in milestones and pct not in state.pcts:
+                        state.pcts.add(pct)
+                        sys.stdout.write(
+                            f"\r  {pct}% ({p.files_processed}/{p.files_total}) | "
+                            f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
+                            f"Cache: {p.cache_size}    "
                         )
-
-                        try:
-                            content = git_service.get_file_content(
-                                repo_path, current_commit, file_path
+                        sys.stdout.flush()
+                elif p.phase == "resolving":
+                    if state.phase != "resolving":
+                        # First resolving update - print header
+                        state.phase = "resolving"
+                        state.pcts = set()  # Reset milestones for resolution
+                        sys.stdout.write("\n")
+                        if p.refs_total > 0:
+                            console.print(
+                                f"  [cyan]Resolving references "
+                                f"({p.refs_total} to process)...[/cyan]"
                             )
-                            progress.update(file_task, completed=20)
-
-                            content_hash = hashlib.sha1(
-                                content.encode("utf-8")
-                            ).hexdigest()
-                            language = _detect_language(file_path)
-                            progress.update(file_task, completed=30)
-
-                            # Check cache for donor file (in-memory lookup)
-                            donor_file_id = content_hash_cache.get(content_hash)
-
-                            # Create new file record
-                            db_file = await file_repository.save(
-                                File(
-                                    repository_id=repo_id,
-                                    commit_id=commit_id,
-                                    path=file_path,
-                                    content_hash=content_hash,
-                                    size_bytes=len(content.encode("utf-8")),
-                                    language=language,
-                                    line_count=content.count("\n") + 1,
-                                )
+                        else:
+                            console.print("  [cyan]Resolving references...[/cyan]")
+                    # Show resolution progress at milestone percentages
+                    if p.refs_total > 0:
+                        pct = int((p.refs_resolved / p.refs_total) * 100)
+                        if pct in milestones and pct not in state.pcts:
+                            state.pcts.add(pct)
+                            sys.stdout.write(
+                                f"\r  Resolving: {pct}% "
+                                f"({p.refs_resolved}/{p.refs_total})    "
                             )
-                            if db_file.id is None:
-                                raise RuntimeError(
-                                    "File record missing database ID after save"
-                                )
-                            file_id = db_file.id
-                            progress.update(file_task, completed=50)
+                            sys.stdout.flush()
 
-                            # Content-hash reuse: copy symbols/refs from donor
-                            if donor_file_id is not None:
-                                # REUSE: Copy symbols/references from donor file
-                                symbols_copied = (
-                                    await symbol_repository.copy_symbols_to_file(
-                                        source_file_id=donor_file_id,
-                                        target_file_id=file_id,
-                                        target_commit_id=commit_id,
-                                        target_repository_id=repo_id,
-                                    )
-                                )
-                                progress.update(file_task, completed=70)
-                                refs_copied = (
-                                    await reference_repository.copy_references_to_file(
-                                        source_file_id=donor_file_id,
-                                        target_file_id=file_id,
-                                        target_commit_id=commit_id,
-                                        target_repository_id=repo_id,
-                                    )
-                                )
-                                progress.update(file_task, completed=100)
-                                stats.files_reused += 1
-                                stats.symbols_reused += symbols_copied
-                                stats.references_reused += refs_copied
-                                # Also count for overall stats (for index_status)
-                                stats.symbols_found += symbols_copied
-                                stats.references_found += refs_copied
-                            elif language and parser_service.supports_language(
-                                language
-                            ):
-                                # PARSE: No donor, use Tree-sitter as usual
-                                symbol_dicts, ref_dicts = (
-                                    await parser_service.parse_file(
-                                        content=content,
-                                        language=language,
-                                        file_path=file_path,
-                                    )
-                                )
-                                progress.update(file_task, completed=70)
-
-                                # Save symbols
-                                if symbol_dicts:
-                                    symbols = [
-                                        _dict_to_symbol(
-                                            s,
-                                            file_id=file_id,
-                                            repository_id=repo_id,
-                                            commit_id=commit_id,
-                                        )
-                                        for s in symbol_dicts
-                                    ]
-                                    await symbol_repository.save_many(symbols)
-                                    stats.symbols_found += len(symbols)
-                                progress.update(file_task, completed=85)
-
-                                # Save references
-                                if ref_dicts:
-                                    references = [
-                                        _dict_to_reference(
-                                            r,
-                                            source_file_id=file_id,
-                                            repository_id=repo_id,
-                                            commit_id=commit_id,
-                                        )
-                                        for r in ref_dicts
-                                    ]
-                                    await reference_repository.save_many(references)
-                                    stats.references_found += len(references)
-                                progress.update(file_task, completed=100)
-
-                                # Add to cache so later files can reuse
-                                content_hash_cache[content_hash] = file_id
-
-                            stats.files_processed += 1
-
-                        except Exception as e:
-                            stats.files_failed += 1
-                            stats.errors.append(f"{file_path}: {str(e)}")
-                            logger.warning(f"Failed to index {file_path}: {e}")
-
-                        progress.update(main_task, advance=1)
-
-                    progress.update(
-                        file_task, description="[green]Complete[/green]", completed=100
-                    )
-
-            # Resolve references to symbols (cross-commit for incremental indexing)
-            console.print("[cyan]Resolving references...[/cyan]")
-            resolve_use_case = ResolveReferencesUseCase(
-                reference_repository=reference_repository
-            )
-            resolve_result = await resolve_use_case.execute(
-                ResolveReferencesRequest(repository_id=repo_id, commit_aware=False)
-            )
-            stats.references_resolved = resolve_result.resolved_count
-            console.print(
-                f"[green]Resolved {stats.references_resolved} references to symbols[/green]"
+            # Run indexing with progress callback
+            response = await orchestrator.index_incremental(
+                request, progress_callback=on_progress
             )
 
-            # Update index status to completed
-            index_status = IndexStatus(
-                id=index_status.id,
-                repository_id=repo_id,
+            # Show final resolution result if we were in resolving phase
+            if state.phase == "resolving" and response.references_found > 0:
+                pct = response.references_resolved * 100 // response.references_found
+                sys.stdout.write(
+                    f"\r  Resolved: {response.references_resolved}/"
+                    f"{response.references_found} ({pct}%)    \n"
+                )
+                sys.stdout.flush()
+
+            # Check if there were new commits
+            if response.commits_indexed == 0:
+                console.print("[green]Already up to date.[/green]")
+                return IndexingResult(
+                    repo_name=repo_name,
+                    branch=current_branch,
+                    success=True,
+                    commits_indexed=0,
+                )
+
+            # Print summary
+            stats = IndexingStats(
+                files_total=response.files_total,
+                files_processed=response.files_processed,
+                files_skipped=response.files_skipped,
+                files_failed=response.files_failed,
+                files_unchanged=response.files_unchanged,
+                files_at_head=response.files_at_head,
+                lines_indexed=response.lines_indexed,
+                symbols_found=response.symbols_found,
+                references_found=response.references_found,
+                references_resolved=response.references_resolved,
+                files_reused=response.files_reused,
+                symbols_reused=response.symbols_reused,
+                references_reused=response.references_reused,
+                errors=response.errors,
+                db_stats=response.db_stats,
+            )
+
+            _print_summary(
+                console,
+                stats,
+                is_incremental=True,
+                commits_indexed=response.commits_indexed,
+                elapsed_seconds=response.elapsed_seconds,
+                repo_name=repo_name,
                 branch=current_branch,
-                indexing_status="completed",
-                last_indexed_commit=current_commit,
-                last_indexed_at=_utc_now(),
-                indexing_started_at=index_status.indexing_started_at,
-                total_commits_indexed=index_status.total_commits_indexed + 1,
-                total_files_indexed=index_status.total_files_indexed
-                + stats.files_succeeded,
-                total_symbols_indexed=index_status.total_symbols_indexed
-                + stats.symbols_found,
-                total_references_indexed=index_status.total_references_indexed
-                + stats.references_found,
-                error_count=stats.files_failed,
-                error_message=stats.errors[0] if stats.errors else None,
-                indexer_version=INDEXER_VERSION,
             )
-            await index_status_repository.save(index_status)
+
+            await session.commit()
+
+            # Return result for final summary
+            return IndexingResult(
+                repo_name=repo_name,
+                branch=current_branch,
+                success=True,
+                files_total=response.files_total,
+                commits_indexed=response.commits_indexed,
+                symbols_found=response.symbols_found,
+                references_found=response.references_found,
+                references_resolved=response.references_resolved,
+                lines_indexed=response.lines_indexed,
+                elapsed_seconds=response.elapsed_seconds,
+                oldest_commit_hash=response.oldest_commit_hash,
+                oldest_commit_date=response.oldest_commit_date,
+                newest_commit_hash=response.newest_commit_hash,
+                newest_commit_date=response.newest_commit_date,
+            )
 
     finally:
         await db.close()
-
-    elapsed_seconds = time.monotonic() - start_time
-    _print_summary(console, stats, is_incremental=True, elapsed_seconds=elapsed_seconds)
 
 
 def show_index_status(repo_path: Path, console: Console) -> None:
@@ -1337,6 +1003,10 @@ def _print_summary(
     is_incremental: bool = False,
     commits_indexed: int | None = None,
     elapsed_seconds: float | None = None,
+    repo_name: str | None = None,
+    branch: str | None = None,
+    max_history: int | None = None,
+    since_days: int | None = None,
 ) -> None:
     """Print indexing summary."""
     console.print()
@@ -1348,16 +1018,46 @@ def _print_summary(
     table.add_column("Metric", style="dim")
     table.add_column("Value", justify="right")
 
+    # Show repo/branch info
+    if repo_name:
+        table.add_row("Repository", f"[bold]{repo_name}[/bold]")
+    if branch:
+        table.add_row("Branch", f"[cyan]{branch}[/cyan]")
+    # Show indexing range
+    if since_days is not None:
+        table.add_row("Range", f"[dim]last {since_days} days[/dim]")
+    elif max_history is not None:
+        table.add_row("Range", f"[dim]last {max_history} commits[/dim]")
+
+    if repo_name or branch:
+        table.add_row("", "")  # Separator after repo info
+
     if commits_indexed is not None:
         table.add_row("Commits Indexed", f"[magenta]{commits_indexed}[/magenta]")
+    if stats.files_at_head > 0:
+        table.add_row("Files at HEAD", f"[cyan]{stats.files_at_head:,}[/cyan]")
+    if stats.lines_indexed > 0:
+        table.add_row("Lines Indexed", f"[cyan]{stats.lines_indexed:,}[/cyan]")
     table.add_row("Files Processed", f"[green]{stats.files_succeeded}[/green]")
+    if stats.files_unchanged > 0:
+        table.add_row("Files Unchanged", f"[dim]{stats.files_unchanged}[/dim]")
     if stats.files_skipped > 0:
         table.add_row("Files Skipped", f"[dim]{stats.files_skipped}[/dim]")
     if stats.files_failed > 0:
         table.add_row("Files Failed", f"[red]{stats.files_failed}[/red]")
     table.add_row("Symbols Found", f"[cyan]{stats.symbols_found}[/cyan]")
     table.add_row("References Found", f"[cyan]{stats.references_found}[/cyan]")
-    table.add_row("References Resolved", f"[cyan]{stats.references_resolved}[/cyan]")
+    # Show resolution count with rate percentage
+    if stats.references_found > 0:
+        resolution_rate = stats.references_resolved * 100 / stats.references_found
+        table.add_row(
+            "References Resolved",
+            f"[cyan]{stats.references_resolved}[/cyan] [dim]({resolution_rate:.1f}%)[/dim]",
+        )
+    else:
+        table.add_row(
+            "References Resolved", f"[cyan]{stats.references_resolved}[/cyan]"
+        )
 
     # Show reuse statistics if content-hash optimization was used
     if stats.files_reused > 0:
@@ -1372,6 +1072,18 @@ def _print_summary(
     if elapsed_seconds is not None:
         table.add_row("", "")  # Separator
         table.add_row("Total Time", f"[blue]{_format_duration(elapsed_seconds)}[/blue]")
+
+    # Show DB query statistics
+    db = stats.db_stats
+    if db.total > 0:
+        table.add_row("", "")  # Separator
+        table.add_row("DB Queries", f"[dim]{db.total} total[/dim]")
+        table.add_row("  Selects", f"[dim]{db.selects}[/dim]")
+        table.add_row("  Inserts", f"[dim]{db.inserts}[/dim]")
+        if db.updates > 0:
+            table.add_row("  Updates", f"[dim]{db.updates}[/dim]")
+        if db.deletes > 0:
+            table.add_row("  Deletes", f"[dim]{db.deletes}[/dim]")
 
     console.print(Panel(table, border_style="green"))
 

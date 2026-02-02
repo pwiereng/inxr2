@@ -469,6 +469,18 @@ class ReferenceRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def count_unresolved_references(self, repository_id: int) -> int:
+        """Count references that don't have a target_symbol_id set.
+
+        Args:
+            repository_id: The repository ID to count for
+
+        Returns:
+            Number of unresolved references
+        """
+        pass
+
+    @abstractmethod
     async def resolve_unlinked_references(
         self, repository_id: int, commit_aware: bool = False
     ) -> int:
@@ -485,6 +497,28 @@ class ReferenceRepositoryPort(ABC):
 
         Returns:
             Number of references resolved
+        """
+        pass
+
+    @abstractmethod
+    async def resolve_references_batch(
+        self,
+        repository_id: int,
+        batch_size: int = 1000,
+        commit_aware: bool = False,
+    ) -> int:
+        """Resolve a batch of unlinked references.
+
+        Processes up to batch_size references at a time. Call repeatedly
+        until it returns 0 to resolve all references.
+
+        Args:
+            repository_id: The repository ID to resolve references for
+            batch_size: Maximum references to resolve in this batch
+            commit_aware: If True, only match to symbols from same commit
+
+        Returns:
+            Number of references resolved in this batch
         """
         pass
 

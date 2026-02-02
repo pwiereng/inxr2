@@ -3,7 +3,7 @@
 import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from ....domain.entities import Commit, File, Repository
@@ -125,8 +125,8 @@ class IndexLocalDirectoryUseCase:
         commit = Commit(
             repository_id=saved_repo.id,
             commit_hash=CommitHash(commit_hash),
-            author_date=datetime.utcnow(),
-            commit_date=datetime.utcnow(),
+            author_date=datetime.now(UTC).replace(tzinfo=None),
+            commit_date=datetime.now(UTC).replace(tzinfo=None),
         )
         saved_commit = await self._commit_repo.save(commit)
         assert saved_commit.id is not None, "Commit ID must be set after save"
@@ -202,7 +202,7 @@ class IndexLocalDirectoryUseCase:
             40-character hex hash
         """
         # Use timestamp + path for uniqueness
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(UTC).replace(tzinfo=None).isoformat()
         data = f"local:{path}:{timestamp}".encode()
         return hashlib.sha1(data).hexdigest()
 

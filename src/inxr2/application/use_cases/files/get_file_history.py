@@ -140,13 +140,6 @@ class GetFileHistoryUseCase:
             repository_id, request.file_path, request.branch
         )
 
-        # 3. If no files found for this branch, fall back to default branch
-        # This handles merged branches where delta indexing found no unique commits
-        if not files and request.branch and request.branch != repository.default_branch:
-            files = await self._file_repo.list_versions_by_path(
-                repository_id, request.file_path, repository.default_branch
-            )
-
         if not files:
             raise FileNotFound(
                 path=request.file_path,

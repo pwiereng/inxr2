@@ -70,7 +70,7 @@ describe('VersionSelector', () => {
   })
 
   describe('single version', () => {
-    it('should show static display for single version', async () => {
+    it('should show static display for single version (no dropdown)', async () => {
       mockGetFileHistory.mockResolvedValue({
         path: 'src/main.py',
         repository_name: 'test-repo',

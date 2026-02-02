@@ -30,6 +30,14 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
      - Any external data that could change
    - Use `tmp_path` fixtures and create controlled test data (e.g., temp git repos)
    - Tests must pass regardless of which repositories are configured
+   - **TDD Approach**: Follow Test-Driven Development where practical:
+     1. Write a failing test first
+     2. Implement the minimum code to pass
+     3. Refactor while keeping tests green
+   - **Bug Fix Testing**: Every bug fix MUST include a regression test
+     - Write a test that reproduces the bug BEFORE fixing it
+     - The test should fail before the fix and pass after
+     - If a regression test is complex or hard to write, ask the user if it's worth the effort
 
 3. **Code Quality**
    - Zero tolerance for linting errors
@@ -49,6 +57,7 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
    - ❌ NEVER run `git push` - the user will manually push all changes
    - ✅ Rebase is OK for resolving conflicts on feature branches
    - Keep commits simple and straightforward
+   - ⚠️ **ALWAYS ask the user** if they want to test before committing - don't assume
 
 ## Common Commands
 
@@ -300,7 +309,7 @@ def test_search_symbols():
     # Test use case without database
 ```
 
-See `tests/unit/application/test_use_cases.py` for complete examples.
+See `tests/unit/application/test_resolve_references_use_case.py` for complete examples.
 
 ## Project Structure
 
@@ -460,7 +469,13 @@ def test_with_fake():
 - No framework overhead
 - Fake follows real interface contract
 
-See `tests/unit/application/test_use_cases.py` for complete examples.
+**Avoid Low-Value Tests:**
+- Don't test language features (e.g., Python enum behavior, dataclass immutability)
+- Don't write tests that just verify static values exist
+- Tests should verify actual behavior, not that Python works correctly
+- If a test would pass even with broken business logic, it's low-value
+
+See `tests/unit/application/test_default_indexing_orchestrator.py` for complete examples.
 
 ## Environment Configuration
 

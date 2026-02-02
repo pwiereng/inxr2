@@ -1,6 +1,6 @@
 """Integration tests for PostgresCommitRepository."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,7 +122,7 @@ class TestPostgresCommitRepository:
         adapter = PostgresCommitRepository(db_session)
 
         # Create commits with different dates
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         older_commit = CommitFactory.create(
             repository_id=repo.id,
             commit_hash="c" * 40,
@@ -169,7 +169,7 @@ class TestPostgresCommitRepository:
 
         adapter = PostgresCommitRepository(db_session)
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         # Main branch has older commit
         main_commit = CommitFactory.create(
             repository_id=repo.id,

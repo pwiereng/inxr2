@@ -276,14 +276,14 @@ class TestGetFileHistoryUseCase:
         assert "ghi789jkl012" in commit_hashes
 
     @pytest.mark.asyncio
-    async def test_get_file_history_fallback_to_default_branch(
+    async def test_get_file_history_raises_for_empty_branch(
         self,
         repository_repo: InMemoryRepositoryRepository,
         file_repo: InMemoryFileRepository,
         commit_repo: InMemoryCommitRepository,
         git_service: StubGitCommitInfoService,
     ) -> None:
-        """Should fall back to default branch when specified branch has no commits."""
+        """Should raise FileNotFound when file doesn't exist on specified branch."""
         use_case = GetFileHistoryUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
@@ -297,10 +297,9 @@ class TestGetFileHistoryUseCase:
             branch="empty-branch",  # No commits on this branch
         )
 
-        result = await use_case.execute(request)
-
-        # Should fall back to main branch (3 versions)
-        assert result.total == 3
+        # Should raise FileNotFound, not fall back to main
+        with pytest.raises(FileNotFound):
+            await use_case.execute(request)
 
     # === Error Handling Tests ===
 
