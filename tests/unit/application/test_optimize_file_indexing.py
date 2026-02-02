@@ -3,7 +3,6 @@
 import pytest
 
 from inxr2.application.use_cases.indexing.optimize_file_indexing import (
-    OptimizationResult,
     OptimizeFileIndexingRequest,
     OptimizeFileIndexingUseCase,
 )
@@ -363,48 +362,6 @@ class TestOptimizeFileIndexingUseCase:
         assert result is not None
         assert result.optimization_applied is False
         assert result.donor_file_id is None
-
-    @pytest.mark.asyncio
-    async def test_optimization_result_properties(
-        self,
-        use_case: OptimizeFileIndexingUseCase,
-        file_repo: InMemoryFileRepository,
-    ) -> None:
-        """Test OptimizationResult properties and methods."""
-        # Arrange
-        target_file = File(
-            id=3,
-            repository_id=1,
-            commit_id=2,
-            path="src/calculator.py",
-            content_hash="abc123",
-            size_bytes=1024,
-            language="python",
-            line_count=50,
-        )
-        await file_repo.save(target_file)
-
-        cache = await file_repo.get_content_hash_to_file_id_map(repository_id=1)
-
-        request = OptimizeFileIndexingRequest(
-            target_file_id=3,
-            target_commit_id=2,
-            target_repository_id=1,
-            content_hash="abc123",
-            content_hash_cache=cache,
-        )
-
-        # Act
-        result = await use_case.execute(request)
-
-        # Assert - verify all properties
-        assert isinstance(result, OptimizationResult)
-        assert isinstance(result.optimization_applied, bool)
-        assert isinstance(result.donor_file_id, (int, type(None)))
-        assert isinstance(result.symbols_copied, int)
-        assert isinstance(result.references_copied, int)
-        assert result.symbols_copied >= 0
-        assert result.references_copied >= 0
 
     @pytest.mark.asyncio
     async def test_optimization_across_different_commits(

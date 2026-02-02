@@ -447,10 +447,12 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
         # Get commits since last indexed
         # list_commits returns commits from oldest to newest
+        # For incremental indexing, fetch all commits to ensure we find the last indexed one
+        # (otherwise we might miss it if >N commits have been added since last index)
         commits_data = self._git_service.list_commits(
             repo_path=request.repository_path,
             branch=request.branch or "main",
-            max_count=100,  # Reasonable default
+            max_count=None,  # Fetch all to find last indexed commit
         )
 
         # Build content-hash cache
@@ -470,6 +472,11 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 if not found_last_indexed:
                     continue
             commits_to_process.append(commit_data)
+
+        # If last_indexed_hash was set but not found, it may have been rebased/deleted
+        # or there are too many commits. Fall back to indexing all listed commits.
+        if last_indexed_hash and not found_last_indexed and commits_data:
+            commits_to_process = list(commits_data)
 
         # Reverse for HEAD-first indexing (newest commit processed first)
         commits_to_process = list(reversed(commits_to_process))
