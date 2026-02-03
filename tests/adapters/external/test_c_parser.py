@@ -775,6 +775,44 @@ void test(void) {
         )
         assert callback_refs[0]["type"] == "call"
 
+    @pytest.mark.asyncio
+    async def test_macro_type_specifier_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that macro type specifiers in function return types are captured.
+
+        Macros like CJSON_PUBLIC(char *) are parsed by tree-sitter as
+        macro_type_specifier nodes. The macro name should be captured as a reference.
+        This is common in C libraries that use visibility macros for exported functions.
+        """
+        code = """
+#define MY_API(type) __attribute__((visibility("default"))) type
+
+MY_API(char *) get_string(void) {
+    return "hello";
+}
+
+MY_API(int) get_number(void) {
+    return 42;
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+
+        # Should find references to the MY_API macro
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        macro_refs = [r for r in usage_refs if r["text"] == "MY_API"]
+
+        # MY_API is used twice (once for each function)
+        assert len(macro_refs) == 2, (
+            f"Expected 2 references to 'MY_API', got {len(macro_refs)}"
+        )
+
+        # Verify the line numbers are correct (lines 4 and 8 in 1-indexed)
+        ref_lines = sorted([r["source_line"] for r in macro_refs])
+        assert ref_lines == [4, 8]
+
 
 class TestCEdgeCases:
     """Tests for edge cases in C parsing."""
