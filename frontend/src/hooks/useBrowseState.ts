@@ -442,6 +442,7 @@ export function useBrowseState() {
             urlState.selectedBranch || undefined
           ),
         ])
+        setError(null) // Clear any previous error on successful load
         setFileContent(content)
         setFileSymbols(symbols.symbols)
         setFileReferences(references.references)
