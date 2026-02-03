@@ -1,6 +1,7 @@
 """Database connection management and session factory.
 
-Provides async SQLAlchemy engine and session management for PostgreSQL.
+Provides async SQLAlchemy engine and session management.
+Supports PostgreSQL (production) and SQLite (testing).
 """
 
 import os
@@ -18,7 +19,8 @@ class DatabaseConnection:
         Initialize database connection.
 
         Args:
-            database_url: PostgreSQL connection URL (async format).
+            database_url: Database connection URL (async format).
+                         Supports PostgreSQL and SQLite URLs.
                          Defaults to DATABASE_URL environment variable.
         """
         # Use provided URL or fall back to environment variable with default
@@ -91,7 +93,7 @@ def init_database(database_url: str | None = None) -> DatabaseConnection:
     Initialize global database connection.
 
     Args:
-        database_url: PostgreSQL connection URL
+        database_url: Database connection URL (PostgreSQL or SQLite)
 
     Returns:
         DatabaseConnection instance

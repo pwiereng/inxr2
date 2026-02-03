@@ -23,7 +23,7 @@ def cli_test_db(tmp_path: Path) -> Generator[str, None, None]:
         The DATABASE_URL string for the test database.
     """
     db_path = tmp_path / "cli_test.db"
-    db_url = f"sqlite+aiosqlite:///{db_path}"
+    db_url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
 
     async def setup_db() -> None:
         """Create all tables in the test database."""
