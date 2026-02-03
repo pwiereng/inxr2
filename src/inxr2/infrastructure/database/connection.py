@@ -39,12 +39,14 @@ class DatabaseConnection:
                 "postgresql://", "postgresql+asyncpg://", 1
             )
 
-        # Convert sqlite:// to sqlite+aiosqlite:// if needed
-        # Note: sqlite+aiosqlite:/// doesn't match startswith("sqlite:///")
-        # so no additional check is needed to prevent double conversion
-        if self.database_url.startswith("sqlite:///"):
+        # Convert sqlite:// URLs to sqlite+aiosqlite:// for async support
+        # This handles sqlite://, sqlite:///path.db, sqlite:///:memory:, etc.
+        # Avoid double conversion by checking the URL doesn't already have "sqlite+"
+        if self.database_url.startswith("sqlite://") and not self.database_url.startswith(
+            "sqlite+"
+        ):
             self.database_url = self.database_url.replace(
-                "sqlite:///", "sqlite+aiosqlite:///", 1
+                "sqlite://", "sqlite+aiosqlite://", 1
             )
 
         # Create async engine with appropriate settings for the database type
@@ -162,5 +164,9 @@ def get_database_url() -> str:
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
     elif url.startswith("postgresql://") and "+asyncpg" not in url:
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    # Convert sqlite:// to sqlite+aiosqlite:// if needed
+    if url.startswith("sqlite://") and not url.startswith("sqlite+"):
+        url = url.replace("sqlite://", "sqlite+aiosqlite://", 1)
 
     return url
