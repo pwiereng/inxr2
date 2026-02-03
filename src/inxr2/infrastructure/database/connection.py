@@ -42,9 +42,9 @@ class DatabaseConnection:
         # Convert sqlite:// URLs to sqlite+aiosqlite:// for async support
         # This handles sqlite://, sqlite:///path.db, sqlite:///:memory:, etc.
         # Avoid double conversion by checking the URL doesn't already have "sqlite+"
-        if self.database_url.startswith("sqlite://") and not self.database_url.startswith(
-            "sqlite+"
-        ):
+        if self.database_url.startswith(
+            "sqlite://"
+        ) and not self.database_url.startswith("sqlite+"):
             self.database_url = self.database_url.replace(
                 "sqlite://", "sqlite+aiosqlite://", 1
             )

@@ -805,9 +805,9 @@ MY_API(int) get_number(void) {
         macro_refs = [r for r in usage_refs if r["text"] == "MY_API"]
 
         # MY_API is used twice (once for each function)
-        assert len(macro_refs) == 2, (
-            f"Expected 2 references to 'MY_API', got {len(macro_refs)}"
-        )
+        assert (
+            len(macro_refs) == 2
+        ), f"Expected 2 references to 'MY_API', got {len(macro_refs)}"
 
         # Verify the line numbers are correct (lines 4 and 8 in 1-indexed)
         ref_lines = sorted([r["source_line"] for r in macro_refs])
