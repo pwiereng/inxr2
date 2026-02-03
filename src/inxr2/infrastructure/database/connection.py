@@ -40,10 +40,9 @@ class DatabaseConnection:
             )
 
         # Convert sqlite:// to sqlite+aiosqlite:// if needed
-        if (
-            self.database_url.startswith("sqlite:///")
-            and "+aiosqlite" not in self.database_url
-        ):
+        # Note: sqlite+aiosqlite:/// doesn't match startswith("sqlite:///")
+        # so no additional check is needed to prevent double conversion
+        if self.database_url.startswith("sqlite:///"):
             self.database_url = self.database_url.replace(
                 "sqlite:///", "sqlite+aiosqlite:///", 1
             )
@@ -151,7 +150,7 @@ def get_database_url() -> str:
     Get the database URL from environment or default.
 
     Returns:
-        PostgreSQL connection URL (async format)
+        Database connection URL (async format, defaults to PostgreSQL)
     """
     url = os.getenv(
         "DATABASE_URL",
