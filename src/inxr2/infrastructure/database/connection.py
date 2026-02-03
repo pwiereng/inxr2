@@ -39,6 +39,15 @@ class DatabaseConnection:
                 "postgresql://", "postgresql+asyncpg://", 1
             )
 
+        # Convert sqlite:// to sqlite+aiosqlite:// if needed
+        if (
+            self.database_url.startswith("sqlite:///")
+            and "+aiosqlite" not in self.database_url
+        ):
+            self.database_url = self.database_url.replace(
+                "sqlite:///", "sqlite+aiosqlite:///", 1
+            )
+
         # Create async engine with appropriate settings for the database type
         engine_kwargs: dict[str, object] = {
             "echo": os.getenv("SQL_ECHO", "false").lower() == "true",  # Log SQL queries
