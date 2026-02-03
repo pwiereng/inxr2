@@ -37,14 +37,18 @@ class DatabaseConnection:
                 "postgresql://", "postgresql+asyncpg://", 1
             )
 
-        # Create async engine
-        self.engine = create_async_engine(
-            self.database_url,
-            echo=os.getenv("SQL_ECHO", "false").lower() == "true",  # Log SQL queries
-            pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
-            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
-            pool_pre_ping=True,  # Verify connections before using
-        )
+        # Create async engine with appropriate settings for the database type
+        engine_kwargs: dict[str, object] = {
+            "echo": os.getenv("SQL_ECHO", "false").lower() == "true",  # Log SQL queries
+        }
+
+        # SQLite doesn't support connection pooling parameters
+        if not self.database_url.startswith("sqlite"):
+            engine_kwargs["pool_size"] = int(os.getenv("DB_POOL_SIZE", "10"))
+            engine_kwargs["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "20"))
+            engine_kwargs["pool_pre_ping"] = True  # Verify connections before using
+
+        self.engine = create_async_engine(self.database_url, **engine_kwargs)
 
         # Create session factory
         self.session_factory = async_sessionmaker(

@@ -112,15 +112,15 @@ class TestIndexCommands:
 class TestIndexOnTempRepo:
     """Tests that run indexing on a temporary git repository.
 
-    Note: These tests use the live database but with unique temp repo paths
-    that won't clash with existing data. The temp paths are automatically
-    cleaned up by pytest's tmp_path fixture.
+    These tests use an isolated SQLite database to avoid touching the
+    live PostgreSQL database. The temp paths are automatically cleaned
+    up by pytest's tmp_path fixture.
     """
 
     @pytest.fixture
-    def runner(self) -> CliRunner:
-        """Create a CLI test runner."""
-        return CliRunner()
+    def runner(self, isolated_cli_runner: CliRunner) -> CliRunner:
+        """Use the isolated CLI runner with test database."""
+        return isolated_cli_runner
 
     @pytest.fixture
     def temp_git_repo(self, tmp_path: Path) -> Path:
@@ -190,12 +190,17 @@ class TestStatusCommand:
 
 
 class TestBranchActivityFiltering:
-    """Tests for branch activity filtering with --days option."""
+    """Tests for branch activity filtering with --days option.
+
+    These tests use an isolated SQLite database to avoid touching the
+    live PostgreSQL database. The isolated_cli_runner fixture from
+    conftest.py provides database isolation via DATABASE_URL env var.
+    """
 
     @pytest.fixture
-    def runner(self) -> CliRunner:
-        """Create a CLI test runner."""
-        return CliRunner()
+    def runner(self, isolated_cli_runner: CliRunner) -> CliRunner:
+        """Use the isolated CLI runner with test database."""
+        return isolated_cli_runner
 
     @pytest.fixture
     def temp_git_repo_with_branches(self, tmp_path: Path) -> Path:
