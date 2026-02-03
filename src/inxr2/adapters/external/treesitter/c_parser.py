@@ -799,6 +799,23 @@ class CParser(BaseLanguageParser):
 
                         pass
 
+            # Macro type specifier references (e.g., CJSON_PUBLIC(char *) in return types)
+            # Tree-sitter parses this as macro_type_specifier with an identifier child
+            if node.type == "macro_type_specifier":
+                for child in node.children:
+                    if child.type == "identifier":
+                        macro_name = get_text(child)
+                        add_reference(
+                            {
+                                "text": macro_name,
+                                "type": "usage",
+                                "source_line": child.start_point[0] + 1,
+                                "source_column": child.start_point[1],
+                                "scope": scope,
+                            }
+                        )
+                        break  # Only need the first identifier (the macro name)
+
             # Identifiers in initializer lists (function pointers, enum values, etc.)
             # e.g., { engine, engine_init, sizeof(EngineState), 0, 0 }
             if node.type == "initializer_list":

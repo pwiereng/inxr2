@@ -203,6 +203,42 @@ line 3`
 
       expect(onSymbolClick).toHaveBeenCalledWith(symbols[0])
     })
+
+    it('should make class variable with type annotation clickable', () => {
+      // Test case: Python class variable like "    indexing_status: str = 'pending'"
+      // The symbol starts at column 4 (after indentation)
+      const onSymbolClick = vi.fn()
+      const symbols: FileSymbol[] = [
+        {
+          id: 1,
+          name: 'indexing_status',
+          qualified_name: 'IndexStatus.indexing_status',
+          kind: 'class_variable',
+          start_line: 1,
+          start_column: 4, // After 4 spaces of indentation
+          end_line: 1,
+          end_column: 38,
+          signature: null,
+        },
+      ]
+
+      // Test with Python language to verify Prism doesn't break clicking
+      render(
+        <CodeViewer
+          content="    indexing_status: str = 'pending'"
+          language="python"
+          symbols={symbols}
+          onSymbolClick={onSymbolClick}
+        />
+      )
+
+      // The class variable name should be clickable
+      const elements = screen.getAllByText(/indexing_status/)
+      expect(elements.length).toBeGreaterThan(0)
+      fireEvent.click(elements[0]!)
+
+      expect(onSymbolClick).toHaveBeenCalledWith(symbols[0])
+    })
   })
 
   describe('references', () => {
