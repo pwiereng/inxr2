@@ -1,6 +1,7 @@
 """Database connection management and session factory.
 
-Provides async SQLAlchemy engine and session management for PostgreSQL.
+Provides async SQLAlchemy engine and session management.
+Supports PostgreSQL (production) and SQLite (testing).
 """
 
 import os
@@ -18,7 +19,8 @@ class DatabaseConnection:
         Initialize database connection.
 
         Args:
-            database_url: PostgreSQL connection URL (async format).
+            database_url: Database connection URL (async format).
+                         Supports PostgreSQL and SQLite URLs.
                          Defaults to DATABASE_URL environment variable.
         """
         # Use provided URL or fall back to environment variable with default
@@ -37,14 +39,28 @@ class DatabaseConnection:
                 "postgresql://", "postgresql+asyncpg://", 1
             )
 
-        # Create async engine
-        self.engine = create_async_engine(
-            self.database_url,
-            echo=os.getenv("SQL_ECHO", "false").lower() == "true",  # Log SQL queries
-            pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
-            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
-            pool_pre_ping=True,  # Verify connections before using
-        )
+        # Convert sqlite:// URLs to sqlite+aiosqlite:// for async support
+        # This handles sqlite://, sqlite:///path.db, sqlite:///:memory:, etc.
+        # Avoid double conversion by checking the URL doesn't already have "sqlite+"
+        if self.database_url.startswith("sqlite://") and not self.database_url.startswith(
+            "sqlite+"
+        ):
+            self.database_url = self.database_url.replace(
+                "sqlite://", "sqlite+aiosqlite://", 1
+            )
+
+        # Create async engine with appropriate settings for the database type
+        engine_kwargs: dict[str, object] = {
+            "echo": os.getenv("SQL_ECHO", "false").lower() == "true",  # Log SQL queries
+        }
+
+        # SQLite doesn't support connection pooling parameters
+        if not self.database_url.startswith("sqlite"):
+            engine_kwargs["pool_size"] = int(os.getenv("DB_POOL_SIZE", "10"))
+            engine_kwargs["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "20"))
+            engine_kwargs["pool_pre_ping"] = True  # Verify connections before using
+
+        self.engine = create_async_engine(self.database_url, **engine_kwargs)
 
         # Create session factory
         self.session_factory = async_sessionmaker(
@@ -87,7 +103,7 @@ def init_database(database_url: str | None = None) -> DatabaseConnection:
     Initialize global database connection.
 
     Args:
-        database_url: PostgreSQL connection URL
+        database_url: Database connection URL (PostgreSQL or SQLite)
 
     Returns:
         DatabaseConnection instance
@@ -136,7 +152,7 @@ def get_database_url() -> str:
     Get the database URL from environment or default.
 
     Returns:
-        PostgreSQL connection URL (async format)
+        Database connection URL (async format, defaults to PostgreSQL)
     """
     url = os.getenv(
         "DATABASE_URL",
@@ -148,5 +164,9 @@ def get_database_url() -> str:
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
     elif url.startswith("postgresql://") and "+asyncpg" not in url:
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    # Convert sqlite:// to sqlite+aiosqlite:// if needed
+    if url.startswith("sqlite://") and not url.startswith("sqlite+"):
+        url = url.replace("sqlite://", "sqlite+aiosqlite://", 1)
 
     return url

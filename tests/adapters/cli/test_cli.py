@@ -112,15 +112,15 @@ class TestIndexCommands:
 class TestIndexOnTempRepo:
     """Tests that run indexing on a temporary git repository.
 
-    Note: These tests use the live database but with unique temp repo paths
-    that won't clash with existing data. The temp paths are automatically
-    cleaned up by pytest's tmp_path fixture.
+    These tests use an isolated SQLite database to avoid touching the
+    live PostgreSQL database. The temp paths are automatically cleaned
+    up by pytest's tmp_path fixture.
     """
 
     @pytest.fixture
-    def runner(self) -> CliRunner:
-        """Create a CLI test runner."""
-        return CliRunner()
+    def runner(self, isolated_cli_runner: CliRunner) -> CliRunner:
+        """Use the isolated CLI runner with test database."""
+        return isolated_cli_runner
 
     @pytest.fixture
     def temp_git_repo(self, tmp_path: Path) -> Path:
@@ -190,12 +190,17 @@ class TestStatusCommand:
 
 
 class TestBranchActivityFiltering:
-    """Tests for branch activity filtering with --days option."""
+    """Tests for branch activity filtering with --days option.
+
+    These tests use an isolated SQLite database to avoid touching the
+    live PostgreSQL database. The isolated_cli_runner fixture from
+    conftest.py provides database isolation via DATABASE_URL env var.
+    """
 
     @pytest.fixture
-    def runner(self) -> CliRunner:
-        """Create a CLI test runner."""
-        return CliRunner()
+    def runner(self, isolated_cli_runner: CliRunner) -> CliRunner:
+        """Use the isolated CLI runner with test database."""
+        return isolated_cli_runner
 
     @pytest.fixture
     def temp_git_repo_with_branches(self, tmp_path: Path) -> Path:
@@ -266,7 +271,8 @@ indexing:
             catch_exceptions=False,
         )
 
-        # The command should complete (may fail due to DB, but we check the output)
+        # Command should succeed with isolated test database
+        assert result.exit_code == 0, f"Command failed: {result.output}"
         # Old branch should be skipped
         assert "old-branch" in result.output
         assert "Skipped" in result.output
@@ -282,8 +288,9 @@ indexing:
             catch_exceptions=False,
         )
 
-        # Both branches should be attempted (not skipped)
-        # Note: may fail due to DB issues, but "Skipped" should NOT appear for activity
+        # Command should succeed with isolated test database
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        # Both branches should be attempted (not skipped for activity reasons)
         assert "No commits within" not in result.output
 
     def test_primary_branch_always_indexed_with_days_filter(
@@ -296,8 +303,9 @@ indexing:
             catch_exceptions=False,
         )
 
+        # Command should succeed with isolated test database
+        assert result.exit_code == 0, f"Command failed: {result.output}"
         # Main branch (primary) should be indexed, not skipped
-        # The output should show "Branch: main" without "Skipped"
         lines = result.output.split("\n")
         main_branch_skipped = False
         for i, line in enumerate(lines):
@@ -320,8 +328,9 @@ indexing:
             catch_exceptions=False,
         )
 
+        # Command should succeed with isolated test database
+        assert result.exit_code == 0, f"Command failed: {result.output}"
         # Main branch has recent commits, so should use --days filter (not just HEAD)
-        # Check for "(primary)" indicator and correct strategy
         assert "(primary)" in result.output
         lines = result.output.split("\n")
         main_using_days = False
@@ -396,8 +405,9 @@ indexing:
             catch_exceptions=False,
         )
 
+        # Command should succeed with isolated test database
+        assert result.exit_code == 0, f"Command failed: {result.output}"
         # Primary branch has no recent commits, should fall back to HEAD only
-        # Check for "(primary)" indicator and HEAD-only strategy
         assert "(primary)" in result.output
         lines = result.output.split("\n")
         main_head_only = False
