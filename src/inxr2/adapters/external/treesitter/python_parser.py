@@ -599,3 +599,95 @@ class PythonParser(BaseLanguageParser):
         extract_references(root)
 
         return symbols, references
+
+    def extract_comments(
+        self,
+        root: Node,
+        content: str,
+    ) -> list[dict[str, Any]]:
+        """Extract comments and docstrings from Python AST."""
+        comments: list[dict[str, Any]] = []
+
+        def get_text(node: Node) -> str:
+            return self._get_text(node, content)
+
+        def should_skip_comment(original_text: str, stripped_text: str) -> bool:
+            """Check if a comment should be skipped (shebang, encoding, etc.)."""
+            # Skip shebangs (check original text before stripping)
+            if original_text.startswith("#!"):
+                return True
+            # Skip encoding declarations
+            if "coding:" in stripped_text or "coding=" in stripped_text:
+                return True
+            return False
+
+        def extract_docstring_from_string_node(
+            node: Node, parent_type: str
+        ) -> dict[str, Any] | None:
+            """Extract a docstring from a string node."""
+            text = get_text(node)
+            # Strip triple quotes
+            if text.startswith('"""') and text.endswith('"""'):
+                content_text = text[3:-3].strip()
+            elif text.startswith("'''") and text.endswith("'''"):
+                content_text = text[3:-3].strip()
+            else:
+                return None
+
+            if not content_text:
+                return None
+
+            return {
+                "content": content_text,
+                "content_type": "docstring",
+                "source_line": node.start_point[0] + 1,
+                "source_end_line": node.end_point[0] + 1,
+            }
+
+        def visit_node(node: Node, parent_node: Node | None = None) -> None:
+            """Recursively visit nodes to extract comments and docstrings."""
+            # Extract inline comments
+            if node.type == "comment":
+                original_text = get_text(node)
+                # Strip the # marker and whitespace
+                stripped_text = original_text
+                if stripped_text.startswith("#"):
+                    stripped_text = stripped_text[1:].strip()
+
+                if not should_skip_comment(original_text, stripped_text):
+                    comments.append(
+                        {
+                            "content": stripped_text,
+                            "content_type": "inline_comment",
+                            "source_line": node.start_point[0] + 1,
+                            "source_end_line": node.end_point[0] + 1,
+                        }
+                    )
+
+            # Extract docstrings (first string in function/class/module)
+            elif node.type == "expression_statement":
+                # Check if this is the first statement in a function/class/module
+                if parent_node and parent_node.type in (
+                    "function_definition",
+                    "class_definition",
+                    "module",
+                    "block",
+                ):
+                    # Find the first child that is a string
+                    for child in node.children:
+                        if child.type == "string":
+                            docstring = extract_docstring_from_string_node(
+                                child, parent_node.type
+                            )
+                            if docstring:
+                                comments.append(docstring)
+                            break
+
+            # Recurse into children
+            for child in node.children:
+                visit_node(child, node)
+
+        # Start extraction
+        visit_node(root)
+
+        return comments

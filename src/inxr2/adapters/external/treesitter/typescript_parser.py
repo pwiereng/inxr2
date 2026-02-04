@@ -535,3 +535,82 @@ class TypeScriptParser(BaseLanguageParser):
         extract_references(root)
 
         return symbols, references
+
+    def extract_comments(
+        self,
+        root: Node,
+        content: str,
+    ) -> list[dict[str, Any]]:
+        """Extract comments from TypeScript/JavaScript AST."""
+        comments: list[dict[str, Any]] = []
+
+        def get_text(node: Node) -> str:
+            return self._get_text(node, content)
+
+        def strip_comment_markers(text: str, is_block: bool, is_jsdoc: bool) -> str:
+            """Strip comment markers and clean up comment text."""
+            if is_jsdoc:
+                # JSDoc comment: /** ... */
+                if text.startswith("/**") and text.endswith("*/"):
+                    text = text[3:-2]
+            elif is_block:
+                # Block comment: /* ... */
+                if text.startswith("/*") and text.endswith("*/"):
+                    text = text[2:-2]
+            else:
+                # Single-line comment: // ...
+                if text.startswith("//"):
+                    text = text[2:]
+
+            # Clean up leading/trailing whitespace and asterisks (common in block comments)
+            lines = text.split("\n")
+            cleaned_lines = []
+            for line in lines:
+                line = line.strip()
+                # Remove leading asterisks (common in multi-line comments)
+                if line.startswith("*"):
+                    line = line[1:].strip()
+                cleaned_lines.append(line)
+
+            return "\n".join(cleaned_lines).strip()
+
+        def visit_node(node: Node) -> None:
+            """Recursively visit nodes to extract comments."""
+            # Tree-sitter treats all comments as "comment" nodes
+            if node.type == "comment":
+                text = get_text(node)
+
+                # Determine comment type
+                is_jsdoc = text.startswith("/**")
+                is_block = text.startswith("/*") and not is_jsdoc
+                is_single_line = text.startswith("//")
+
+                # Determine content_type
+                if is_jsdoc:
+                    content_type = "jsdoc_comment"
+                elif is_block:
+                    content_type = "block_comment"
+                else:
+                    content_type = "single_line_comment"
+
+                # Strip markers and clean up
+                cleaned_text = strip_comment_markers(text, is_block, is_jsdoc)
+
+                if cleaned_text:
+                    comments.append(
+                        {
+                            "content": cleaned_text,
+                            "content_type": content_type,
+                            "source_line": node.start_point[0] + 1,
+                            "source_end_line": node.end_point[0] + 1,
+                        }
+                    )
+
+            # Recurse into children
+            for child in node.children:
+                visit_node(child)
+
+        # Start extraction
+        visit_node(root)
+
+        return comments

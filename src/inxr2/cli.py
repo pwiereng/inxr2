@@ -68,6 +68,7 @@ def _run_single_repo_index(
     max_history: int | None = 100,
     force: bool = False,
     since_days: int | None = None,
+    enable_text_search: bool = False,
 ) -> None:
     """Run indexing for a single repository path."""
     # Validate git repository
@@ -111,6 +112,7 @@ def _run_single_repo_index(
             "console": console,
             "max_history": max_history,
             "force": force,
+            "enable_text_search": enable_text_search,
         }
         if index_type == "Full" and since_days is not None:
             kwargs["since_days"] = since_days
@@ -133,6 +135,7 @@ def _run_config_based_index(
     max_history_override: int | None = None,
     force: bool = False,
     since_days: int | None = None,
+    enable_text_search: bool = False,
 ) -> None:
     """Run indexing for repositories defined in config file."""
     from inxr2.adapters.config.yaml_config import YamlConfigService
@@ -328,6 +331,7 @@ def _run_config_based_index(
                     "console": console,
                     "max_history": max_history,
                     "force": force,
+                    "enable_text_search": enable_text_search,
                 }
                 if index_type == "Full" and use_since_days is not None:
                     kwargs["since_days"] = use_since_days
@@ -523,6 +527,12 @@ def index() -> None:
     is_flag=True,
     help="Confirm destructive operations like --reset-db without prompting",
 )
+@click.option(
+    "--enable-text-search",
+    "--text-search",
+    is_flag=True,
+    help="Enable indexing of code comments for text search",
+)
 def index_full(
     path: Path | None,
     config: Path | None,
@@ -536,6 +546,7 @@ def index_full(
     force: bool,
     reset_db: bool,
     yes: bool,
+    enable_text_search: bool,
 ) -> None:
     """
     Perform full indexing of repository/repositories.
@@ -595,6 +606,7 @@ def index_full(
             max_history_override=history,
             force=force,
             since_days=days,
+            enable_text_search=enable_text_search,
         )
     else:
         # Single repository path-based indexing
@@ -610,6 +622,7 @@ def index_full(
             max_history=None if days else (history or 100),
             force=force,
             since_days=days,
+            enable_text_search=enable_text_search,
         )
 
 
@@ -658,6 +671,12 @@ def index_full(
     default="INFO",
     help="Set log level",
 )
+@click.option(
+    "--enable-text-search",
+    "--text-search",
+    is_flag=True,
+    help="Enable indexing of code comments for text search",
+)
 def index_incremental(
     path: Path | None,
     config: Path | None,
@@ -666,6 +685,7 @@ def index_incremental(
     languages: str | None,
     verbose: bool,
     log_level: str,
+    enable_text_search: bool,
 ) -> None:
     """
     Perform incremental indexing of repository/repositories.
@@ -704,6 +724,7 @@ def index_incremental(
             verbose=verbose,
             index_func=run_incremental_index,
             index_type="Incremental",
+            enable_text_search=enable_text_search,
         )
     else:
         # Single repository path-based indexing
@@ -715,6 +736,7 @@ def index_incremental(
             verbose=verbose,
             index_func=run_incremental_index,
             index_type="Incremental",
+            enable_text_search=enable_text_search,
         )
 
 

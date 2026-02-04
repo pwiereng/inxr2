@@ -44,6 +44,7 @@ from inxr2.application.ports.repositories import (
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
+    TextContentRepositoryPort,
 )
 from inxr2.application.ports.services import (
     FileStat,
@@ -58,6 +59,7 @@ from inxr2.domain.entities import (
     Reference,
     Repository,
     Symbol,
+    TextContent,
 )
 
 # ============================================================================
@@ -1187,6 +1189,85 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     def clear(self) -> None:
         """Clear all references."""
         self._references.clear()
+
+
+class InMemoryTextContentRepository(TextContentRepositoryPort):
+    """In-memory implementation of TextContentRepositoryPort for testing."""
+
+    def __init__(self) -> None:
+        """Initialize with empty storage."""
+        self._text_contents: dict[int, TextContent] = {}
+        self._next_id = 1
+
+    async def save(self, text_content: TextContent) -> TextContent:
+        """Save text content to in-memory storage."""
+        if text_content.id is None:
+            text_content = TextContent(
+                id=self._next_id,
+                repository_id=text_content.repository_id,
+                commit_id=text_content.commit_id,
+                source_type=text_content.source_type,
+                content=text_content.content,
+                source_file_id=text_content.source_file_id,
+                source_line=text_content.source_line,
+                source_end_line=text_content.source_end_line,
+                language=text_content.language,
+                content_type=text_content.content_type,
+                indexed_at=text_content.indexed_at,
+            )
+            self._next_id += 1
+        assert (
+            text_content.id is not None
+        ), "TextContent must have an ID after assignment"
+        self._text_contents[text_content.id] = text_content
+        return text_content
+
+    async def save_batch(self, text_contents: list[TextContent]) -> list[TextContent]:
+        """Bulk save text contents."""
+        result = []
+        for tc in text_contents:
+            saved = await self.save(tc)
+            result.append(saved)
+        return result
+
+    async def delete_by_commit(self, commit_id: int) -> int:
+        """Delete all text contents for a commit."""
+        to_delete = [
+            tc_id
+            for tc_id, tc in self._text_contents.items()
+            if tc.commit_id == commit_id
+        ]
+        for tc_id in to_delete:
+            del self._text_contents[tc_id]
+        return len(to_delete)
+
+    async def delete_by_file(self, file_id: int) -> int:
+        """Delete all text contents for a file."""
+        to_delete = [
+            tc_id
+            for tc_id, tc in self._text_contents.items()
+            if tc.source_file_id == file_id
+        ]
+        for tc_id in to_delete:
+            del self._text_contents[tc_id]
+        return len(to_delete)
+
+    # Test helper methods
+    def get_all(self) -> list[TextContent]:
+        """Get all text contents (for testing)."""
+        return list(self._text_contents.values())
+
+    def find_by_repository(self, repository_id: int) -> list[TextContent]:
+        """Find text contents by repository (for testing)."""
+        return [
+            tc
+            for tc in self._text_contents.values()
+            if tc.repository_id == repository_id
+        ]
+
+    def clear(self) -> None:
+        """Clear all text contents."""
+        self._text_contents.clear()
 
 
 class InMemoryIndexStatusRepository(IndexStatusRepositoryPort):

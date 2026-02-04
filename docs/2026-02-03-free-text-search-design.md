@@ -389,12 +389,23 @@ Response:
 
 ## Frontend Components
 
-### New Page: Text Search
+### Navigation Structure
+
+The frontend will have **3 main tabs**:
+
+| Tab | Purpose | Status |
+|-----|---------|--------|
+| **Browse** | Code browser with symbol navigation, file tree, syntax highlighting | Existing |
+| **Search** | Free text search across comments, docstrings, commit messages, non-code files | To be added |
+| **History** | Git commit history browser (TBD) | Future |
+
+### Search Tab (New)
 
 Location: `frontend/src/pages/TextSearch.tsx`
 
 - Search input with debounce
-- Filter dropdowns: file type, source type
+- Query mode selector (keyword, phrase, regex)
+- Filter dropdowns: file type, source type, branch
 - Results list showing:
   - Source type badge (comment, docstring, etc.)
   - File path and line number
@@ -403,9 +414,18 @@ Location: `frontend/src/pages/TextSearch.tsx`
 - Pagination (20 results per page)
 - Click result → navigate to `/browse/{repo}/{path}?line={n}&commit={hash}`
 
-### Navigation
+### History Tab (Future)
 
-Add "Text Search" tab to main navigation alongside existing "Browse" and "Symbol Search".
+Location: `frontend/src/pages/History.tsx`
+
+- Git commit history timeline
+- Commit details (message, author, date, files changed)
+- Navigate to code at any commit
+- Diff viewer between commits
+- Branch filtering
+- Search within commit messages (integrates with text search)
+
+*Note: History tab design to be defined in a separate document.*
 
 ### API Client
 

@@ -165,3 +165,49 @@ class TreeSitterService:
             return [], []
 
         return language_parser.extract(tree.root_node, content)
+
+    async def extract_comments(
+        self,
+        content: str,
+        language: str,
+        file_path: str,
+    ) -> list[dict[str, Any]]:
+        """
+        Extract comments and docstrings from a file.
+
+        Args:
+            content: File content as string
+            language: Programming language
+            file_path: Path to file (for error reporting)
+
+        Returns:
+            List of comment dicts with keys:
+            - content: The comment text (stripped of comment markers)
+            - content_type: Type of comment (inline_comment, block_comment, docstring, etc.)
+            - source_line: Starting line number
+            - source_end_line: Ending line number (for multi-line comments)
+        """
+        self._ensure_initialized()
+
+        language = language.lower()
+        if not self.supports_language(language):
+            logger.warning(f"Unsupported language: {language}")
+            return []
+
+        parser = self._get_parser(language, file_path)
+        if not parser:
+            logger.warning(f"No parser available for {language}")
+            return []
+
+        language_parser = self._get_language_parser(language)
+        if not language_parser:
+            logger.warning(f"No language parser available for {language}")
+            return []
+
+        try:
+            tree = parser.parse(content.encode("utf-8"))
+        except Exception as e:
+            logger.error(f"Failed to parse {file_path}: {e}")
+            return []
+
+        return language_parser.extract_comments(tree.root_node, content)

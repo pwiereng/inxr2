@@ -38,6 +38,30 @@ class BaseLanguageParser(ABC):
         """
         pass
 
+    def extract_comments(
+        self,
+        root: Node,
+        content: str,
+    ) -> list[dict[str, Any]]:
+        """
+        Extract comments and docstrings from the AST.
+
+        Base implementation returns empty list. Language-specific parsers
+        should override this method to extract comments.
+
+        Args:
+            root: Tree-sitter root node
+            content: Original source code content
+
+        Returns:
+            List of comment dicts with keys:
+            - content: The comment text (stripped of comment markers)
+            - content_type: Type of comment (inline_comment, block_comment, docstring, etc.)
+            - source_line: Starting line number
+            - source_end_line: Ending line number (for multi-line comments)
+        """
+        return []
+
     def _get_text(self, node: Node, content: str) -> str:
         """Get the text content of a node."""
         return content[node.start_byte : node.end_byte]

@@ -19,8 +19,14 @@ from inxr2.domain.entities import (
     IndexStatus,
     Reference,
     Symbol,
+    TextContent,
 )
-from inxr2.domain.value_objects import CommitHash, ReferenceType, SymbolKind
+from inxr2.domain.value_objects import (
+    CommitHash,
+    ReferenceType,
+    SymbolKind,
+    TextSearchSourceType,
+)
 
 from ...ports.repositories import (
     CommitRepositoryPort,
@@ -29,6 +35,7 @@ from ...ports.repositories import (
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
+    TextContentRepositoryPort,
 )
 from ...ports.services import IndexingOrchestratorPort
 from .optimize_file_indexing import (
@@ -96,6 +103,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         symbol_repo: SymbolRepositoryPort,
         reference_repo: ReferenceRepositoryPort,
         index_status_repo: IndexStatusRepositoryPort,
+        text_content_repo: TextContentRepositoryPort,
         git_service: Any,  # GitServicePort - not yet in ports
         parser_service: Any,  # ParserServicePort - exists but simpler interface
     ) -> None:
@@ -109,6 +117,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             symbol_repo: Repository for symbol operations
             reference_repo: Repository for reference operations
             index_status_repo: Repository for index status operations
+            text_content_repo: Repository for text content operations
             git_service: Service for git operations
             parser_service: Service for code parsing
         """
@@ -118,6 +127,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         self._symbol_repo = symbol_repo
         self._reference_repo = reference_repo
         self._index_status_repo = index_status_repo
+        self._text_content_repo = text_content_repo
         self._git_service = git_service
         self._parser_service = parser_service
 
@@ -162,6 +172,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             "files_reused": 0,
             "symbols_reused": 0,
             "references_reused": 0,
+            "comments_indexed": 0,
+            "docstrings_indexed": 0,
             "errors": [],
             "db_stats": DBQueryStats(),
         }
@@ -362,6 +374,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             files_reused=stats["files_reused"],
             symbols_reused=stats["symbols_reused"],
             references_reused=stats["references_reused"],
+            comments_indexed=stats.get("comments_indexed", 0),
+            docstrings_indexed=stats.get("docstrings_indexed", 0),
             errors=stats["errors"],
             elapsed_seconds=elapsed_seconds,
             db_stats=stats["db_stats"],
@@ -405,6 +419,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             "files_reused": 0,
             "symbols_reused": 0,
             "references_reused": 0,
+            "comments_indexed": 0,
+            "docstrings_indexed": 0,
             "errors": [],
             "db_stats": DBQueryStats(),
         }
@@ -611,6 +627,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             files_reused=stats["files_reused"],
             symbols_reused=stats["symbols_reused"],
             references_reused=stats["references_reused"],
+            comments_indexed=stats.get("comments_indexed", 0),
+            docstrings_indexed=stats.get("docstrings_indexed", 0),
             errors=stats["errors"],
             elapsed_seconds=elapsed_seconds,
             db_stats=stats["db_stats"],
@@ -859,6 +877,18 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                         )
                     )
 
+                    # Extract and save comments if text search is enabled
+                    if request.enable_text_search:
+                        await self._extract_and_save_comments(
+                            content=content,
+                            language=language,
+                            file_path_str=file_path_str,
+                            repository_id=repository_id,
+                            commit_id=commit_id,
+                            file_id=file_id,
+                            stats=stats,
+                        )
+
                     # Save symbols (parse_file returns dicts, not Symbol objects)
                     for symbol_data in symbols_data:
                         # Create Symbol from dict data
@@ -927,6 +957,67 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         except Exception as e:
             stats["files_failed"] += 1
             stats["errors"].append(f"Failed to process {file_path_str}: {str(e)}")
+
+    async def _extract_and_save_comments(
+        self,
+        content: str,
+        language: str,
+        file_path_str: str,
+        repository_id: int,
+        commit_id: int,
+        file_id: int,
+        stats: dict,
+    ) -> None:
+        """Extract comments and docstrings from a file and save to database.
+
+        Args:
+            content: File content as string
+            language: Programming language
+            file_path_str: File path for error reporting
+            repository_id: Repository database ID
+            commit_id: Commit database ID
+            file_id: File database ID
+            stats: Statistics dict to update
+        """
+        try:
+            comments_data = await self._parser_service.extract_comments(
+                content=content,
+                language=language,
+                file_path=file_path_str,
+            )
+
+            # Convert comments to TextContent entities and save
+            for comment_data in comments_data:
+                # Map content_type to TextSearchSourceType
+                content_type = comment_data.get("content_type", "inline_comment")
+                if content_type == "docstring":
+                    source_type = TextSearchSourceType.DOCSTRING.value
+                    stats["docstrings_indexed"] = stats.get("docstrings_indexed", 0) + 1
+                else:
+                    source_type = TextSearchSourceType.COMMENT.value
+                    stats["comments_indexed"] = stats.get("comments_indexed", 0) + 1
+
+                text_content = TextContent(
+                    id=None,
+                    repository_id=repository_id,
+                    commit_id=commit_id,
+                    source_type=source_type,
+                    source_file_id=file_id,
+                    source_line=comment_data["source_line"],
+                    source_end_line=comment_data.get("source_end_line"),
+                    content=comment_data["content"],
+                    language=language,
+                    content_type=content_type,
+                )
+                await self._text_content_repo.save(text_content)
+                stats["db_stats"].inserts += 1
+
+        except Exception as e:
+            # Don't fail indexing if comment extraction fails
+            # Just log and continue
+            stats["errors"].append(
+                f"Failed to extract comments from {file_path_str}: {str(e)}"
+            )
 
     async def _update_index_status(
         self,
