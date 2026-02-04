@@ -8,6 +8,7 @@ from .index_status import IndexStatusModel
 from .reference import ReferenceModel
 from .repository import RepositoryModel
 from .symbol import SymbolModel
+from .text_content import TextContentModel
 
 __all__ = [
     "Base",
@@ -18,4 +19,5 @@ __all__ = [
     "SymbolModel",
     "ReferenceModel",
     "IndexStatusModel",
+    "TextContentModel",
 ]

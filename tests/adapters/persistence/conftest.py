@@ -12,6 +12,14 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from inxr2.adapters.persistence.models import Base
+from inxr2.adapters.persistence.repositories import (
+    PostgresCommitRepository,
+    PostgresFileRepository,
+    PostgresRepositoryAdapter,
+)
+from inxr2.domain.entities import Commit, File, Repository
+
+from .factories import CommitFactory, FileFactory, RepositoryFactory
 
 # Use in-memory SQLite for fast tests (or test PostgreSQL database)
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -50,3 +58,63 @@ async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, N
     async with async_session() as session:
         yield session
         await session.rollback()  # Rollback after each test
+
+
+@pytest_asyncio.fixture
+async def test_repository(db_session: AsyncSession) -> Repository:
+    """Create a test repository."""
+    adapter = PostgresRepositoryAdapter(db_session)
+    repo = await adapter.save(RepositoryFactory.create(name="test-repo"))
+    await db_session.commit()
+    return repo
+
+
+@pytest_asyncio.fixture
+async def test_commit(db_session: AsyncSession, test_repository: Repository) -> Commit:
+    """Create a test commit."""
+    assert test_repository.id is not None
+    adapter = PostgresCommitRepository(db_session)
+    commit = await adapter.save(
+        CommitFactory.create(
+            repository_id=test_repository.id,
+            commit_hash="a" * 40,
+        )
+    )
+    await db_session.commit()
+    return commit
+
+
+@pytest_asyncio.fixture
+async def test_second_commit(
+    db_session: AsyncSession, test_repository: Repository
+) -> Commit:
+    """Create a second test commit."""
+    assert test_repository.id is not None
+    adapter = PostgresCommitRepository(db_session)
+    commit = await adapter.save(
+        CommitFactory.create(
+            repository_id=test_repository.id,
+            commit_hash="b" * 40,
+        )
+    )
+    await db_session.commit()
+    return commit
+
+
+@pytest_asyncio.fixture
+async def test_file(
+    db_session: AsyncSession, test_repository: Repository, test_commit: Commit
+) -> File:
+    """Create a test file."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    adapter = PostgresFileRepository(db_session)
+    file = await adapter.save(
+        FileFactory.create(
+            repository_id=test_repository.id,
+            commit_id=test_commit.id,
+            path="src/test.py",
+        )
+    )
+    await db_session.commit()
+    return file
