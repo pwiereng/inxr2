@@ -35,12 +35,14 @@ class GetSymbolReferencesRequest:
         by_name: If True, find all references matching the symbol name
                  (useful when multiple symbols share the same name)
         commit_hash: Optional commit hash for time travel
+        branch: Optional branch name to filter references (only show refs from this branch)
         limit: Maximum results to return
     """
 
     symbol_id: int
     by_name: bool = True
     commit_hash: str | None = None
+    branch: str | None = None
     limit: int = 100
 
 
@@ -137,11 +139,15 @@ class GetSymbolReferencesUseCase:
                 symbol.repository_id,
                 limit=request.limit,
                 commit_id=commit_id,
+                branch=request.branch,
             )
         else:
             # Find only references pointing to this specific symbol
             references = await self._reference_repo.find_references_to_symbol(
-                request.symbol_id, limit=request.limit, commit_id=commit_id
+                request.symbol_id,
+                limit=request.limit,
+                commit_id=commit_id,
+                branch=request.branch,
             )
 
         # Batch fetch file paths

@@ -809,10 +809,16 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     For resolve_unlinked_references, this fake requires a symbol_repository
     to be provided so it can match references to symbols.
 
+    For branch filtering, this fake requires a commit_repo and file_repo
+    to be provided.
+
     Example:
         symbol_repo = InMemorySymbolRepository()
         file_repo = InMemoryFileRepository()
-        ref_repo = InMemoryReferenceRepository(symbol_repo=symbol_repo, file_repo=file_repo)
+        commit_repo = InMemoryCommitRepository()
+        ref_repo = InMemoryReferenceRepository(
+            symbol_repo=symbol_repo, file_repo=file_repo, commit_repo=commit_repo
+        )
         ref_repo.add(Reference(...))
         count = await ref_repo.resolve_unlinked_references(repository_id=1)
     """
@@ -821,6 +827,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         self,
         symbol_repo: "InMemorySymbolRepository | None" = None,
         file_repo: "InMemoryFileRepository | None" = None,
+        commit_repo: "InMemoryCommitRepository | None" = None,
     ) -> None:
         """Initialize with empty storage.
 
@@ -829,11 +836,14 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                         Required for resolve_unlinked_references to work properly.
             file_repo: Optional file repository for language-aware resolution.
                       When provided, enables same-file and same-language priority.
+            commit_repo: Optional commit repository for branch filtering.
+                        Required for branch parameter to work in find_references_*.
         """
         self._references: dict[int, Reference] = {}
         self._next_id = 1
         self._symbol_repo = symbol_repo
         self._file_repo = file_repo
+        self._commit_repo = commit_repo
 
     async def save(self, reference: Reference) -> Reference:
         """Save reference to in-memory storage."""
@@ -876,12 +886,53 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         return self._references.get(reference_id)
 
     async def find_references_to_symbol(
-        self, symbol_id: int, limit: int = 100, commit_id: int | None = None
+        self,
+        symbol_id: int,
+        limit: int = 100,
+        commit_id: int | None = None,
+        branch: str | None = None,
     ) -> list[Reference]:
-        """Find all references to a symbol."""
+        """Find all references to a symbol.
+
+        Args:
+            symbol_id: The target symbol ID
+            limit: Maximum number of results
+            commit_id: Filter by specific commit for time travel (optional)
+            branch: Filter by branch name (only show refs from files on this branch)
+        """
         refs = [r for r in self._references.values() if r.target_symbol_id == symbol_id]
         if commit_id is not None:
             refs = [r for r in refs if r.commit_id == commit_id]
+
+        # Apply branch filter if specified
+        if (
+            branch is not None
+            and self._commit_repo is not None
+            and self._file_repo is not None
+        ):
+            # Get commit IDs on this branch
+            branch_commit_ids: set[int] = set()
+            for ref in refs:
+                # Get repository_id from file
+                file = self._file_repo._files.get(ref.source_file_id)
+                if file is not None:
+                    for (
+                        repo_id,
+                        b,
+                        cid,
+                    ), _ in self._commit_repo._branch_commits.items():
+                        if repo_id == file.repository_id and b == branch:
+                            branch_commit_ids.add(cid)
+                    break  # Only need to get branch commits once
+
+            # Filter refs to only those whose source file is on this branch
+            filtered_refs = []
+            for ref in refs:
+                file = self._file_repo._files.get(ref.source_file_id)
+                if file is not None and file.commit_id in branch_commit_ids:
+                    filtered_refs.append(ref)
+            refs = filtered_refs
+
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
         return refs[:limit]
 
@@ -897,8 +948,17 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         repository_id: int,
         limit: int = 100,
         commit_id: int | None = None,
+        branch: str | None = None,
     ) -> list[Reference]:
-        """Find references by text."""
+        """Find references by text.
+
+        Args:
+            text: The reference text to match
+            repository_id: Filter by repository
+            limit: Maximum number of results
+            commit_id: Filter by specific commit for time travel (optional)
+            branch: Filter by branch name (only show refs from files on this branch)
+        """
         refs = [
             r
             for r in self._references.values()
@@ -906,6 +966,27 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         ]
         if commit_id is not None:
             refs = [r for r in refs if r.commit_id == commit_id]
+
+        # Apply branch filter if specified
+        if (
+            branch is not None
+            and self._commit_repo is not None
+            and self._file_repo is not None
+        ):
+            # Get commit IDs on this branch
+            branch_commit_ids: set[int] = set()
+            for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
+                if repo_id == repository_id and b == branch:
+                    branch_commit_ids.add(cid)
+
+            # Filter refs to only those whose source file is on this branch
+            filtered_refs = []
+            for ref in refs:
+                file = self._file_repo._files.get(ref.source_file_id)
+                if file is not None and file.commit_id in branch_commit_ids:
+                    filtered_refs.append(ref)
+            refs = filtered_refs
+
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
         return refs[:limit]
 

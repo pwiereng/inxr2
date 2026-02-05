@@ -5,6 +5,7 @@ import {
   getFileContentByPath,
   getFileSymbolsByPath,
   getFileReferencesByPath,
+  searchText,
 } from './api'
 
 // Mock fetch globally
@@ -190,6 +191,88 @@ describe('API functions - by-name/by-path endpoints', () => {
         'http://localhost:8000/api/files/by-path/references?repo=my-repo&path=src%2Fmain.py'
       )
       expect(result).toEqual(mockRefs)
+    })
+  })
+
+  describe('searchText', () => {
+    it('should search text with basic query', async () => {
+      const mockResponse = {
+        results: [
+          {
+            id: 1,
+            repository_id: 1,
+            repository_name: 'test-repo',
+            file_path: 'src/main.py',
+            source_line: 10,
+            source_end_line: 10,
+            source_type: 'comment',
+            content: '# This is a test comment',
+            content_type: null,
+            language: 'python',
+            commit_hash: 'abc123',
+            branch: 'main',
+            rank: 1.0,
+            headline: '# This is a <mark>test</mark> comment',
+          },
+        ],
+        total: 1,
+        query: 'test',
+        mode: 'keyword',
+        limit: 20,
+        offset: 0,
+      }
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      const result = await searchText({ q: 'test' })
+
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:8000/api/search/text?q=test')
+      expect(result).toEqual(mockResponse)
+    })
+
+    it('should include all search parameters in URL', async () => {
+      const mockResponse = {
+        results: [],
+        total: 0,
+        query: 'test',
+        mode: 'phrase',
+        limit: 50,
+        offset: 20,
+      }
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      await searchText({
+        q: 'test',
+        mode: 'phrase',
+        repo: 1,
+        branch: 'develop',
+        commit: 'abc123',
+        source_types: ['comment', 'docstring'],
+        languages: ['python', 'typescript'],
+        limit: 50,
+        offset: 20,
+      })
+
+      const expectedUrl =
+        'http://localhost:8000/api/search/text?q=test&mode=phrase&repository_id=1&branch=develop&commit_hash=abc123&source_types=comment&source_types=docstring&languages=python&languages=typescript&limit=50&offset=20'
+      expect(mockFetch).toHaveBeenCalledWith(expectedUrl)
+    })
+
+    it('should handle search errors', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ detail: 'Invalid search query' }),
+      })
+
+      await expect(searchText({ q: 'invalid[' })).rejects.toThrow('Invalid search query')
     })
   })
 })

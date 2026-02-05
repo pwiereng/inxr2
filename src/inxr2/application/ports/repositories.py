@@ -430,7 +430,11 @@ class ReferenceRepositoryPort(ABC):
 
     @abstractmethod
     async def find_references_to_symbol(
-        self, symbol_id: int, limit: int = 100, commit_id: int | None = None
+        self,
+        symbol_id: int,
+        limit: int = 100,
+        commit_id: int | None = None,
+        branch: str | None = None,
     ) -> list[Reference]:
         """Find all references TO a symbol (find usages).
 
@@ -439,6 +443,7 @@ class ReferenceRepositoryPort(ABC):
             limit: Maximum number of results
             commit_id: Filter by specific commit for time travel (optional).
                        If None, returns from latest version of each file.
+            branch: Filter by branch name (only show refs from files on this branch).
         """
         pass
 
@@ -454,6 +459,7 @@ class ReferenceRepositoryPort(ABC):
         repository_id: int,
         limit: int = 100,
         commit_id: int | None = None,
+        branch: str | None = None,
     ) -> list[Reference]:
         """Find all references matching the given text.
 
@@ -463,6 +469,7 @@ class ReferenceRepositoryPort(ABC):
             limit: Maximum number of results
             commit_id: Filter by specific commit for time travel (optional).
                        If None, returns from latest version of each file.
+            branch: Filter by branch name (only show refs from files on this branch).
         """
         pass
 

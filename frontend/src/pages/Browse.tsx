@@ -31,9 +31,16 @@ import { ReferencesPanel } from '@/components/ReferencesPanel'
 import { VersionSelector } from '@/components/VersionSelector'
 import { useBrowseState } from '@/hooks/useBrowseState'
 
-export default function Browse() {
+interface BrowseProps {
+  /** If true, renders without AppBar (for use in tabs) */
+  noAppBar?: boolean
+  /** Repository name (overrides URL param) */
+  repoName?: string
+}
+
+export default function Browse({ noAppBar = false, repoName: repoNameProp }: BrowseProps) {
   const { urlState, dataState, diffState, uiState, refsState, computedState, actions } =
-    useBrowseState()
+    useBrowseState(repoNameProp)
 
   // Destructure for convenience
   const { repoName, filePath, highlightLine, diffMode, diffCommit, diffBranch, selectedBranch } =
@@ -63,9 +70,7 @@ export default function Browse() {
 
   if (loading) {
     return (
-      <Box
-        sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}
-      >
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
         <CircularProgress />
       </Box>
     )
@@ -79,78 +84,81 @@ export default function Browse() {
     )
   }
 
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      {/* App Bar */}
-      <AppBar
-        position="static"
-        sx={{
-          bgcolor: 'background.paper',
-          borderBottom: 1,
-          borderColor: 'divider',
-        }}
-        elevation={0}
-      >
-        <Toolbar sx={{ gap: 2 }}>
-          <IconButton edge="start" color="inherit" onClick={actions.toggleDrawer}>
-            {drawerOpen ? <ChevronLeftIcon /> : <MenuIcon />}
-          </IconButton>
+  const appBarContent = !noAppBar && (
+    <AppBar
+      position="static"
+      sx={{
+        bgcolor: 'background.paper',
+        borderBottom: 1,
+        borderColor: 'divider',
+      }}
+      elevation={0}
+    >
+      <Toolbar sx={{ gap: 2 }}>
+        <IconButton edge="start" color="inherit" onClick={actions.toggleDrawer}>
+          {drawerOpen ? <ChevronLeftIcon /> : <MenuIcon />}
+        </IconButton>
 
-          {/* Repository Selector */}
-          {allRepositories.length > 1 ? (
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <Select
-                value={repoName || ''}
-                onChange={(e) => actions.navigateToRepository(e.target.value as string)}
-                displayEmpty
-                sx={{
-                  '& .MuiSelect-select': {
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    py: 0.5,
-                  },
-                }}
-              >
-                {allRepositories.map((repo) => (
-                  <MenuItem key={repo.id} value={repo.name}>
-                    <FolderIcon fontSize="small" sx={{ mr: 1 }} />
-                    {repo.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          ) : (
-            repository && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <FolderIcon fontSize="small" />
-                <Typography variant="body1">{repository.name}</Typography>
-              </Box>
-            )
-          )}
-
-          {/* Breadcrumbs */}
-          <Breadcrumbs sx={{ flex: 1 }}>
-            <Link
-              href="/"
-              underline="hover"
-              color="inherit"
-              sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+        {/* Repository Selector */}
+        {allRepositories.length > 1 ? (
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <Select
+              value={repoName || ''}
+              onChange={(e) => actions.navigateToRepository(e.target.value as string)}
+              displayEmpty
+              sx={{
+                '& .MuiSelect-select': {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  py: 0.5,
+                },
+              }}
             >
-              <HomeIcon fontSize="small" />
-              Home
-            </Link>
-            {fileContent && (
-              <Typography color="text.primary" sx={{ fontFamily: 'monospace' }}>
-                {fileContent.path.split('/').pop()}
-              </Typography>
-            )}
-          </Breadcrumbs>
+              {allRepositories.map((repo) => (
+                <MenuItem key={repo.id} value={repo.name}>
+                  <FolderIcon fontSize="small" sx={{ mr: 1 }} />
+                  {repo.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        ) : (
+          repository && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <FolderIcon fontSize="small" />
+              <Typography variant="body1">{repository.name}</Typography>
+            </Box>
+          )
+        )}
 
-          {/* Symbol Search - uncontrolled, just triggers navigation */}
-          <SymbolSearch repositoryId={repository?.id} onSymbolSelect={actions.navigateToSymbol} />
-        </Toolbar>
-      </AppBar>
+        {/* Breadcrumbs */}
+        <Breadcrumbs sx={{ flex: 1 }}>
+          <Link
+            href="/"
+            underline="hover"
+            color="inherit"
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+          >
+            <HomeIcon fontSize="small" />
+            Home
+          </Link>
+          {fileContent && (
+            <Typography color="text.primary" sx={{ fontFamily: 'monospace' }}>
+              {fileContent.path.split('/').pop()}
+            </Typography>
+          )}
+        </Breadcrumbs>
+
+        {/* Symbol Search - uncontrolled, just triggers navigation */}
+        <SymbolSearch repositoryId={repository?.id} onSymbolSelect={actions.navigateToSymbol} />
+      </Toolbar>
+    </AppBar>
+  )
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: noAppBar ? '100%' : '100vh' }}>
+      {appBarContent}
 
       {/* Main Content with Flexbox Layout */}
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -608,6 +616,13 @@ export default function Browse() {
                   isDirectDefinition={isDirectDefinition}
                   searchByName={searchByName}
                   selectedCommit={computedState.refCommit}
+                  selectedBranch={
+                    diffMode
+                      ? refPanel === 'right'
+                        ? diffBranch
+                        : selectedBranch
+                      : selectedBranch
+                  }
                   onReferenceClick={actions.handleRefPanelClick}
                   onDefinitionClick={actions.handleDefinitionClick}
                   onClose={actions.closeRefsPanel}

@@ -7,6 +7,8 @@ import { NotFound } from '@/components/NotFound'
 import Repositories from '@/pages/Repositories'
 import Files from '@/pages/Files'
 import Browse from '@/pages/Browse'
+import Search from '@/pages/Search'
+import CodeExplorer from '@/pages/CodeExplorer'
 
 /**
  * App content with routing
@@ -28,7 +30,11 @@ function AppContent() {
         <Route path="/" element={<Home />} />
         <Route path="/repositories" element={<Repositories />} />
         <Route path="/repositories/:repositoryId/files" element={<Files />} />
+        {/* New unified code explorer with tabs */}
+        <Route path="/code" element={<CodeExplorer />} />
+        {/* Legacy standalone routes (still supported for backwards compatibility) */}
         <Route path="/browse/:repoName/*" element={<Browse />} />
+        <Route path="/search" element={<Search />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </ThemeProvider>

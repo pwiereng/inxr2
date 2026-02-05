@@ -1,6 +1,7 @@
-import { Container, Typography, Box, Paper, Button } from '@mui/material'
+import { Container, Typography, Box, Paper, Button, Stack } from '@mui/material'
 import CodeIcon from '@mui/icons-material/Code'
 import FolderIcon from '@mui/icons-material/Folder'
+import SearchIcon from '@mui/icons-material/Search'
 import { Link } from 'react-router-dom'
 
 /**
@@ -56,15 +57,35 @@ export function Home() {
       </Paper>
 
       <Box sx={{ mt: 4, textAlign: 'center' }}>
-        <Button
-          component={Link}
-          to="/repositories"
-          variant="contained"
-          size="large"
-          startIcon={<FolderIcon />}
-        >
-          Browse Repositories
-        </Button>
+        <Stack direction="row" spacing={2} justifyContent="center">
+          <Button
+            component={Link}
+            to="/code?tab=browse"
+            variant="contained"
+            size="large"
+            startIcon={<CodeIcon />}
+          >
+            Browse Code
+          </Button>
+          <Button
+            component={Link}
+            to="/code?tab=search"
+            variant="outlined"
+            size="large"
+            startIcon={<SearchIcon />}
+          >
+            Search Code
+          </Button>
+          <Button
+            component={Link}
+            to="/repositories"
+            variant="outlined"
+            size="large"
+            startIcon={<FolderIcon />}
+          >
+            Manage Repositories
+          </Button>
+        </Stack>
       </Box>
     </Container>
   )

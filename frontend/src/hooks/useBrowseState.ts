@@ -173,14 +173,17 @@ export interface BrowseComputedState {
 // Hook Implementation
 // ============================================================================
 
-export function useBrowseState() {
-  const { repoName, '*': splatPath } = useParams<{ repoName: string; '*': string }>()
+export function useBrowseState(repoNameProp?: string) {
+  const { repoName: repoNameParam, '*': splatPath } = useParams<{ repoName: string; '*': string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
 
+  // Use prop if provided, otherwise use URL param
+  const repoName = repoNameProp || repoNameParam
+
   // ========== URL-derived state ==========
   const urlState = useMemo<BrowseUrlState>(() => {
-    const filePath = splatPath || null
+    const filePath = splatPath || searchParams.get('file') || null
     const highlightLine = searchParams.get('line')
       ? parseInt(searchParams.get('line')!, 10)
       : undefined
