@@ -141,6 +141,11 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             reference_repository=reference_repo
         )
 
+        # Initialize plaintext parser for non-code files
+        from inxr2.adapters.external.plaintext_parser import PlaintextParser
+
+        self._plaintext_parser = PlaintextParser()
+
     async def index_repository(
         self,
         request: IndexRepositoryRequest,
@@ -174,6 +179,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             "references_reused": 0,
             "comments_indexed": 0,
             "docstrings_indexed": 0,
+            "commit_messages_indexed": 0,
+            "non_code_files_indexed": 0,
             "errors": [],
             "db_stats": DBQueryStats(),
         }
@@ -376,6 +383,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             references_reused=stats["references_reused"],
             comments_indexed=stats.get("comments_indexed", 0),
             docstrings_indexed=stats.get("docstrings_indexed", 0),
+            commit_messages_indexed=stats.get("commit_messages_indexed", 0),
+            non_code_files_indexed=stats.get("non_code_files_indexed", 0),
             errors=stats["errors"],
             elapsed_seconds=elapsed_seconds,
             db_stats=stats["db_stats"],
@@ -421,6 +430,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             "references_reused": 0,
             "comments_indexed": 0,
             "docstrings_indexed": 0,
+            "commit_messages_indexed": 0,
+            "non_code_files_indexed": 0,
             "errors": [],
             "db_stats": DBQueryStats(),
         }
@@ -629,6 +640,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             references_reused=stats["references_reused"],
             comments_indexed=stats.get("comments_indexed", 0),
             docstrings_indexed=stats.get("docstrings_indexed", 0),
+            commit_messages_indexed=stats.get("commit_messages_indexed", 0),
+            non_code_files_indexed=stats.get("non_code_files_indexed", 0),
             errors=stats["errors"],
             elapsed_seconds=elapsed_seconds,
             db_stats=stats["db_stats"],
@@ -731,6 +744,15 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             branch=branch,
         )
         stats["db_stats"].inserts += 1
+
+        # Index commit message if text search is enabled
+        if request.enable_text_search:
+            await self._index_commit_message(
+                repository_id=repository_id,
+                commit_id=commit_id,
+                commit_data=commit_data,
+                stats=stats,
+            )
 
         repo_path = getattr(request, "repository_path", Path("."))
 
@@ -952,7 +974,26 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                         stats.get("lines_indexed", 0) + file_entity.line_count
                     )
                 else:
-                    stats["files_skipped"] += 1
+                    # Not a supported code file - check if it's a non-code file we should index
+                    if request.enable_text_search:
+                        # Try parsing as plaintext/non-code file
+                        indexed_as_plaintext = await self._index_non_code_file(
+                            content=content,
+                            file_path_str=file_path_str,
+                            repository_id=repository_id,
+                            commit_id=commit_id,
+                            file_id=file_id,
+                            stats=stats,
+                        )
+                        if indexed_as_plaintext:
+                            stats["files_processed"] += 1
+                            stats["lines_indexed"] = (
+                                stats.get("lines_indexed", 0) + file_entity.line_count
+                            )
+                        else:
+                            stats["files_skipped"] += 1
+                    else:
+                        stats["files_skipped"] += 1
 
         except Exception as e:
             stats["files_failed"] += 1
@@ -1018,6 +1059,117 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             stats["errors"].append(
                 f"Failed to extract comments from {file_path_str}: {str(e)}"
             )
+
+    async def _index_commit_message(
+        self,
+        repository_id: int,
+        commit_id: int,
+        commit_data: dict,
+        stats: dict,
+    ) -> None:
+        """Index commit message as searchable text content.
+
+        Args:
+            repository_id: Repository database ID
+            commit_id: Commit database ID
+            commit_data: Git commit information dict (must include 'message')
+            stats: Statistics dict to update
+        """
+        try:
+            commit_message = commit_data.get("message", "").strip()
+
+            # Skip empty commit messages
+            if not commit_message:
+                return
+
+            # Create TextContent entity for commit message
+            text_content = TextContent(
+                id=None,
+                repository_id=repository_id,
+                commit_id=commit_id,
+                source_type=TextSearchSourceType.COMMIT_MESSAGE.value,
+                source_file_id=None,  # Commit messages are not tied to files
+                source_line=None,  # No line number for commit messages
+                source_end_line=None,
+                content=commit_message,
+                language=None,  # Commit messages don't have a programming language
+                content_type="commit_message",
+            )
+            await self._text_content_repo.save(text_content)
+            stats["db_stats"].inserts += 1
+            stats["commit_messages_indexed"] = (
+                stats.get("commit_messages_indexed", 0) + 1
+            )
+
+        except Exception as e:
+            # Don't fail indexing if commit message indexing fails
+            stats["errors"].append(
+                f"Failed to index commit message for commit {commit_data.get('hash', 'unknown')}: {str(e)}"
+            )
+
+    async def _index_non_code_file(
+        self,
+        content: str,
+        file_path_str: str,
+        repository_id: int,
+        commit_id: int,
+        file_id: int,
+        stats: dict,
+    ) -> bool:
+        """
+        Index non-code files (markdown, YAML, etc.) as searchable text content.
+
+        Args:
+            content: File content as string
+            file_path_str: File path for type detection
+            repository_id: Repository database ID
+            commit_id: Commit database ID
+            file_id: File database ID
+            stats: Statistics dict to update
+
+        Returns:
+            True if file was indexed, False if not supported
+        """
+        try:
+            # Check if plaintext parser supports this file
+            if not self._plaintext_parser.supports_file(file_path_str):
+                return False
+
+            # Parse file into chunks
+            chunks = self._plaintext_parser.parse(content, file_path_str)
+
+            if not chunks:
+                # Empty file or no content to index
+                return False
+
+            # Save each chunk as TextContent
+            for chunk in chunks:
+                text_content = TextContent(
+                    id=None,
+                    repository_id=repository_id,
+                    commit_id=commit_id,
+                    source_type=TextSearchSourceType.FILE_CONTENT.value,
+                    source_file_id=file_id,
+                    source_line=chunk["source_line"],
+                    source_end_line=chunk.get("source_end_line"),
+                    content=chunk["content"],
+                    language=None,  # Non-code files don't have a programming language
+                    content_type=chunk["content_type"],
+                )
+                await self._text_content_repo.save(text_content)
+                stats["db_stats"].inserts += 1
+
+            # Track that we indexed this non-code file
+            stats["non_code_files_indexed"] = stats.get("non_code_files_indexed", 0) + 1
+
+            return True
+
+        except Exception as e:
+            # Don't fail indexing if non-code file parsing fails
+            stats["errors"].append(
+                f"Failed to index non-code file {file_path_str}: {str(e)}"
+            )
+            return False
 
     async def _update_index_status(
         self,

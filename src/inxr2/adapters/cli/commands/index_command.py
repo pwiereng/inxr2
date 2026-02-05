@@ -191,6 +191,7 @@ class IndexingStats:
     # Text search content counters
     comments_indexed: int = 0
     docstrings_indexed: int = 0
+    commit_messages_indexed: int = 0
     errors: list[str] = field(default_factory=list)
     # Database query statistics
     db_stats: DBQueryStats = field(default_factory=DBQueryStats)
@@ -201,8 +202,12 @@ class IndexingStats:
 
     @property
     def text_contents_total(self) -> int:
-        """Total text content items indexed (comments + docstrings)."""
-        return self.comments_indexed + self.docstrings_indexed
+        """Total text content items indexed (comments + docstrings + commit messages)."""
+        return (
+            self.comments_indexed
+            + self.docstrings_indexed
+            + self.commit_messages_indexed
+        )
 
 
 @dataclass
@@ -550,6 +555,7 @@ async def _run_full_index_async(
                 references_reused=response.references_reused,
                 comments_indexed=response.comments_indexed,
                 docstrings_indexed=response.docstrings_indexed,
+                commit_messages_indexed=response.commit_messages_indexed,
                 errors=response.errors,
                 db_stats=response.db_stats,
             )
@@ -848,6 +854,7 @@ async def _run_incremental_index_async(
                 references_reused=response.references_reused,
                 comments_indexed=response.comments_indexed,
                 docstrings_indexed=response.docstrings_indexed,
+                commit_messages_indexed=response.commit_messages_indexed,
                 errors=response.errors,
                 db_stats=response.db_stats,
             )
@@ -1110,10 +1117,13 @@ def _print_summary(
         table.add_row("", "")  # Separator
         table.add_row(
             "Text Content Indexed",
-            f"[cyan]{stats.text_contents_total:,}[/cyan] [dim](comments + docstrings)[/dim]",
+            f"[cyan]{stats.text_contents_total:,}[/cyan] [dim](comments + docstrings + commit messages)[/dim]",
         )
         table.add_row("  Comments", f"[dim]{stats.comments_indexed:,}[/dim]")
         table.add_row("  Docstrings", f"[dim]{stats.docstrings_indexed:,}[/dim]")
+        table.add_row(
+            "  Commit Messages", f"[dim]{stats.commit_messages_indexed:,}[/dim]"
+        )
 
     # Show reuse statistics if content-hash optimization was used
     if stats.files_reused > 0:

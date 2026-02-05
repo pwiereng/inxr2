@@ -125,6 +125,8 @@ class IndexRepositoryResponse:
         references_reused: References reused via content-hash optimization
         comments_indexed: Number of comments indexed for text search
         docstrings_indexed: Number of docstrings indexed for text search
+        commit_messages_indexed: Number of commit messages indexed for text search
+        non_code_files_indexed: Number of non-code files indexed for text search
         errors: List of error messages (non-fatal)
         elapsed_seconds: Time taken to complete indexing
         db_stats: Database query statistics (selects, inserts, updates)
@@ -149,6 +151,8 @@ class IndexRepositoryResponse:
     references_reused: int = 0
     comments_indexed: int = 0
     docstrings_indexed: int = 0
+    commit_messages_indexed: int = 0
+    non_code_files_indexed: int = 0
     errors: list[str] = field(default_factory=list)
     elapsed_seconds: float = 0.0
     db_stats: DBQueryStats = field(default_factory=DBQueryStats)

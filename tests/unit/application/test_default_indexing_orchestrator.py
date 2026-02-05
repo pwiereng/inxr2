@@ -1952,3 +1952,258 @@ class TestBranchIndexingOptimization:
         assert (
             response.docstrings_indexed == 0
         ), "Response should show 0 docstrings when disabled"
+
+    @pytest.mark.asyncio
+    async def test_commit_messages_indexed_when_text_search_enabled(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        text_content_repo: InMemoryTextContentRepository,
+        git_service: FakeGitService,
+    ) -> None:
+        """Test that commit messages are indexed when text search is enabled."""
+        # Arrange: Use default FakeGitService with 2 commits
+        # Commit 1: "Initial commit"
+        # Commit 2: "Add feature"
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            enable_text_search=True,
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert: Commit messages should be saved to text_content_repo
+        all_text_contents = text_content_repo.get_all()
+
+        # Filter for commit messages (source_type = "commit_message")
+        commit_messages = [
+            tc for tc in all_text_contents if tc.source_type == "commit_message"
+        ]
+
+        # Should have 2 commit messages (one per commit)
+        assert (
+            len(commit_messages) == 2
+        ), f"Should have 2 commit messages, got {len(commit_messages)}"
+
+        # Verify commit message content
+        commit_texts = {tc.content for tc in commit_messages}
+        assert "Initial commit" in commit_texts, "Should have first commit message"
+        assert "Add feature" in commit_texts, "Should have second commit message"
+
+        # Verify commit messages have correct metadata
+        for tc in commit_messages:
+            assert tc.source_type == "commit_message"
+            assert tc.source_file_id is None, "Commit messages should not have file_id"
+            assert tc.source_line is None, "Commit messages should not have line number"
+            assert tc.content_type == "commit_message"
+
+        # Verify response contains commit message count
+        assert (
+            response.commit_messages_indexed == 2
+        ), "Response should track commit message count"
+
+    @pytest.mark.asyncio
+    async def test_commit_messages_not_indexed_when_text_search_disabled(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        text_content_repo: InMemoryTextContentRepository,
+    ) -> None:
+        """Test that commit messages are NOT indexed when text search is disabled."""
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            enable_text_search=False,  # Disabled
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert: NO commit messages should be saved
+        all_text_contents = text_content_repo.get_all()
+        commit_messages = [
+            tc for tc in all_text_contents if tc.source_type == "commit_message"
+        ]
+
+        assert (
+            len(commit_messages) == 0
+        ), "Should NOT have saved commit messages when disabled"
+
+        # Verify response shows zero commit messages
+        assert (
+            response.commit_messages_indexed == 0
+        ), "Response should show 0 commit messages when disabled"
+
+    @pytest.mark.asyncio
+    async def test_non_code_files_indexed_when_text_search_enabled(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that non-code files are indexed when text search is enabled."""
+        # Arrange: Create a git service with markdown and YAML files
+        from datetime import datetime
+
+        git_service = FakeGitService(
+            commits=[
+                {
+                    "hash": "abc123",
+                    "short_hash": "abc123",
+                    "author_name": "Test User",
+                    "author_email": "test@example.com",
+                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "committer_name": "Test User",
+                    "committer_email": "test@example.com",
+                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "message": "Add docs",
+                    "parent_hashes": [],
+                }
+            ]
+        )
+        # Add non-code files to the commit
+        git_service.files_in_commit = {
+            "abc123": ["README.md", "config.yaml", "Dockerfile"]
+        }
+        git_service.changed_files_in_commit = {
+            "abc123": {
+                "added": ["README.md", "config.yaml", "Dockerfile"],
+                "modified": [],
+                "deleted": [],
+            }
+        }
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            enable_text_search=True,
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert: Non-code files should be indexed
+        all_text_contents = text_content_repo.get_all()
+
+        # Filter for file content (source_type = "file_content")
+        file_contents = [
+            tc for tc in all_text_contents if tc.source_type == "file_content"
+        ]
+
+        # Should have content from non-code files
+        assert len(file_contents) > 0, "Should have indexed non-code file content"
+
+        # Verify content has correct metadata
+        for tc in file_contents:
+            assert tc.source_type == "file_content"
+            assert tc.source_file_id is not None, "Should have file_id"
+            assert tc.source_line is not None, "Should have line number"
+            assert tc.content.strip(), "Content should not be empty"
+
+        # Verify response contains non-code file count
+        assert (
+            response.non_code_files_indexed >= 3
+        ), "Response should track non-code files indexed"
+
+    @pytest.mark.asyncio
+    async def test_non_code_files_not_indexed_when_text_search_disabled(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that non-code files are NOT indexed when text search is disabled."""
+        # Arrange: Create a git service with non-code files
+        from datetime import datetime
+
+        git_service = FakeGitService(
+            commits=[
+                {
+                    "hash": "abc123",
+                    "short_hash": "abc123",
+                    "author_name": "Test User",
+                    "author_email": "test@example.com",
+                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "committer_name": "Test User",
+                    "committer_email": "test@example.com",
+                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "message": "Add docs",
+                    "parent_hashes": [],
+                }
+            ]
+        )
+        git_service.files_in_commit = {"abc123": ["README.md", "config.yaml"]}
+        git_service.changed_files_in_commit = {
+            "abc123": {
+                "added": ["README.md", "config.yaml"],
+                "modified": [],
+                "deleted": [],
+            }
+        }
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            enable_text_search=False,  # Disabled
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert: NO file content should be saved
+        all_text_contents = text_content_repo.get_all()
+        file_contents = [
+            tc for tc in all_text_contents if tc.source_type == "file_content"
+        ]
+
+        assert (
+            len(file_contents) == 0
+        ), "Should NOT have indexed non-code files when disabled"
+
+        # Verify response shows zero non-code files
+        assert (
+            response.non_code_files_indexed == 0
+        ), "Response should show 0 non-code files when disabled"
