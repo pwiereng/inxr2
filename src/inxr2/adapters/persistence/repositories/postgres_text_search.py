@@ -113,13 +113,13 @@ class PostgresTextSearch(TextSearchPort):
             )
         else:
             # Keyword/phrase mode: order by relevance rank
+            # Add ranking to the base query and apply DISTINCT to avoid duplicates
             tsquery = self._build_tsquery(query)
             results_query = (
-                select(
-                    TextContentModel,
-                    func.ts_rank(content_tsvector, tsquery).label("rank"),
+                base_query.add_columns(
+                    func.ts_rank(content_tsvector, tsquery).label("rank")
                 )
-                .select_from(base_query.subquery())
+                .distinct()
                 .order_by(text("rank DESC"))
             )
 

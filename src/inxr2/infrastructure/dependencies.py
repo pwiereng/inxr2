@@ -31,6 +31,7 @@ from ..adapters.persistence.repositories.file_adapter import PostgresFileReposit
 from ..adapters.persistence.repositories.index_status_adapter import (
     PostgresIndexStatusRepository,
 )
+from ..adapters.persistence.repositories.postgres_text_search import PostgresTextSearch
 from ..adapters.persistence.repositories.reference_adapter import (
     PostgresReferenceRepository,
 )
@@ -38,6 +39,9 @@ from ..adapters.persistence.repositories.repository_adapter import (
     PostgresRepositoryAdapter,
 )
 from ..adapters.persistence.repositories.symbol_adapter import PostgresSymbolRepository
+from ..adapters.persistence.repositories.text_content_adapter import (
+    PostgresTextContentRepository,
+)
 from ..application.ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
@@ -45,8 +49,9 @@ from ..application.ports.repositories import (
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
+    TextContentRepositoryPort,
 )
-from ..application.ports.services import FileSystemPort
+from ..application.ports.services import FileSystemPort, TextSearchPort
 from ..application.use_cases.commits import ListCommitsUseCase
 from ..application.use_cases.files import (
     GetFileContentUseCase,
@@ -71,6 +76,7 @@ from ..application.use_cases.repositories.get_repository_tree import (
 from ..application.use_cases.repositories.list_repositories import (
     ListRepositoriesUseCase,
 )
+from ..application.use_cases.search import SearchTextUseCase
 from ..application.use_cases.symbols import (
     GetSymbolReferencesUseCase,
     SearchSymbolsUseCase,
@@ -116,6 +122,16 @@ def get_index_status_adapter(session: DbSession) -> IndexStatusRepositoryPort:
     return PostgresIndexStatusRepository(session)
 
 
+def get_text_content_adapter(session: DbSession) -> TextContentRepositoryPort:
+    """Provide text content repository adapter."""
+    return PostgresTextContentRepository(session)
+
+
+def get_text_search(session: DbSession) -> TextSearchPort:
+    """Provide text search service."""
+    return PostgresTextSearch(session)
+
+
 # Type aliases for injected adapters
 RepositoryAdapter = Annotated[RepositoryPort, Depends(get_repository_adapter)]
 CommitAdapter = Annotated[CommitRepositoryPort, Depends(get_commit_adapter)]
@@ -125,6 +141,10 @@ ReferenceAdapter = Annotated[ReferenceRepositoryPort, Depends(get_reference_adap
 IndexStatusAdapter = Annotated[
     IndexStatusRepositoryPort, Depends(get_index_status_adapter)
 ]
+TextContentAdapter = Annotated[
+    TextContentRepositoryPort, Depends(get_text_content_adapter)
+]
+TextSearchDep = Annotated[TextSearchPort, Depends(get_text_search)]
 
 
 # =============================================================================
@@ -364,3 +384,22 @@ def get_list_commits_use_case(
 ListCommitsUseCaseDep = Annotated[
     ListCommitsUseCase, Depends(get_list_commits_use_case)
 ]
+
+
+# Search use case providers
+def get_search_text_use_case(
+    text_search: TextSearchDep,
+    repository_adapter: RepositoryAdapter,
+    commit_adapter: CommitAdapter,
+    file_adapter: FileAdapter,
+) -> SearchTextUseCase:
+    """Provide SearchTextUseCase with dependencies."""
+    return SearchTextUseCase(
+        text_search=text_search,
+        repository_repo=repository_adapter,
+        commit_repo=commit_adapter,
+        file_repo=file_adapter,
+    )
+
+
+SearchTextUseCaseDep = Annotated[SearchTextUseCase, Depends(get_search_text_use_case)]

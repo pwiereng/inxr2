@@ -51,6 +51,9 @@ from inxr2.application.ports.services import (
     FileSystemPort,
     GitServicePort,
     ParserServicePort,
+    TextSearchPort,
+    TextSearchQuery,
+    TextSearchResult,
 )
 from inxr2.domain.entities import (
     Commit,
@@ -1567,6 +1570,105 @@ class StubGitService(GitServicePort):
     def clear(self) -> None:
         """Clear all predefined responses."""
         self._file_contents.clear()
+
+
+class FakeTextSearch(TextSearchPort):
+    """
+    Fake implementation of TextSearchPort for testing.
+
+    This fake performs simple in-memory text matching to simulate
+    the behavior of a real text search engine without needing PostgreSQL.
+
+    Example:
+        text_search = FakeTextSearch(text_content_repo)
+        results, total = await text_search.search(TextSearchQuery(query="TODO"))
+    """
+
+    def __init__(self, text_content_repo: InMemoryTextContentRepository):
+        """Initialize with a text content repository.
+
+        Args:
+            text_content_repo: Text content repository to search in
+        """
+        self._text_content_repo = text_content_repo
+
+    async def search(
+        self, query: TextSearchQuery
+    ) -> tuple[list[TextSearchResult], int]:
+        """Execute text search using simple in-memory matching.
+
+        Args:
+            query: Search query parameters
+
+        Returns:
+            Tuple of (results, total_count)
+
+        Raises:
+            ValueError: If query is empty
+        """
+        if not query.query or not query.query.strip():
+            raise ValueError("Search query cannot be empty")
+
+        # Get all text contents
+        all_contents = self._text_content_repo.get_all()
+
+        # Apply filters
+        filtered = []
+        for tc in all_contents:
+            # Repository filter
+            if (
+                query.repository_id is not None
+                and tc.repository_id != query.repository_id
+            ):
+                continue
+
+            # Commit filter
+            if query.commit_id is not None and tc.commit_id != query.commit_id:
+                continue
+
+            # Source type filter
+            if query.source_types and tc.source_type not in query.source_types:
+                continue
+
+            # Language filter
+            if query.languages and tc.language not in query.languages:
+                continue
+
+            # Text matching (simple case-insensitive contains for all modes)
+            # In real implementation, mode would affect PostgreSQL query
+            if query.mode == "regex":
+                # For testing, just do simple contains match
+                # Real implementation would use PostgreSQL ~ operator
+                if query.query.lower() in tc.content.lower():
+                    filtered.append(tc)
+            else:  # keyword or phrase
+                # Simple contains match for testing
+                if query.query.lower() in tc.content.lower():
+                    filtered.append(tc)
+
+        # Calculate total before pagination
+        total = len(filtered)
+
+        # Sort by a simple relevance score (count of query occurrences)
+        # In real implementation, this would be ts_rank
+        query_lower = query.query.lower()
+        scored = [(tc, tc.content.lower().count(query_lower)) for tc in filtered]
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        # Apply pagination
+        paginated = scored[query.offset : query.offset + query.limit]
+
+        # Convert to search results
+        results = [
+            TextSearchResult(
+                text_content=tc,
+                rank=float(score),
+                headline=None,  # TODO: Add simple snippet generation
+            )
+            for tc, score in paginated
+        ]
+
+        return results, total
 
 
 # ============================================================================
