@@ -22,6 +22,8 @@ interface BranchSelectorProps {
   // Optional: when provided, indicators show file status per branch
   repoName?: string
   filePath?: string
+  // Compact mode for inline use (e.g., diff right panel)
+  compact?: boolean
 }
 
 export function BranchSelector({
@@ -31,6 +33,7 @@ export function BranchSelector({
   onBranchChange,
   repoName,
   filePath,
+  compact = false,
 }: BranchSelectorProps) {
   const [branches, setBranches] = useState<BranchInfo[]>([])
   const [loading, setLoading] = useState(false)
@@ -170,19 +173,25 @@ export function BranchSelector({
         }}
         displayEmpty
         sx={{
-          minWidth: 100,
+          minWidth: compact ? 80 : 100,
           '& .MuiSelect-select': {
             display: 'flex',
             alignItems: 'center',
             gap: 0.5,
-            py: 0.5,
-            fontSize: '0.875rem',
+            py: compact ? 0.25 : 0.5,
+            px: compact ? 0.5 : undefined,
+            fontSize: compact ? '0.75rem' : '0.875rem',
           },
+          ...(compact && {
+            '& .MuiOutlinedInput-notchedOutline': {
+              borderColor: 'divider',
+            },
+          }),
         }}
         renderValue={(selected) => (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <AccountTreeIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-            <Typography variant="body2">{selected}</Typography>
+            <AccountTreeIcon fontSize="small" sx={{ color: 'text.secondary', fontSize: compact ? '0.875rem' : undefined }} />
+            <Typography variant={compact ? 'caption' : 'body2'}>{selected}</Typography>
           </Box>
         )}
       >

@@ -399,6 +399,61 @@ class InMemoryFileRepository(FileRepositoryPort):
         """List files for a commit."""
         return [f for f in self._files.values() if f.commit_id == commit_id]
 
+    async def list_at_or_before_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List the latest version of each file at or before a specific commit.
+
+        This requires commit_repo to be set for proper date-based filtering.
+        """
+        if self._commit_repo is None:
+            # No commit repo - fall back to simple commit_id matching
+            return [
+                f
+                for f in self._files.values()
+                if f.repository_id == repository_id and f.commit_id == commit_id
+            ]
+
+        # Get target commit date
+        target_commit = await self._commit_repo.find_by_id(commit_id)
+        if target_commit is None:
+            return []
+
+        # Get all commits up to and including the target
+        all_commits = self._commit_repo.get_all_commits()
+        valid_commit_ids = {
+            c.id
+            for c in all_commits
+            if c.repository_id == repository_id
+            and c.id is not None
+            and c.commit_date <= target_commit.commit_date
+        }
+
+        # Get all files from these commits, keeping only the latest per path
+        path_to_file: dict[str, File] = {}
+        for f in self._files.values():
+            if f.repository_id == repository_id and f.commit_id in valid_commit_ids:
+                # Get commit date for this file's commit
+                file_commit = await self._commit_repo.find_by_id(f.commit_id)
+                if file_commit is None:
+                    continue
+
+                existing = path_to_file.get(f.path)
+                if existing is None:
+                    path_to_file[f.path] = f
+                else:
+                    # Compare commit dates, keep the newer one
+                    existing_commit = await self._commit_repo.find_by_id(
+                        existing.commit_id
+                    )
+                    if (
+                        existing_commit is not None
+                        and file_commit.commit_date > existing_commit.commit_date
+                    ):
+                        path_to_file[f.path] = f
+
+        return list(path_to_file.values())
+
     async def find_by_content_hash(self, content_hash: str) -> list[File]:
         """Find files by content hash."""
         return [f for f in self._files.values() if f.content_hash == content_hash]
@@ -801,6 +856,11 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         """Clear all commits and branch links."""
         self._commits.clear()
         self._branch_commits.clear()
+
+    # Test helper methods
+    def get_all_commits(self) -> list[Commit]:
+        """Get all commits (for testing and internal use)."""
+        return list(self._commits.values())
 
 
 class InMemoryReferenceRepository(ReferenceRepositoryPort):

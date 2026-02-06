@@ -96,6 +96,62 @@ class PostgresFileRepository(FileRepositoryPort):
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
 
+    async def list_at_or_before_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List the latest version of each file at or before a specific commit.
+
+        This returns the full file tree state as it existed at the given commit,
+        including files that weren't modified at that commit but existed from
+        earlier commits.
+        """
+        from sqlalchemy import func
+
+        # First get the target commit's date to filter by
+        target_commit_result = await self.session.execute(
+            select(CommitModel).where(CommitModel.id == commit_id)
+        )
+        target_commit = target_commit_result.scalar_one_or_none()
+        if not target_commit:
+            return []
+
+        # Subquery to get all files at or before the target commit date,
+        # ranked by commit date (newest first) for each path
+        file_with_date = (
+            select(
+                FileModel.id,
+                FileModel.path,
+                CommitModel.commit_date,
+                func.row_number()
+                .over(
+                    partition_by=FileModel.path,
+                    order_by=(
+                        CommitModel.commit_date.desc(),
+                        CommitModel.id.desc(),
+                    ),
+                )
+                .label("rn"),
+            )
+            .join(CommitModel, FileModel.commit_id == CommitModel.id)
+            .where(
+                FileModel.repository_id == repository_id,
+                CommitModel.commit_date <= target_commit.commit_date,
+            )
+            .subquery()
+        )
+
+        # Select only the latest version of each file (rn = 1)
+        latest_file_ids = select(file_with_date.c.id).where(file_with_date.c.rn == 1)
+
+        # Get the full file models for those IDs
+        result = await self.session.execute(
+            select(FileModel)
+            .where(FileModel.id.in_(latest_file_ids))
+            .order_by(FileModel.path)
+        )
+        models = result.scalars().all()
+        return [self.mapper.to_domain(model) for model in models]
+
     async def list_by_repository(self, repository_id: int) -> list[File]:
         """List all files for a repository (latest version)."""
         # For now, get all files for the repository

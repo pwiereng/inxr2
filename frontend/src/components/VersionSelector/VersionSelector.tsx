@@ -19,7 +19,8 @@ interface VersionSelectorProps {
   selectedCommit: string | null
   onVersionChange: (commitHash: string | null) => void
   selectedBranch?: string | null
-  defaultBranch?: string | null
+  // Compact mode for inline use (e.g., diff right panel)
+  compact?: boolean
 }
 
 export function VersionSelector({
@@ -28,7 +29,7 @@ export function VersionSelector({
   selectedCommit,
   onVersionChange,
   selectedBranch,
-  defaultBranch,
+  compact = false,
 }: VersionSelectorProps) {
   const [versions, setVersions] = useState<FileVersion[]>([])
   const [loading, setLoading] = useState(true) // Start true to show loading until first fetch completes
@@ -103,14 +104,21 @@ export function VersionSelector({
         }}
         displayEmpty
         sx={{
-          minWidth: 120,
+          minWidth: compact ? 90 : 120,
           '& .MuiSelect-select': {
             display: 'flex',
             alignItems: 'center',
             gap: 0.5,
-            py: 0.5,
-            fontSize: '0.875rem',
+            py: compact ? 0.25 : 0.5,
+            px: compact ? 0.5 : undefined,
+            fontSize: compact ? '0.75rem' : '0.875rem',
+            fontFamily: 'monospace',
           },
+          ...(compact && {
+            '& .MuiOutlinedInput-notchedOutline': {
+              borderColor: 'divider',
+            },
+          }),
         }}
       >
         {/* Show selected commit if it's not in the versions list (file unchanged at that commit) */}
@@ -183,11 +191,26 @@ export function VersionSelector({
                   </Typography>
                   <Typography component="span" variant="caption" color="text.secondary">
                     {formatCommitDate(version.commit_date, allDates)}
-                    {/* Only show "(latest)" for head of default branch */}
-                    {index === 0 &&
-                      (!selectedBranch || selectedBranch === defaultBranch) &&
-                      ' (latest)'}
                   </Typography>
+                  {/* Show HEAD badge for the latest commit */}
+                  {index === 0 && (
+                    <Typography
+                      component="span"
+                      variant="caption"
+                      sx={{
+                        ml: 0.5,
+                        px: 0.5,
+                        py: 0.125,
+                        bgcolor: 'primary.main',
+                        color: 'primary.contrastText',
+                        borderRadius: 0.5,
+                        fontSize: '0.65rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      HEAD
+                    </Typography>
+                  )}
                 </Box>
               </Tooltip>
             </MenuItem>

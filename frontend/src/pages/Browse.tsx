@@ -1,11 +1,9 @@
+import { useNavigate } from 'react-router-dom'
 import {
   Box,
-  AppBar,
   Toolbar,
   Typography,
   IconButton,
-  Breadcrumbs,
-  Link,
   CircularProgress,
   Alert,
   Chip,
@@ -13,14 +11,13 @@ import {
   MenuItem,
   FormControl,
   Tooltip,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
-import HomeIcon from '@mui/icons-material/Home'
-import FolderIcon from '@mui/icons-material/Folder'
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
 import CloseIcon from '@mui/icons-material/Close'
-import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop'
 
 import { BranchSelector } from '@/components/BranchSelector'
 import { CodeViewer } from '@/components/CodeViewer'
@@ -29,28 +26,27 @@ import { FileTree } from '@/components/FileTree'
 import { SymbolSearch } from '@/components/SymbolSearch'
 import { ReferencesPanel } from '@/components/ReferencesPanel'
 import { VersionSelector } from '@/components/VersionSelector'
+import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { useBrowseState } from '@/hooks/useBrowseState'
 
 interface BrowseProps {
-  /** If true, renders without AppBar (for use in tabs) */
-  noAppBar?: boolean
   /** Repository name (overrides URL param) */
   repoName?: string
 }
 
-export default function Browse({ noAppBar = false, repoName: repoNameProp }: BrowseProps) {
+export default function Browse({ repoName: repoNameProp }: BrowseProps) {
+  const navigate = useNavigate()
   const { urlState, dataState, diffState, uiState, refsState, computedState, actions } =
     useBrowseState(repoNameProp)
 
   // Destructure for convenience
   const { repoName, filePath, highlightLine, diffMode, diffCommit, diffBranch, selectedBranch } =
     urlState
-  const { allRepositories, repository, treeNodes, fileContent, fileSymbols, fileReferences } =
-    dataState
+  const { repository, treeNodes, fileContent, fileSymbols, fileReferences } = dataState
   const { diffContent, diffSymbols, diffReferences, activePanel, treePanel, refPanel } = diffState
   const { drawerOpen, refsPanelOpen, loading, fileLoading, diffLoading, error } = uiState
   const { selectedSymbol, isDirectDefinition, searchByName } = refsState
-  const { leftCommit, rightCommit } = computedState
+  const { leftCommit, rightCommit, fileChangedInCommit } = computedState
 
   // Get short hash for display
   const getShortHash = (hash: string | null | undefined) => {
@@ -66,6 +62,39 @@ export default function Browse({ noAppBar = false, repoName: repoNameProp }: Bro
   // Get display text for right panel version in refs dropdown
   const getRightVersionDisplay = () => {
     return rightCommit ? rightCommit.substring(0, 7) : '...'
+  }
+
+  // CodeHeader handlers
+  const handleRepoChange = (newRepoName: string) => {
+    // Navigate to new repo, resetting to default branch and HEAD
+    navigate(`/browse/${newRepoName}`)
+  }
+
+  const handleBranchChange = (newBranch: string) => {
+    actions.changeBranch(newBranch)
+  }
+
+  const handleCommitChange = (newCommit: string) => {
+    actions.changeVersion(newCommit)
+  }
+
+  const handleTabChange = (tab: TabValue) => {
+    const params = new URLSearchParams()
+    if (repoName) params.set('repo', repoName)
+    if (selectedBranch) params.set('branch', selectedBranch)
+    if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
+
+    switch (tab) {
+      case 'browse':
+        // Already on browse
+        break
+      case 'search':
+        navigate(`/search?${params.toString()}`)
+        break
+      case 'history':
+        navigate(`/history?${params.toString()}`)
+        break
+    }
   }
 
   if (loading) {
@@ -84,81 +113,100 @@ export default function Browse({ noAppBar = false, repoName: repoNameProp }: Bro
     )
   }
 
-  const appBarContent = !noAppBar && (
-    <AppBar
-      position="static"
-      sx={{
-        bgcolor: 'background.paper',
-        borderBottom: 1,
-        borderColor: 'divider',
-      }}
-      elevation={0}
-    >
-      <Toolbar sx={{ gap: 2 }}>
-        <IconButton edge="start" color="inherit" onClick={actions.toggleDrawer}>
-          {drawerOpen ? <ChevronLeftIcon /> : <MenuIcon />}
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      {/* Global Header with tabs */}
+      <CodeHeader
+        currentTab="browse"
+        repoName={repoName ?? null}
+        branch={selectedBranch ?? null}
+        commit={urlState.selectedCommit ?? null}
+        onRepoChange={handleRepoChange}
+        onBranchChange={handleBranchChange}
+        onCommitChange={handleCommitChange}
+        onTabChange={handleTabChange}
+      />
+
+      {/* Browse-specific toolbar */}
+      <Toolbar
+        variant="dense"
+        sx={{
+          gap: 1,
+          minHeight: '40px !important',
+          borderBottom: 1,
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
+        }}
+      >
+        <IconButton size="small" onClick={actions.toggleDrawer}>
+          {drawerOpen ? <ChevronLeftIcon fontSize="small" /> : <MenuIcon fontSize="small" />}
         </IconButton>
 
-        {/* Repository Selector */}
-        {allRepositories.length > 1 ? (
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <Select
-              value={repoName || ''}
-              onChange={(e) => actions.navigateToRepository(e.target.value as string)}
-              displayEmpty
-              sx={{
-                '& .MuiSelect-select': {
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.5,
-                  py: 0.5,
-                },
-              }}
-            >
-              {allRepositories.map((repo) => (
-                <MenuItem key={repo.id} value={repo.name}>
-                  <FolderIcon fontSize="small" sx={{ mr: 1 }} />
-                  {repo.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        ) : (
-          repository && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <FolderIcon fontSize="small" />
-              <Typography variant="body1">{repository.name}</Typography>
-            </Box>
-          )
+        {/* Changed Only toggle - visible when viewing a specific commit */}
+        {urlState.selectedCommit && (
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={urlState.changedOnly}
+                onChange={actions.toggleChangedOnly}
+                size="small"
+              />
+            }
+            label="Changed files only"
+            sx={{
+              ml: 0,
+              '& .MuiFormControlLabel-label': {
+                fontSize: '0.875rem',
+              },
+            }}
+          />
         )}
 
-        {/* Breadcrumbs */}
-        <Breadcrumbs sx={{ flex: 1 }}>
-          <Link
-            href="/"
-            underline="hover"
-            color="inherit"
-            sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-          >
-            <HomeIcon fontSize="small" />
-            Home
-          </Link>
-          {fileContent && (
-            <Typography color="text.primary" sx={{ fontFamily: 'monospace' }}>
-              {fileContent.path.split('/').pop()}
+        {/* File path and info */}
+        {fileContent && (
+          <>
+            <Typography
+              variant="body2"
+              sx={{
+                fontFamily: 'monospace',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                minWidth: 0,
+              }}
+            >
+              {fileContent.path}
             </Typography>
-          )}
-        </Breadcrumbs>
+            {fileContent.language && <Chip label={fileContent.language} size="small" />}
+            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+              {fileContent.line_count} lines
+            </Typography>
+          </>
+        )}
 
-        {/* Symbol Search - uncontrolled, just triggers navigation */}
+        <Box sx={{ flex: 1 }} />
+
+        {/* Compare button (only when file is loaded and NOT in diff mode) */}
+        {repoName && filePath && repository && fileContent && !diffMode && (
+          <Tooltip title="Compare versions or branches">
+            <IconButton size="small" onClick={actions.enterDiffMode}>
+              <CompareArrowsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {/* Exit diff mode button (only when in diff mode) */}
+        {diffMode && (
+          <Tooltip title="Exit compare mode">
+            <IconButton size="small" onClick={actions.exitDiffMode}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {/* Symbol Search */}
         <SymbolSearch repositoryId={repository?.id} onSymbolSelect={actions.navigateToSymbol} />
       </Toolbar>
-    </AppBar>
-  )
-
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: noAppBar ? '100%' : '100vh' }}>
-      {appBarContent}
 
       {/* Main Content with Flexbox Layout */}
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -262,71 +310,6 @@ export default function Browse({ noAppBar = false, repoName: repoNameProp }: Bro
             </Box>
           ) : fileContent ? (
             <>
-              {/* File header */}
-              <Box
-                sx={{
-                  px: 2,
-                  py: 1,
-                  bgcolor: 'background.paper',
-                  borderBottom: 1,
-                  borderColor: 'divider',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1,
-                  flexShrink: 0,
-                  flexWrap: 'wrap',
-                }}
-              >
-                <Typography variant="body2" sx={{ fontFamily: 'monospace', flex: 1 }}>
-                  {fileContent.path}
-                </Typography>
-                {fileContent.language && <Chip label={fileContent.language} size="small" />}
-                <Typography variant="caption" color="text.secondary">
-                  {fileContent.line_count} lines
-                </Typography>
-                <Tooltip title="Jump to top of file">
-                  <IconButton size="small" onClick={() => actions.navigateToLine(1)}>
-                    <VerticalAlignTopIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-
-                {/* Branch + Version controls (only when NOT in diff mode) */}
-                {repoName && filePath && repository && !diffMode && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <BranchSelector
-                      repositoryId={repository.id}
-                      selectedBranch={selectedBranch}
-                      defaultBranch={repository.default_branch}
-                      onBranchChange={actions.changeBranch}
-                      repoName={repoName}
-                      filePath={filePath}
-                    />
-                    <VersionSelector
-                      repoName={repoName}
-                      filePath={filePath}
-                      selectedCommit={urlState.selectedCommit}
-                      onVersionChange={actions.changeVersion}
-                      selectedBranch={selectedBranch}
-                      defaultBranch={repository.default_branch}
-                    />
-                    <Tooltip title="Compare versions or branches">
-                      <IconButton size="small" onClick={actions.enterDiffMode}>
-                        <CompareArrowsIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                )}
-
-                {/* Exit diff mode button (only when in diff mode) */}
-                {diffMode && (
-                  <Tooltip title="Exit compare mode">
-                    <IconButton size="small" onClick={actions.exitDiffMode}>
-                      <CloseIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                )}
-              </Box>
-
               {/* Code Viewer or Diff Viewer */}
               <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
                 {diffMode && diffContent && repository ? (
@@ -334,27 +317,16 @@ export default function Browse({ noAppBar = false, repoName: repoNameProp }: Bro
                     leftContent={fileContent.content}
                     rightContent={diffContent.content}
                     leftHeader={
-                      <>
-                        <BranchSelector
-                          repositoryId={repository.id}
-                          selectedBranch={selectedBranch}
-                          defaultBranch={repository.default_branch}
-                          onBranchChange={actions.changeBranch}
-                          repoName={repoName!}
-                          filePath={filePath!}
-                        />
-                        <VersionSelector
-                          repoName={repoName!}
-                          filePath={filePath!}
-                          selectedCommit={urlState.selectedCommit}
-                          onVersionChange={actions.changeVersion}
-                          selectedBranch={selectedBranch}
-                          defaultBranch={repository.default_branch}
-                        />
-                      </>
+                      <Typography
+                        variant="caption"
+                        sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                      >
+                        {selectedBranch || repository.default_branch}@
+                        {getShortHash(urlState.selectedCommit || leftCommit)}
+                      </Typography>
                     }
                     rightHeader={
-                      <>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         <BranchSelector
                           repositoryId={repository.id}
                           selectedBranch={diffBranch}
@@ -362,6 +334,7 @@ export default function Browse({ noAppBar = false, repoName: repoNameProp }: Bro
                           onBranchChange={actions.changeDiffBranch}
                           repoName={repoName!}
                           filePath={filePath!}
+                          compact
                         />
                         <VersionSelector
                           repoName={repoName!}
@@ -369,9 +342,9 @@ export default function Browse({ noAppBar = false, repoName: repoNameProp }: Bro
                           selectedCommit={diffCommit}
                           onVersionChange={actions.changeDiffVersion}
                           selectedBranch={diffBranch || selectedBranch}
-                          defaultBranch={repository.default_branch}
+                          compact
                         />
-                      </>
+                      </Box>
                     }
                     language={fileContent.language}
                     leftSymbols={fileSymbols}
@@ -423,22 +396,13 @@ export default function Browse({ noAppBar = false, repoName: repoNameProp }: Bro
                           gap: 0.5,
                         }}
                       >
-                        <BranchSelector
-                          repositoryId={repository.id}
-                          selectedBranch={selectedBranch}
-                          defaultBranch={repository.default_branch}
-                          onBranchChange={actions.changeBranch}
-                          repoName={repoName!}
-                          filePath={filePath!}
-                        />
-                        <VersionSelector
-                          repoName={repoName!}
-                          filePath={filePath!}
-                          selectedCommit={urlState.selectedCommit}
-                          onVersionChange={actions.changeVersion}
-                          selectedBranch={selectedBranch}
-                          defaultBranch={repository.default_branch}
-                        />
+                        <Typography
+                          variant="caption"
+                          sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                        >
+                          {selectedBranch || repository.default_branch}@
+                          {getShortHash(urlState.selectedCommit || leftCommit)}
+                        </Typography>
                       </Box>
                       <Box sx={{ flex: 1, overflow: 'auto' }}>
                         <CodeViewer
@@ -481,6 +445,7 @@ export default function Browse({ noAppBar = false, repoName: repoNameProp }: Bro
                           onBranchChange={actions.changeDiffBranch}
                           repoName={repoName!}
                           filePath={filePath!}
+                          compact
                         />
                         <VersionSelector
                           repoName={repoName!}
@@ -488,7 +453,7 @@ export default function Browse({ noAppBar = false, repoName: repoNameProp }: Bro
                           selectedCommit={diffCommit}
                           onVersionChange={actions.changeDiffVersion}
                           selectedBranch={diffBranch || selectedBranch}
-                          defaultBranch={repository.default_branch}
+                          compact
                         />
                       </Box>
                       <Box
@@ -509,6 +474,33 @@ export default function Browse({ noAppBar = false, repoName: repoNameProp }: Bro
                         </Typography>
                       </Box>
                     </Box>
+                  </Box>
+                ) : urlState.changedOnly && urlState.selectedCommit && !fileChangedInCommit ? (
+                  /* File not changed in this commit while "Changed files only" is active */
+                  <Box
+                    sx={{
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      color: 'text.secondary',
+                      p: 3,
+                      textAlign: 'center',
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom>
+                      File not changed in this revision
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      {fileContent.path} was not modified in commit{' '}
+                      <code style={{ fontFamily: 'monospace' }}>
+                        {urlState.selectedCommit.substring(0, 7)}
+                      </code>
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Uncheck &quot;Changed files only&quot; to view the file at this revision.
+                    </Typography>
                   </Box>
                 ) : (
                   <Box sx={{ flex: 1, overflow: 'auto' }}>

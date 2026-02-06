@@ -217,6 +217,26 @@ class FileRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def list_at_or_before_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List the latest version of each file at or before a specific commit.
+
+        This returns the full file tree state as it existed at the given commit,
+        including files that weren't modified at that commit but existed from
+        earlier commits. For delta-indexed repositories, this aggregates across
+        all commits up to and including the target.
+
+        Args:
+            repository_id: The repository ID
+            commit_id: The target commit ID (must exist in the database)
+
+        Returns:
+            List of files representing the complete tree state at that commit
+        """
+        pass
+
+    @abstractmethod
     async def list_by_repository(self, repository_id: int) -> list[File]:
         """List all files for a repository (latest version)."""
         pass

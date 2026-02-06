@@ -92,6 +92,48 @@ describe('API functions - by-name/by-path endpoints', () => {
       )
       expect(result).toEqual(mockTree)
     })
+
+    it('should include changedOnly param when true', async () => {
+      const mockTree = {
+        repository_id: 1,
+        repository_name: 'my-repo',
+        root: [],
+        total_files: 1,
+        total_directories: 0,
+      }
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockTree,
+      })
+
+      await getRepositoryTreeByName('my-repo', 'abc123', 'main', true)
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8000/api/repositories/by-name/my-repo/tree?commit=abc123&branch=main&changed_only=true'
+      )
+    })
+
+    it('should not include changedOnly param when false', async () => {
+      const mockTree = {
+        repository_id: 1,
+        repository_name: 'my-repo',
+        root: [],
+        total_files: 1,
+        total_directories: 0,
+      }
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockTree,
+      })
+
+      await getRepositoryTreeByName('my-repo', 'abc123', undefined, false)
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8000/api/repositories/by-name/my-repo/tree?commit=abc123'
+      )
+    })
   })
 
   describe('getFileContentByPath', () => {

@@ -111,7 +111,9 @@ class TestSearchTextUseCase:
         )
 
     @pytest.mark.asyncio
-    async def test_search_finds_matching_text(self, use_case: SearchTextUseCase) -> None:
+    async def test_search_finds_matching_text(
+        self, use_case: SearchTextUseCase
+    ) -> None:
         """Test basic text search finds matching content."""
         request = SearchTextRequest(query="TODO")
         response = await use_case.execute(request)

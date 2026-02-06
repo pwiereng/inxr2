@@ -222,11 +222,13 @@ export async function getRepositoryByName(name: string): Promise<Repository> {
 export async function getRepositoryTreeByName(
   name: string,
   commit?: string,
-  branch?: string
+  branch?: string,
+  changedOnly?: boolean
 ): Promise<TreeResponse> {
   const params = new URLSearchParams()
   if (commit) params.set('commit', commit)
   if (branch) params.set('branch', branch)
+  if (changedOnly) params.set('changed_only', 'true')
   const query = params.toString()
   return fetchApi<TreeResponse>(
     `/repositories/by-name/${encodeURIComponent(name)}/tree${query ? `?${query}` : ''}`

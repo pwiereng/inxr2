@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
-  AppBar,
-  Toolbar,
   Typography,
   TextField,
   Select,
@@ -23,12 +21,10 @@ import {
   Checkbox,
   FormControlLabel,
   FormGroup,
-  Breadcrumbs,
-  Link,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
-import HomeIcon from '@mui/icons-material/Home'
 
+import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import {
   searchText,
   getRepositories,
@@ -61,26 +57,18 @@ const LANGUAGES = [
 
 const RESULTS_PER_PAGE = 20
 
-interface SearchProps {
-  /** If true, renders without AppBar (for use in tabs) */
-  noAppBar?: boolean
-  /** Repository name to filter by (for tab mode) */
-  repoName?: string
-}
-
-export default function Search({ noAppBar = false, repoName }: SearchProps) {
+export default function Search() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // State from URL
-  const query = searchParams.get('q') || ''
+  // State from URL for CodeHeader
+  const repoNameParam = searchParams.get('repo') || null
+  const branchParam = searchParams.get('branch') || null
+  const commitParam = searchParams.get('commit') || null
+
+  // State from URL for search
+  const query = searchParams.get('query') || ''
   const mode = (searchParams.get('mode') as 'keyword' | 'phrase' | 'regex') || 'keyword'
-  const branch = searchParams.get('branch') || undefined
-  // In standalone mode, repo param is an ID; in tab mode, it comes from repoName prop
-  const repoParam = searchParams.get('repo')
-  const parsedRepo = noAppBar ? undefined : (repoParam ? parseInt(repoParam) : undefined)
-  // Handle case where repo param is a name (not a number) - just ignore it for filtering
-  const standaloneSelectedRepo = Number.isNaN(parsedRepo) ? undefined : parsedRepo
   const page = parseInt(searchParams.get('page') || '1')
   const offset = (page - 1) * RESULTS_PER_PAGE
 
@@ -102,9 +90,10 @@ export default function Search({ noAppBar = false, repoName }: SearchProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // In tab mode, look up repo ID from repoName prop; in standalone mode, use URL param
-  const repoFromName = repoName ? repositories.find((r) => r.name === repoName)?.id : undefined
-  const validSelectedRepo = noAppBar ? repoFromName : standaloneSelectedRepo
+  // Look up repo ID from repoName param
+  const selectedRepoId = repoNameParam
+    ? repositories.find((r) => r.name === repoNameParam)?.id
+    : undefined
 
   // Debounce search - update URL after delay
   useEffect(() => {
@@ -112,7 +101,7 @@ export default function Search({ noAppBar = false, repoName }: SearchProps) {
 
     const timer = setTimeout(() => {
       const newParams = new URLSearchParams(searchParams)
-      newParams.set('q', inputQuery)
+      newParams.set('query', inputQuery)
       newParams.delete('page') // Reset to page 1 on new search
       setSearchParams(newParams)
     }, 300)
@@ -149,8 +138,8 @@ export default function Search({ noAppBar = false, repoName }: SearchProps) {
         const params: TextSearchParams = {
           q: query,
           mode,
-          repo: validSelectedRepo,
-          branch,
+          repo: selectedRepoId,
+          branch: branchParam || undefined,
           source_types: selectedSourceTypes.length > 0 ? selectedSourceTypes : undefined,
           languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
           limit: RESULTS_PER_PAGE,
@@ -172,23 +161,54 @@ export default function Search({ noAppBar = false, repoName }: SearchProps) {
 
     performSearch()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, mode, validSelectedRepo, repoName, branch, sourceTypesKey, languagesKey, offset])
+  }, [query, mode, selectedRepoId, repoNameParam, branchParam, sourceTypesKey, languagesKey, offset])
 
-  // Handlers
-  const handleModeChange = (newMode: string) => {
+  // CodeHeader handlers
+  const handleHeaderRepoChange = (newRepoName: string) => {
+    // Navigate to new repo, resetting to default branch and HEAD
+    navigate(`/search?repo=${newRepoName}`)
+  }
+
+  const handleHeaderBranchChange = (newBranch: string) => {
     const newParams = new URLSearchParams(searchParams)
-    newParams.set('mode', newMode)
-    newParams.delete('page')
+    newParams.set('branch', newBranch)
+    newParams.delete('commit') // Reset to HEAD when branch changes
     setSearchParams(newParams)
   }
 
-  const handleRepoChange = (repoId: string) => {
+  const handleHeaderCommitChange = (newCommit: string) => {
     const newParams = new URLSearchParams(searchParams)
-    if (repoId) {
-      newParams.set('repo', repoId)
-    } else {
-      newParams.delete('repo')
+    newParams.set('commit', newCommit)
+    setSearchParams(newParams)
+  }
+
+  const handleTabChange = (tab: TabValue) => {
+    const params = new URLSearchParams()
+    if (repoNameParam) params.set('repo', repoNameParam)
+    if (branchParam) params.set('branch', branchParam)
+    if (commitParam) params.set('commit', commitParam)
+
+    switch (tab) {
+      case 'browse':
+        if (repoNameParam) {
+          navigate(`/browse/${repoNameParam}?${params.toString()}`)
+        } else {
+          navigate('/')
+        }
+        break
+      case 'search':
+        // Already on search
+        break
+      case 'history':
+        navigate(`/history?${params.toString()}`)
+        break
     }
+  }
+
+  // Search filter handlers
+  const handleModeChange = (newMode: string) => {
+    const newParams = new URLSearchParams(searchParams)
+    newParams.set('mode', newMode)
     newParams.delete('page')
     setSearchParams(newParams)
   }
@@ -227,46 +247,28 @@ export default function Search({ noAppBar = false, repoName }: SearchProps) {
   }
 
   const handleResultClick = (result: TextSearchResult) => {
-    // Navigate to Browse tab with the result's location
-    const repoName = result.repository_name
+    // Navigate to Browse with the result's location
+    const resultRepoName = result.repository_name
     const filePath = result.file_path
 
-    if (!filePath) {
-      // Commit message - navigate to repository
-      if (noAppBar) {
-        // In tab mode, switch to browse tab
-        const params = new URLSearchParams()
-        params.set('tab', 'browse')
-        params.set('repo', repoName)
-        navigate(`?${params}`)
-      } else {
-        navigate(`/browse/${encodeURIComponent(repoName)}`)
-      }
-      return
-    }
-
-    // Build URL with file, line, and commit
+    // Build URL params
     const params = new URLSearchParams()
-    if (noAppBar) {
-      params.set('tab', 'browse')
-      params.set('repo', repoName)
-    }
-    params.set('file', filePath)
-    if (result.source_line) {
-      params.set('line', result.source_line.toString())
+    if (result.branch) {
+      params.set('branch', result.branch)
     }
     if (result.commit_hash) {
       params.set('commit', result.commit_hash)
     }
-    if (result.branch) {
-      params.set('branch', result.branch)
+    if (result.source_line) {
+      params.set('line', result.source_line.toString())
     }
 
-    if (noAppBar) {
-      // In tab mode, stay on same page but switch to browse tab
-      navigate(`?${params}`)
+    if (filePath) {
+      // Navigate to specific file
+      navigate(`/browse/${encodeURIComponent(resultRepoName)}/${filePath}?${params.toString()}`)
     } else {
-      navigate(`/browse/${encodeURIComponent(repoName)}?${params}`)
+      // Commit message - navigate to repository root
+      navigate(`/browse/${encodeURIComponent(resultRepoName)}?${params.toString()}`)
     }
   }
 
@@ -299,40 +301,21 @@ export default function Search({ noAppBar = false, repoName }: SearchProps) {
   }
 
   const totalPages = Math.ceil(totalResults / RESULTS_PER_PAGE)
-  const hasFilters =
-    validSelectedRepo || branch || selectedSourceTypes.length > 0 || selectedLanguages.length > 0
-
-  const appBarContent = !noAppBar && (
-    <AppBar
-      position="static"
-      sx={{
-        bgcolor: 'background.paper',
-        borderBottom: 1,
-        borderColor: 'divider',
-      }}
-      elevation={0}
-    >
-      <Toolbar sx={{ gap: 2 }}>
-        <SearchIcon color="primary" />
-        <Breadcrumbs sx={{ flex: 1 }}>
-          <Link
-            href="/"
-            underline="hover"
-            color="inherit"
-            sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-          >
-            <HomeIcon fontSize="small" />
-            Home
-          </Link>
-          <Typography color="text.primary">Search</Typography>
-        </Breadcrumbs>
-      </Toolbar>
-    </AppBar>
-  )
+  const hasFilters = selectedSourceTypes.length > 0 || selectedLanguages.length > 0
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: noAppBar ? '100%' : '100vh' }}>
-      {appBarContent}
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      {/* Global Header with tabs */}
+      <CodeHeader
+        currentTab="search"
+        repoName={repoNameParam}
+        branch={branchParam}
+        commit={commitParam}
+        onRepoChange={handleHeaderRepoChange}
+        onBranchChange={handleHeaderBranchChange}
+        onCommitChange={handleHeaderCommitChange}
+        onTabChange={handleTabChange}
+      />
 
       {/* Main Content */}
       <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
@@ -367,25 +350,6 @@ export default function Search({ noAppBar = false, repoName }: SearchProps) {
 
             {/* Filters */}
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              {/* Only show repo selector in standalone mode - CodeExplorer provides its own */}
-              {!noAppBar && repositories.length > 1 && (
-                <FormControl sx={{ minWidth: 200 }}>
-                  <InputLabel>Repository</InputLabel>
-                  <Select
-                    value={validSelectedRepo?.toString() || ''}
-                    label="Repository"
-                    onChange={(e) => handleRepoChange(e.target.value)}
-                  >
-                    <MenuItem value="">All Repositories</MenuItem>
-                    {repositories.map((repo) => (
-                      <MenuItem key={repo.id} value={repo.id.toString()}>
-                        {repo.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
-
               <FormControl sx={{ minWidth: 150 }}>
                 <InputLabel>Language</InputLabel>
                 <Select

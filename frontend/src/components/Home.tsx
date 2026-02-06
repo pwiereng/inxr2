@@ -1,92 +1,138 @@
-import { Container, Typography, Box, Paper, Button, Stack } from '@mui/material'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  Container,
+  Typography,
+  Box,
+  Paper,
+  Grid,
+  CircularProgress,
+  Card,
+  CardContent,
+  CardActionArea,
+} from '@mui/material'
 import CodeIcon from '@mui/icons-material/Code'
 import FolderIcon from '@mui/icons-material/Folder'
-import SearchIcon from '@mui/icons-material/Search'
-import { Link } from 'react-router-dom'
+import { getRepositories, type Repository } from '@/lib/api'
 
 /**
  * Home page component
- * Placeholder for Phase 1.2, will be replaced with actual repository browser in Phase 5
+ * Displays repository cards that navigate to Browse view
  */
 export function Home() {
+  const navigate = useNavigate()
+  const [repositories, setRepositories] = useState<Repository[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const loadRepositories = async () => {
+      try {
+        const repos = await getRepositories()
+        setRepositories(repos)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load repositories')
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadRepositories()
+  }, [])
+
+  const handleRepoClick = (repo: Repository) => {
+    // Navigate to browse with default branch
+    const params = new URLSearchParams()
+    if (repo.default_branch) {
+      params.set('branch', repo.default_branch)
+    }
+    navigate(`/browse/${repo.name}?${params.toString()}`)
+  }
+
   return (
-    <Container maxWidth="md">
-      <Box sx={{ mt: 8, mb: 4, textAlign: 'center' }}>
-        <CodeIcon sx={{ fontSize: 80, color: 'primary.main', mb: 2 }} />
-        <Typography variant="h2" component="h1" gutterBottom>
+    <Container maxWidth="lg">
+      <Box sx={{ mt: 6, mb: 4, textAlign: 'center' }}>
+        <CodeIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
+        <Typography variant="h3" component="h1" gutterBottom>
           INXR2
         </Typography>
-        <Typography variant="h5" component="h2" color="text.secondary" gutterBottom>
+        <Typography variant="h6" component="h2" color="text.secondary" gutterBottom>
           Cross-Reference Code Browser
         </Typography>
       </Box>
 
-      <Paper elevation={2} sx={{ p: 4, mt: 4 }}>
-        <Typography variant="h6" gutterBottom>
-          Phase 1.2 - Project Setup Complete
-        </Typography>
-        <Typography variant="body1" paragraph>
-          The React frontend foundation is now in place with:
-        </Typography>
-        <Box component="ul" sx={{ pl: 2 }}>
-          <Typography component="li" variant="body2">
-            TypeScript with strict mode
-          </Typography>
-          <Typography component="li" variant="body2">
-            React Router for navigation
-          </Typography>
-          <Typography component="li" variant="body2">
-            Material-UI component library
-          </Typography>
-          <Typography component="li" variant="body2">
-            API client with dependency injection
-          </Typography>
-          <Typography component="li" variant="body2">
-            Context API for app-wide state
-          </Typography>
-          <Typography component="li" variant="body2">
-            Vitest + React Testing Library
-          </Typography>
-          <Typography component="li" variant="body2">
-            Vite proxy to FastAPI backend
-          </Typography>
-        </Box>
-        <Typography variant="body2" sx={{ mt: 2, fontStyle: 'italic' }}>
-          Phase 5 will implement the full UI with repository browser, code viewer, and search.
-        </Typography>
-      </Paper>
+      <Typography variant="h5" gutterBottom sx={{ mt: 4, mb: 2 }}>
+        Repositories
+      </Typography>
 
-      <Box sx={{ mt: 4, textAlign: 'center' }}>
-        <Stack direction="row" spacing={2} justifyContent="center">
-          <Button
-            component={Link}
-            to="/code?tab=browse"
-            variant="contained"
-            size="large"
-            startIcon={<CodeIcon />}
-          >
-            Browse Code
-          </Button>
-          <Button
-            component={Link}
-            to="/code?tab=search"
-            variant="outlined"
-            size="large"
-            startIcon={<SearchIcon />}
-          >
-            Search Code
-          </Button>
-          <Button
-            component={Link}
-            to="/repositories"
-            variant="outlined"
-            size="large"
-            startIcon={<FolderIcon />}
-          >
-            Manage Repositories
-          </Button>
-        </Stack>
-      </Box>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : error ? (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography color="error">{error}</Typography>
+        </Paper>
+      ) : repositories.length === 0 ? (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography color="text.secondary">
+            No repositories indexed yet. Use the CLI to index a repository.
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2, fontFamily: 'monospace' }}>
+            inxr2 index full --config config.yaml
+          </Typography>
+        </Paper>
+      ) : (
+        <Grid container spacing={3}>
+          {repositories.map((repo) => (
+            <Grid item xs={12} sm={6} md={4} key={repo.id}>
+              <Card
+                sx={{
+                  height: '100%',
+                  '&:hover': {
+                    boxShadow: 6,
+                  },
+                }}
+              >
+                <CardActionArea
+                  onClick={() => handleRepoClick(repo)}
+                  sx={{ height: '100%', display: 'flex', alignItems: 'flex-start' }}
+                >
+                  <CardContent sx={{ width: '100%' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <FolderIcon color="primary" />
+                      <Typography variant="h6" component="div">
+                        {repo.name}
+                      </Typography>
+                    </Box>
+                    {repo.description && (
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                        }}
+                      >
+                        {repo.description}
+                      </Typography>
+                    )}
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', mt: 1 }}
+                    >
+                      Default branch: {repo.default_branch || 'main'}
+                    </Typography>
+                  </CardContent>
+                </CardActionArea>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
     </Container>
   )
 }

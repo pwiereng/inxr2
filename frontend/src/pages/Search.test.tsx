@@ -10,11 +10,15 @@ vi.mock('@/lib/api', async () => {
     ...actual,
     searchText: vi.fn(),
     getRepositories: vi.fn(),
+    getRepositoryBranches: vi.fn(),
+    getCommits: vi.fn(),
   }
 })
 
 const mockSearchText = vi.mocked(api.searchText)
 const mockGetRepositories = vi.mocked(api.getRepositories)
+const mockGetRepositoryBranches = vi.mocked(api.getRepositoryBranches)
+const mockGetCommits = vi.mocked(api.getCommits)
 
 describe('Search', () => {
   beforeEach(() => {
@@ -33,6 +37,34 @@ describe('Search', () => {
       },
     ])
 
+    mockGetRepositoryBranches.mockResolvedValue({
+      branches: [
+        {
+          name: 'main',
+          commit_count: 10,
+          last_indexed_commit: 'abc123',
+          oldest_indexed_commit: 'abc123',
+          last_indexed_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    })
+
+    mockGetCommits.mockResolvedValue({
+      commits: [
+        {
+          id: 1,
+          hash: 'abc123',
+          short_hash: 'abc123',
+          message: 'Test commit',
+          author_name: 'Test',
+          author_email: 'test@test.com',
+          commit_date: '2024-01-01T00:00:00Z',
+          branch: 'main',
+        },
+      ],
+      total: 1,
+    })
+
     mockSearchText.mockResolvedValue({
       results: [],
       total: 0,
@@ -47,15 +79,25 @@ describe('Search', () => {
     render(<Search />)
 
     await waitFor(() => {
-      expect(screen.getByText('Search')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Enter search query...')).toBeInTheDocument()
     })
 
-    expect(screen.getByPlaceholderText('Enter search query...')).toBeInTheDocument()
     expect(
       screen.getByText(
         /Enter a search query to find text in comments, docstrings, commit messages, and files/i
       )
     ).toBeInTheDocument()
+  })
+
+  it('should render CodeHeader with Search tab active', async () => {
+    render(<Search />)
+
+    await waitFor(() => {
+      // Should have tabs
+      expect(screen.getByRole('tab', { name: /Browse/i })).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: /Search/i })).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: /History/i })).toBeInTheDocument()
+    })
   })
 
   it('should call getRepositories on mount', async () => {
@@ -69,14 +111,9 @@ describe('Search', () => {
   it('should display API error message', async () => {
     mockSearchText.mockRejectedValue(new Error('API error'))
 
+    // Render with query param to trigger search
+    window.history.pushState({}, '', '?query=test')
     render(<Search />)
-
-    // Manually set the URL search params to trigger a search
-    window.history.pushState({}, '', '?q=test')
-
-    // Re-render with the new URL
-    const { rerender } = render(<Search />)
-    rerender(<Search />)
 
     await waitFor(
       () => {
@@ -86,7 +123,7 @@ describe('Search', () => {
     )
   })
 
-  it('should filter by repository when repoName prop is provided', async () => {
+  it('should filter by repository when repo param is in URL', async () => {
     mockGetRepositories.mockResolvedValue([
       {
         id: 1,
@@ -134,9 +171,9 @@ describe('Search', () => {
       offset: 0,
     })
 
-    // Render with noAppBar and repoName to simulate tab mode
-    window.history.pushState({}, '', '?q=test')
-    render(<Search noAppBar repoName="test-repo" />)
+    // Render with repo and query params in URL
+    window.history.pushState({}, '', '?repo=test-repo&query=test')
+    render(<Search />)
 
     await waitFor(() => {
       expect(mockSearchText).toHaveBeenCalledWith(
@@ -145,36 +182,6 @@ describe('Search', () => {
           repo: 1, // Should use the ID from the repo with name 'test-repo'
         })
       )
-    })
-  })
-
-  it('should hide repository selector when noAppBar is true', async () => {
-    mockGetRepositories.mockResolvedValue([
-      {
-        id: 1,
-        name: 'test-repo',
-        url: 'https://github.com/test/repo',
-        description: 'Test repository',
-        default_branch: 'main',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      },
-      {
-        id: 2,
-        name: 'other-repo',
-        url: 'https://github.com/test/other',
-        description: 'Other repository',
-        default_branch: 'main',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      },
-    ])
-
-    render(<Search noAppBar repoName="test-repo" />)
-
-    await waitFor(() => {
-      // The repository selector should not be present in noAppBar mode
-      expect(screen.queryByLabelText('Repository')).not.toBeInTheDocument()
     })
   })
 })
