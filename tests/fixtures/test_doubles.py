@@ -1004,6 +1004,16 @@ class InMemoryCommitRepository(CommitRepositoryPort):
                 branches.append(branch)
         return branches
 
+    async def get_branches_for_commits(
+        self, commit_ids: list[int]
+    ) -> dict[int, list[str]]:
+        """Get branches for multiple commits in a single query."""
+        result: dict[int, list[str]] = {cid: [] for cid in commit_ids}
+        for (_repo_id, branch, cid), _ in self._branch_commits.items():
+            if cid in result:
+                result[cid].append(branch)
+        return result
+
     async def list_by_repository(
         self, repository_id: int, branch: str | None = None, limit: int = 100
     ) -> list[Commit]:

@@ -195,6 +195,28 @@ class PostgresCommitRepository(CommitRepositoryPort):
         )
         return list(result.scalars().all())
 
+    async def get_branches_for_commits(
+        self, commit_ids: list[int]
+    ) -> dict[int, list[str]]:
+        """Get branches for multiple commits in a single query."""
+        if not commit_ids:
+            return {}
+
+        result = await self.session.execute(
+            select(BranchCommitModel.commit_id, BranchCommitModel.branch).where(
+                BranchCommitModel.commit_id.in_(commit_ids)
+            )
+        )
+        rows = result.all()
+
+        # Group branches by commit_id
+        branches_by_commit: dict[int, list[str]] = {cid: [] for cid in commit_ids}
+        for commit_id, branch in rows:
+            if commit_id in branches_by_commit:
+                branches_by_commit[commit_id].append(branch)
+
+        return branches_by_commit
+
     async def list_by_repository(
         self, repository_id: int, branch: str | None = None, limit: int = 100
     ) -> list[Commit]:

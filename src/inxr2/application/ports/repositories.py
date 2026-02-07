@@ -168,6 +168,21 @@ class CommitRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def get_branches_for_commits(
+        self, commit_ids: list[int]
+    ) -> dict[int, list[str]]:
+        """Get branches for multiple commits in a single query.
+
+        Args:
+            commit_ids: List of commit database IDs
+
+        Returns:
+            Dict mapping commit_id to list of branch names.
+            Commits with no branches will have empty lists.
+        """
+        pass
+
+    @abstractmethod
     async def list_by_repository(
         self, repository_id: int, branch: str | None = None, limit: int = 100
     ) -> list[Commit]:
