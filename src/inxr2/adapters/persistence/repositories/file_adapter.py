@@ -348,6 +348,81 @@ class PostgresFileRepository(FileRepositoryPort):
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
 
+    async def list_changed_at_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List only files that actually changed at a specific commit.
+
+        Returns files where either:
+        - The file is new (no prior version exists), OR
+        - The file's content_hash differs from the most recent prior version
+
+        This is used for the "changed files only" tree view.
+        """
+        # Get target commit's date for comparison
+        target_commit_result = await self.session.execute(
+            select(CommitModel).where(CommitModel.id == commit_id)
+        )
+        target_commit = target_commit_result.scalar_one_or_none()
+        if not target_commit:
+            return []
+
+        # Get all files at the target commit
+        files_at_commit_result = await self.session.execute(
+            select(FileModel).where(
+                FileModel.repository_id == repository_id,
+                FileModel.commit_id == commit_id,
+            )
+        )
+        files_at_commit = list(files_at_commit_result.scalars().all())
+
+        if not files_at_commit:
+            return []
+
+        # For each file, check if there's a prior version with the same content_hash
+        # Build a subquery to get the most recent prior version of each path
+        prior_files = (
+            select(
+                FileModel.path,
+                FileModel.content_hash,
+                func.row_number()
+                .over(
+                    partition_by=FileModel.path,
+                    order_by=(
+                        CommitModel.commit_date.desc(),
+                        CommitModel.id.desc(),
+                    ),
+                )
+                .label("rn"),
+            )
+            .join(CommitModel, FileModel.commit_id == CommitModel.id)
+            .where(
+                FileModel.repository_id == repository_id,
+                CommitModel.commit_date < target_commit.commit_date,
+            )
+            .subquery()
+        )
+
+        # Get the most recent prior content_hash for each path
+        prior_hashes_result = await self.session.execute(
+            select(prior_files.c.path, prior_files.c.content_hash).where(
+                prior_files.c.rn == 1
+            )
+        )
+        prior_hashes = {row.path: row.content_hash for row in prior_hashes_result.all()}
+
+        # Filter to only files that are new or changed
+        changed_files = []
+        for file in files_at_commit:
+            prior_hash = prior_hashes.get(file.path)
+            # File is changed if:
+            # - No prior version exists (new file), OR
+            # - Content hash differs from prior version
+            if prior_hash is None or prior_hash != file.content_hash:
+                changed_files.append(self.mapper.to_domain(file))
+
+        return changed_files
+
     async def delete_by_repository(self, repository_id: int) -> int:
         """Delete all files for a repository. Returns count deleted."""
         result = await self.session.execute(

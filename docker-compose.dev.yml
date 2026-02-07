@@ -50,6 +50,19 @@ services:
     tty: true
     command: /bin/bash
 
+  # Playwright browser server for interactive testing
+  playwright:
+    build:
+      context: ./qa-agent
+      dockerfile: Dockerfile
+    container_name: inxr2-playwright
+    ports:
+      - "9222:9222"
+    networks:
+      - inxr2-network
+    profiles:
+      - qa  # Only start with --profile qa
+
 networks:
   inxr2-network:
     driver: bridge

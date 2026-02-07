@@ -14,6 +14,7 @@ export default defineConfig({
     host: '0.0.0.0', // Listen on all interfaces for Docker
     port: 5173,
     strictPort: true,
+    allowedHosts: ['dev', 'localhost', 'inxr2-dev', 'host.docker.internal'], // Allow Docker access
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
