@@ -34,12 +34,14 @@ The most common use case is exploratory testing during development.
 
 ```bash
 # From project root, start the playwright container
-docker-compose -f docker-compose.dev.yml up -d inxr2-playwright
+docker-compose -f docker-compose.dev.yml --profile qa up -d inxr2-playwright
 
 # Verify it's running
 curl http://localhost:9222/health
 # {"status":"ok","browser":true}
 ```
+
+**Note:** The playwright service uses a profile, so `--profile qa` is required.
 
 ### 2. Use curl to Control the Browser
 
@@ -171,6 +173,14 @@ docker-compose -f docker-compose.dev.yml up -d inxr2-playwright
 The frontend dev server isn't running. In `inxr2-dev`:
 ```bash
 cd frontend && npm run dev
+```
+
+### URLs not working from inside container
+
+The playwright container can't reach `localhost` on the host machine. Use `host.docker.internal` instead:
+```bash
+# Instead of localhost:5173, use:
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/inxr2"
 ```
 
 ### Element not found errors

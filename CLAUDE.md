@@ -90,8 +90,8 @@ For interactive UI testing, use the **`inxr2-playwright`** container. This is a 
 ### Starting the QA Agent
 
 ```bash
-# Start the playwright container (if not already running)
-docker-compose -f docker-compose.dev.yml up -d inxr2-playwright
+# Start the playwright container (requires --profile qa)
+docker-compose -f docker-compose.dev.yml --profile qa up -d inxr2-playwright
 
 # Verify it's running
 curl http://localhost:9222/health
