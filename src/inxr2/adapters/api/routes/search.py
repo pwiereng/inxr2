@@ -194,8 +194,15 @@ async def search_files(
 
     Returns:
     - files: List of matching files with metadata
-    - total_count: Total number of matches
+    - total_count: Number of files returned (at most ``limit``)
     """
+    # Validate: branch/commit_hash require repository to be specified
+    if (branch or commit_hash) and not repository:
+        raise HTTPException(
+            status_code=400,
+            detail="repository parameter is required when using branch or commit_hash",
+        )
+
     # Resolve repository ID from name if provided
     repository_id: int | None = None
     if repository:
@@ -252,19 +259,26 @@ async def search_files(
             commit_map[cid] = commit.commit_hash.value
 
     for file in files:
+        # Validate required fields - these should always be set for persisted files
+        if file.id is None or file.repository_id is None or file.commit_id is None:
+            raise HTTPException(
+                status_code=500,
+                detail="File search returned incomplete data; this indicates a data integrity issue.",
+            )
+
         # Extract filename from path
         filename = file.path.rsplit("/", 1)[-1] if "/" in file.path else file.path
 
         results.append(
             FileSearchResultResponse(
-                id=file.id or 0,
+                id=file.id,
                 path=file.path,
                 name=filename,
                 language=file.language,
-                repository_id=file.repository_id or 0,
-                repository_name=repo_map.get(file.repository_id or 0, ""),
-                commit_id=file.commit_id or 0,
-                commit_hash=commit_map.get(file.commit_id or 0, ""),
+                repository_id=file.repository_id,
+                repository_name=repo_map.get(file.repository_id, ""),
+                commit_id=file.commit_id,
+                commit_hash=commit_map.get(file.commit_id, ""),
             )
         )
 

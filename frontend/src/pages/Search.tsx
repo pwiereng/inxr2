@@ -314,8 +314,14 @@ export default function Search() {
       params.set('commit', file.commit_hash)
     }
 
+    // Encode each path segment to handle special characters
+    const encodedPath = file.path
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')
+
     navigate(
-      `/browse/${encodeURIComponent(file.repository_name)}/${file.path}?${params.toString()}`
+      `/browse/${encodeURIComponent(file.repository_name)}/${encodedPath}?${params.toString()}`
     )
   }
 
