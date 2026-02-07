@@ -709,6 +709,7 @@ class InMemoryFileRepository(FileRepositoryPort):
         """Search files by name/path pattern.
 
         Uses case-insensitive pattern matching on file paths.
+        When commit_id is None, deduplicates by (repository_id, path).
         """
         query_lower = query.lower()
         results = []
@@ -729,6 +730,19 @@ class InMemoryFileRepository(FileRepositoryPort):
                 continue
 
             results.append(file)
+
+        # When no commit_id, deduplicate by (repository_id, path) keeping latest
+        if commit_id is None:
+            latest_by_repo_path: dict[tuple[int | None, str], File] = {}
+            for f in results:
+                key = (f.repository_id, f.path)
+                existing = latest_by_repo_path.get(key)
+                # Keep the one with higher ID (more recently indexed)
+                if existing is None or (
+                    f.id is not None and (existing.id is None or f.id > existing.id)
+                ):
+                    latest_by_repo_path[key] = f
+            results = list(latest_by_repo_path.values())
 
         # Sort by relevance (exact filename match first, then prefix, then contains)
         def relevance_key(f: File) -> tuple[int, str]:

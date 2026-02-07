@@ -517,14 +517,16 @@ class PostgresFileRepository(FileRepositoryPort):
         if language is not None:
             query_stmt = query_stmt.where(FileModel.language == language)
 
-        # If no commit_id specified, we need to deduplicate by path (latest version only)
+        # If no commit_id specified, we need to deduplicate by (repository_id, path)
+        # to get latest version only, keeping one file per repo/path combination
         if commit_id is None:
-            # Use a subquery to get the latest version of each path
-            # Group by path, taking the max file ID (most recently indexed)
+            # Use a subquery to get the latest version of each (repository_id, path)
+            # Group by both to handle cross-repo search correctly
             latest_select = select(
+                FileModel.repository_id,
                 FileModel.path,
                 func.max(FileModel.id).label("max_id"),
-            ).group_by(FileModel.path)
+            ).group_by(FileModel.repository_id, FileModel.path)
 
             if repository_id is not None:
                 latest_select = latest_select.where(
@@ -536,14 +538,14 @@ class PostgresFileRepository(FileRepositoryPort):
 
             latest_subquery = latest_select.subquery()
 
-            # Join to only include the latest version
+            # Join to only include the latest version per (repo, path)
             query_stmt = query_stmt.join(
                 latest_subquery,
                 FileModel.id == latest_subquery.c.max_id,
             )
 
         # Order by relevance (lower is better), then by path alphabetically
-        query_stmt = query_stmt.order_by("relevance", FileModel.path).limit(limit)
+        query_stmt = query_stmt.order_by(relevance, FileModel.path).limit(limit)
 
         result = await self.session.execute(query_stmt)
         rows = result.all()

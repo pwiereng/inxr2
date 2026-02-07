@@ -266,6 +266,18 @@ async def search_files(
                 detail="File search returned incomplete data; this indicates a data integrity issue.",
             )
 
+        # Validate we have the required metadata
+        if file.repository_id not in repo_map:
+            raise HTTPException(
+                status_code=500,
+                detail="File references unknown repository; data integrity issue.",
+            )
+        if file.commit_id not in commit_map:
+            raise HTTPException(
+                status_code=500,
+                detail="File references unknown commit; data integrity issue.",
+            )
+
         # Extract filename from path
         filename = file.path.rsplit("/", 1)[-1] if "/" in file.path else file.path
 
@@ -276,9 +288,9 @@ async def search_files(
                 name=filename,
                 language=file.language,
                 repository_id=file.repository_id,
-                repository_name=repo_map.get(file.repository_id, ""),
+                repository_name=repo_map[file.repository_id],
                 commit_id=file.commit_id,
-                commit_hash=commit_map.get(file.commit_id, ""),
+                commit_hash=commit_map[file.commit_id],
             )
         )
 

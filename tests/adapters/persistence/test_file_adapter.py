@@ -870,3 +870,55 @@ class TestPostgresFileRepositorySearchByName:
         # Should only return one result (deduplicated)
         assert len(results) == 1
         assert results[0].path == "src/service.py"
+
+    async def test_search_by_name_cross_repo_same_path(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that cross-repo search returns one file per repo for identical paths.
+
+        When searching without repository_id filter, files with the same path
+        in different repositories should NOT be collapsed - each repo should
+        have its own entry in the results.
+        """
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        # Create two repositories
+        repo1 = await repo_adapter.save(
+            RepositoryFactory.create(name="cross-repo-search-1")
+        )
+        repo2 = await repo_adapter.save(
+            RepositoryFactory.create(name="cross-repo-search-2")
+        )
+        assert repo1.id is not None
+        assert repo2.id is not None
+
+        commit1 = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo1.id, commit_hash="m" * 40)
+        )
+        commit2 = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo2.id, commit_hash="n" * 40)
+        )
+        assert commit1.id is not None
+        assert commit2.id is not None
+
+        # Create files with identical paths in both repos
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo1.id, commit_id=commit1.id, path="src/main.py"
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo2.id, commit_id=commit2.id, path="src/main.py"
+            )
+        )
+
+        # Search globally (no repository filter) - should return both files
+        results = await file_adapter.search_by_name("main")
+
+        # Should return 2 results - one from each repository
+        assert len(results) == 2
+        repo_ids = {r.repository_id for r in results}
+        assert repo_ids == {repo1.id, repo2.id}
