@@ -1,6 +1,6 @@
 """Tests for SearchTextUseCase using dependency injection."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -42,8 +42,8 @@ class TestSearchTextUseCase:
                 id=None,
                 repository_id=1,
                 commit_hash=CommitHash("abc123"),
-                author_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
-                commit_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                author_date=datetime(2024, 1, 1, tzinfo=UTC),
+                commit_date=datetime(2024, 1, 1, tzinfo=UTC),
             )
         )
         assert commit1.id is not None

@@ -5,9 +5,7 @@ Provides endpoints that Claude can call via curl to interact with the browser.
 Keeps a browser session alive between requests.
 """
 
-import asyncio
 import base64
-import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query

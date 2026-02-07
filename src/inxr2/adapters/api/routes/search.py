@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
-from ....application.use_cases.search import SearchTextRequest, SearchTextUseCase
+from ....application.use_cases.search import SearchTextRequest
 from ....infrastructure.dependencies import (
     CommitAdapter,
     FileAdapter,
