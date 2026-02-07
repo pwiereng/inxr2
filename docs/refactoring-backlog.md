@@ -102,18 +102,27 @@
 
 ## Priority 3: Architecture (STRUCTURAL IMPROVEMENTS)
 
-### 3.1 Create GitServicePort
-**Severity:** MEDIUM | **Effort:** 4 hours
+### 3.1 Create GitServicePort ⚠️ DEFERRED
+**Severity:** MEDIUM | **Effort:** 1-2 days (revised up from 4 hours)
 
 **Location:** `src/inxr2/application/ports/services.py`
 
 **Issue:** `git_service` typed as `Any` in orchestrator, breaking type safety.
 
+**Status:** Attempted 2026-02-07, reverted due to complexity. The refactor touches many files and requires:
+- Changing dict return types to typed dataclasses (`CommitInfo`, `ChangedFiles`)
+- Updating all call sites from dict access (`data["hash"]`) to attribute access (`data.hash`)
+- Updating `FakeGitService` test double to match new interface
+- Cascading changes through orchestrator and tests
+
+**Recommendation:** Defer until after 3.5 (indexing unification) simplifies the orchestrator. Less code to update.
+
 **Tasks:**
 - [ ] Create `GitServicePort` abstract class in `application/ports/services.py`
+- [ ] Define typed dataclasses for return values (`CommitInfo`, `ChangedFiles`, etc.)
 - [ ] Define abstract methods for all git operations used by orchestrator
 - [ ] Update `DefaultIndexingOrchestrator` to use typed port
-- [ ] Create `InMemoryGitService` test double
+- [ ] Update `FakeGitService` test double to implement port
 - [ ] Remove `Any` type hint
 
 ---
@@ -151,7 +160,7 @@
 ---
 
 ### 3.4 Decompose Orchestrator (God Class)
-**Severity:** HIGH | **Effort:** 1 week
+**Severity:** HIGH | **Effort:** 3-4 days
 
 **Location:** `src/inxr2/application/use_cases/indexing/default_orchestrator.py` (1,211 lines)
 
@@ -159,7 +168,7 @@
 
 **Tasks:**
 - [ ] Extract `PrepareRepositoryUseCase`
-- [ ] Extract `SelectCommitsUseCase` (with Full/Incremental strategies)
+- [ ] Extract `SelectCommitsUseCase` (single strategy after 3.5 unification)
 - [ ] Extract `ProcessCommitUseCase`
 - [ ] Extract `ProcessFileUseCase`
 - [ ] Extract `IndexTextContentUseCase`
@@ -167,20 +176,39 @@
 - [ ] Add unit tests for each extracted use case
 - [ ] Update existing integration tests
 
+**Note:** Effort reduced from 1 week to 3-4 days after 3.5 unification eliminates dual-path complexity.
+
 ---
 
-### 3.5 Extract Shared Logic from index_repository/index_incremental
-**Severity:** MEDIUM | **Effort:** 4 hours
+### 3.5 Unify Full/Incremental Indexing ⚡ NEW
+**Severity:** HIGH | **Effort:** 4 hours
 
-**Location:** `src/inxr2/application/use_cases/indexing/default_orchestrator.py:149-660`
+**Location:** `src/inxr2/application/use_cases/indexing/default_orchestrator.py`
 
-**Issue:** ~200 lines duplicated between methods.
+**Issue:** Two separate methods (`index_repository` and `index_incremental`) with ~200 lines of duplicated logic. The distinction is unnecessary—indexing should always be incremental (index what's not yet indexed).
+
+**Architectural Decision:** Remove "full" vs "incremental" distinction. One `index` command that:
+- Indexes commits not yet in the database
+- Skips already-indexed commits (always incremental)
+- For "full reindex", user runs `inxr2 reset` then `inxr2 index`
+
+**Benefits:**
+- Eliminates ~200 lines of duplicated code
+- Simplifies CLI (one command instead of two)
+- Cleaner mental model for users
+- Reduces orchestrator complexity for 3.4 decomposition
 
 **Tasks:**
-- [ ] Extract `_prepare_indexing_context()` helper
-- [ ] Extract `_execute_indexing_workflow()` helper
-- [ ] Apply Template Method pattern for strategy variation
-- [ ] Ensure both methods still work correctly
+- [ ] Merge `index_repository` and `index_incremental` into single `index` method
+- [ ] Update `IndexingOrchestratorPort` interface (remove `index_incremental`)
+- [ ] Update CLI: replace `index full` and `index incremental` with single `index` command
+- [ ] Remove `IncrementalIndexRequest` (use `IndexRepositoryRequest` only)
+- [ ] Update all tests
+- [ ] Update CLAUDE.md command reference
+
+**Full reindex workflow:** `inxr2 db reset --yes && inxr2 index --config config.yaml`
+
+**Supersedes:** The original 3.5 "Extract Shared Logic" item is now obsolete—unification eliminates the duplication entirely.
 
 ---
 
@@ -313,18 +341,15 @@
 
 ## Priority 7: CLI Refactoring
 
-### 7.1 Extract ResetDatabaseUseCase
-**Severity:** MEDIUM | **Effort:** 4 hours
+### ~~7.1 Extract ResetDatabaseUseCase~~ REMOVED
+**Status:** Not needed
 
-**Location:** `src/inxr2/adapters/cli/commands/index_command.py:88-147`
+**Rationale:** `inxr2 db reset --yes` already exists and works. For "full reindex", users run:
+```bash
+inxr2 db reset --yes && inxr2 index --config config.yaml
+```
 
-**Issue:** Database reset logic embedded in CLI adapter, not reusable.
-
-**Tasks:**
-- [ ] Create `ResetDatabaseUseCase` in application layer
-- [ ] Move truncate operations to use case
-- [ ] CLI only handles confirmation and progress display
-- [ ] Add unit test for use case
+No need to extract this to a use case—the CLI command is sufficient.
 
 ---
 
@@ -383,13 +408,13 @@
 | 1.2 | P1 | 2h | Invalid tsquery construction |
 | 1.3 | P1 | 2h | Python docstring bug |
 | 1.4 | P1 | 2h | Input validation |
-| 2.1 | P2 | 1d | N+1 in file search |
-| 2.2 | P2 | 1d | N+1 in text search |
-| 3.1 | P3 | 4h | GitServicePort |
+| 2.1 | P2 | 1d | N+1 in file search ✅ DONE |
+| 2.2 | P2 | 1d | N+1 in text search ✅ DONE |
+| 3.1 | P3 | 1-2d | GitServicePort ⚠️ DEFERRED |
 | 3.2 | P3 | 4h | SearchFilesUseCase |
 | 3.3 | P3 | 2h | Fix adapter dependency |
-| 3.4 | P3 | 1w | Decompose orchestrator |
-| 3.5 | P3 | 4h | Extract shared logic |
+| 3.4 | P3 | 3-4d | Decompose orchestrator (reduced after 3.5) |
+| 3.5 | P3 | 4h | **Unify full/incremental indexing** ⚡ |
 | 4.1 | P4 | 3-4d | Base parser extraction |
 | 4.2 | P4 | 2h | Comment stripping utility |
 | 4.3 | P4 | 1h | Standardize content_type |
@@ -398,7 +423,7 @@
 | 6.1 | P6 | 2h | C comment tests |
 | 6.2 | P6 | 1d | Fix test doubles |
 | 6.3 | P6 | 4h | Missing integration tests |
-| 7.1 | P7 | 4h | ResetDatabaseUseCase |
+| ~~7.1~~ | ~~P7~~ | - | ~~ResetDatabaseUseCase~~ (not needed) |
 | 7.2 | P7 | 4h | IndexingProgressRenderer |
 | 8.1 | P8 | 1d | Split useBrowseState |
 | 8.2 | P8 | 2h | ApiError class |
@@ -411,12 +436,16 @@
 - 1.1, 1.2, 1.3, 1.4 (10 hours)
 - 6.2 partial: Fix critical test double mismatches (4 hours)
 
-### Week 2: Performance
-- 2.1, 2.2 (2 days)
+### Week 2: Performance ✅ DONE
+- ~~2.1, 2.2 (2 days)~~ Completed
 
-### Week 3-4: Architecture
-- 3.1, 3.2, 3.3, 3.5 (2 days)
-- 3.4 orchestrator decomposition (3-5 days)
+### Week 3: Architecture - Indexing Unification
+- **3.5 Unify full/incremental indexing (4 hours)** ← Do this first!
+- 3.2, 3.3 (6 hours)
+- 3.1 GitServicePort (1-2 days) - deferred, do after 3.5 simplifies orchestrator
+
+### Week 4: Architecture - Orchestrator Decomposition
+- 3.4 orchestrator decomposition (3-4 days, reduced complexity after 3.5)
 
 ### Week 5: Code Quality
 - 4.1 base parser extraction (3-4 days)
@@ -433,3 +462,22 @@
 - Run full test suite before merging
 - Update CLAUDE.md if patterns change
 - Link PR to this document item number
+
+## Completed Items
+
+| ID | Date | Commit | Description |
+|----|------|--------|-------------|
+| 2.1 | 2026-02-07 | e0a5bf5 | N+1 in file search |
+| 2.2 | 2026-02-07 | c1e630c | N+1 in text search |
+
+## Architectural Decisions
+
+### Indexing is Always Incremental (2026-02-07)
+Decided to remove the "full" vs "incremental" distinction. Indexing always indexes commits not yet in the database. For a complete reindex:
+```bash
+inxr2 db reset --yes && inxr2 index --config config.yaml
+```
+This simplifies the codebase and mental model. See item 3.5.
+
+### GitServicePort Deferred (2026-02-07)
+Attempted to create typed `GitServicePort` to replace `Any` type hint. Reverted after discovering the refactor was larger than estimated—requires changing dict returns to typed dataclasses throughout orchestrator and test doubles. Recommend completing 3.5 first to reduce the surface area of this change.
