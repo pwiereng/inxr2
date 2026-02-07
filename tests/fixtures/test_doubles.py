@@ -803,6 +803,14 @@ class InMemoryRepositoryRepository(RepositoryPort):
         """Find repository by ID."""
         return self._repositories.get(repository_id)
 
+    async def find_by_ids(self, repository_ids: list[int]) -> list[Repository]:
+        """Find multiple repositories by IDs."""
+        return [
+            repo
+            for rid in repository_ids
+            if (repo := self._repositories.get(rid)) is not None
+        ]
+
     async def find_by_name(self, name: str) -> Repository | None:
         """Find repository by name."""
         for repo in self._repositories.values():
@@ -949,6 +957,14 @@ class InMemoryCommitRepository(CommitRepositoryPort):
     async def find_by_id(self, commit_id: int) -> Commit | None:
         """Find commit by ID."""
         return self._commits.get(commit_id)
+
+    async def find_by_ids(self, commit_ids: list[int]) -> list[Commit]:
+        """Find multiple commits by IDs."""
+        return [
+            commit
+            for cid in commit_ids
+            if (commit := self._commits.get(cid)) is not None
+        ]
 
     async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
         """Find commit by repository and hash.

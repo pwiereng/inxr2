@@ -32,6 +32,18 @@ class RepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def find_by_ids(self, repository_ids: list[int]) -> list[Repository]:
+        """Find multiple repositories by IDs.
+
+        Args:
+            repository_ids: List of repository IDs to fetch
+
+        Returns:
+            List of repositories found (may be fewer than requested if some IDs don't exist)
+        """
+        pass
+
+    @abstractmethod
     async def find_by_name(self, name: str) -> Repository | None:
         """Find repository by unique name."""
         pass
@@ -88,6 +100,18 @@ class CommitRepositoryPort(ABC):
     @abstractmethod
     async def find_by_id(self, commit_id: int) -> Commit | None:
         """Find commit by ID."""
+        pass
+
+    @abstractmethod
+    async def find_by_ids(self, commit_ids: list[int]) -> list[Commit]:
+        """Find multiple commits by IDs.
+
+        Args:
+            commit_ids: List of commit IDs to fetch
+
+        Returns:
+            List of commits found (may be fewer than requested if some IDs don't exist)
+        """
         pass
 
     @abstractmethod

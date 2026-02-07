@@ -103,10 +103,9 @@ async def search_text(
     commit: str | None = Query(
         None, alias="commit_hash", description="Commit hash filter"
     ),
-    source_types: list[Literal["comment", "docstring", "commit_message", "file_content"]]
-    | None = Query(
-        None, description="Source types filter (e.g., comment, docstring)"
-    ),
+    source_types: (
+        list[Literal["comment", "docstring", "commit_message", "file_content"]] | None
+    ) = Query(None, description="Source types filter (e.g., comment, docstring)"),
     languages: list[str] | None = Query(
         None, description="Languages filter (e.g., python, typescript)"
     ),
@@ -268,19 +267,15 @@ async def search_files(
     repo_ids = {f.repository_id for f in files if f.repository_id is not None}
     commit_ids = {f.commit_id for f in files if f.commit_id is not None}
 
-    # Fetch repositories (N+1 for now; bulk fetch would require new port method)
-    repo_map: dict[int, str] = {}
-    for rid in repo_ids:
-        repo = await repository_adapter.find_by_id(rid)
-        if repo:
-            repo_map[rid] = repo.name
+    # Fetch repositories in bulk (single query instead of N+1)
+    repositories = await repository_adapter.find_by_ids(list(repo_ids))
+    repo_map: dict[int, str] = {r.id: r.name for r in repositories if r.id is not None}
 
-    # Fetch commits (N+1 for now; bulk fetch would require new port method)
-    commit_map: dict[int, str] = {}
-    for cid in commit_ids:
-        commit = await commit_adapter.find_by_id(cid)
-        if commit:
-            commit_map[cid] = commit.commit_hash.value
+    # Fetch commits in bulk (single query instead of N+1)
+    commits = await commit_adapter.find_by_ids(list(commit_ids))
+    commit_map: dict[int, str] = {
+        c.id: c.commit_hash.value for c in commits if c.id is not None
+    }
 
     for file in files:
         # Validate required fields - these should always be set for persisted files

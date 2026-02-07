@@ -68,6 +68,18 @@ class PostgresCommitRepository(CommitRepositoryPort):
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
 
+    async def find_by_ids(self, commit_ids: list[int]) -> list[Commit]:
+        """Find multiple commits by IDs in a single query."""
+        if not commit_ids:
+            return []
+
+        result = await self.session.execute(
+            select(CommitModel).where(CommitModel.id.in_(commit_ids))
+        )
+        models = result.scalars().all()
+
+        return [self.mapper.to_domain(model) for model in models]
+
     async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
         """Find commit by repository and hash.
 
