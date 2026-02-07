@@ -202,3 +202,57 @@ def complex_function():
         # Should have start and end lines
         assert docstrings[0]["source_line"] == 3
         assert docstrings[0]["source_end_line"] >= 7
+
+    @pytest.mark.asyncio
+    async def test_string_not_first_statement_is_not_docstring(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that a string after other statements is NOT a docstring.
+
+        This is a regression test for a bug where any string expression in a
+        function/class was incorrectly extracted as a docstring.
+        """
+        code = '''
+def foo():
+    x = 1
+    """This is NOT a docstring - it comes after a statement"""
+    return x
+
+class Bar:
+    y = 2
+    """Also NOT a docstring"""
+    pass
+'''
+        comments = await parser_service.extract_comments(
+            content=code, language="python", file_path="test.py"
+        )
+
+        # Should NOT find any docstrings since neither string is first
+        docstrings = [c for c in comments if c["content_type"] == "docstring"]
+        assert len(docstrings) == 0
+
+    @pytest.mark.asyncio
+    async def test_real_docstring_is_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that actual docstrings (first statements) are still extracted."""
+        code = '''
+def foo():
+    """This IS a docstring - first statement."""
+    x = 1
+    return x
+
+class Bar:
+    """This IS a class docstring."""
+    y = 2
+'''
+        comments = await parser_service.extract_comments(
+            content=code, language="python", file_path="test.py"
+        )
+
+        docstrings = [c for c in comments if c["content_type"] == "docstring"]
+        assert len(docstrings) == 2
+
+        # Verify content
+        assert any("This IS a docstring" in d["content"] for d in docstrings)
+        assert any("This IS a class docstring" in d["content"] for d in docstrings)
