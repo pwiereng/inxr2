@@ -71,13 +71,14 @@ export interface BrowseUrlState {
   // Branch state (branch, diffBranch params)
   selectedBranch: string | null // branch param - primary branch for browsing
   diffBranch: string | null // diffBranch param - branch for diff comparison
-  // URL-persisted UI state (q, drawer, refs, tp, rp, ap)
+  // URL-persisted UI state (q, drawer, refs, tp, rp, ap, co)
   searchQuery: string // q param - used for both search and refs panel restoration
   drawerOpen: boolean // drawer param (0 = closed, absent = open)
   refsPanelOpen: boolean // refs param (1 = open, absent = closed)
   treePanel: 'left' | 'right' // tp param (r = right, absent = left)
   refPanel: 'left' | 'right' // rp param (r = right, absent = left)
   activePanel: 'left' | 'right' // ap param (r = right, absent = left)
+  changedOnly: boolean // co param (1 = show only files changed in commit, absent = full tree)
 }
 
 export interface BrowseDataState {
@@ -140,6 +141,8 @@ export interface BrowseActions {
   // UI toggles
   toggleDrawer: () => void
   setDrawerOpen: (open: boolean) => void
+  toggleChangedOnly: () => void
+  setChangedOnly: (value: boolean) => void
 
   // References panel
   openRefsPanel: (symbol: Symbol, isDirect: boolean) => void
@@ -167,20 +170,25 @@ export interface BrowseComputedState {
   treeCommit: string | null | undefined
   refCommit: string | null | undefined
   currentCommitHash: string | undefined
+  /** True if file was changed at the selected commit (appears in file versions) */
+  fileChangedInCommit: boolean
 }
 
 // ============================================================================
 // Hook Implementation
 // ============================================================================
 
-export function useBrowseState() {
-  const { repoName, '*': splatPath } = useParams<{ repoName: string; '*': string }>()
+export function useBrowseState(repoNameProp?: string) {
+  const { repoName: repoNameParam, '*': splatPath } = useParams<{ repoName: string; '*': string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
 
+  // Use prop if provided, otherwise use URL param
+  const repoName = repoNameProp || repoNameParam
+
   // ========== URL-derived state ==========
   const urlState = useMemo<BrowseUrlState>(() => {
-    const filePath = splatPath || null
+    const filePath = splatPath || searchParams.get('file') || null
     const highlightLine = searchParams.get('line')
       ? parseInt(searchParams.get('line')!, 10)
       : undefined
@@ -198,6 +206,7 @@ export function useBrowseState() {
     const treePanel = searchParams.get('tp') === 'r' ? 'right' : 'left'
     const refPanel = searchParams.get('rp') === 'r' ? 'right' : 'left'
     const activePanel = searchParams.get('ap') === 'r' ? 'right' : 'left'
+    const changedOnly = searchParams.get('co') === '1' // default false (show full tree)
 
     return {
       repoName,
@@ -214,6 +223,7 @@ export function useBrowseState() {
       treePanel,
       refPanel,
       activePanel,
+      changedOnly,
     }
   }, [repoName, splatPath, searchParams])
 
@@ -269,6 +279,16 @@ export function useBrowseState() {
     [updateUrlParams]
   )
 
+  const setChangedOnly = useCallback(
+    (value: boolean) => updateUrlParams({ co: value ? '1' : null }),
+    [updateUrlParams]
+  )
+
+  const toggleChangedOnly = useCallback(
+    () => updateUrlParams({ co: urlState.changedOnly ? null : '1' }),
+    [updateUrlParams, urlState.changedOnly]
+  )
+
   // ========== Data state ==========
   const [allRepositories, setAllRepositories] = useState<Repository[]>([])
   const [repository, setRepository] = useState<Repository | null>(null)
@@ -314,7 +334,14 @@ export function useBrowseState() {
       : urlState.selectedCommit
     const currentCommitHash = urlState.selectedCommit || fileVersions[0]?.commit_hash
 
-    return { leftCommit, rightCommit, treeCommit, refCommit, currentCommitHash }
+    // Check if file was changed at the selected commit
+    // If selectedCommit is set, check if it appears in file versions
+    // If no selectedCommit (viewing latest), the file is considered "changed" (it exists)
+    const fileChangedInCommit = urlState.selectedCommit
+      ? fileVersions.some((v) => v.commit_hash === urlState.selectedCommit)
+      : true
+
+    return { leftCommit, rightCommit, treeCommit, refCommit, currentCommitHash, fileChangedInCommit }
   }, [urlState, fileVersions, diffFileVersions])
 
   // ========== Data Loading Effects ==========
@@ -357,10 +384,13 @@ export function useBrowseState() {
 
     const loadTree = async () => {
       try {
+        // changedOnly only applies when viewing a specific commit
+        const shouldUseChangedOnly = urlState.changedOnly && !!computedState.treeCommit
         const tree = await getRepositoryTreeByName(
           urlState.repoName!,
           computedState.treeCommit || undefined,
-          treeBranch || undefined
+          treeBranch || undefined,
+          shouldUseChangedOnly
         )
         setTreeNodes(tree.root)
       } catch (err) {
@@ -376,6 +406,7 @@ export function useBrowseState() {
     urlState.diffBranch,
     urlState.diffMode,
     urlState.treePanel,
+    urlState.changedOnly,
   ])
 
   // Load file versions
@@ -1120,6 +1151,8 @@ export function useBrowseState() {
     // UI toggles
     toggleDrawer,
     setDrawerOpen,
+    toggleChangedOnly,
+    setChangedOnly,
 
     // References panel
     openRefsPanel,

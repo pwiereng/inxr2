@@ -13,6 +13,7 @@ from ...domain.entities import (
     Reference,
     Repository,
     Symbol,
+    TextContent,
 )
 from ...domain.value_objects import CommitHash, ReferenceType, SymbolKind
 from .models import (
@@ -22,6 +23,7 @@ from .models import (
     ReferenceModel,
     RepositoryModel,
     SymbolModel,
+    TextContentModel,
 )
 
 
@@ -274,4 +276,42 @@ class IndexStatusMapper:
             extra_metadata=entity.metadata,
             created_at=entity.created_at or datetime.now(UTC).replace(tzinfo=None),
             updated_at=entity.updated_at or datetime.now(UTC).replace(tzinfo=None),
+        )
+
+
+class TextContentMapper:
+    """Maps between TextContent entity and TextContentModel."""
+
+    @staticmethod
+    def to_domain(model: TextContentModel) -> TextContent:
+        """Convert ORM model to domain entity."""
+        return TextContent(
+            id=model.id,
+            repository_id=model.repository_id,
+            commit_id=model.commit_id,
+            source_type=model.source_type,
+            source_file_id=model.source_file_id,
+            source_line=model.source_line,
+            source_end_line=model.source_end_line,
+            content=model.content,
+            language=model.language,
+            content_type=model.content_type,
+            indexed_at=model.indexed_at,
+        )
+
+    @staticmethod
+    def to_model(entity: TextContent) -> TextContentModel:
+        """Convert domain entity to ORM model."""
+        return TextContentModel(
+            id=entity.id,
+            repository_id=entity.repository_id,
+            commit_id=entity.commit_id,
+            source_type=entity.source_type,
+            source_file_id=entity.source_file_id,
+            source_line=entity.source_line,
+            source_end_line=entity.source_end_line,
+            content=entity.content,
+            language=entity.language,
+            content_type=entity.content_type,
+            indexed_at=entity.indexed_at or datetime.now(UTC).replace(tzinfo=None),
         )

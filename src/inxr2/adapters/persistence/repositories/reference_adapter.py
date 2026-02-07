@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....application.ports.repositories import ReferenceRepositoryPort
 from ....domain.entities import Reference
 from ..mappers import ReferenceMapper
+from ..models.branch_commit import BranchCommitModel
 from ..models.file import FileModel
 from ..models.reference import ReferenceModel
 
@@ -62,7 +63,11 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         return self.mapper.to_domain(model) if model else None
 
     async def find_references_to_symbol(
-        self, symbol_id: int, limit: int = 100, commit_id: int | None = None
+        self,
+        symbol_id: int,
+        limit: int = 100,
+        commit_id: int | None = None,
+        branch: str | None = None,
     ) -> list[Reference]:
         """Find all references TO a symbol (find usages).
 
@@ -71,18 +76,28 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
             limit: Maximum number of results
             commit_id: Filter by specific commit for time travel (optional).
                        If None, returns from latest version of each file.
+            branch: Filter by branch name (only show refs from files on this branch).
         """
         if commit_id is not None:
             # Time travel mode: filter by specific commit
-            result = await self.session.execute(
+            query = (
                 select(ReferenceModel)
                 .join(FileModel, ReferenceModel.source_file_id == FileModel.id)
                 .where(
                     ReferenceModel.target_symbol_id == symbol_id,
                     FileModel.commit_id == commit_id,
                 )
-                .order_by(ReferenceModel.source_line)
-                .limit(limit)
+            )
+            # Add branch filter if specified
+            if branch is not None:
+                query = query.join(
+                    BranchCommitModel,
+                    (BranchCommitModel.commit_id == FileModel.commit_id)
+                    & (BranchCommitModel.repository_id == FileModel.repository_id),
+                ).where(BranchCommitModel.branch == branch)
+
+            result = await self.session.execute(
+                query.order_by(ReferenceModel.source_line).limit(limit)
             )
             models = result.scalars().all()
             return [self.mapper.to_domain(model) for model in models]
@@ -98,13 +113,35 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         if repo_id_result is None:
             return []
 
-        # Subquery to find the latest file ID for each path
-        latest_files = (
-            select(func.max(FileModel.id).label("latest_id"))
-            .where(FileModel.repository_id == repo_id_result)
-            .group_by(FileModel.path)
-            .subquery()
-        )
+        if branch is not None:
+            # Branch mode: get files from commits on this branch
+            # Subquery to find all commit IDs on this branch
+            branch_commits = (
+                select(BranchCommitModel.commit_id)
+                .where(
+                    BranchCommitModel.repository_id == repo_id_result,
+                    BranchCommitModel.branch == branch,
+                )
+                .subquery()
+            )
+            # Subquery to find the latest file ID for each path on this branch
+            latest_files = (
+                select(func.max(FileModel.id).label("latest_id"))
+                .where(
+                    FileModel.repository_id == repo_id_result,
+                    FileModel.commit_id.in_(select(branch_commits.c.commit_id)),
+                )
+                .group_by(FileModel.path)
+                .subquery()
+            )
+        else:
+            # Subquery to find the latest file ID for each path
+            latest_files = (
+                select(func.max(FileModel.id).label("latest_id"))
+                .where(FileModel.repository_id == repo_id_result)
+                .group_by(FileModel.path)
+                .subquery()
+            )
 
         result = await self.session.execute(
             select(ReferenceModel)
@@ -124,6 +161,7 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         repository_id: int,
         limit: int = 100,
         commit_id: int | None = None,
+        branch: str | None = None,
     ) -> list[Reference]:
         """Find all references matching the given text.
 
@@ -136,10 +174,11 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
             limit: Maximum number of results
             commit_id: Filter by specific commit for time travel (optional).
                        If None, returns from latest version of each file.
+            branch: Filter by branch name (only show refs from files on this branch).
         """
         if commit_id is not None:
             # Time travel mode: filter by specific commit
-            result = await self.session.execute(
+            query = (
                 select(ReferenceModel)
                 .join(FileModel, ReferenceModel.source_file_id == FileModel.id)
                 .where(
@@ -147,21 +186,54 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                     ReferenceModel.repository_id == repository_id,
                     FileModel.commit_id == commit_id,
                 )
-                .order_by(ReferenceModel.source_file_id, ReferenceModel.source_line)
-                .limit(limit)
+            )
+            # Add branch filter if specified
+            if branch is not None:
+                query = query.join(
+                    BranchCommitModel,
+                    (BranchCommitModel.commit_id == FileModel.commit_id)
+                    & (BranchCommitModel.repository_id == FileModel.repository_id),
+                ).where(BranchCommitModel.branch == branch)
+
+            result = await self.session.execute(
+                query.order_by(
+                    ReferenceModel.source_file_id, ReferenceModel.source_line
+                ).limit(limit)
             )
             models = result.scalars().all()
             return [self.mapper.to_domain(model) for model in models]
 
-        # Default: get from latest version of each file
-        # Subquery to find the latest file ID for each path in the repository
-        # (Since file IDs are auto-incrementing, max ID = latest version)
-        latest_files = (
-            select(func.max(FileModel.id).label("latest_id"))
-            .where(FileModel.repository_id == repository_id)
-            .group_by(FileModel.path)
-            .subquery()
-        )
+        if branch is not None:
+            # Branch mode: get files from commits on this branch
+            # Subquery to find all commit IDs on this branch
+            branch_commits = (
+                select(BranchCommitModel.commit_id)
+                .where(
+                    BranchCommitModel.repository_id == repository_id,
+                    BranchCommitModel.branch == branch,
+                )
+                .subquery()
+            )
+            # Subquery to find the latest file ID for each path on this branch
+            latest_files = (
+                select(func.max(FileModel.id).label("latest_id"))
+                .where(
+                    FileModel.repository_id == repository_id,
+                    FileModel.commit_id.in_(select(branch_commits.c.commit_id)),
+                )
+                .group_by(FileModel.path)
+                .subquery()
+            )
+        else:
+            # Default: get from latest version of each file
+            # Subquery to find the latest file ID for each path in the repository
+            # (Since file IDs are auto-incrementing, max ID = latest version)
+            latest_files = (
+                select(func.max(FileModel.id).label("latest_id"))
+                .where(FileModel.repository_id == repository_id)
+                .group_by(FileModel.path)
+                .subquery()
+            )
 
         result = await self.session.execute(
             select(ReferenceModel)

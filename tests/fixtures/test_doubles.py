@@ -44,12 +44,16 @@ from inxr2.application.ports.repositories import (
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
+    TextContentRepositoryPort,
 )
 from inxr2.application.ports.services import (
     FileStat,
     FileSystemPort,
     GitServicePort,
     ParserServicePort,
+    TextSearchPort,
+    TextSearchQuery,
+    TextSearchResult,
 )
 from inxr2.domain.entities import (
     Commit,
@@ -58,6 +62,7 @@ from inxr2.domain.entities import (
     Reference,
     Repository,
     Symbol,
+    TextContent,
 )
 
 # ============================================================================
@@ -393,6 +398,61 @@ class InMemoryFileRepository(FileRepositoryPort):
     async def list_by_commit(self, commit_id: int) -> list[File]:
         """List files for a commit."""
         return [f for f in self._files.values() if f.commit_id == commit_id]
+
+    async def list_at_or_before_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List the latest version of each file at or before a specific commit.
+
+        This requires commit_repo to be set for proper date-based filtering.
+        """
+        if self._commit_repo is None:
+            # No commit repo - fall back to simple commit_id matching
+            return [
+                f
+                for f in self._files.values()
+                if f.repository_id == repository_id and f.commit_id == commit_id
+            ]
+
+        # Get target commit date
+        target_commit = await self._commit_repo.find_by_id(commit_id)
+        if target_commit is None:
+            return []
+
+        # Get all commits up to and including the target
+        all_commits = self._commit_repo.get_all_commits()
+        valid_commit_ids = {
+            c.id
+            for c in all_commits
+            if c.repository_id == repository_id
+            and c.id is not None
+            and c.commit_date <= target_commit.commit_date
+        }
+
+        # Get all files from these commits, keeping only the latest per path
+        path_to_file: dict[str, File] = {}
+        for f in self._files.values():
+            if f.repository_id == repository_id and f.commit_id in valid_commit_ids:
+                # Get commit date for this file's commit
+                file_commit = await self._commit_repo.find_by_id(f.commit_id)
+                if file_commit is None:
+                    continue
+
+                existing = path_to_file.get(f.path)
+                if existing is None:
+                    path_to_file[f.path] = f
+                else:
+                    # Compare commit dates, keep the newer one
+                    existing_commit = await self._commit_repo.find_by_id(
+                        existing.commit_id
+                    )
+                    if (
+                        existing_commit is not None
+                        and file_commit.commit_date > existing_commit.commit_date
+                    ):
+                        path_to_file[f.path] = f
+
+        return list(path_to_file.values())
 
     async def find_by_content_hash(self, content_hash: str) -> list[File]:
         """Find files by content hash."""
@@ -797,6 +857,11 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         self._commits.clear()
         self._branch_commits.clear()
 
+    # Test helper methods
+    def get_all_commits(self) -> list[Commit]:
+        """Get all commits (for testing and internal use)."""
+        return list(self._commits.values())
+
 
 class InMemoryReferenceRepository(ReferenceRepositoryPort):
     """In-memory implementation of ReferenceRepositoryPort for testing.
@@ -804,10 +869,16 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     For resolve_unlinked_references, this fake requires a symbol_repository
     to be provided so it can match references to symbols.
 
+    For branch filtering, this fake requires a commit_repo and file_repo
+    to be provided.
+
     Example:
         symbol_repo = InMemorySymbolRepository()
         file_repo = InMemoryFileRepository()
-        ref_repo = InMemoryReferenceRepository(symbol_repo=symbol_repo, file_repo=file_repo)
+        commit_repo = InMemoryCommitRepository()
+        ref_repo = InMemoryReferenceRepository(
+            symbol_repo=symbol_repo, file_repo=file_repo, commit_repo=commit_repo
+        )
         ref_repo.add(Reference(...))
         count = await ref_repo.resolve_unlinked_references(repository_id=1)
     """
@@ -816,6 +887,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         self,
         symbol_repo: "InMemorySymbolRepository | None" = None,
         file_repo: "InMemoryFileRepository | None" = None,
+        commit_repo: "InMemoryCommitRepository | None" = None,
     ) -> None:
         """Initialize with empty storage.
 
@@ -824,11 +896,14 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                         Required for resolve_unlinked_references to work properly.
             file_repo: Optional file repository for language-aware resolution.
                       When provided, enables same-file and same-language priority.
+            commit_repo: Optional commit repository for branch filtering.
+                        Required for branch parameter to work in find_references_*.
         """
         self._references: dict[int, Reference] = {}
         self._next_id = 1
         self._symbol_repo = symbol_repo
         self._file_repo = file_repo
+        self._commit_repo = commit_repo
 
     async def save(self, reference: Reference) -> Reference:
         """Save reference to in-memory storage."""
@@ -871,12 +946,53 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         return self._references.get(reference_id)
 
     async def find_references_to_symbol(
-        self, symbol_id: int, limit: int = 100, commit_id: int | None = None
+        self,
+        symbol_id: int,
+        limit: int = 100,
+        commit_id: int | None = None,
+        branch: str | None = None,
     ) -> list[Reference]:
-        """Find all references to a symbol."""
+        """Find all references to a symbol.
+
+        Args:
+            symbol_id: The target symbol ID
+            limit: Maximum number of results
+            commit_id: Filter by specific commit for time travel (optional)
+            branch: Filter by branch name (only show refs from files on this branch)
+        """
         refs = [r for r in self._references.values() if r.target_symbol_id == symbol_id]
         if commit_id is not None:
             refs = [r for r in refs if r.commit_id == commit_id]
+
+        # Apply branch filter if specified
+        if (
+            branch is not None
+            and self._commit_repo is not None
+            and self._file_repo is not None
+        ):
+            # Get commit IDs on this branch
+            branch_commit_ids: set[int] = set()
+            for ref in refs:
+                # Get repository_id from file
+                file = self._file_repo._files.get(ref.source_file_id)
+                if file is not None:
+                    for (
+                        repo_id,
+                        b,
+                        cid,
+                    ), _ in self._commit_repo._branch_commits.items():
+                        if repo_id == file.repository_id and b == branch:
+                            branch_commit_ids.add(cid)
+                    break  # Only need to get branch commits once
+
+            # Filter refs to only those whose source file is on this branch
+            filtered_refs = []
+            for ref in refs:
+                file = self._file_repo._files.get(ref.source_file_id)
+                if file is not None and file.commit_id in branch_commit_ids:
+                    filtered_refs.append(ref)
+            refs = filtered_refs
+
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
         return refs[:limit]
 
@@ -892,8 +1008,17 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         repository_id: int,
         limit: int = 100,
         commit_id: int | None = None,
+        branch: str | None = None,
     ) -> list[Reference]:
-        """Find references by text."""
+        """Find references by text.
+
+        Args:
+            text: The reference text to match
+            repository_id: Filter by repository
+            limit: Maximum number of results
+            commit_id: Filter by specific commit for time travel (optional)
+            branch: Filter by branch name (only show refs from files on this branch)
+        """
         refs = [
             r
             for r in self._references.values()
@@ -901,6 +1026,27 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         ]
         if commit_id is not None:
             refs = [r for r in refs if r.commit_id == commit_id]
+
+        # Apply branch filter if specified
+        if (
+            branch is not None
+            and self._commit_repo is not None
+            and self._file_repo is not None
+        ):
+            # Get commit IDs on this branch
+            branch_commit_ids: set[int] = set()
+            for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
+                if repo_id == repository_id and b == branch:
+                    branch_commit_ids.add(cid)
+
+            # Filter refs to only those whose source file is on this branch
+            filtered_refs = []
+            for ref in refs:
+                file = self._file_repo._files.get(ref.source_file_id)
+                if file is not None and file.commit_id in branch_commit_ids:
+                    filtered_refs.append(ref)
+            refs = filtered_refs
+
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
         return refs[:limit]
 
@@ -1187,6 +1333,85 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     def clear(self) -> None:
         """Clear all references."""
         self._references.clear()
+
+
+class InMemoryTextContentRepository(TextContentRepositoryPort):
+    """In-memory implementation of TextContentRepositoryPort for testing."""
+
+    def __init__(self) -> None:
+        """Initialize with empty storage."""
+        self._text_contents: dict[int, TextContent] = {}
+        self._next_id = 1
+
+    async def save(self, text_content: TextContent) -> TextContent:
+        """Save text content to in-memory storage."""
+        if text_content.id is None:
+            text_content = TextContent(
+                id=self._next_id,
+                repository_id=text_content.repository_id,
+                commit_id=text_content.commit_id,
+                source_type=text_content.source_type,
+                content=text_content.content,
+                source_file_id=text_content.source_file_id,
+                source_line=text_content.source_line,
+                source_end_line=text_content.source_end_line,
+                language=text_content.language,
+                content_type=text_content.content_type,
+                indexed_at=text_content.indexed_at,
+            )
+            self._next_id += 1
+        assert (
+            text_content.id is not None
+        ), "TextContent must have an ID after assignment"
+        self._text_contents[text_content.id] = text_content
+        return text_content
+
+    async def save_batch(self, text_contents: list[TextContent]) -> list[TextContent]:
+        """Bulk save text contents."""
+        result = []
+        for tc in text_contents:
+            saved = await self.save(tc)
+            result.append(saved)
+        return result
+
+    async def delete_by_commit(self, commit_id: int) -> int:
+        """Delete all text contents for a commit."""
+        to_delete = [
+            tc_id
+            for tc_id, tc in self._text_contents.items()
+            if tc.commit_id == commit_id
+        ]
+        for tc_id in to_delete:
+            del self._text_contents[tc_id]
+        return len(to_delete)
+
+    async def delete_by_file(self, file_id: int) -> int:
+        """Delete all text contents for a file."""
+        to_delete = [
+            tc_id
+            for tc_id, tc in self._text_contents.items()
+            if tc.source_file_id == file_id
+        ]
+        for tc_id in to_delete:
+            del self._text_contents[tc_id]
+        return len(to_delete)
+
+    # Test helper methods
+    def get_all(self) -> list[TextContent]:
+        """Get all text contents (for testing)."""
+        return list(self._text_contents.values())
+
+    def find_by_repository(self, repository_id: int) -> list[TextContent]:
+        """Find text contents by repository (for testing)."""
+        return [
+            tc
+            for tc in self._text_contents.values()
+            if tc.repository_id == repository_id
+        ]
+
+    def clear(self) -> None:
+        """Clear all text contents."""
+        self._text_contents.clear()
 
 
 class InMemoryIndexStatusRepository(IndexStatusRepositoryPort):
@@ -1486,6 +1711,105 @@ class StubGitService(GitServicePort):
     def clear(self) -> None:
         """Clear all predefined responses."""
         self._file_contents.clear()
+
+
+class FakeTextSearch(TextSearchPort):
+    """
+    Fake implementation of TextSearchPort for testing.
+
+    This fake performs simple in-memory text matching to simulate
+    the behavior of a real text search engine without needing PostgreSQL.
+
+    Example:
+        text_search = FakeTextSearch(text_content_repo)
+        results, total = await text_search.search(TextSearchQuery(query="TODO"))
+    """
+
+    def __init__(self, text_content_repo: InMemoryTextContentRepository):
+        """Initialize with a text content repository.
+
+        Args:
+            text_content_repo: Text content repository to search in
+        """
+        self._text_content_repo = text_content_repo
+
+    async def search(
+        self, query: TextSearchQuery
+    ) -> tuple[list[TextSearchResult], int]:
+        """Execute text search using simple in-memory matching.
+
+        Args:
+            query: Search query parameters
+
+        Returns:
+            Tuple of (results, total_count)
+
+        Raises:
+            ValueError: If query is empty
+        """
+        if not query.query or not query.query.strip():
+            raise ValueError("Search query cannot be empty")
+
+        # Get all text contents
+        all_contents = self._text_content_repo.get_all()
+
+        # Apply filters
+        filtered = []
+        for tc in all_contents:
+            # Repository filter
+            if (
+                query.repository_id is not None
+                and tc.repository_id != query.repository_id
+            ):
+                continue
+
+            # Commit filter
+            if query.commit_id is not None and tc.commit_id != query.commit_id:
+                continue
+
+            # Source type filter
+            if query.source_types and tc.source_type not in query.source_types:
+                continue
+
+            # Language filter
+            if query.languages and tc.language not in query.languages:
+                continue
+
+            # Text matching (simple case-insensitive contains for all modes)
+            # In real implementation, mode would affect PostgreSQL query
+            if query.mode == "regex":
+                # For testing, just do simple contains match
+                # Real implementation would use PostgreSQL ~ operator
+                if query.query.lower() in tc.content.lower():
+                    filtered.append(tc)
+            else:  # keyword or phrase
+                # Simple contains match for testing
+                if query.query.lower() in tc.content.lower():
+                    filtered.append(tc)
+
+        # Calculate total before pagination
+        total = len(filtered)
+
+        # Sort by a simple relevance score (count of query occurrences)
+        # In real implementation, this would be ts_rank
+        query_lower = query.query.lower()
+        scored = [(tc, tc.content.lower().count(query_lower)) for tc in filtered]
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        # Apply pagination
+        paginated = scored[query.offset : query.offset + query.limit]
+
+        # Convert to search results
+        results = [
+            TextSearchResult(
+                text_content=tc,
+                rank=float(score),
+                headline=None,  # TODO: Add simple snippet generation
+            )
+            for tc, score in paginated
+        ]
+
+        return results, total
 
 
 # ============================================================================

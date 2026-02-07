@@ -195,6 +195,26 @@ describe('useBrowseState', () => {
         highlightLine: 10,
       })
     })
+
+    it('should parse changedOnly from URL (enabled)', async () => {
+      mockSearchParams = new URLSearchParams('co=1')
+      const { result } = await renderBrowseStateHook()
+      expect(result.current.urlState.changedOnly).toBe(true)
+    })
+
+    it('should default changedOnly to false when not in URL', async () => {
+      mockSearchParams = new URLSearchParams('')
+      const { result } = await renderBrowseStateHook()
+      expect(result.current.urlState.changedOnly).toBe(false)
+    })
+
+    it('should parse changedOnly with other params', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123&co=1&branch=main')
+      const { result } = await renderBrowseStateHook()
+      expect(result.current.urlState.changedOnly).toBe(true)
+      expect(result.current.urlState.selectedCommit).toBe('abc123')
+      expect(result.current.urlState.selectedBranch).toBe('main')
+    })
   })
 
   describe('URL state updates', () => {
@@ -261,6 +281,47 @@ describe('useBrowseState', () => {
       })
 
       expect(mockSearchParams.get('ap')).toBe('r')
+    })
+
+    it('should set changedOnly in URL', async () => {
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.setChangedOnly(true)
+      })
+
+      expect(mockSearchParams.get('co')).toBe('1')
+    })
+
+    it('should remove changedOnly from URL when set to false', async () => {
+      mockSearchParams = new URLSearchParams('co=1')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.setChangedOnly(false)
+      })
+
+      expect(mockSearchParams.get('co')).toBeNull()
+    })
+
+    it('should toggle changedOnly on when currently off', async () => {
+      mockSearchParams = new URLSearchParams('')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.toggleChangedOnly()
+      })
+      expect(mockSearchParams.get('co')).toBe('1')
+    })
+
+    it('should toggle changedOnly off when currently on', async () => {
+      mockSearchParams = new URLSearchParams('co=1')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.toggleChangedOnly()
+      })
+      expect(mockSearchParams.get('co')).toBeNull()
     })
   })
 
@@ -1388,6 +1449,82 @@ describe('useBrowseState', () => {
 
       // Space should be encoded
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('src/my%20file.py'))
+    })
+  })
+
+  describe('fileChangedInCommit computed state', () => {
+    const mockVersions = [
+      {
+        commit_id: 1,
+        commit_hash: 'abc123',
+        short_hash: 'abc123',
+        commit_date: '2024-01-03',
+        message: 'Latest commit',
+        content_hash: 'hash1',
+      },
+      {
+        commit_id: 2,
+        commit_hash: 'def456',
+        short_hash: 'def456',
+        commit_date: '2024-01-02',
+        message: 'Previous commit',
+        content_hash: 'hash2',
+      },
+    ]
+
+    it('should be true when selectedCommit is in fileVersions', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123')
+      mockGetFileHistory.mockResolvedValue({
+        versions: mockVersions,
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 2,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(2)
+      })
+
+      expect(result.current.computedState.fileChangedInCommit).toBe(true)
+    })
+
+    it('should be false when selectedCommit is not in fileVersions', async () => {
+      mockSearchParams = new URLSearchParams('commit=xyz999')
+      mockGetFileHistory.mockResolvedValue({
+        versions: mockVersions,
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 2,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(2)
+      })
+
+      expect(result.current.computedState.fileChangedInCommit).toBe(false)
+    })
+
+    it('should be true when no selectedCommit (viewing latest)', async () => {
+      mockSearchParams = new URLSearchParams('')
+      mockGetFileHistory.mockResolvedValue({
+        versions: mockVersions,
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 2,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(2)
+      })
+
+      // No selectedCommit means viewing latest, so file is considered "changed"
+      expect(result.current.computedState.fileChangedInCommit).toBe(true)
     })
   })
 })

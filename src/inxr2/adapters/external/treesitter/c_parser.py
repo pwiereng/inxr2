@@ -894,3 +894,69 @@ class CParser(BaseLanguageParser):
         extract_references(root)
 
         return symbols, references
+
+    def extract_comments(
+        self,
+        root: Node,
+        content: str,
+    ) -> list[dict[str, Any]]:
+        """Extract comments from C AST."""
+        comments: list[dict[str, Any]] = []
+
+        def get_text(node: Node) -> str:
+            return self._get_text(node, content)
+
+        def strip_comment_markers(text: str, is_block: bool) -> str:
+            """Strip comment markers and clean up comment text."""
+            if is_block:
+                # Block comment: /* ... */
+                if text.startswith("/*") and text.endswith("*/"):
+                    text = text[2:-2]
+
+                # Clean up leading/trailing whitespace and asterisks
+                lines = text.split("\n")
+                cleaned_lines = []
+                for line in lines:
+                    line = line.strip()
+                    # Remove leading asterisks (common in multi-line comments)
+                    if line.startswith("*"):
+                        line = line[1:].strip()
+                    cleaned_lines.append(line)
+
+                return "\n".join(cleaned_lines).strip()
+            else:
+                # Single-line comment: // ...
+                if text.startswith("//"):
+                    text = text[2:]
+                return text.strip()
+
+        def visit_node(node: Node) -> None:
+            """Recursively visit nodes to extract comments."""
+            if node.type == "comment":
+                text = get_text(node)
+
+                # Determine if it's a block or single-line comment
+                is_block = text.startswith("/*")
+                is_single_line = text.startswith("//")
+
+                content_type = "block_comment" if is_block else "single_line_comment"
+                cleaned_text = strip_comment_markers(text, is_block)
+
+                if cleaned_text:
+                    comments.append(
+                        {
+                            "content": cleaned_text,
+                            "content_type": content_type,
+                            "source_line": node.start_point[0] + 1,
+                            "source_end_line": node.end_point[0] + 1,
+                        }
+                    )
+
+            # Recurse into children
+            for child in node.children:
+                visit_node(child)
+
+        # Start extraction
+        visit_node(root)
+
+        return comments

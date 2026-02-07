@@ -1064,3 +1064,81 @@ class JavaParser(BaseLanguageParser):
         extract_references(root)
 
         return symbols, references
+
+    def extract_comments(
+        self,
+        root: Node,
+        content: str,
+    ) -> list[dict[str, Any]]:
+        """Extract comments from Java AST."""
+        comments: list[dict[str, Any]] = []
+
+        def get_text(node: Node) -> str:
+            return self._get_text(node, content)
+
+        def strip_comment_markers(text: str, node_type: str) -> str:
+            """Strip comment markers and clean up comment text."""
+            if node_type == "block_comment":
+                # Block comment: /* ... */ or /** ... */
+                is_javadoc = text.startswith("/**")
+                if text.startswith("/*") and text.endswith("*/"):
+                    text = text[3:-2] if is_javadoc else text[2:-2]
+
+                # Clean up leading/trailing whitespace and asterisks
+                lines = text.split("\n")
+                cleaned_lines = []
+                for line in lines:
+                    line = line.strip()
+                    # Remove leading asterisks (common in multi-line comments)
+                    if line.startswith("*"):
+                        line = line[1:].strip()
+                    cleaned_lines.append(line)
+
+                return "\n".join(cleaned_lines).strip()
+            else:
+                # Single-line comment: // ...
+                if text.startswith("//"):
+                    text = text[2:]
+                return text.strip()
+
+        def visit_node(node: Node) -> None:
+            """Recursively visit nodes to extract comments."""
+            if node.type == "line_comment":
+                text = get_text(node)
+                cleaned_text = strip_comment_markers(text, "line_comment")
+
+                if cleaned_text:
+                    comments.append(
+                        {
+                            "content": cleaned_text,
+                            "content_type": "single_line_comment",
+                            "source_line": node.start_point[0] + 1,
+                            "source_end_line": node.end_point[0] + 1,
+                        }
+                    )
+
+            elif node.type == "block_comment":
+                text = get_text(node)
+                is_javadoc = text.startswith("/**")
+                cleaned_text = strip_comment_markers(text, "block_comment")
+
+                if cleaned_text:
+                    comments.append(
+                        {
+                            "content": cleaned_text,
+                            "content_type": (
+                                "javadoc_comment" if is_javadoc else "block_comment"
+                            ),
+                            "source_line": node.start_point[0] + 1,
+                            "source_end_line": node.end_point[0] + 1,
+                        }
+                    )
+
+            # Recurse into children
+            for child in node.children:
+                visit_node(child)
+
+        # Start extraction
+        visit_node(root)
+
+        return comments

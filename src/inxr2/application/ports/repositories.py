@@ -7,7 +7,15 @@ mechanisms like PostgreSQL.
 
 from abc import ABC, abstractmethod
 
-from ...domain.entities import Commit, File, IndexStatus, Reference, Repository, Symbol
+from ...domain.entities import (
+    Commit,
+    File,
+    IndexStatus,
+    Reference,
+    Repository,
+    Symbol,
+    TextContent,
+)
 
 
 class RepositoryPort(ABC):
@@ -206,6 +214,26 @@ class FileRepositoryPort(ABC):
     @abstractmethod
     async def list_by_commit(self, commit_id: int) -> list[File]:
         """List all files at a specific commit."""
+        pass
+
+    @abstractmethod
+    async def list_at_or_before_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List the latest version of each file at or before a specific commit.
+
+        This returns the full file tree state as it existed at the given commit,
+        including files that weren't modified at that commit but existed from
+        earlier commits. For delta-indexed repositories, this aggregates across
+        all commits up to and including the target.
+
+        Args:
+            repository_id: The repository ID
+            commit_id: The target commit ID (must exist in the database)
+
+        Returns:
+            List of files representing the complete tree state at that commit
+        """
         pass
 
     @abstractmethod
@@ -422,7 +450,11 @@ class ReferenceRepositoryPort(ABC):
 
     @abstractmethod
     async def find_references_to_symbol(
-        self, symbol_id: int, limit: int = 100, commit_id: int | None = None
+        self,
+        symbol_id: int,
+        limit: int = 100,
+        commit_id: int | None = None,
+        branch: str | None = None,
     ) -> list[Reference]:
         """Find all references TO a symbol (find usages).
 
@@ -431,6 +463,7 @@ class ReferenceRepositoryPort(ABC):
             limit: Maximum number of results
             commit_id: Filter by specific commit for time travel (optional).
                        If None, returns from latest version of each file.
+            branch: Filter by branch name (only show refs from files on this branch).
         """
         pass
 
@@ -446,6 +479,7 @@ class ReferenceRepositoryPort(ABC):
         repository_id: int,
         limit: int = 100,
         commit_id: int | None = None,
+        branch: str | None = None,
     ) -> list[Reference]:
         """Find all references matching the given text.
 
@@ -455,6 +489,7 @@ class ReferenceRepositoryPort(ABC):
             limit: Maximum number of results
             commit_id: Filter by specific commit for time travel (optional).
                        If None, returns from latest version of each file.
+            branch: Filter by branch name (only show refs from files on this branch).
         """
         pass
 
@@ -569,4 +604,55 @@ class IndexStatusRepositoryPort(ABC):
     @abstractmethod
     async def list_by_repository(self, repository_id: int) -> list[IndexStatus]:
         """List all index statuses for a repository (all branches)."""
+        pass
+
+
+class TextContentRepositoryPort(ABC):
+    """Port for text content operations.
+
+    Manages searchable text extracted from various sources:
+    - Comments and docstrings from code files
+    - Commit messages
+    - Content from non-code files (markdown, YAML, etc.)
+    """
+
+    @abstractmethod
+    async def save(self, text_content: TextContent) -> TextContent:
+        """Save or update a text content entry."""
+        pass
+
+    @abstractmethod
+    async def save_batch(self, text_contents: list[TextContent]) -> list[TextContent]:
+        """Bulk save text contents for performance.
+
+        Args:
+            text_contents: List of text content entities to save
+
+        Returns:
+            List of saved text content entities with IDs populated
+        """
+        pass
+
+    @abstractmethod
+    async def delete_by_commit(self, commit_id: int) -> int:
+        """Delete all text contents for a commit (for re-indexing).
+
+        Args:
+            commit_id: The commit ID to delete text contents for
+
+        Returns:
+            Number of text contents deleted
+        """
+        pass
+
+    @abstractmethod
+    async def delete_by_file(self, file_id: int) -> int:
+        """Delete all text contents for a file (for re-indexing).
+
+        Args:
+            file_id: The file ID to delete text contents for
+
+        Returns:
+            Number of text contents deleted
+        """
         pass

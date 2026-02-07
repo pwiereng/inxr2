@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from .reference import ReferenceModel
     from .repository import RepositoryModel
     from .symbol import SymbolModel
+    from .text_content import TextContentModel
 
 
 class CommitModel(Base):
@@ -70,6 +71,9 @@ class CommitModel(Base):
     )
     branch_commits: Mapped[list["BranchCommitModel"]] = relationship(
         "BranchCommitModel", back_populates="commit", cascade="all, delete-orphan"
+    )
+    text_contents: Mapped[list["TextContentModel"]] = relationship(
+        "TextContentModel", back_populates="commit", cascade="all, delete-orphan"
     )
 
     @property

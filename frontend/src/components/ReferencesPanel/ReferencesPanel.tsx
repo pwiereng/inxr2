@@ -73,6 +73,8 @@ interface ReferencesPanelProps {
   searchByName?: { name: string; repositoryId: number } | null
   /** Selected commit hash for time travel (filters definitions to this commit) */
   selectedCommit?: string | null
+  /** Selected branch name (filters references to this branch only) */
+  selectedBranch?: string | null
   onReferenceClick?: (reference: Reference) => void
   onDefinitionClick?: (symbol: Symbol) => void
   onClose?: () => void
@@ -83,6 +85,7 @@ export function ReferencesPanel({
   isDirectDefinition = false,
   searchByName = null,
   selectedCommit = null,
+  selectedBranch = null,
   onReferenceClick,
   onDefinitionClick,
   onClose,
@@ -117,7 +120,8 @@ export function ReferencesPanel({
             const refsResult = await getSymbolReferences(
               firstDef.id,
               100,
-              selectedCommit || undefined
+              selectedCommit || undefined,
+              selectedBranch || undefined
             )
             setReferences(refsResult.items)
           } else {
@@ -145,8 +149,13 @@ export function ReferencesPanel({
       setLoading(true)
       setError(null)
       try {
-        // Always fetch references for this symbol (pass commit for time travel)
-        const refsResult = await getSymbolReferences(symbol.id, 100, selectedCommit || undefined)
+        // Always fetch references for this symbol (pass commit for time travel, branch for filtering)
+        const refsResult = await getSymbolReferences(
+          symbol.id,
+          100,
+          selectedCommit || undefined,
+          selectedBranch || undefined
+        )
         setReferences(refsResult.items)
 
         // Only search for other definitions if this wasn't a direct definition click
@@ -173,7 +182,7 @@ export function ReferencesPanel({
     }
 
     fetchData()
-  }, [symbol, isDirectDefinition, searchByName, selectedCommit])
+  }, [symbol, isDirectDefinition, searchByName, selectedCommit, selectedBranch])
 
   if (!symbol && !searchByName) {
     return (

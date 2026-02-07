@@ -68,7 +68,7 @@ describe('ReferencesPanel', () => {
       render(<ReferencesPanel symbol={mockSymbol} isDirectDefinition={true} />)
 
       await waitFor(() => {
-        expect(mockGetSymbolReferences).toHaveBeenCalledWith(1, 100, undefined)
+        expect(mockGetSymbolReferences).toHaveBeenCalledWith(1, 100, undefined, undefined)
       })
 
       // Should show references count
@@ -93,7 +93,44 @@ describe('ReferencesPanel', () => {
       )
 
       await waitFor(() => {
-        expect(mockGetSymbolReferences).toHaveBeenCalledWith(1, 100, 'abc123')
+        expect(mockGetSymbolReferences).toHaveBeenCalledWith(1, 100, 'abc123', undefined)
+      })
+    })
+
+    it('should pass selectedBranch to API calls', async () => {
+      mockGetSymbolReferences.mockResolvedValue({
+        items: [],
+        total: 0,
+        symbol_name: 'TestClass',
+      })
+
+      render(
+        <ReferencesPanel symbol={mockSymbol} isDirectDefinition={true} selectedBranch="main" />
+      )
+
+      await waitFor(() => {
+        expect(mockGetSymbolReferences).toHaveBeenCalledWith(1, 100, undefined, 'main')
+      })
+    })
+
+    it('should pass both selectedCommit and selectedBranch to API calls', async () => {
+      mockGetSymbolReferences.mockResolvedValue({
+        items: [],
+        total: 0,
+        symbol_name: 'TestClass',
+      })
+
+      render(
+        <ReferencesPanel
+          symbol={mockSymbol}
+          isDirectDefinition={true}
+          selectedCommit="abc123"
+          selectedBranch="feature"
+        />
+      )
+
+      await waitFor(() => {
+        expect(mockGetSymbolReferences).toHaveBeenCalledWith(1, 100, 'abc123', 'feature')
       })
     })
   })
@@ -125,7 +162,7 @@ describe('ReferencesPanel', () => {
 
       // Should also fetch references for the first definition found
       await waitFor(() => {
-        expect(mockGetSymbolReferences).toHaveBeenCalledWith(1, 100, undefined)
+        expect(mockGetSymbolReferences).toHaveBeenCalledWith(1, 100, undefined, undefined)
       })
 
       // Should display references
@@ -161,7 +198,33 @@ describe('ReferencesPanel', () => {
       })
 
       await waitFor(() => {
-        expect(mockGetSymbolReferences).toHaveBeenCalledWith(1, 100, 'def456')
+        expect(mockGetSymbolReferences).toHaveBeenCalledWith(1, 100, 'def456', undefined)
+      })
+    })
+
+    it('should pass selectedBranch when searching by name', async () => {
+      mockGetSymbolsByName.mockResolvedValue({
+        items: [mockSymbol],
+        total: 1,
+        limit: 20,
+        offset: 0,
+      })
+      mockGetSymbolReferences.mockResolvedValue({
+        items: [],
+        total: 0,
+        symbol_name: 'TestClass',
+      })
+
+      render(
+        <ReferencesPanel
+          symbol={null}
+          searchByName={{ name: 'TestClass', repositoryId: 1 }}
+          selectedBranch="feature"
+        />
+      )
+
+      await waitFor(() => {
+        expect(mockGetSymbolReferences).toHaveBeenCalledWith(1, 100, undefined, 'feature')
       })
     })
 

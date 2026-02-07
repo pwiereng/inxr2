@@ -222,11 +222,13 @@ export async function getRepositoryByName(name: string): Promise<Repository> {
 export async function getRepositoryTreeByName(
   name: string,
   commit?: string,
-  branch?: string
+  branch?: string,
+  changedOnly?: boolean
 ): Promise<TreeResponse> {
   const params = new URLSearchParams()
   if (commit) params.set('commit', commit)
   if (branch) params.set('branch', branch)
+  if (changedOnly) params.set('changed_only', 'true')
   const query = params.toString()
   return fetchApi<TreeResponse>(
     `/repositories/by-name/${encodeURIComponent(name)}/tree${query ? `?${query}` : ''}`
@@ -273,11 +275,13 @@ export async function getSymbolsByName(
 export async function getSymbolReferences(
   id: number,
   limit = 100,
-  commit?: string
+  commit?: string,
+  branch?: string
 ): Promise<ReferencesListResponse> {
   const params = new URLSearchParams()
   params.set('limit', limit.toString())
   if (commit) params.set('commit', commit)
+  if (branch) params.set('branch', branch)
   return fetchApi<ReferencesListResponse>(`/symbols/${id}/references?${params}`)
 }
 
@@ -359,4 +363,62 @@ export async function getFileContentByPathAtCommit(
   if (commit) params.set('commit', commit)
   if (branch) params.set('branch', branch)
   return fetchApi<FileContent>(`/files/by-path?${params}`)
+}
+
+// Text Search types and functions
+export interface TextSearchParams {
+  q: string
+  mode?: 'keyword' | 'phrase' | 'regex'
+  repo?: number
+  branch?: string
+  commit?: string
+  source_types?: string[]
+  languages?: string[]
+  limit?: number
+  offset?: number
+}
+
+export interface TextSearchResult {
+  id: number
+  repository_id: number
+  repository_name: string
+  file_path: string | null
+  source_line: number | null
+  source_end_line: number | null
+  source_type: string
+  content: string
+  content_type: string | null
+  language: string | null
+  commit_hash: string
+  branch: string | null
+  rank: number
+  headline: string | null
+}
+
+export interface TextSearchResponse {
+  results: TextSearchResult[]
+  total: number
+  query: string
+  mode: string
+  limit: number
+  offset: number
+}
+
+export async function searchText(params: TextSearchParams): Promise<TextSearchResponse> {
+  const searchParams = new URLSearchParams()
+  searchParams.set('q', params.q)
+  if (params.mode) searchParams.set('mode', params.mode)
+  if (params.repo) searchParams.set('repository_id', params.repo.toString())
+  if (params.branch) searchParams.set('branch', params.branch)
+  if (params.commit) searchParams.set('commit_hash', params.commit)
+  if (params.source_types) {
+    params.source_types.forEach((type) => searchParams.append('source_types', type))
+  }
+  if (params.languages) {
+    params.languages.forEach((lang) => searchParams.append('languages', lang))
+  }
+  if (params.limit) searchParams.set('limit', params.limit.toString())
+  if (params.offset) searchParams.set('offset', params.offset.toString())
+
+  return fetchApi<TextSearchResponse>(`/search/text?${searchParams}`)
 }

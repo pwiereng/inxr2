@@ -305,7 +305,7 @@ describe('VersionSelector', () => {
     })
   })
 
-  describe('latest label', () => {
+  describe('HEAD badge', () => {
     const twoVersions = {
       path: 'src/main.py',
       repository_name: 'test-repo',
@@ -330,11 +330,10 @@ describe('VersionSelector', () => {
       total: 2,
     }
 
-    it('should show "(latest)" when selectedBranch is null (implicit default)', async () => {
+    it('should show "HEAD" badge for the first (latest) version', async () => {
       mockGetFileHistory.mockResolvedValue(twoVersions)
 
-      // No selectedBranch means implicit default branch
-      render(<VersionSelector {...defaultProps} defaultBranch="main" />)
+      render(<VersionSelector {...defaultProps} />)
 
       await waitFor(() => {
         expect(screen.getByRole('combobox')).toBeInTheDocument()
@@ -347,15 +346,15 @@ describe('VersionSelector', () => {
         expect(screen.getByRole('listbox')).toBeInTheDocument()
       })
 
-      // Should show "(latest)" for the first version
-      expect(screen.getByRole('listbox').textContent).toContain('(latest)')
+      // Should show "HEAD" badge for the first version
+      expect(screen.getByRole('listbox').textContent).toContain('HEAD')
     })
 
-    it('should show "(latest)" when selectedBranch equals defaultBranch', async () => {
+    it('should show "HEAD" badge regardless of branch', async () => {
       mockGetFileHistory.mockResolvedValue(twoVersions)
 
-      // selectedBranch explicitly matches defaultBranch
-      render(<VersionSelector {...defaultProps} selectedBranch="main" defaultBranch="main" />)
+      // Even on a feature branch, the first version is HEAD of that branch
+      render(<VersionSelector {...defaultProps} selectedBranch="feature-branch" />)
 
       await waitFor(() => {
         expect(screen.getByRole('combobox')).toBeInTheDocument()
@@ -368,31 +367,8 @@ describe('VersionSelector', () => {
         expect(screen.getByRole('listbox')).toBeInTheDocument()
       })
 
-      // Should show "(latest)" for the first version
-      expect(screen.getByRole('listbox').textContent).toContain('(latest)')
-    })
-
-    it('should NOT show "(latest)" when on a non-default branch', async () => {
-      mockGetFileHistory.mockResolvedValue(twoVersions)
-
-      // selectedBranch is different from defaultBranch
-      render(
-        <VersionSelector {...defaultProps} selectedBranch="feature-branch" defaultBranch="main" />
-      )
-
-      await waitFor(() => {
-        expect(screen.getByRole('combobox')).toBeInTheDocument()
-      })
-
-      // Open dropdown
-      fireEvent.mouseDown(screen.getByRole('combobox'))
-
-      await waitFor(() => {
-        expect(screen.getByRole('listbox')).toBeInTheDocument()
-      })
-
-      // Should NOT show "(latest)" for any version
-      expect(screen.getByRole('listbox').textContent).not.toContain('(latest)')
+      // Should show "HEAD" for the first version on any branch
+      expect(screen.getByRole('listbox').textContent).toContain('HEAD')
     })
   })
 

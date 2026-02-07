@@ -62,6 +62,8 @@ class IndexRepositoryRequest:
         base_branch: Base branch to compare against for feature branch indexing.
                      When set, only commits unique to this branch (after merge-base)
                      will be indexed. If None, all reachable commits are indexed.
+        enable_text_search: If True, extract and index comments/docstrings for text search.
+                           Defaults to False.
     """
 
     repository_path: Path
@@ -72,6 +74,7 @@ class IndexRepositoryRequest:
     since_days: int | None = None
     force: bool = False
     base_branch: str | None = None
+    enable_text_search: bool = False
 
 
 @dataclass
@@ -84,12 +87,15 @@ class IncrementalIndexRequest:
         repository_path: Path to the git repository
         branch: Branch to index (None = current branch)
         languages: List of programming languages to parse
+        enable_text_search: If True, extract and index comments/docstrings for text search.
+                           Defaults to False.
     """
 
     repository_id: int
     repository_path: Path
     branch: str | None = None
     languages: list[str] | None = None
+    enable_text_search: bool = False
 
 
 @dataclass
@@ -117,6 +123,10 @@ class IndexRepositoryResponse:
         files_reused: Files reused via content-hash optimization
         symbols_reused: Symbols reused via content-hash optimization
         references_reused: References reused via content-hash optimization
+        comments_indexed: Number of comments indexed for text search
+        docstrings_indexed: Number of docstrings indexed for text search
+        commit_messages_indexed: Number of commit messages indexed for text search
+        non_code_files_indexed: Number of non-code files indexed for text search
         errors: List of error messages (non-fatal)
         elapsed_seconds: Time taken to complete indexing
         db_stats: Database query statistics (selects, inserts, updates)
@@ -139,6 +149,10 @@ class IndexRepositoryResponse:
     files_reused: int = 0
     symbols_reused: int = 0
     references_reused: int = 0
+    comments_indexed: int = 0
+    docstrings_indexed: int = 0
+    commit_messages_indexed: int = 0
+    non_code_files_indexed: int = 0
     errors: list[str] = field(default_factory=list)
     elapsed_seconds: float = 0.0
     db_stats: DBQueryStats = field(default_factory=DBQueryStats)

@@ -681,3 +681,122 @@ class TestGetRepositoryTreeUseCase:
                     commit_hash="abc123" + "0" * 34,  # commit_hash provided
                 )
             )
+
+    @pytest.mark.asyncio
+    async def test_get_tree_changed_only_shows_files_at_commit(self) -> None:
+        """Test changed_only=True shows only files changed at that commit."""
+        repo_repository = InMemoryRepositoryRepository()
+        commit_repository = InMemoryCommitRepository()
+        file_repository = InMemoryFileRepository(commit_repo=commit_repository)
+
+        repo = await repo_repository.save(
+            Repository(name="test-repo", url="https://example.com/repo.git")
+        )
+        assert repo.id is not None
+
+        # Create two commits
+        commit1 = await commit_repository.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=CommitHash("aaa111" + "0" * 34),
+                commit_date=datetime(2024, 1, 1, 12, 0, 0),
+                author_date=datetime(2024, 1, 1, 12, 0, 0),
+            )
+        )
+        commit2 = await commit_repository.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=CommitHash("bbb222" + "0" * 34),
+                commit_date=datetime(2024, 1, 2, 12, 0, 0),
+                author_date=datetime(2024, 1, 2, 12, 0, 0),
+            )
+        )
+
+        # Commit 1: adds app.py
+        file_repository.add(
+            File(
+                id=1,
+                repository_id=repo.id,
+                commit_id=commit1.id,
+                path="app.py",
+                content_hash="hash1",
+                size_bytes=100,
+            )
+        )
+
+        # Commit 2: adds utils.py (app.py unchanged, not re-indexed)
+        file_repository.add(
+            File(
+                id=2,
+                repository_id=repo.id,
+                commit_id=commit2.id,
+                path="utils.py",
+                content_hash="hash2",
+                size_bytes=200,
+            )
+        )
+
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+            commit_repo=commit_repository,
+        )
+
+        # changed_only=True at commit2: should only show utils.py (changed at commit2)
+        result_changed = await use_case.execute(
+            GetRepositoryTreeRequest(
+                repository_id=repo.id,
+                commit_hash="bbb222" + "0" * 34,
+                changed_only=True,
+            )
+        )
+        assert result_changed.total_files == 1
+        assert result_changed.root[0].name == "utils.py"
+
+        # changed_only=False at commit2: should show full tree (both files)
+        result_full = await use_case.execute(
+            GetRepositoryTreeRequest(
+                repository_id=repo.id,
+                commit_hash="bbb222" + "0" * 34,
+                changed_only=False,
+            )
+        )
+        assert result_full.total_files == 2
+        paths = {node.name for node in result_full.root}
+        assert paths == {"app.py", "utils.py"}
+
+    @pytest.mark.asyncio
+    async def test_get_tree_changed_only_requires_commit_hash(self) -> None:
+        """Test that changed_only without commit_hash uses default behavior."""
+        repo_repository = InMemoryRepositoryRepository()
+        file_repository = InMemoryFileRepository()
+
+        repo = await repo_repository.save(
+            Repository(name="test-repo", url="https://example.com/repo.git")
+        )
+        assert repo.id is not None
+
+        file_repository.add(
+            File(
+                id=1,
+                repository_id=repo.id,
+                commit_id=1,
+                path="app.py",
+                content_hash="hash1",
+                size_bytes=100,
+            )
+        )
+
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repo_repository,
+            file_repo=file_repository,
+        )
+
+        # changed_only=True but no commit_hash: should use default behavior (list all)
+        result = await use_case.execute(
+            GetRepositoryTreeRequest(
+                repository_id=repo.id,
+                changed_only=True,  # This is ignored without commit_hash
+            )
+        )
+        assert result.total_files == 1

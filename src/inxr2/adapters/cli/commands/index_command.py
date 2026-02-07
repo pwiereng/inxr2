@@ -188,6 +188,10 @@ class IndexingStats:
     files_reused: int = 0
     symbols_reused: int = 0
     references_reused: int = 0
+    # Text search content counters
+    comments_indexed: int = 0
+    docstrings_indexed: int = 0
+    commit_messages_indexed: int = 0
     errors: list[str] = field(default_factory=list)
     # Database query statistics
     db_stats: DBQueryStats = field(default_factory=DBQueryStats)
@@ -195,6 +199,15 @@ class IndexingStats:
     @property
     def files_succeeded(self) -> int:
         return max(0, self.files_processed - self.files_failed)
+
+    @property
+    def text_contents_total(self) -> int:
+        """Total text content items indexed (comments + docstrings + commit messages)."""
+        return (
+            self.comments_indexed
+            + self.docstrings_indexed
+            + self.commit_messages_indexed
+        )
 
 
 @dataclass
@@ -253,6 +266,7 @@ def run_full_index(
     force: bool = False,
     since_days: int | None = None,
     base_branch: str | None = None,
+    enable_text_search: bool = False,
 ) -> IndexingResult | None:
     """
     Run full indexing of a repository with time travel support.
@@ -270,6 +284,7 @@ def run_full_index(
         since_days: Only index commits from the last N days (overrides max_history)
         base_branch: Base branch for feature branch optimization. When set,
                      only commits unique to this branch (after merge-base) are indexed.
+        enable_text_search: If True, extract and index comments/docstrings for text search
 
     Returns:
         IndexingResult with stats for the final summary, or None if interrupted
@@ -289,6 +304,7 @@ def run_full_index(
                 force=force,
                 since_days=since_days,
                 base_branch=base_branch,
+                enable_text_search=enable_text_search,
             )
         )
     except KeyboardInterrupt:
@@ -306,6 +322,7 @@ async def _run_full_index_async(
     force: bool = False,
     since_days: int | None = None,
     base_branch: str | None = None,
+    enable_text_search: bool = False,
 ) -> IndexingResult:
     """Async implementation of full indexing using the orchestrator."""
     from inxr2.adapters.external.git_service import GitService
@@ -317,6 +334,7 @@ async def _run_full_index_async(
         PostgresReferenceRepository,
         PostgresRepositoryAdapter,
         PostgresSymbolRepository,
+        PostgresTextContentRepository,
     )
     from inxr2.application.use_cases.indexing.default_orchestrator import (
         DefaultIndexingOrchestrator,
@@ -341,6 +359,7 @@ async def _run_full_index_async(
             symbol_repo = PostgresSymbolRepository(session)
             reference_repo = PostgresReferenceRepository(session)
             index_status_repo = PostgresIndexStatusRepository(session)
+            text_content_repo = PostgresTextContentRepository(session)
 
             # Create orchestrator
             orchestrator = DefaultIndexingOrchestrator(
@@ -350,6 +369,7 @@ async def _run_full_index_async(
                 symbol_repo=symbol_repo,
                 reference_repo=reference_repo,
                 index_status_repo=index_status_repo,
+                text_content_repo=text_content_repo,
                 git_service=git_service,
                 parser_service=parser_service,
             )
@@ -416,6 +436,7 @@ async def _run_full_index_async(
                 max_history=max_history,
                 since_days=since_days,
                 base_branch=base_branch,
+                enable_text_search=enable_text_search,
             )
 
             # Import progress types
@@ -532,6 +553,9 @@ async def _run_full_index_async(
                 files_reused=response.files_reused,
                 symbols_reused=response.symbols_reused,
                 references_reused=response.references_reused,
+                comments_indexed=response.comments_indexed,
+                docstrings_indexed=response.docstrings_indexed,
+                commit_messages_indexed=response.commit_messages_indexed,
                 errors=response.errors,
                 db_stats=response.db_stats,
             )
@@ -578,6 +602,7 @@ def run_incremental_index(
     console: Console,
     max_history: int = 1,  # Ignored for incremental - only indexes since last commit
     force: bool = False,  # Ignored for incremental - accepted for API compatibility
+    enable_text_search: bool = False,
 ) -> IndexingResult | None:
     """
     Run incremental indexing of a repository.
@@ -585,6 +610,9 @@ def run_incremental_index(
     Only indexes files that have changed since the last index.
     The max_history and force parameters are accepted for API compatibility
     but ignored (incremental always indexes from the last indexed commit to HEAD).
+
+    Args:
+        enable_text_search: If True, extract and index comments/docstrings for text search
 
     Returns:
         IndexingResult with stats for the final summary, or None if interrupted
@@ -599,6 +627,7 @@ def run_incremental_index(
                 branch=branch,
                 languages=languages,
                 console=console,
+                enable_text_search=enable_text_search,
             )
         )
     except KeyboardInterrupt:
@@ -612,6 +641,7 @@ async def _run_incremental_index_async(
     branch: str | None,
     languages: list[str],
     console: Console,
+    enable_text_search: bool = False,
 ) -> IndexingResult:
     """Async implementation of incremental indexing using the orchestrator."""
     from inxr2.adapters.external.git_service import GitService
@@ -623,6 +653,7 @@ async def _run_incremental_index_async(
         PostgresReferenceRepository,
         PostgresRepositoryAdapter,
         PostgresSymbolRepository,
+        PostgresTextContentRepository,
     )
     from inxr2.application.use_cases.indexing.default_orchestrator import (
         DefaultIndexingOrchestrator,
@@ -651,6 +682,7 @@ async def _run_incremental_index_async(
             symbol_repo = PostgresSymbolRepository(session)
             reference_repo = PostgresReferenceRepository(session)
             index_status_repo = PostgresIndexStatusRepository(session)
+            text_content_repo = PostgresTextContentRepository(session)
 
             # Find repository in database
             db_repo = await repository_repo.find_by_name(repo_name)
@@ -676,6 +708,7 @@ async def _run_incremental_index_async(
                 symbol_repo=symbol_repo,
                 reference_repo=reference_repo,
                 index_status_repo=index_status_repo,
+                text_content_repo=text_content_repo,
                 git_service=git_service,
                 parser_service=parser_service,
             )
@@ -692,6 +725,7 @@ async def _run_incremental_index_async(
                 repository_path=repo_path,
                 branch=current_branch,
                 languages=languages,
+                enable_text_search=enable_text_search,
             )
 
             # Import progress types
@@ -818,6 +852,9 @@ async def _run_incremental_index_async(
                 files_reused=response.files_reused,
                 symbols_reused=response.symbols_reused,
                 references_reused=response.references_reused,
+                comments_indexed=response.comments_indexed,
+                docstrings_indexed=response.docstrings_indexed,
+                commit_messages_indexed=response.commit_messages_indexed,
                 errors=response.errors,
                 db_stats=response.db_stats,
             )
@@ -1073,6 +1110,19 @@ def _print_summary(
     else:
         table.add_row(
             "References Resolved", f"[cyan]{stats.references_resolved}[/cyan]"
+        )
+
+    # Show text search statistics if any content was indexed
+    if stats.text_contents_total > 0:
+        table.add_row("", "")  # Separator
+        table.add_row(
+            "Text Content Indexed",
+            f"[cyan]{stats.text_contents_total:,}[/cyan] [dim](comments + docstrings + commit messages)[/dim]",
+        )
+        table.add_row("  Comments", f"[dim]{stats.comments_indexed:,}[/dim]")
+        table.add_row("  Docstrings", f"[dim]{stats.docstrings_indexed:,}[/dim]")
+        table.add_row(
+            "  Commit Messages", f"[dim]{stats.commit_messages_indexed:,}[/dim]"
         )
 
     # Show reuse statistics if content-hash optimization was used

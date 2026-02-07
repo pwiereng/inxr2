@@ -20,6 +20,7 @@ from tests.fixtures.test_doubles import (
     InMemoryReferenceRepository,
     InMemoryRepositoryRepository,
     InMemorySymbolRepository,
+    InMemoryTextContentRepository,
 )
 
 
@@ -167,6 +168,10 @@ class FakeGitService:
 class FakeParserService:
     """Fake parser service for testing without real parsing."""
 
+    def __init__(self) -> None:
+        """Initialize fake parser service."""
+        self.comments_to_return: list[dict] = []
+
     def supports_language(self, language: str) -> bool:
         """Check if language is supported."""
         return language in ["python", "typescript", "java"]
@@ -205,6 +210,32 @@ class FakeParserService:
             }
         ]
         return symbols, references
+
+    async def extract_comments(
+        self, content: str, language: str, file_path: str
+    ) -> list[dict]:
+        """
+        Extract comments and docstrings from a file.
+
+        Returns list of dicts with keys:
+        - content: The comment text
+        - content_type: Type (inline_comment, block_comment, docstring)
+        - source_line: Starting line number
+        - source_end_line: Ending line number (optional)
+        """
+        # Return predefined comments if set, otherwise return default
+        if self.comments_to_return:
+            return self.comments_to_return
+
+        # Default: return one fake comment per file
+        file_name = Path(file_path).name
+        return [
+            {
+                "content": f"This is a comment in {file_name}",
+                "content_type": "inline_comment",
+                "source_line": 1,
+            }
+        ]
 
 
 @pytest.fixture
@@ -246,6 +277,12 @@ def index_status_repo() -> InMemoryIndexStatusRepository:
 
 
 @pytest.fixture
+def text_content_repo() -> InMemoryTextContentRepository:
+    """Create in-memory text content repository."""
+    return InMemoryTextContentRepository()
+
+
+@pytest.fixture
 def git_service() -> FakeGitService:
     """Create fake git service."""
     return FakeGitService()
@@ -265,6 +302,7 @@ def orchestrator(
     symbol_repo: InMemorySymbolRepository,
     reference_repo: InMemoryReferenceRepository,
     index_status_repo: InMemoryIndexStatusRepository,
+    text_content_repo: InMemoryTextContentRepository,
     git_service: FakeGitService,
     parser_service: FakeParserService,
 ) -> DefaultIndexingOrchestrator:
@@ -276,6 +314,7 @@ def orchestrator(
         symbol_repo=symbol_repo,
         reference_repo=reference_repo,
         index_status_repo=index_status_repo,
+        text_content_repo=text_content_repo,
         git_service=git_service,
         parser_service=parser_service,
     )
@@ -410,6 +449,7 @@ class TestDefaultIndexingOrchestrator:
         repository_adapter: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
     ) -> None:
         """Test that incremental indexing only processes new commits."""
         # Arrange - first do a partial full index
@@ -475,6 +515,7 @@ class TestDefaultIndexingOrchestrator:
         self,
         orchestrator: DefaultIndexingOrchestrator,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
     ) -> None:
         """Test that indexing updates index status."""
         # Arrange
@@ -507,6 +548,7 @@ class TestGitServiceIntegration:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """
@@ -548,6 +590,7 @@ class TestGitServiceIntegration:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=spy_git,
             parser_service=parser_service,
         )
@@ -579,6 +622,7 @@ class TestGitServiceIntegration:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """Test that since_days filter is passed to git service correctly."""
@@ -606,6 +650,7 @@ class TestGitServiceIntegration:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=spy_git,
             parser_service=parser_service,
         )
@@ -632,6 +677,7 @@ class TestGitServiceIntegration:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """
@@ -684,6 +730,7 @@ class TestGitServiceIntegration:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=empty_git,
             parser_service=parser_service,
         )
@@ -715,6 +762,7 @@ class TestGitServiceIntegration:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """
@@ -752,6 +800,7 @@ class TestGitServiceIntegration:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=spy_git,
             parser_service=parser_service,
         )
@@ -780,6 +829,7 @@ class TestGitServiceIntegration:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """
@@ -821,6 +871,7 @@ class TestGitServiceIntegration:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=tz_git,
             parser_service=parser_service,
         )
@@ -853,6 +904,7 @@ class TestGitServiceIntegration:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         git_service: FakeGitService,
     ) -> None:
         """
@@ -901,6 +953,7 @@ class TestGitServiceIntegration:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=dict_parser,
         )
@@ -930,6 +983,7 @@ class TestGitServiceIntegration:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         git_service: FakeGitService,
     ) -> None:
         """
@@ -979,6 +1033,7 @@ class TestGitServiceIntegration:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=no_end_parser,
         )
@@ -1021,6 +1076,7 @@ class TestGitServiceIntegration:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         git_service: FakeGitService,
     ) -> None:
         """
@@ -1076,6 +1132,7 @@ class TestGitServiceIntegration:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=string_type_parser,
         )
@@ -1126,6 +1183,7 @@ class TestGitServiceIntegration:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         git_service: FakeGitService,
         parser_service: FakeParserService,
     ) -> None:
@@ -1143,6 +1201,7 @@ class TestGitServiceIntegration:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
         )
@@ -1194,6 +1253,7 @@ class TestHeadFirstIndexing:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """
@@ -1230,6 +1290,7 @@ class TestHeadFirstIndexing:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=tracking_git,
             parser_service=parser_service,
         )
@@ -1269,6 +1330,7 @@ class TestHeadFirstIndexing:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """Test that older commits use delta indexing (only changed files)."""
@@ -1333,6 +1395,7 @@ class TestHeadFirstIndexing:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=three_commit_git,
             parser_service=parser_service,
         )
@@ -1369,6 +1432,7 @@ class TestHeadFirstIndexing:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """Test that a single commit (HEAD only) processes all files."""
@@ -1404,6 +1468,7 @@ class TestHeadFirstIndexing:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=single_commit_git,
             parser_service=parser_service,
         )
@@ -1463,6 +1528,7 @@ class TestBranchCommitsPopulation:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """Test that full indexing populates the branch_commits junction table."""
@@ -1475,6 +1541,7 @@ class TestBranchCommitsPopulation:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
         )
@@ -1509,6 +1576,7 @@ class TestBranchCommitsPopulation:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """Test that incremental indexing also populates branch_commits."""
@@ -1521,6 +1589,7 @@ class TestBranchCommitsPopulation:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
         )
@@ -1559,6 +1628,7 @@ class TestBranchCommitsPopulation:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """Test that indexing different branches creates correct branch links."""
@@ -1571,6 +1641,7 @@ class TestBranchCommitsPopulation:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
         )
@@ -1613,6 +1684,7 @@ class TestBranchIndexingOptimization:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """Test that list_branch_commits is called when base_branch is set and differs from branch."""
@@ -1625,6 +1697,7 @@ class TestBranchIndexingOptimization:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
         )
@@ -1656,6 +1729,7 @@ class TestBranchIndexingOptimization:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """Test that list_commits (not list_branch_commits) is used when base_branch equals branch."""
@@ -1668,6 +1742,7 @@ class TestBranchIndexingOptimization:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
         )
@@ -1697,6 +1772,7 @@ class TestBranchIndexingOptimization:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """Test that list_commits (not list_branch_commits) is used when base_branch is None."""
@@ -1709,6 +1785,7 @@ class TestBranchIndexingOptimization:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
         )
@@ -1738,6 +1815,7 @@ class TestBranchIndexingOptimization:
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
         index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
         """Test that fewer commits are indexed when branch optimization is active."""
@@ -1752,6 +1830,7 @@ class TestBranchIndexingOptimization:
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
         )
@@ -1772,3 +1851,359 @@ class TestBranchIndexingOptimization:
         assert (
             response.commits_indexed == 1
         ), "Should index only 1 commit when using branch optimization"
+
+    @pytest.mark.asyncio
+    async def test_text_search_enabled_extracts_and_saves_comments(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        text_content_repo: InMemoryTextContentRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that text search extracts and saves comments when enabled."""
+        # Arrange: Set up fake comments to be extracted
+        parser_service.comments_to_return = [
+            {
+                "content": "This is a docstring",
+                "content_type": "docstring",
+                "source_line": 1,
+                "source_end_line": 3,
+            },
+            {
+                "content": "This is an inline comment",
+                "content_type": "inline_comment",
+                "source_line": 5,
+            },
+        ]
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            enable_text_search=True,  # Enable text search
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert: Comments should be saved to text_content_repo
+        all_text_contents = text_content_repo.get_all()
+        assert len(all_text_contents) > 0, "Should have saved text contents"
+
+        # Verify we have both comment types
+        docstrings = [tc for tc in all_text_contents if tc.content_type == "docstring"]
+        comments = [
+            tc for tc in all_text_contents if tc.content_type == "inline_comment"
+        ]
+
+        assert len(docstrings) > 0, "Should have extracted docstrings"
+        assert len(comments) > 0, "Should have extracted comments"
+
+        # Verify content matches
+        assert any("docstring" in tc.content for tc in docstrings)
+        assert any("inline comment" in tc.content for tc in comments)
+
+        # Verify response contains text content counts
+        assert response.comments_indexed == len(
+            comments
+        ), "Response should track comment count"
+        assert response.docstrings_indexed == len(
+            docstrings
+        ), "Response should track docstring count"
+
+    @pytest.mark.asyncio
+    async def test_text_search_disabled_does_not_extract_comments(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        text_content_repo: InMemoryTextContentRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that comments are NOT extracted when text search is disabled."""
+        # Arrange: Set up fake comments (should not be used)
+        parser_service.comments_to_return = [
+            {
+                "content": "This comment should not be saved",
+                "content_type": "inline_comment",
+                "source_line": 1,
+            },
+        ]
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            enable_text_search=False,  # Disable text search
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert: NO text contents should be saved
+        all_text_contents = text_content_repo.get_all()
+        assert (
+            len(all_text_contents) == 0
+        ), "Should NOT have saved text contents when disabled"
+
+        # Verify response shows zero text content counts
+        assert (
+            response.comments_indexed == 0
+        ), "Response should show 0 comments when disabled"
+        assert (
+            response.docstrings_indexed == 0
+        ), "Response should show 0 docstrings when disabled"
+
+    @pytest.mark.asyncio
+    async def test_commit_messages_indexed_when_text_search_enabled(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        text_content_repo: InMemoryTextContentRepository,
+        git_service: FakeGitService,
+    ) -> None:
+        """Test that commit messages are indexed when text search is enabled."""
+        # Arrange: Use default FakeGitService with 2 commits
+        # Commit 1: "Initial commit"
+        # Commit 2: "Add feature"
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            enable_text_search=True,
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert: Commit messages should be saved to text_content_repo
+        all_text_contents = text_content_repo.get_all()
+
+        # Filter for commit messages (source_type = "commit_message")
+        commit_messages = [
+            tc for tc in all_text_contents if tc.source_type == "commit_message"
+        ]
+
+        # Should have 2 commit messages (one per commit)
+        assert (
+            len(commit_messages) == 2
+        ), f"Should have 2 commit messages, got {len(commit_messages)}"
+
+        # Verify commit message content
+        commit_texts = {tc.content for tc in commit_messages}
+        assert "Initial commit" in commit_texts, "Should have first commit message"
+        assert "Add feature" in commit_texts, "Should have second commit message"
+
+        # Verify commit messages have correct metadata
+        for tc in commit_messages:
+            assert tc.source_type == "commit_message"
+            assert tc.source_file_id is None, "Commit messages should not have file_id"
+            assert tc.source_line is None, "Commit messages should not have line number"
+            assert tc.content_type == "commit_message"
+
+        # Verify response contains commit message count
+        assert (
+            response.commit_messages_indexed == 2
+        ), "Response should track commit message count"
+
+    @pytest.mark.asyncio
+    async def test_commit_messages_not_indexed_when_text_search_disabled(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        text_content_repo: InMemoryTextContentRepository,
+    ) -> None:
+        """Test that commit messages are NOT indexed when text search is disabled."""
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            enable_text_search=False,  # Disabled
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert: NO commit messages should be saved
+        all_text_contents = text_content_repo.get_all()
+        commit_messages = [
+            tc for tc in all_text_contents if tc.source_type == "commit_message"
+        ]
+
+        assert (
+            len(commit_messages) == 0
+        ), "Should NOT have saved commit messages when disabled"
+
+        # Verify response shows zero commit messages
+        assert (
+            response.commit_messages_indexed == 0
+        ), "Response should show 0 commit messages when disabled"
+
+    @pytest.mark.asyncio
+    async def test_non_code_files_indexed_when_text_search_enabled(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that non-code files are indexed when text search is enabled."""
+        # Arrange: Create a git service with markdown and YAML files
+        from datetime import datetime
+
+        git_service = FakeGitService(
+            commits=[
+                {
+                    "hash": "abc123",
+                    "short_hash": "abc123",
+                    "author_name": "Test User",
+                    "author_email": "test@example.com",
+                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "committer_name": "Test User",
+                    "committer_email": "test@example.com",
+                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "message": "Add docs",
+                    "parent_hashes": [],
+                }
+            ]
+        )
+        # Add non-code files to the commit
+        git_service.files_in_commit = {
+            "abc123": ["README.md", "config.yaml", "Dockerfile"]
+        }
+        git_service.changed_files_in_commit = {
+            "abc123": {
+                "added": ["README.md", "config.yaml", "Dockerfile"],
+                "modified": [],
+                "deleted": [],
+            }
+        }
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            enable_text_search=True,
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert: Non-code files should be indexed
+        all_text_contents = text_content_repo.get_all()
+
+        # Filter for file content (source_type = "file_content")
+        file_contents = [
+            tc for tc in all_text_contents if tc.source_type == "file_content"
+        ]
+
+        # Should have content from non-code files
+        assert len(file_contents) > 0, "Should have indexed non-code file content"
+
+        # Verify content has correct metadata
+        for tc in file_contents:
+            assert tc.source_type == "file_content"
+            assert tc.source_file_id is not None, "Should have file_id"
+            assert tc.source_line is not None, "Should have line number"
+            assert tc.content.strip(), "Content should not be empty"
+
+        # Verify response contains non-code file count
+        assert (
+            response.non_code_files_indexed >= 3
+        ), "Response should track non-code files indexed"
+
+    @pytest.mark.asyncio
+    async def test_non_code_files_not_indexed_when_text_search_disabled(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that non-code files are NOT indexed when text search is disabled."""
+        # Arrange: Create a git service with non-code files
+        from datetime import datetime
+
+        git_service = FakeGitService(
+            commits=[
+                {
+                    "hash": "abc123",
+                    "short_hash": "abc123",
+                    "author_name": "Test User",
+                    "author_email": "test@example.com",
+                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "committer_name": "Test User",
+                    "committer_email": "test@example.com",
+                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "message": "Add docs",
+                    "parent_hashes": [],
+                }
+            ]
+        )
+        git_service.files_in_commit = {"abc123": ["README.md", "config.yaml"]}
+        git_service.changed_files_in_commit = {
+            "abc123": {
+                "added": ["README.md", "config.yaml"],
+                "modified": [],
+                "deleted": [],
+            }
+        }
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            strategy=IndexingStrategy.FULL,
+            enable_text_search=False,  # Disabled
+        )
+
+        # Act
+        response = await orchestrator.index_repository(request)
+
+        # Assert: NO file content should be saved
+        all_text_contents = text_content_repo.get_all()
+        file_contents = [
+            tc for tc in all_text_contents if tc.source_type == "file_content"
+        ]
+
+        assert (
+            len(file_contents) == 0
+        ), "Should NOT have indexed non-code files when disabled"
+
+        # Verify response shows zero non-code files
+        assert (
+            response.non_code_files_indexed == 0
+        ), "Response should show 0 non-code files when disabled"

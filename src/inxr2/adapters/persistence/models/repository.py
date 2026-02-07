@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from .index_status import IndexStatusModel
     from .reference import ReferenceModel
     from .symbol import SymbolModel
+    from .text_content import TextContentModel
 
 
 class RepositoryModel(Base, TimestampMixin):
@@ -53,6 +54,9 @@ class RepositoryModel(Base, TimestampMixin):
     )
     index_statuses: Mapped[list["IndexStatusModel"]] = relationship(
         "IndexStatusModel", back_populates="repository", cascade="all, delete-orphan"
+    )
+    text_contents: Mapped[list["TextContentModel"]] = relationship(
+        "TextContentModel", back_populates="repository", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

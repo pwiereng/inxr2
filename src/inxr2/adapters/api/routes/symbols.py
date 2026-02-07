@@ -232,6 +232,10 @@ async def get_symbol_references(
     commit: str | None = Query(
         default=None, description="Commit hash for time travel (optional)"
     ),
+    branch: str | None = Query(
+        default=None,
+        description="Branch name to filter references (only show references from files on this branch)",
+    ),
     limit: int = Query(default=100, ge=1, le=500, description="Max results"),
 ) -> ReferencesListResponse:
     """
@@ -245,6 +249,8 @@ async def get_symbol_references(
     - by_name: If true, find all references matching the symbol name
     - commit: Commit hash for time travel (optional). If provided, returns
               references from that specific commit only.
+    - branch: Branch name to filter references. Only returns references from
+              files that exist on this branch.
     """
     try:
         result = await use_case.execute(
@@ -252,6 +258,7 @@ async def get_symbol_references(
                 symbol_id=symbol_id,
                 by_name=by_name,
                 commit_hash=commit,
+                branch=branch,
                 limit=limit,
             )
         )
