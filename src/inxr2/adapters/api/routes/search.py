@@ -1,9 +1,12 @@
 """Search API endpoints for free text search."""
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 from ....application.use_cases.search import SearchTextRequest
+from ....domain.value_objects import QueryMode, TextSearchSourceType
 from ....infrastructure.dependencies import (
     CommitAdapter,
     FileAdapter,
@@ -12,6 +15,14 @@ from ....infrastructure.dependencies import (
 )
 
 router = APIRouter(prefix="/search", tags=["search"])
+
+# Valid values for validation
+VALID_MODES = [m.value for m in QueryMode]
+VALID_SOURCE_TYPES = [s.value for s in TextSearchSourceType]
+
+# Query length limits
+MAX_TEXT_QUERY_LENGTH = 500
+MAX_FILE_QUERY_LENGTH = 200
 
 
 # Response models
@@ -76,8 +87,15 @@ class FileSearchListResponse(BaseModel):
 @router.get("/text", response_model=SearchTextListResponse)
 async def search_text(
     use_case: SearchTextUseCaseDep,
-    q: str = Query(..., description="Search query"),
-    mode: str = Query("keyword", description="Query mode: keyword, phrase, regex"),
+    q: str = Query(
+        ...,
+        min_length=1,
+        max_length=MAX_TEXT_QUERY_LENGTH,
+        description="Search query",
+    ),
+    mode: Literal["keyword", "phrase", "regex"] = Query(
+        "keyword", description="Query mode: keyword, phrase, regex"
+    ),
     repo: int | None = Query(
         None, alias="repository_id", description="Repository ID filter"
     ),
@@ -85,7 +103,8 @@ async def search_text(
     commit: str | None = Query(
         None, alias="commit_hash", description="Commit hash filter"
     ),
-    source_types: list[str] | None = Query(
+    source_types: list[Literal["comment", "docstring", "commit_message", "file_content"]]
+    | None = Query(
         None, description="Source types filter (e.g., comment, docstring)"
     ),
     languages: list[str] | None = Query(
@@ -129,7 +148,7 @@ async def search_text(
                 repository_id=repo,
                 branch=branch,
                 commit_hash=commit,
-                source_types=source_types,
+                source_types=list(source_types) if source_types else None,
                 languages=languages,
                 limit=limit,
                 offset=offset,
@@ -171,7 +190,12 @@ async def search_files(
     file_adapter: FileAdapter,
     repository_adapter: RepositoryAdapter,
     commit_adapter: CommitAdapter,
-    q: str = Query(..., min_length=1, description="File name/path search query"),
+    q: str = Query(
+        ...,
+        min_length=1,
+        max_length=MAX_FILE_QUERY_LENGTH,
+        description="File name/path search query",
+    ),
     repository: str | None = Query(None, description="Repository name filter"),
     branch: str | None = Query(None, description="Branch filter"),
     commit_hash: str | None = Query(None, description="Commit hash filter"),
