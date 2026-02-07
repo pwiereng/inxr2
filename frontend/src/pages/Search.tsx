@@ -320,8 +320,9 @@ export default function Search() {
       .map((segment) => encodeURIComponent(segment))
       .join('/')
 
+    const queryString = params.toString()
     navigate(
-      `/browse/${encodeURIComponent(file.repository_name)}/${encodedPath}?${params.toString()}`
+      `/browse/${encodeURIComponent(file.repository_name)}/${encodedPath}${queryString ? `?${queryString}` : ''}`
     )
   }
 

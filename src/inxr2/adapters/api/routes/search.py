@@ -240,18 +240,18 @@ async def search_files(
     # Build response with repository names and commit hashes
     results: list[FileSearchResultResponse] = []
 
-    # Batch fetch repository and commit info
-    repo_ids = {f.repository_id for f in files if f.repository_id}
-    commit_ids = {f.commit_id for f in files if f.commit_id}
+    # Collect unique IDs for lookup (using is not None to handle ID=0 correctly)
+    repo_ids = {f.repository_id for f in files if f.repository_id is not None}
+    commit_ids = {f.commit_id for f in files if f.commit_id is not None}
 
-    # Fetch repositories
+    # Fetch repositories (N+1 for now; bulk fetch would require new port method)
     repo_map: dict[int, str] = {}
     for rid in repo_ids:
         repo = await repository_adapter.find_by_id(rid)
         if repo:
             repo_map[rid] = repo.name
 
-    # Fetch commits
+    # Fetch commits (N+1 for now; bulk fetch would require new port method)
     commit_map: dict[int, str] = {}
     for cid in commit_ids:
         commit = await commit_adapter.find_by_id(cid)

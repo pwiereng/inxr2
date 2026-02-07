@@ -494,13 +494,16 @@ class PostgresFileRepository(FileRepositoryPort):
 
         relevance = case(
             (filename_expr == query_lower, 1),  # Exact filename match
-            (filename_expr.startswith(query_lower), 2),  # Filename prefix match
+            (
+                filename_expr.startswith(query_lower, autoescape=True),
+                2,
+            ),  # Filename prefix
             else_=3,  # Contains match
         )
 
-        # Base query with pattern matching
+        # Base query with pattern matching (autoescape handles % and _ in user input)
         query_stmt = select(FileModel, relevance.label("relevance")).where(
-            func.lower(FileModel.path).contains(query_lower)
+            func.lower(FileModel.path).contains(query_lower, autoescape=True)
         )
 
         # Apply filters
