@@ -72,6 +72,62 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
    - Keep commits simple and straightforward
    - ⚠️ **ALWAYS ask the user** if they want to test before committing - don't assume
 
+## Exploratory Testing with QA Agent
+
+For interactive UI testing, use the **`inxr2-playwright`** container. This is a Claude-driven testing approach where:
+
+- **Claude Code** (you) decides what to test and issues commands
+- **QA Agent** executes browser actions via Playwright
+- **Claude Code** interprets results and continues testing
+
+### Why Separate Containers?
+
+- **`inxr2-dev`**: Development container for coding, running tests, database operations
+- **`inxr2-playwright`**: Browser automation container with Playwright and Chromium
+
+⚠️ **NEVER install Playwright/Chromium in `inxr2-dev`** - use the dedicated QA container.
+
+### Starting the QA Agent
+
+```bash
+# Start the playwright container (if not already running)
+docker-compose -f docker-compose.dev.yml up -d inxr2-playwright
+
+# Verify it's running
+curl http://localhost:9222/health
+```
+
+### Using curl for Browser Control
+
+Control the browser by issuing curl commands:
+
+```bash
+# Navigate to a page
+curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/inxr2"
+
+# Click an element
+curl "http://localhost:9222/click?selector=span.symbol-name"
+
+# Get text content
+curl "http://localhost:9222/text?selector=.references-panel"
+
+# List matching elements
+curl "http://localhost:9222/elements?selector=a&limit=10"
+
+# Take a screenshot
+curl "http://localhost:9222/screenshot/save?path=/tmp/screenshot.png"
+```
+
+### Exploratory Testing Workflow
+
+1. Ensure frontend is running: `cd frontend && npm run dev` (in `inxr2-dev`)
+2. Ensure backend is running: `inxr2 serve --reload` (in `inxr2-dev`)
+3. Use curl commands to navigate and interact with the UI
+4. Keep a log of steps to reproduce any bugs found
+5. Verify behavior matches expectations
+
+See `qa-agent/README.md` for complete API documentation.
+
 ## Common Commands
 
 ### Starting Development Environment
@@ -367,6 +423,13 @@ tests/                         # Backend tests
 ├── unit/                     # Unit tests (domain, application)
 ├── integration/              # Integration tests (API, database)
 └── adapters/                 # Adapter tests (repositories, mappers)
+
+qa-agent/                      # Browser automation for exploratory testing
+├── src/
+│   ├── server.py             # HTTP API server (curl-based control)
+│   └── repl.py               # JSON REPL for scripted testing
+├── Dockerfile                # Playwright + Chromium container
+└── README.md                 # API documentation
 ```
 
 ## Important Files
@@ -375,6 +438,7 @@ tests/                         # Backend tests
 - **IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.12)
 - **CONTRIBUTING.md** - Coding standards, testing philosophy, git workflow
 - **docs/database-schema.md** - Complete database schema with design rationale
+- **qa-agent/README.md** - QA agent API documentation for exploratory testing
 
 ## Development Workflow
 
@@ -741,6 +805,11 @@ See `config.yaml` for the current repository configuration.
 8. **Don't amend commits**
    - NEVER use `git commit --amend` - create a new commit instead
    - Rebase is OK for resolving conflicts on feature branches
+
+9. **Don't install Playwright in inxr2-dev**
+   - Use the `inxr2-playwright` container for browser automation
+   - Access via curl: `curl http://localhost:9222/navigate?url=...`
+   - See `qa-agent/README.md` for API documentation
 
 ## Getting Help
 

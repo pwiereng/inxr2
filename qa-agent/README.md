@@ -1,23 +1,99 @@
 # INXR2 QA Agent
 
-Exploratory testing agent for INXR2, powered by Claude and Playwright.
+Claude-driven browser automation for exploratory UI testing.
 
 ## Overview
 
-This agent performs "manual" testing of the INXR2 UI by:
-1. Using Playwright to interact with the web UI
-2. Extracting what the UI displays (DOM-based, not screenshots)
-3. Comparing against the actual git source using grep
-4. Using Claude to verify correctness when simple comparison isn't enough
+This is a **headless browser container** that Claude Code controls via HTTP/curl commands. The workflow is:
+
+1. **Claude Code** decides what to test and which actions to take
+2. **QA Agent** (this container) executes browser actions via Playwright
+3. **Claude Code** interprets results and continues testing
+
+The agent is intentionally simple - just a browser automation server. All the intelligence comes from Claude Code, which issues curl commands like:
+
+```bash
+curl "http://localhost:9222/navigate?url=http://localhost:5173"
+curl "http://localhost:9222/click?selector=span.symbol-name"
+curl "http://localhost:9222/text?selector=.references-panel"
+```
+
+**No LLM API is used inside the QA agent** - Claude Code is already the LLM driving the testing session.
+
+### Why a Separate Container?
+
+- **Isolation**: Browser dependencies (Chromium, X11 libs) stay out of `inxr2-dev`
+- **Specialization**: `inxr2-dev` is for development, `inxr2-playwright` is for UI testing
+- **Cleanliness**: No Playwright installation polluting the dev environment
+
+## Quick Start: Interactive Testing with Claude Code
+
+The most common use case is exploratory testing during development.
+
+### 1. Start the QA Agent
+
+```bash
+# From project root, start the playwright container
+docker-compose -f docker-compose.dev.yml up -d inxr2-playwright
+
+# Verify it's running
+curl http://localhost:9222/health
+# {"status":"ok","browser":true}
+```
+
+### 2. Use curl to Control the Browser
+
+The server exposes simple GET endpoints that Claude Code can call:
+
+```bash
+# Navigate to a page
+curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/inxr2"
+
+# Click an element
+curl "http://localhost:9222/click?selector=a[href*='symbol_kind']"
+
+# Get text content
+curl "http://localhost:9222/text?selector=.file-content"
+
+# List elements matching a selector
+curl "http://localhost:9222/elements?selector=span.symbol&limit=10"
+
+# Take a screenshot
+curl "http://localhost:9222/screenshot/save?path=/tmp/test.png"
+
+# Evaluate JavaScript
+curl "http://localhost:9222/eval?script=document.title"
+```
+
+### 3. Available Endpoints
+
+| Endpoint | Parameters | Description |
+|----------|------------|-------------|
+| `GET /health` | - | Check server status |
+| `GET /navigate` | `url` | Navigate to URL |
+| `GET /click` | `selector` | Click element |
+| `GET /text` | `selector` | Get element text |
+| `GET /html` | `selector` | Get element HTML |
+| `GET /elements` | `selector`, `limit` | List matching elements |
+| `GET /fill` | `selector`, `value` | Fill input field |
+| `GET /keyboard` | `key` | Press keyboard key |
+| `GET /wait` | `selector`, `timeout` | Wait for element |
+| `GET /screenshot` | - | Get screenshot as base64 |
+| `GET /screenshot/save` | `path` | Save screenshot to file |
+| `GET /url` | - | Get current URL |
+| `GET /eval` | `script` | Evaluate JavaScript |
 
 ## Key Design Decisions
 
-- **DOM over screenshots**: Cheaper API calls, faster verification
-- **Exploratory focus**: Random sampling of functionality, not exhaustive
-- **Cost-conscious**: Tracks API usage, uses Sonnet by default
-- **Regression-ready**: Scenarios can become regression tests
+- **HTTP API**: Simple curl commands that Claude Code can call
+- **DOM over screenshots**: Text-based verification is cheaper and faster than image analysis
+- **Stateful session**: Browser stays open between requests for multi-step testing
+- **Network host mode**: Container accesses localhost:5173 (frontend) and localhost:8000 (backend)
+- **No LLM in the agent**: Claude Code is the intelligence - the agent is just browser automation
 
-## Scenarios
+## Automated Scenarios (Legacy/Optional)
+
+Pre-built scenarios exist for automated testing with Claude API verification. These are **optional** - the primary use case is Claude Code driving the browser interactively.
 
 | Scenario | Description |
 |----------|-------------|
@@ -26,49 +102,20 @@ This agent performs "manual" testing of the INXR2 UI by:
 | `search` | Search for text, verify results match grep |
 | `diff-viewer` | (TODO) Compare versions, verify diff accuracy |
 
-## Setup
+### Running Automated Scenarios
 
-### Prerequisites
-
-- INXR2 running (backend + frontend)
-- Docker
-- `ANTHROPIC_API_KEY` environment variable
-
-### Build
+These require `ANTHROPIC_API_KEY` for Claude-based verification:
 
 ```bash
-cd qa-agent
-docker build -t inxr2-qa-agent .
+docker run --rm --network host \
+  -e ANTHROPIC_API_KEY \
+  -v /path/to/test-repos:/repos/test-repos:ro \
+  inxr2-playwright test --scenario file-navigation
 ```
 
-### Run
+## Cost Tracking (Automated Scenarios)
 
-```bash
-# Check INXR2 is accessible
-docker run --rm --network host inxr2-qa-agent check
-
-# Run random exploration (5 tests)
-docker run --rm --network host \
-  -e ANTHROPIC_API_KEY \
-  -v /path/to/test-repos:/repos/test-repos:ro \
-  inxr2-qa-agent test --count 5
-
-# Run specific scenario
-docker run --rm --network host \
-  -e ANTHROPIC_API_KEY \
-  -v /path/to/test-repos:/repos/test-repos:ro \
-  inxr2-qa-agent test --scenario file-navigation
-
-# With visible browser (for debugging)
-docker run --rm --network host \
-  -e ANTHROPIC_API_KEY \
-  -v /path/to/test-repos:/repos/test-repos:ro \
-  inxr2-qa-agent test --no-headless --scenario symbol-lookup
-```
-
-## Cost Tracking
-
-The agent tracks API usage and estimates costs:
+When running automated scenarios with Claude verification, the agent tracks API usage:
 
 ```
 Test Summary
@@ -83,13 +130,23 @@ Default model is `claude-sonnet-4-20250514` for cost efficiency.
 
 ## Development
 
+The QA agent code lives in `/qa-agent/`. To modify it:
+
 ```bash
-# Install locally (for development)
+# Edit files in qa-agent/src/
+# Then rebuild the container
+docker-compose -f docker-compose.dev.yml build inxr2-playwright
+
+# Restart to pick up changes
+docker-compose -f docker-compose.dev.yml restart inxr2-playwright
+```
+
+For local development without Docker:
+
+```bash
 cd qa-agent
 pip install -e ".[dev]"
 playwright install chromium
-
-# Run tests
 pytest
 ```
 
@@ -100,9 +157,32 @@ pytest
 3. Register in `src/agent.py` scenarios dict
 4. Add to `config.enabled_scenarios` for random exploration
 
+## Troubleshooting
+
+### Connection refused to localhost:9222
+
+The playwright container isn't running:
+```bash
+docker-compose -f docker-compose.dev.yml up -d inxr2-playwright
+```
+
+### Connection refused to localhost:5173
+
+The frontend dev server isn't running. In `inxr2-dev`:
+```bash
+cd frontend && npm run dev
+```
+
+### Element not found errors
+
+The UI structure may have changed. Use `/elements` to explore:
+```bash
+curl "http://localhost:9222/elements?selector=*&limit=50"
+```
+
 ## Limitations
 
-- Requires INXR2 to be running
+- Requires INXR2 frontend and backend to be running
 - Depends on specific DOM structure (may break on UI changes)
-- Git repos must be accessible for verification
-- API costs scale with test count
+- Git repos must be accessible for verification (automated scenarios)
+- API costs scale with test count (automated scenarios only)
