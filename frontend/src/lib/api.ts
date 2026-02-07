@@ -2,7 +2,8 @@
  * API client for INXR2 backend
  */
 
-const API_BASE = 'http://localhost:8000/api'
+// Use relative URL so Vite proxy handles it (works in Docker and locally)
+const API_BASE = '/api'
 
 // Types
 export interface Repository {

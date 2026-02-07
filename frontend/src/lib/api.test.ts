@@ -40,9 +40,7 @@ describe('API functions - by-name/by-path endpoints', () => {
 
       const result = await getRepositoryByName('my-repo')
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8000/api/repositories/by-name/my-repo'
-      )
+      expect(mockFetch).toHaveBeenCalledWith('/api/repositories/by-name/my-repo')
       expect(result).toEqual(mockRepo)
     })
 
@@ -54,9 +52,7 @@ describe('API functions - by-name/by-path endpoints', () => {
 
       await getRepositoryByName('repo with spaces')
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8000/api/repositories/by-name/repo%20with%20spaces'
-      )
+      expect(mockFetch).toHaveBeenCalledWith('/api/repositories/by-name/repo%20with%20spaces')
     })
 
     it('should throw error when repository not found', async () => {
@@ -87,9 +83,7 @@ describe('API functions - by-name/by-path endpoints', () => {
 
       const result = await getRepositoryTreeByName('my-repo')
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8000/api/repositories/by-name/my-repo/tree'
-      )
+      expect(mockFetch).toHaveBeenCalledWith('/api/repositories/by-name/my-repo/tree')
       expect(result).toEqual(mockTree)
     })
 
@@ -110,7 +104,7 @@ describe('API functions - by-name/by-path endpoints', () => {
       await getRepositoryTreeByName('my-repo', 'abc123', 'main', true)
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8000/api/repositories/by-name/my-repo/tree?commit=abc123&branch=main&changed_only=true'
+        '/api/repositories/by-name/my-repo/tree?commit=abc123&branch=main&changed_only=true'
       )
     })
 
@@ -130,9 +124,7 @@ describe('API functions - by-name/by-path endpoints', () => {
 
       await getRepositoryTreeByName('my-repo', 'abc123', undefined, false)
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8000/api/repositories/by-name/my-repo/tree?commit=abc123'
-      )
+      expect(mockFetch).toHaveBeenCalledWith('/api/repositories/by-name/my-repo/tree?commit=abc123')
     })
   })
 
@@ -154,9 +146,7 @@ describe('API functions - by-name/by-path endpoints', () => {
 
       const result = await getFileContentByPath('my-repo', 'src/main.py')
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8000/api/files/by-path?repo=my-repo&path=src%2Fmain.py'
-      )
+      expect(mockFetch).toHaveBeenCalledWith('/api/files/by-path?repo=my-repo&path=src%2Fmain.py')
       expect(result).toEqual(mockContent)
     })
 
@@ -198,7 +188,7 @@ describe('API functions - by-name/by-path endpoints', () => {
       const result = await getFileSymbolsByPath('my-repo', 'src/utils.py')
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8000/api/files/by-path/symbols?repo=my-repo&path=src%2Futils.py'
+        '/api/files/by-path/symbols?repo=my-repo&path=src%2Futils.py'
       )
       expect(result).toEqual(mockSymbols)
     })
@@ -230,7 +220,7 @@ describe('API functions - by-name/by-path endpoints', () => {
       const result = await getFileReferencesByPath('my-repo', 'src/main.py')
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8000/api/files/by-path/references?repo=my-repo&path=src%2Fmain.py'
+        '/api/files/by-path/references?repo=my-repo&path=src%2Fmain.py'
       )
       expect(result).toEqual(mockRefs)
     })
@@ -271,7 +261,7 @@ describe('API functions - by-name/by-path endpoints', () => {
 
       const result = await searchText({ q: 'test' })
 
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:8000/api/search/text?q=test')
+      expect(mockFetch).toHaveBeenCalledWith('/api/search/text?q=test')
       expect(result).toEqual(mockResponse)
     })
 
@@ -303,7 +293,7 @@ describe('API functions - by-name/by-path endpoints', () => {
       })
 
       const expectedUrl =
-        'http://localhost:8000/api/search/text?q=test&mode=phrase&repository_id=1&branch=develop&commit_hash=abc123&source_types=comment&source_types=docstring&languages=python&languages=typescript&limit=50&offset=20'
+        '/api/search/text?q=test&mode=phrase&repository_id=1&branch=develop&commit_hash=abc123&source_types=comment&source_types=docstring&languages=python&languages=typescript&limit=50&offset=20'
       expect(mockFetch).toHaveBeenCalledWith(expectedUrl)
     })
 
