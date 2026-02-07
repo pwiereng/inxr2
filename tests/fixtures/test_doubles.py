@@ -580,6 +580,97 @@ class InMemoryFileRepository(FileRepositoryPort):
         # Return sorted by path
         return sorted(latest_by_path.values(), key=lambda f: f.path)
 
+    async def list_changed_at_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List only files that actually changed at a specific commit.
+
+        Returns files where either:
+        - The file is new (no prior version exists), OR
+        - The file's content_hash differs from the most recent prior version
+
+        Requires commit_repo to determine commit ordering.
+        """
+        if self._commit_repo is None:
+            # No commit repo - fall back to returning all files at commit
+            return [
+                f
+                for f in self._files.values()
+                if f.repository_id == repository_id and f.commit_id == commit_id
+            ]
+
+        # Get target commit to determine its date
+        target_commit = await self._commit_repo.find_by_id(commit_id)
+        if target_commit is None:
+            return []
+
+        # Get all files at the target commit
+        files_at_commit = [
+            f
+            for f in self._files.values()
+            if f.repository_id == repository_id and f.commit_id == commit_id
+        ]
+
+        # Get all prior commits (commits with date < target commit date)
+        all_commits = self._commit_repo.get_all_commits()
+        prior_commits = [
+            c
+            for c in all_commits
+            if c.repository_id == repository_id
+            and c.id is not None
+            and c.commit_date < target_commit.commit_date
+        ]
+        prior_commit_ids = {c.id for c in prior_commits}
+
+        # Build a map of path -> latest content_hash from prior commits
+        prior_content_hashes: dict[str, str] = {}
+        for f in self._files.values():
+            if f.repository_id == repository_id and f.commit_id in prior_commit_ids:
+                # Get commit date for ordering
+                file_commit = next(
+                    (c for c in prior_commits if c.id == f.commit_id), None
+                )
+                if file_commit is None:
+                    continue
+
+                existing_path = prior_content_hashes.get(f.path)
+                if existing_path is None:
+                    prior_content_hashes[f.path] = f.content_hash or ""
+                else:
+                    # Check if this file is from a more recent prior commit
+                    existing_commit = None
+                    for fc in prior_commits:
+                        if fc.id == f.commit_id:
+                            continue
+                        for pf in self._files.values():
+                            if (
+                                pf.repository_id == repository_id
+                                and pf.path == f.path
+                                and pf.commit_id == fc.id
+                                and pf.content_hash == existing_path
+                            ):
+                                existing_commit = fc
+                                break
+                        if existing_commit:
+                            break
+                    if (
+                        existing_commit is None
+                        or file_commit.commit_date > existing_commit.commit_date
+                    ):
+                        prior_content_hashes[f.path] = f.content_hash or ""
+
+        # Filter to only changed files
+        changed_files = []
+        for f in files_at_commit:
+            prior_hash = prior_content_hashes.get(f.path)
+            # File is changed if:
+            # - No prior version exists (new file), OR
+            # - Content hash differs from prior version
+            if prior_hash is None or prior_hash != f.content_hash:
+                changed_files.append(f)
+
+        return changed_files
+
     async def find_one_by_content_hash_in_repo(
         self, repository_id: int, content_hash: str
     ) -> File | None:
@@ -768,6 +859,29 @@ class InMemoryCommitRepository(CommitRepositoryPort):
             saved = await self.save(commit)
             result.append(saved)
         return result
+
+    def add(self, commit: Commit) -> None:
+        """Synchronous add for test setup (like InMemoryFileRepository.add)."""
+        from inxr2.domain.value_objects import CommitHash
+
+        if commit.id is None:
+            commit = Commit(
+                id=self._next_id,
+                repository_id=commit.repository_id,
+                commit_hash=(
+                    commit.commit_hash
+                    if isinstance(commit.commit_hash, CommitHash)
+                    else CommitHash(commit.commit_hash)
+                ),
+                author_date=commit.author_date,
+                commit_date=commit.commit_date,
+                indexed_at=commit.indexed_at,
+            )
+            self._next_id += 1
+        else:
+            self._next_id = max(self._next_id, commit.id + 1)
+        assert commit.id is not None
+        self._commits[commit.id] = commit
 
     async def find_by_id(self, commit_id: int) -> Commit | None:
         """Find commit by ID."""

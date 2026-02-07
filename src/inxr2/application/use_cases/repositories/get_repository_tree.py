@@ -118,7 +118,10 @@ class GetRepositoryTreeUseCase:
 
             if request.changed_only:
                 # Only show files that were actually changed/added at this commit
-                files = await self._file_repo.list_by_commit(commit.id)
+                # (not the full tree snapshot, just files with different content_hash)
+                files = await self._file_repo.list_changed_at_commit(
+                    repository_id, commit.id
+                )
             else:
                 # Get the latest version of each file at or before this commit
                 # This returns the full tree state, not just files changed at this commit

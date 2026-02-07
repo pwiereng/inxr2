@@ -217,6 +217,28 @@ class FileRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def list_changed_at_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List only files that actually changed at a specific commit.
+
+        Returns files where either:
+        - The file is new (no prior version exists), OR
+        - The file's content_hash differs from the most recent prior version
+
+        This is used for the "changed files only" tree view, showing only
+        files that were modified at the target commit, not the full tree.
+
+        Args:
+            repository_id: The repository ID
+            commit_id: The target commit ID
+
+        Returns:
+            List of files that were actually changed/added at this commit
+        """
+        pass
+
+    @abstractmethod
     async def list_at_or_before_commit(
         self, repository_id: int, commit_id: int
     ) -> list[File]:
