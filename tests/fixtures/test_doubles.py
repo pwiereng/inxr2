@@ -30,6 +30,7 @@ fake_repo.add_test_symbol(Symbol(...))
 ```
 """
 
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
@@ -1901,6 +1902,17 @@ class FakeTextSearch(TextSearchPort):
         results, total = await text_search.search(TextSearchQuery(query="TODO"))
     """
 
+    # Regex validation constants (match production implementation)
+    MAX_REGEX_LENGTH = 500
+    DANGEROUS_REGEX_PATTERNS = [
+        r"\(\.\*\)\+",  # (.*)+
+        r"\(\.\+\)\+",  # (.+)+
+        r"\([^)]*\+\)\+",  # (x+)+ pattern
+        r"\([^)]*\*\)\+",  # (x*)+
+        r"\([^)]*\+\)\*",  # (x+)*
+        r"\([^)]*\*\)\*",  # (x*)*
+    ]
+
     def __init__(self, text_content_repo: InMemoryTextContentRepository):
         """Initialize with a text content repository.
 
@@ -1908,6 +1920,33 @@ class FakeTextSearch(TextSearchPort):
             text_content_repo: Text content repository to search in
         """
         self._text_content_repo = text_content_repo
+
+    def _validate_regex_pattern(self, pattern: str) -> None:
+        """Validate regex pattern for safety (matches production behavior).
+
+        Args:
+            pattern: The regex pattern to validate
+
+        Raises:
+            ValueError: If pattern is invalid or potentially dangerous
+        """
+        if len(pattern) > self.MAX_REGEX_LENGTH:
+            raise ValueError(
+                f"Regex pattern too long: {len(pattern)} characters "
+                f"(max {self.MAX_REGEX_LENGTH})"
+            )
+
+        for dangerous in self.DANGEROUS_REGEX_PATTERNS:
+            if re.search(dangerous, pattern):
+                raise ValueError(
+                    "Regex pattern contains potentially dangerous nested quantifiers "
+                    "that could cause performance issues"
+                )
+
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            raise ValueError(f"Invalid regex pattern: {e}") from None
 
     async def search(
         self, query: TextSearchQuery
@@ -1951,13 +1990,17 @@ class FakeTextSearch(TextSearchPort):
             if query.languages and tc.language not in query.languages:
                 continue
 
-            # Text matching (simple case-insensitive contains for all modes)
-            # In real implementation, mode would affect PostgreSQL query
+            # Text matching based on mode
             if query.mode == "regex":
-                # For testing, just do simple contains match
-                # Real implementation would use PostgreSQL ~ operator
-                if query.query.lower() in tc.content.lower():
-                    filtered.append(tc)
+                # Validate regex pattern (matches production behavior)
+                self._validate_regex_pattern(query.query)
+                # Use actual regex matching
+                try:
+                    if re.search(query.query, tc.content, re.IGNORECASE):
+                        filtered.append(tc)
+                except re.error:
+                    # Should not happen after validation, but be defensive
+                    pass
             else:  # keyword or phrase
                 # Simple contains match for testing
                 if query.query.lower() in tc.content.lower():
