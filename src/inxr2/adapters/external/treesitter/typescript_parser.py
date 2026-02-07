@@ -583,7 +583,6 @@ class TypeScriptParser(BaseLanguageParser):
                 # Determine comment type
                 is_jsdoc = text.startswith("/**")
                 is_block = text.startswith("/*") and not is_jsdoc
-                is_single_line = text.startswith("//")
 
                 # Determine content_type
                 if is_jsdoc:

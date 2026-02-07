@@ -1,6 +1,6 @@
 """PostgreSQL file repository adapter."""
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import FileRepositoryPort
@@ -466,3 +466,88 @@ class PostgresFileRepository(FileRepositoryPort):
             .group_by(FileModel.content_hash)
         )
         return {row.content_hash: row.file_id for row in result.all()}
+
+    async def search_by_name(
+        self,
+        query: str,
+        repository_id: int | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+        limit: int = 20,
+    ) -> list["File"]:
+        """Search files by name/path pattern.
+
+        Uses case-insensitive pattern matching on file paths.
+        Results are ordered by relevance: exact filename match, then prefix, then contains.
+        When no commit_id is provided, returns only the latest version of each unique path.
+        """
+        # Extract just the filename from the query for matching
+        query_lower = query.lower()
+
+        # Build relevance scoring:
+        # 1 = exact filename match (highest)
+        # 2 = filename starts with query
+        # 3 = path contains query (lowest)
+        filename_expr = func.lower(
+            func.substring(FileModel.path, r"[^/]+$")
+        )  # Extract filename from path
+
+        relevance = case(
+            (filename_expr == query_lower, 1),  # Exact filename match
+            (
+                filename_expr.startswith(query_lower, autoescape=True),
+                2,
+            ),  # Filename prefix
+            else_=3,  # Contains match
+        )
+
+        # Base query with pattern matching (autoescape handles % and _ in user input)
+        query_stmt = select(FileModel, relevance.label("relevance")).where(
+            func.lower(FileModel.path).contains(query_lower, autoescape=True)
+        )
+
+        # Apply filters
+        if repository_id is not None:
+            query_stmt = query_stmt.where(FileModel.repository_id == repository_id)
+
+        if commit_id is not None:
+            # Filter to specific commit
+            query_stmt = query_stmt.where(FileModel.commit_id == commit_id)
+
+        if language is not None:
+            query_stmt = query_stmt.where(FileModel.language == language)
+
+        # If no commit_id specified, we need to deduplicate by (repository_id, path)
+        # to get latest version only, keeping one file per repo/path combination
+        if commit_id is None:
+            # Use a subquery to get the latest version of each (repository_id, path)
+            # Group by both to handle cross-repo search correctly
+            latest_select = select(
+                FileModel.repository_id,
+                FileModel.path,
+                func.max(FileModel.id).label("max_id"),
+            ).group_by(FileModel.repository_id, FileModel.path)
+
+            if repository_id is not None:
+                latest_select = latest_select.where(
+                    FileModel.repository_id == repository_id
+                )
+
+            if language is not None:
+                latest_select = latest_select.where(FileModel.language == language)
+
+            latest_subquery = latest_select.subquery()
+
+            # Join to only include the latest version per (repo, path)
+            query_stmt = query_stmt.join(
+                latest_subquery,
+                FileModel.id == latest_subquery.c.max_id,
+            )
+
+        # Order by relevance (lower is better), then by path alphabetically
+        query_stmt = query_stmt.order_by(relevance, FileModel.path).limit(limit)
+
+        result = await self.session.execute(query_stmt)
+        rows = result.all()
+
+        return [self.mapper.to_domain(row[0]) for row in rows]

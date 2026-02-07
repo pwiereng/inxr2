@@ -3,8 +3,13 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
-from ....application.use_cases.search import SearchTextRequest, SearchTextUseCase
-from ....infrastructure.dependencies import SearchTextUseCaseDep
+from ....application.use_cases.search import SearchTextRequest
+from ....infrastructure.dependencies import (
+    CommitAdapter,
+    FileAdapter,
+    RepositoryAdapter,
+    SearchTextUseCaseDep,
+)
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -40,6 +45,30 @@ class SearchTextListResponse(BaseModel):
     mode: str
     limit: int
     offset: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FileSearchResultResponse(BaseModel):
+    """A single file search result."""
+
+    id: int
+    path: str
+    name: str
+    language: str | None
+    repository_id: int
+    repository_name: str
+    commit_id: int
+    commit_hash: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FileSearchListResponse(BaseModel):
+    """File search results response."""
+
+    files: list[FileSearchResultResponse]
+    total_count: int
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -135,3 +164,134 @@ async def search_text(
         limit=response.limit,
         offset=response.offset,
     )
+
+
+@router.get("/files", response_model=FileSearchListResponse)
+async def search_files(
+    file_adapter: FileAdapter,
+    repository_adapter: RepositoryAdapter,
+    commit_adapter: CommitAdapter,
+    q: str = Query(..., min_length=1, description="File name/path search query"),
+    repository: str | None = Query(None, description="Repository name filter"),
+    branch: str | None = Query(None, description="Branch filter"),
+    commit_hash: str | None = Query(None, description="Commit hash filter"),
+    language: str | None = Query(None, description="Language filter"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum results"),
+) -> FileSearchListResponse:
+    """
+    Search files by name or path pattern.
+
+    Returns files matching the query pattern, respecting branch/commit context.
+    Results are ordered by relevance (exact filename match, then prefix, then contains).
+
+    Query parameters:
+    - q: Search query for file name/path (required, min 1 character)
+    - repository: Filter by repository name
+    - branch: Filter by branch name
+    - commit_hash: Filter by specific commit (time travel)
+    - language: Filter by programming language
+    - limit: Maximum number of results (1-100, default 20)
+
+    Returns:
+    - files: List of matching files with metadata
+    - total_count: Number of files returned (at most ``limit``)
+    """
+    # Validate: branch/commit_hash require repository to be specified
+    if (branch or commit_hash) and not repository:
+        raise HTTPException(
+            status_code=400,
+            detail="repository parameter is required when using branch or commit_hash",
+        )
+
+    # Resolve repository ID from name if provided
+    repository_id: int | None = None
+    if repository:
+        repo = await repository_adapter.find_by_name(repository)
+        if not repo:
+            raise HTTPException(
+                status_code=404, detail=f"Repository '{repository}' not found"
+            )
+        repository_id = repo.id
+
+    # Resolve commit ID from hash if provided
+    commit_id: int | None = None
+    if commit_hash and repository_id:
+        commit = await commit_adapter.find_by_hash(repository_id, commit_hash)
+        if not commit:
+            raise HTTPException(
+                status_code=404, detail=f"Commit '{commit_hash}' not found"
+            )
+        commit_id = commit.id
+    elif branch and repository_id:
+        # If branch is specified but no commit, get latest commit on branch
+        commit = await commit_adapter.find_latest_by_branch(repository_id, branch)
+        if commit:
+            commit_id = commit.id
+
+    # Search files
+    files = await file_adapter.search_by_name(
+        query=q,
+        repository_id=repository_id,
+        commit_id=commit_id,
+        language=language,
+        limit=limit,
+    )
+
+    # Build response with repository names and commit hashes
+    results: list[FileSearchResultResponse] = []
+
+    # Collect unique IDs for lookup (using is not None to handle ID=0 correctly)
+    repo_ids = {f.repository_id for f in files if f.repository_id is not None}
+    commit_ids = {f.commit_id for f in files if f.commit_id is not None}
+
+    # Fetch repositories (N+1 for now; bulk fetch would require new port method)
+    repo_map: dict[int, str] = {}
+    for rid in repo_ids:
+        repo = await repository_adapter.find_by_id(rid)
+        if repo:
+            repo_map[rid] = repo.name
+
+    # Fetch commits (N+1 for now; bulk fetch would require new port method)
+    commit_map: dict[int, str] = {}
+    for cid in commit_ids:
+        commit = await commit_adapter.find_by_id(cid)
+        if commit:
+            commit_map[cid] = commit.commit_hash.value
+
+    for file in files:
+        # Validate required fields - these should always be set for persisted files
+        if file.id is None or file.repository_id is None or file.commit_id is None:
+            raise HTTPException(
+                status_code=500,
+                detail="File search returned incomplete data; this indicates a data integrity issue.",
+            )
+
+        # Validate we have the required metadata
+        if file.repository_id not in repo_map:
+            raise HTTPException(
+                status_code=500,
+                detail="File references unknown repository; data integrity issue.",
+            )
+        if file.commit_id not in commit_map:
+            raise HTTPException(
+                status_code=500,
+                detail="File references unknown commit; data integrity issue.",
+            )
+
+        # Extract filename from path
+        filename = file.path.rsplit("/", 1)[-1] if "/" in file.path else file.path
+
+        results.append(
+            FileSearchResultResponse(
+                id=file.id,
+                path=file.path,
+                name=filename,
+                language=file.language,
+                repository_id=file.repository_id,
+                repository_name=repo_map[file.repository_id],
+                commit_id=file.commit_id,
+                commit_hash=commit_map[file.commit_id],
+            )
+        )
+
+    return FileSearchListResponse(files=results, total_count=len(results))

@@ -937,7 +937,6 @@ class CParser(BaseLanguageParser):
 
                 # Determine if it's a block or single-line comment
                 is_block = text.startswith("/*")
-                is_single_line = text.startswith("//")
 
                 content_type = "block_comment" if is_block else "single_line_comment"
                 cleaned_text = strip_comment_markers(text, is_block)

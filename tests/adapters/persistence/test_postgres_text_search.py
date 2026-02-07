@@ -46,8 +46,12 @@ async def test_search_with_repository_filter(
     test_repository: Repository,
     test_commit: Commit,
     test_file: File,
-):
+) -> None:
     """Test search filtered by repository."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
     repo = PostgresTextContentRepository(db_session)
     search = PostgresTextSearch(db_session)
 
@@ -84,8 +88,12 @@ async def test_search_regex_mode(
     test_repository: Repository,
     test_commit: Commit,
     test_file: File,
-):
+) -> None:
     """Test regex search mode (works in SQLite)."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
     repo = PostgresTextContentRepository(db_session)
     search = PostgresTextSearch(db_session)
 
@@ -133,8 +141,12 @@ async def test_search_with_source_type_filter(
     test_repository: Repository,
     test_commit: Commit,
     test_file: File,
-):
+) -> None:
     """Test search filtered by source type."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
     repo = PostgresTextContentRepository(db_session)
     search = PostgresTextSearch(db_session)
 
@@ -182,8 +194,12 @@ async def test_search_with_language_filter(
     test_repository: Repository,
     test_commit: Commit,
     test_file: File,
-):
+) -> None:
     """Test search filtered by language."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
     repo = PostgresTextContentRepository(db_session)
     search = PostgresTextSearch(db_session)
 
@@ -223,8 +239,12 @@ async def test_search_pagination(
     test_repository: Repository,
     test_commit: Commit,
     test_file: File,
-):
+) -> None:
     """Test search pagination."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
     repo = PostgresTextContentRepository(db_session)
     search = PostgresTextSearch(db_session)
 
@@ -283,7 +303,7 @@ async def test_search_with_commit_filter(
     test_commit: Commit,
     test_second_commit: Commit,
     test_file: File,
-):
+) -> None:
     """Test search filtered by specific commit (time travel)."""
     assert test_repository.id is not None
     assert test_commit.id is not None
