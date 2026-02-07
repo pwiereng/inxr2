@@ -13,7 +13,9 @@ Example:
 
 import json
 import sys
+
 from playwright.sync_api import sync_playwright
+
 
 def main():
     print(json.dumps({"status": "starting"}), flush=True)
@@ -73,10 +75,12 @@ def execute(page, cmd: dict) -> dict:
         results = []
         for el in els[:limit]:
             text = el.inner_text()
-            results.append({
-                "text": text[:200] if text else "",
-                "tag": el.evaluate("el => el.tagName.toLowerCase()"),
-            })
+            results.append(
+                {
+                    "text": text[:200] if text else "",
+                    "tag": el.evaluate("el => el.tagName.toLowerCase()"),
+                }
+            )
         return {"ok": True, "count": len(results), "elements": results}
 
     elif action == "fill":

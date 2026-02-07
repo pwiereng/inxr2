@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
-from playwright.async_api import async_playwright, Browser, Page, Playwright
+from playwright.async_api import Browser, Page, Playwright, async_playwright
 
 # Global state
 playwright: Playwright | None = None
@@ -30,10 +30,10 @@ async def lifespan(app: FastAPI):
     browser = await playwright.chromium.launch(
         headless=True,
         args=[
-            '--disable-web-security',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--ignore-certificate-errors',
-        ]
+            "--disable-web-security",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--ignore-certificate-errors",
+        ],
     )
     page = await browser.new_page()
     page.set_default_timeout(15000)
@@ -124,11 +124,13 @@ async def list_elements(
             attrs = await el.evaluate(
                 "el => Object.fromEntries([...el.attributes].map(a => [a.name, a.value]))"
             )
-            results.append({
-                "tag": tag,
-                "text": text[:200] if text else "",
-                "attributes": attrs,
-            })
+            results.append(
+                {
+                    "tag": tag,
+                    "text": text[:200] if text else "",
+                    "attributes": attrs,
+                }
+            )
         return {"success": True, "count": len(results), "elements": results}
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
@@ -169,7 +171,9 @@ async def fill(
 
 
 @app.get("/keyboard")
-async def keyboard(key: str = Query(..., description="Key to press (e.g., Enter, Tab)")):
+async def keyboard(
+    key: str = Query(..., description="Key to press (e.g., Enter, Tab)")
+):
     """Press a keyboard key."""
     try:
         await page.keyboard.press(key)
@@ -209,4 +213,5 @@ async def evaluate(script: str = Query(..., description="JavaScript to evaluate"
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=9222)
