@@ -711,6 +711,8 @@ class TestGetRepositoryTreeUseCase:
                 author_date=datetime(2024, 1, 2, 12, 0, 0),
             )
         )
+        assert commit1.id is not None
+        assert commit2.id is not None
 
         # Commit 1: adds app.py
         file_repository.add(

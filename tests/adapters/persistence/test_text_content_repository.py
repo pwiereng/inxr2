@@ -14,8 +14,12 @@ async def test_save_text_content(
     test_repository: Repository,
     test_commit: Commit,
     test_file: File,
-):
+) -> None:
     """Test saving a text content entry."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
     repo = PostgresTextContentRepository(db_session)
 
     text_content = TextContent(
@@ -47,8 +51,12 @@ async def test_save_batch(
     test_repository: Repository,
     test_commit: Commit,
     test_file: File,
-):
+) -> None:
     """Test batch saving text contents."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
     repo = PostgresTextContentRepository(db_session)
 
     text_contents = [
@@ -77,8 +85,12 @@ async def test_delete_by_commit(
     test_repository: Repository,
     test_commit: Commit,
     test_file: File,
-):
+) -> None:
     """Test deleting text contents by commit."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
     repo = PostgresTextContentRepository(db_session)
 
     # Create some text contents
@@ -108,8 +120,12 @@ async def test_delete_by_file(
     test_repository: Repository,
     test_commit: Commit,
     test_file: File,
-):
+) -> None:
     """Test deleting text contents by file."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
     repo = PostgresTextContentRepository(db_session)
 
     # Create some text contents
@@ -138,8 +154,11 @@ async def test_save_commit_message_without_file(
     db_session: AsyncSession,
     test_repository: Repository,
     test_commit: Commit,
-):
+) -> None:
     """Test saving commit message text content (no file)."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+
     repo = PostgresTextContentRepository(db_session)
 
     text_content = TextContent(

@@ -698,6 +698,54 @@ class InMemoryFileRepository(FileRepositoryPort):
                 result[file.content_hash] = file.id
         return result
 
+    async def search_by_name(
+        self,
+        query: str,
+        repository_id: int | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+        limit: int = 20,
+    ) -> list[File]:
+        """Search files by name/path pattern.
+
+        Uses case-insensitive pattern matching on file paths.
+        """
+        query_lower = query.lower()
+        results = []
+
+        for file in self._files.values():
+            # Check if query matches path (case-insensitive)
+            if query_lower not in file.path.lower():
+                continue
+
+            # Apply filters
+            if repository_id is not None and file.repository_id != repository_id:
+                continue
+
+            if commit_id is not None and file.commit_id != commit_id:
+                continue
+
+            if language is not None and file.language != language:
+                continue
+
+            results.append(file)
+
+        # Sort by relevance (exact filename match first, then prefix, then contains)
+        def relevance_key(f: File) -> tuple[int, str]:
+            filename = (
+                f.path.rsplit("/", 1)[-1].lower() if "/" in f.path else f.path.lower()
+            )
+            if filename == query_lower:
+                return (1, f.path)
+            elif filename.startswith(query_lower):
+                return (2, f.path)
+            else:
+                return (3, f.path)
+
+        results.sort(key=relevance_key)
+
+        return results[:limit]
+
     # Test helper methods
     def add(self, file: File) -> None:
         """Add a file for testing."""

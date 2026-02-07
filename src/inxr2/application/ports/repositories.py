@@ -356,6 +356,32 @@ class FileRepositoryPort(ABC):
         """
         pass
 
+    @abstractmethod
+    async def search_by_name(
+        self,
+        query: str,
+        repository_id: int | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+        limit: int = 20,
+    ) -> list[File]:
+        """Search files by name/path pattern.
+
+        Uses case-insensitive pattern matching on file paths.
+        Results are ordered by relevance (exact match first, then prefix, then contains).
+
+        Args:
+            query: The search pattern to match against file names/paths
+            repository_id: Filter by repository (optional)
+            commit_id: Filter by specific commit for time travel (optional)
+            language: Filter by programming language (optional)
+            limit: Maximum number of results (default 20)
+
+        Returns:
+            List of matching files, ordered by relevance
+        """
+        pass
+
 
 class SymbolRepositoryPort(ABC):
     """Port for symbol entity operations."""

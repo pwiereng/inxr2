@@ -24,14 +24,21 @@ import {
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
+
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import {
   searchText,
+  searchFiles,
   getRepositories,
   type TextSearchParams,
   type TextSearchResult,
+  type FileSearchResult,
   type Repository,
 } from '@/lib/api'
+
+// Search mode type
+type SearchMode = 'keyword' | 'phrase' | 'regex' | 'file'
 
 // Source type options
 const SOURCE_TYPES = [
@@ -68,7 +75,8 @@ export default function Search() {
 
   // State from URL for search
   const query = searchParams.get('query') || ''
-  const mode = (searchParams.get('mode') as 'keyword' | 'phrase' | 'regex') || 'keyword'
+  const mode = (searchParams.get('mode') as SearchMode) || 'keyword'
+  const isFileMode = mode === 'file'
   const page = parseInt(searchParams.get('page') || '1')
   const offset = (page - 1) * RESULTS_PER_PAGE
 
@@ -86,6 +94,7 @@ export default function Search() {
   // Data state
   const [repositories, setRepositories] = useState<Repository[]>([])
   const [results, setResults] = useState<TextSearchResult[]>([])
+  const [fileResults, setFileResults] = useState<FileSearchResult[]>([])
   const [totalResults, setTotalResults] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -126,6 +135,7 @@ export default function Search() {
   useEffect(() => {
     if (!query.trim()) {
       setResults([])
+      setFileResults([])
       setTotalResults(0)
       return
     }
@@ -135,24 +145,42 @@ export default function Search() {
       setError(null)
 
       try {
-        const params: TextSearchParams = {
-          q: query,
-          mode,
-          repo: selectedRepoId,
-          branch: branchParam || undefined,
-          source_types: selectedSourceTypes.length > 0 ? selectedSourceTypes : undefined,
-          languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
-          limit: RESULTS_PER_PAGE,
-          offset,
-        }
+        if (isFileMode) {
+          // File search mode
+          const response = await searchFiles({
+            q: query,
+            repository: repoNameParam || undefined,
+            branch: branchParam || undefined,
+            commit_hash: commitParam || undefined,
+            language: selectedLanguages[0] || undefined,
+            limit: RESULTS_PER_PAGE,
+          })
+          setFileResults(response.files)
+          setResults([])
+          setTotalResults(response.total_count)
+        } else {
+          // Text search mode
+          const params: TextSearchParams = {
+            q: query,
+            mode: mode as 'keyword' | 'phrase' | 'regex',
+            repo: selectedRepoId,
+            branch: branchParam || undefined,
+            source_types: selectedSourceTypes.length > 0 ? selectedSourceTypes : undefined,
+            languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
+            limit: RESULTS_PER_PAGE,
+            offset,
+          }
 
-        const response = await searchText(params)
-        setResults(response.results)
-        setTotalResults(response.total)
+          const response = await searchText(params)
+          setResults(response.results)
+          setFileResults([])
+          setTotalResults(response.total)
+        }
       } catch (err) {
         console.error('Search failed:', err)
         setError(err instanceof Error ? err.message : 'Search failed')
         setResults([])
+        setFileResults([])
         setTotalResults(0)
       } finally {
         setLoading(false)
@@ -161,7 +189,7 @@ export default function Search() {
 
     performSearch()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, mode, selectedRepoId, repoNameParam, branchParam, sourceTypesKey, languagesKey, offset])
+  }, [query, mode, selectedRepoId, repoNameParam, branchParam, commitParam, sourceTypesKey, languagesKey, offset])
 
   // CodeHeader handlers
   const handleHeaderRepoChange = (newRepoName: string) => {
@@ -210,6 +238,10 @@ export default function Search() {
     const newParams = new URLSearchParams(searchParams)
     newParams.set('mode', newMode)
     newParams.delete('page')
+    // Clear source_types when switching to file mode (they don't apply)
+    if (newMode === 'file') {
+      newParams.delete('source_types')
+    }
     setSearchParams(newParams)
   }
 
@@ -270,6 +302,21 @@ export default function Search() {
       // Commit message - navigate to repository root
       navigate(`/browse/${encodeURIComponent(resultRepoName)}?${params.toString()}`)
     }
+  }
+
+  const handleFileResultClick = (file: FileSearchResult) => {
+    // Navigate to Browse with the file's location
+    const params = new URLSearchParams()
+    if (branchParam) {
+      params.set('branch', branchParam)
+    }
+    if (file.commit_hash) {
+      params.set('commit', file.commit_hash)
+    }
+
+    navigate(
+      `/browse/${encodeURIComponent(file.repository_name)}/${file.path}?${params.toString()}`
+    )
   }
 
   const handleClearFilters = () => {
@@ -344,6 +391,7 @@ export default function Search() {
                   <MenuItem value="keyword">Keyword</MenuItem>
                   <MenuItem value="phrase">Phrase</MenuItem>
                   <MenuItem value="regex">Regex</MenuItem>
+                  <MenuItem value="file">File</MenuItem>
                 </Select>
               </FormControl>
             </Box>
@@ -374,12 +422,17 @@ export default function Search() {
             </Box>
 
             {/* Source Type Filters */}
-            <Box sx={{ mt: 2 }}>
+            <Box sx={{ mt: 2, opacity: isFileMode ? 0.5 : 1 }}>
               <Typography
                 variant="caption"
                 sx={{ display: 'block', mb: 0.5, color: 'text.secondary' }}
               >
                 Source Types:
+                {isFileMode && (
+                  <Typography component="span" variant="caption" sx={{ ml: 1, fontStyle: 'italic' }}>
+                    (not applicable in File mode)
+                  </Typography>
+                )}
               </Typography>
               <FormGroup row>
                 {SOURCE_TYPES.map((type) => (
@@ -390,9 +443,11 @@ export default function Search() {
                         checked={selectedSourceTypes.includes(type.value)}
                         onChange={() => handleSourceTypeToggle(type.value)}
                         size="small"
+                        disabled={isFileMode}
                       />
                     }
                     label={type.label}
+                    sx={{ cursor: isFileMode ? 'not-allowed' : 'pointer' }}
                   />
                 ))}
               </FormGroup>
@@ -408,7 +463,7 @@ export default function Search() {
             <Alert severity="error" sx={{ mb: 2 }}>
               {error}
             </Alert>
-          ) : query.trim() && results.length === 0 ? (
+          ) : query.trim() && (isFileMode ? fileResults.length === 0 : results.length === 0) ? (
             <Paper sx={{ p: 4, textAlign: 'center' }}>
               <Typography color="text.secondary">No results found</Typography>
             </Paper>
@@ -424,7 +479,8 @@ export default function Search() {
                 }}
               >
                 <Typography variant="body2" color="text.secondary">
-                  Found {totalResults.toLocaleString()} result{totalResults !== 1 ? 's' : ''}
+                  Found {totalResults.toLocaleString()} {isFileMode ? 'file' : 'result'}
+                  {totalResults !== 1 ? 's' : ''}
                 </Typography>
                 {totalPages > 1 && (
                   <Typography variant="body2" color="text.secondary">
@@ -436,48 +492,89 @@ export default function Search() {
               {/* Results list */}
               <Paper>
                 <List>
-                  {results.map((result, index) => (
-                    <ListItem
-                      key={`${result.id}-${index}`}
-                      disablePadding
-                      divider={index < results.length - 1}
-                    >
-                      <ListItemButton onClick={() => handleResultClick(result)}>
-                        <ListItemText
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                              <Chip
-                                label={formatSourceType(result.source_type)}
-                                size="small"
-                                color={getSourceTypeBadgeColor(result.source_type)}
-                              />
-                              <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                                {result.repository_name}
-                                {result.file_path && ` / ${result.file_path}`}
-                                {result.source_line && `:${result.source_line}`}
-                              </Typography>
-                              {result.language && (
-                                <Chip label={result.language} size="small" variant="outlined" />
-                              )}
-                            </Box>
-                          }
-                          secondary={
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                color: 'text.primary',
-                                fontFamily: 'monospace',
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                              }}
-                            >
-                              {result.headline || result.content}
-                            </Typography>
-                          }
-                        />
-                      </ListItemButton>
-                    </ListItem>
-                  ))}
+                  {isFileMode
+                    ? fileResults.map((file, index) => (
+                        <ListItem
+                          key={`${file.id}-${index}`}
+                          disablePadding
+                          divider={index < fileResults.length - 1}
+                        >
+                          <ListItemButton onClick={() => handleFileResultClick(file)}>
+                            <ListItemText
+                              primary={
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <InsertDriveFileIcon
+                                    sx={{ fontSize: 18, color: 'text.secondary' }}
+                                  />
+                                  <Typography
+                                    variant="body2"
+                                    sx={{ fontFamily: 'monospace', fontWeight: 500 }}
+                                  >
+                                    {file.name}
+                                  </Typography>
+                                  {file.language && (
+                                    <Chip label={file.language} size="small" variant="outlined" />
+                                  )}
+                                </Box>
+                              }
+                              secondary={
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    color: 'text.secondary',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.8rem',
+                                  }}
+                                >
+                                  {file.repository_name} / {file.path}
+                                </Typography>
+                              }
+                            />
+                          </ListItemButton>
+                        </ListItem>
+                      ))
+                    : results.map((result, index) => (
+                        <ListItem
+                          key={`${result.id}-${index}`}
+                          disablePadding
+                          divider={index < results.length - 1}
+                        >
+                          <ListItemButton onClick={() => handleResultClick(result)}>
+                            <ListItemText
+                              primary={
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                  <Chip
+                                    label={formatSourceType(result.source_type)}
+                                    size="small"
+                                    color={getSourceTypeBadgeColor(result.source_type)}
+                                  />
+                                  <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                                    {result.repository_name}
+                                    {result.file_path && ` / ${result.file_path}`}
+                                    {result.source_line && `:${result.source_line}`}
+                                  </Typography>
+                                  {result.language && (
+                                    <Chip label={result.language} size="small" variant="outlined" />
+                                  )}
+                                </Box>
+                              }
+                              secondary={
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    color: 'text.primary',
+                                    fontFamily: 'monospace',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                  }}
+                                >
+                                  {result.headline || result.content}
+                                </Typography>
+                              }
+                            />
+                          </ListItemButton>
+                        </ListItem>
+                      ))}
                 </List>
               </Paper>
 
@@ -497,10 +594,15 @@ export default function Search() {
             </>
           ) : (
             <Paper sx={{ p: 4, textAlign: 'center' }}>
-              <SearchIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+              {isFileMode ? (
+                <InsertDriveFileIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+              ) : (
+                <SearchIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+              )}
               <Typography color="text.secondary">
-                Enter a search query to find text in comments, docstrings, commit messages, and
-                files
+                {isFileMode
+                  ? 'Enter a file name to search for files by path'
+                  : 'Enter a search query to find text in comments, docstrings, commit messages, and files'}
               </Typography>
             </Paper>
           )}

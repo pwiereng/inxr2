@@ -512,3 +512,359 @@ class TestPostgresFileRepositoryLatestByBranch:
         assert len(feature_files) == 1
         assert main_files[0].path == "src/shared.py"
         assert feature_files[0].path == "src/shared.py"
+
+
+@pytest.mark.asyncio
+class TestPostgresFileRepositorySearchByName:
+    """Tests for search_by_name method."""
+
+    async def test_search_by_name_returns_matching_files(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that search_by_name returns files matching the query."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(RepositoryFactory.create(name="search-repo"))
+        assert repo.id is not None
+
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="a" * 40)
+        )
+        assert commit.id is not None
+
+        # Create various files
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id, commit_id=commit.id, path="src/utils.py"
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id, commit_id=commit.id, path="src/main.py"
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id, commit_id=commit.id, path="tests/test_utils.py"
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id, commit_id=commit.id, path="README.md"
+            )
+        )
+
+        # Search for "utils"
+        results = await file_adapter.search_by_name("utils")
+
+        assert len(results) == 2
+        paths = {f.path for f in results}
+        assert "src/utils.py" in paths
+        assert "tests/test_utils.py" in paths
+
+    async def test_search_by_name_is_case_insensitive(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that search_by_name is case-insensitive."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="case-insensitive-repo")
+        )
+        assert repo.id is not None
+
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="b" * 40)
+        )
+        assert commit.id is not None
+
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id, commit_id=commit.id, path="src/MyClass.py"
+            )
+        )
+
+        # Search with different cases
+        results_lower = await file_adapter.search_by_name("myclass")
+        results_upper = await file_adapter.search_by_name("MYCLASS")
+        results_mixed = await file_adapter.search_by_name("MyClass")
+
+        assert len(results_lower) == 1
+        assert len(results_upper) == 1
+        assert len(results_mixed) == 1
+
+    async def test_search_by_name_filters_by_repository(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that search_by_name filters by repository_id."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo1 = await repo_adapter.save(RepositoryFactory.create(name="repo1-search"))
+        repo2 = await repo_adapter.save(RepositoryFactory.create(name="repo2-search"))
+        assert repo1.id is not None
+        assert repo2.id is not None
+
+        commit1 = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo1.id, commit_hash="c" * 40)
+        )
+        commit2 = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo2.id, commit_hash="d" * 40)
+        )
+        assert commit1.id is not None
+        assert commit2.id is not None
+
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo1.id, commit_id=commit1.id, path="src/config.py"
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo2.id, commit_id=commit2.id, path="src/config.py"
+            )
+        )
+
+        # Search within repo1 only
+        results = await file_adapter.search_by_name("config", repository_id=repo1.id)
+
+        assert len(results) == 1
+        assert results[0].repository_id == repo1.id
+
+    async def test_search_by_name_filters_by_commit(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that search_by_name filters by commit_id."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="commit-filter-search-repo")
+        )
+        assert repo.id is not None
+
+        commit1 = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="e" * 40)
+        )
+        commit2 = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="f" * 40)
+        )
+        assert commit1.id is not None
+        assert commit2.id is not None
+
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id, commit_id=commit1.id, path="src/app.py"
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id, commit_id=commit2.id, path="src/app.py"
+            )
+        )
+
+        # Search within commit1 only
+        results = await file_adapter.search_by_name("app", commit_id=commit1.id)
+
+        assert len(results) == 1
+        assert results[0].commit_id == commit1.id
+
+    async def test_search_by_name_filters_by_language(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that search_by_name filters by language."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="lang-filter-search-repo")
+        )
+        assert repo.id is not None
+
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="g" * 40)
+        )
+        assert commit.id is not None
+
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="src/utils.py",
+                language="python",
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="src/utils.ts",
+                language="typescript",
+            )
+        )
+
+        # Search for Python files only
+        results = await file_adapter.search_by_name("utils", language="python")
+
+        assert len(results) == 1
+        assert results[0].path == "src/utils.py"
+
+    async def test_search_by_name_respects_limit(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that search_by_name respects the limit parameter."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="limit-search-repo")
+        )
+        assert repo.id is not None
+
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="h" * 40)
+        )
+        assert commit.id is not None
+
+        # Create many files
+        for i in range(10):
+            await file_adapter.save(
+                FileFactory.create(
+                    repository_id=repo.id,
+                    commit_id=commit.id,
+                    path=f"src/test_{i}.py",
+                )
+            )
+
+        # Search with limit of 5
+        results = await file_adapter.search_by_name("test", limit=5)
+
+        assert len(results) == 5
+
+    async def test_search_by_name_orders_by_relevance(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that search_by_name orders results by relevance."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="relevance-search-repo")
+        )
+        assert repo.id is not None
+
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="i" * 40)
+        )
+        assert commit.id is not None
+
+        # Create files with different matching patterns
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="src/helpers/config_utils.py",  # Contains 'config'
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="src/config.py",  # Exact filename match
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                commit_id=commit.id,
+                path="src/configuration.py",  # Prefix match
+            )
+        )
+
+        results = await file_adapter.search_by_name("config")
+
+        assert len(results) == 3
+        # Exact match should come first
+        assert results[0].path == "src/config.py"
+        # Prefix match should come second
+        assert results[1].path == "src/configuration.py"
+        # Contains match should come last
+        assert results[2].path == "src/helpers/config_utils.py"
+
+    async def test_search_by_name_returns_empty_for_no_matches(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that search_by_name returns empty list when no matches found."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="no-match-search-repo")
+        )
+        assert repo.id is not None
+
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="j" * 40)
+        )
+        assert commit.id is not None
+
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id, commit_id=commit.id, path="src/main.py"
+            )
+        )
+
+        results = await file_adapter.search_by_name("nonexistent")
+
+        assert results == []
+
+    async def test_search_by_name_deduplicates_without_commit_id(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that search_by_name deduplicates by path when no commit_id is specified."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="dedup-search-repo")
+        )
+        assert repo.id is not None
+
+        commit1 = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="k" * 40)
+        )
+        commit2 = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="l" * 40)
+        )
+        assert commit1.id is not None
+        assert commit2.id is not None
+
+        # Same file in two commits
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id, commit_id=commit1.id, path="src/service.py"
+            )
+        )
+        await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id, commit_id=commit2.id, path="src/service.py"
+            )
+        )
+
+        # Search without commit filter - should deduplicate
+        results = await file_adapter.search_by_name("service", repository_id=repo.id)
+
+        # Should only return one result (deduplicated)
+        assert len(results) == 1
+        assert results[0].path == "src/service.py"

@@ -423,3 +423,41 @@ export async function searchText(params: TextSearchParams): Promise<TextSearchRe
 
   return fetchApi<TextSearchResponse>(`/search/text?${searchParams}`)
 }
+
+// File Search types and functions
+export interface FileSearchParams {
+  q: string
+  repository?: string
+  branch?: string
+  commit_hash?: string
+  language?: string
+  limit?: number
+}
+
+export interface FileSearchResult {
+  id: number
+  path: string
+  name: string
+  language: string | null
+  repository_id: number
+  repository_name: string
+  commit_id: number
+  commit_hash: string
+}
+
+export interface FileSearchResponse {
+  files: FileSearchResult[]
+  total_count: number
+}
+
+export async function searchFiles(params: FileSearchParams): Promise<FileSearchResponse> {
+  const searchParams = new URLSearchParams()
+  searchParams.set('q', params.q)
+  if (params.repository) searchParams.set('repository', params.repository)
+  if (params.branch) searchParams.set('branch', params.branch)
+  if (params.commit_hash) searchParams.set('commit_hash', params.commit_hash)
+  if (params.language) searchParams.set('language', params.language)
+  if (params.limit) searchParams.set('limit', params.limit.toString())
+
+  return fetchApi<FileSearchResponse>(`/search/files?${searchParams}`)
+}
