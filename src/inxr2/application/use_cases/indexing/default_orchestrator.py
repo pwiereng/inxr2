@@ -389,15 +389,20 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         # Initial count query
         stats["db_stats"].selects += 1
 
+        # Record indexing phase duration before starting resolution
+        indexing_seconds = time.monotonic() - start_time
+
         resolve_request = ResolveReferencesRequest(
             repository_id=repo_id,
             commit_aware=False,  # Cross-commit resolution: better resolution rate, see docs/2026-02-01-reference-resolution-investigation.md
         )
+        resolve_start = time.monotonic()
         resolve_response = await self._resolve_refs_use_case.execute_with_progress(
             resolve_request,
             progress_callback=on_resolution_progress,
             batch_size=1000,
         )
+        resolving_seconds = time.monotonic() - resolve_start
         stats["references_resolved"] = resolve_response.resolved_count
 
         # Step 6: Update index status
@@ -443,6 +448,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             non_code_files_indexed=stats.get("non_code_files_indexed", 0),
             errors=stats["errors"],
             elapsed_seconds=elapsed_seconds,
+            indexing_seconds=indexing_seconds,
+            resolving_seconds=resolving_seconds,
             db_stats=stats["db_stats"],
             oldest_commit_hash=oldest_commit.short_hash if oldest_commit else None,
             oldest_commit_date=(

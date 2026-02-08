@@ -565,6 +565,8 @@ async def _run_full_index_async(
                 stats,
                 commits_indexed=response.commits_indexed,
                 elapsed_seconds=response.elapsed_seconds,
+                indexing_seconds=response.indexing_seconds,
+                resolving_seconds=response.resolving_seconds,
                 repo_name=repo_path.name,
                 branch=current_branch,
                 max_history=max_history,
@@ -758,6 +760,8 @@ def _print_summary(
     is_incremental: bool = False,
     commits_indexed: int | None = None,
     elapsed_seconds: float | None = None,
+    indexing_seconds: float | None = None,
+    resolving_seconds: float | None = None,
     repo_name: str | None = None,
     branch: str | None = None,
     max_history: int | None = None,
@@ -840,6 +844,16 @@ def _print_summary(
     if elapsed_seconds is not None:
         table.add_row("", "")  # Separator
         table.add_row("Total Time", f"[blue]{_format_duration(elapsed_seconds)}[/blue]")
+        if indexing_seconds is not None and indexing_seconds > 0:
+            table.add_row(
+                "  Indexing",
+                f"[dim]{_format_duration(indexing_seconds)}[/dim]",
+            )
+        if resolving_seconds is not None and resolving_seconds > 0:
+            table.add_row(
+                "  Resolving",
+                f"[dim]{_format_duration(resolving_seconds)}[/dim]",
+            )
 
     # Show DB query statistics
     db = stats.db_stats

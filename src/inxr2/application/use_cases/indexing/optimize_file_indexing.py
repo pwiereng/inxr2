@@ -123,7 +123,7 @@ class OptimizeFileIndexingUseCase:
             )
 
         # Donor found - copy symbols and references
-        symbols_copied = await self._symbol_repository.copy_symbols_to_file(
+        copy_result = await self._symbol_repository.copy_symbols_to_file(
             source_file_id=donor_file_id,
             target_file_id=request.target_file_id,
             target_commit_id=request.target_commit_id,
@@ -135,11 +135,12 @@ class OptimizeFileIndexingUseCase:
             target_file_id=request.target_file_id,
             target_commit_id=request.target_commit_id,
             target_repository_id=request.target_repository_id,
+            symbol_id_mapping=copy_result.id_mapping,
         )
 
         return OptimizationResult(
             optimization_applied=True,
             donor_file_id=donor_file_id,
-            symbols_copied=symbols_copied,
+            symbols_copied=copy_result.count,
             references_copied=references_copied,
         )

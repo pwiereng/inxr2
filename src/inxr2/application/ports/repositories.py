@@ -6,6 +6,7 @@ mechanisms like PostgreSQL.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from ...domain.entities import (
     Commit,
@@ -16,6 +17,14 @@ from ...domain.entities import (
     Symbol,
     TextContent,
 )
+
+
+@dataclass(frozen=True)
+class CopySymbolsResult:
+    """Result of copying symbols, including ID mapping for reference remapping."""
+
+    count: int
+    id_mapping: dict[int, int]  # old_symbol_id -> new_symbol_id
 
 
 class RepositoryPort(ABC):
@@ -504,7 +513,7 @@ class SymbolRepositoryPort(ABC):
         target_file_id: int,
         target_commit_id: int,
         target_repository_id: int,
-    ) -> int:
+    ) -> CopySymbolsResult:
         """Copy all symbols from source file to target file.
 
         Used for content-hash based symbol reuse optimization.
@@ -520,7 +529,7 @@ class SymbolRepositoryPort(ABC):
             target_repository_id: The repository ID for the new symbols
 
         Returns:
-            Number of symbols copied
+            CopySymbolsResult with count and old->new symbol ID mapping
         """
         pass
 
@@ -659,6 +668,7 @@ class ReferenceRepositoryPort(ABC):
         target_file_id: int,
         target_commit_id: int,
         target_repository_id: int,
+        symbol_id_mapping: dict[int, int] | None = None,
     ) -> int:
         """Copy all references from source file to target file.
 
@@ -666,14 +676,18 @@ class ReferenceRepositoryPort(ABC):
         Creates new reference records with the target file/commit IDs while
         preserving all other reference attributes.
 
-        Note: target_symbol_id is set to NULL for copied references.
-        They will be resolved later by resolve_unlinked_references.
+        When symbol_id_mapping is provided, already-resolved target_symbol_id
+        values are remapped via the mapping. This avoids expensive re-resolution
+        for references that were already resolved on the source file.
 
         Args:
             source_file_id: The file ID to copy references from
             target_file_id: The file ID to copy references to
             target_commit_id: The commit ID for the new references
             target_repository_id: The repository ID for the new references
+            symbol_id_mapping: Optional old->new symbol ID mapping from
+                copy_symbols_to_file. When provided, resolved target_symbol_id
+                values are remapped instead of being set to NULL.
 
         Returns:
             Number of references copied

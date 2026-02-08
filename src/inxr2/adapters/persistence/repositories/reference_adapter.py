@@ -433,12 +433,14 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         target_file_id: int,
         target_commit_id: int,
         target_repository_id: int,
+        symbol_id_mapping: dict[int, int] | None = None,
     ) -> int:
         """Copy all references from source file to target file.
 
         Creates new reference records with the target file/commit IDs while
-        preserving all other reference attributes. target_symbol_id is set to
-        NULL and will be resolved later by resolve_unlinked_references.
+        preserving all other reference attributes. When symbol_id_mapping is
+        provided, already-resolved target_symbol_id values are remapped via
+        the mapping instead of being set to NULL.
         """
         # Fetch source references
         result = await self.session.execute(
@@ -453,28 +455,35 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
 
         # Create new references with updated file/commit/repository IDs
         now = datetime.now(UTC).replace(tzinfo=None)
-        new_refs = [
-            ReferenceModel(
-                repository_id=target_repository_id,
-                commit_id=target_commit_id,
-                source_file_id=target_file_id,
-                source_line=ref.source_line,
-                source_column=ref.source_column,
-                source_end_column=ref.source_end_column,
-                reference_text=ref.reference_text,
-                reference_type=ref.reference_type,
-                is_definition=ref.is_definition,
-                is_write=ref.is_write,
-                resolution_confidence=ref.resolution_confidence,
-                extra_metadata=ref.extra_metadata,
-                # target_symbol_id set to NULL for later resolution
-                target_symbol_id=None,
-                target_repository_id=None,
-                # Explicitly set indexed_at for SQLite compatibility in tests
-                indexed_at=now,
+        new_refs: list[ReferenceModel] = []
+        for ref in source_refs:
+            # Remap target_symbol_id if mapping is available
+            old_target = ref.target_symbol_id
+            if symbol_id_mapping and old_target and old_target in symbol_id_mapping:
+                new_target_symbol_id = symbol_id_mapping[old_target]
+            else:
+                new_target_symbol_id = None
+
+            new_refs.append(
+                ReferenceModel(
+                    repository_id=target_repository_id,
+                    commit_id=target_commit_id,
+                    source_file_id=target_file_id,
+                    source_line=ref.source_line,
+                    source_column=ref.source_column,
+                    source_end_column=ref.source_end_column,
+                    reference_text=ref.reference_text,
+                    reference_type=ref.reference_type,
+                    is_definition=ref.is_definition,
+                    is_write=ref.is_write,
+                    resolution_confidence=ref.resolution_confidence,
+                    extra_metadata=ref.extra_metadata,
+                    target_symbol_id=new_target_symbol_id,
+                    target_repository_id=None,
+                    # Explicitly set indexed_at for SQLite compatibility in tests
+                    indexed_at=now,
+                )
             )
-            for ref in source_refs
-        ]
 
         self.session.add_all(new_refs)
         await self.session.flush()

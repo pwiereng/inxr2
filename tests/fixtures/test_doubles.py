@@ -40,6 +40,7 @@ from typing import Any, BinaryIO
 
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
+    CopySymbolsResult,
     FileRepositoryPort,
     IndexStatusRepositoryPort,
     ReferenceRepositoryPort,
@@ -217,13 +218,13 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         target_file_id: int,
         target_commit_id: int,
         target_repository_id: int,
-    ) -> int:
+    ) -> CopySymbolsResult:
         """Copy all symbols from source file to target file."""
         source_symbols = [
             s for s in self._symbols.values() if s.file_id == source_file_id
         ]
         if not source_symbols:
-            return 0
+            return CopySymbolsResult(count=0, id_mapping={})
 
         # Map old symbol IDs to new ones for parent_symbol_id remapping
         old_to_new_id: dict[int, int] = {}
@@ -278,7 +279,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                         parent_symbol_id=new_parent_id,
                     )
 
-        return len(source_symbols)
+        return CopySymbolsResult(count=len(source_symbols), id_mapping=old_to_new_id)
 
     # Test helper methods
     def add(self, symbol: Symbol) -> Symbol:
@@ -1478,6 +1479,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         target_file_id: int,
         target_commit_id: int,
         target_repository_id: int,
+        symbol_id_mapping: dict[int, int] | None = None,
     ) -> int:
         """Copy all references from source file to target file."""
         source_refs = [
@@ -1487,6 +1489,13 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             return 0
 
         for source in source_refs:
+            # Remap target_symbol_id if mapping is available
+            old_target = source.target_symbol_id
+            if symbol_id_mapping and old_target and old_target in symbol_id_mapping:
+                new_target_symbol_id = symbol_id_mapping[old_target]
+            else:
+                new_target_symbol_id = None
+
             new_ref = Reference(
                 id=self._next_id,
                 repository_id=target_repository_id,
@@ -1497,7 +1506,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 source_end_column=source.source_end_column,
                 reference_text=source.reference_text,
                 reference_type=source.reference_type,
-                target_symbol_id=None,  # Will be resolved later
+                target_symbol_id=new_target_symbol_id,
                 target_repository_id=None,
                 is_definition=source.is_definition,
                 is_write=source.is_write,

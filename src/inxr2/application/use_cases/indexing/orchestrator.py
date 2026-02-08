@@ -127,6 +127,8 @@ class IndexRepositoryResponse:
     non_code_files_indexed: int = 0
     errors: list[str] = field(default_factory=list)
     elapsed_seconds: float = 0.0
+    indexing_seconds: float = 0.0
+    resolving_seconds: float = 0.0
     db_stats: DBQueryStats = field(default_factory=DBQueryStats)
     # Commit range info for summary
     oldest_commit_hash: str | None = None
