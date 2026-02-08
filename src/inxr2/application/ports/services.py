@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO
 
@@ -57,47 +58,96 @@ class ParserServicePort(ABC):
         pass
 
 
+@dataclass(frozen=True)
+class CommitInfo:
+    """Git commit metadata returned by GitServicePort."""
+
+    hash: str
+    short_hash: str
+    author_name: str
+    author_email: str
+    author_date: datetime
+    committer_name: str
+    committer_email: str
+    commit_date: datetime
+    message: str
+    parent_hashes: list[str]
+
+
+@dataclass(frozen=True)
+class ChangedFiles:
+    """Files changed in a single commit."""
+
+    added: list[str]
+    modified: list[str]
+    deleted: list[str]
+
+
+@dataclass(frozen=True)
+class RepositoryInfo:
+    """Basic git repository information."""
+
+    name: str
+    url: str | None
+    current_branch: str | None
+    is_bare: bool
+
+
 class GitServicePort(ABC):
-    """
-    Port for git operations.
+    """Port for git operations.
 
-    Implementations will use GitPython or pygit2.
-
-    TODO: Add authentication support
-    TODO: Add progress callbacks
+    Defines the full synchronous interface for git operations needed by
+    the indexing orchestrator and other consumers.
     """
 
     @abstractmethod
-    async def clone_repository(self, url: str, destination: Path) -> None:
-        """
-        Clone a git repository.
-
-        Args:
-            url: Repository URL
-            destination: Local destination path
-
-        TODO: Implement in adapter layer
-        """
-        pass
+    def get_repository_info(self, repo_path: Path) -> RepositoryInfo: ...
 
     @abstractmethod
-    async def get_file_content(
-        self, repo_path: Path, commit_hash: str, file_path: Path
-    ) -> str:
-        """
-        Get file content at specific commit.
+    def get_current_commit(self, repo_path: Path, branch: str | None = None) -> str: ...
 
-        Args:
-            repo_path: Path to repository
-            commit_hash: Commit hash
-            file_path: Path to file within repository
+    @abstractmethod
+    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo: ...
 
-        Returns:
-            File content
+    @abstractmethod
+    def list_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        max_count: int | None = 1000,
+        since_days: int | None = None,
+    ) -> list[CommitInfo]: ...
 
-        TODO: Implement in adapter layer
-        """
-        pass
+    @abstractmethod
+    def list_branch_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        base_branch: str,
+        max_count: int | None = 1000,
+        since_days: int | None = None,
+    ) -> list[CommitInfo]: ...
+
+    @abstractmethod
+    def list_files(
+        self,
+        repo_path: Path,
+        commit_hash: str,
+        patterns: list[str] | None = None,
+    ) -> list[str]: ...
+
+    @abstractmethod
+    def get_changed_files_in_commit(
+        self, repo_path: Path, commit_hash: str
+    ) -> ChangedFiles: ...
+
+    @abstractmethod
+    def get_file_content(
+        self, repo_path: Path, commit_hash: str, file_path: str
+    ) -> str: ...
+
+    @abstractmethod
+    def list_branches(self, repo_path: Path) -> list[str]: ...
 
 
 class ConfigServicePort(ABC):

@@ -51,7 +51,7 @@ from ..application.ports.repositories import (
     SymbolRepositoryPort,
     TextContentRepositoryPort,
 )
-from ..application.ports.services import FileSystemPort, TextSearchPort
+from ..application.ports.services import FileSystemPort, GitServicePort, TextSearchPort
 from ..application.use_cases.commits import ListCommitsUseCase
 from ..application.use_cases.files import (
     GetFileContentUseCase,
@@ -152,10 +152,10 @@ TextSearchDep = Annotated[TextSearchPort, Depends(get_text_search)]
 # =============================================================================
 
 # Singleton instance for GitService (stateless, reusable)
-_git_service: GitService | None = None
+_git_service: GitServicePort | None = None
 
 
-def get_git_service() -> GitService:
+def get_git_service() -> GitServicePort:
     """Provide GitService singleton."""
     global _git_service
     if _git_service is None:
@@ -163,7 +163,7 @@ def get_git_service() -> GitService:
     return _git_service
 
 
-GitServiceDep = Annotated[GitService, Depends(get_git_service)]
+GitServiceDep = Annotated[GitServicePort, Depends(get_git_service)]
 
 # Singleton instance for LocalFileSystem (stateless, reusable)
 _local_filesystem: LocalFileSystem | None = None

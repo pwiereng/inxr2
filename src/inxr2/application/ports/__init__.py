@@ -6,10 +6,13 @@ from .repositories import (
     TextContentRepositoryPort,
 )
 from .services import (
+    ChangedFiles,
+    CommitInfo,
     FileStat,
     FileSystemPort,
     GitServicePort,
     ParserServicePort,
+    RepositoryInfo,
     TextSearchPort,
     TextSearchQuery,
     TextSearchResult,
@@ -23,6 +26,9 @@ __all__ = [
     "GitServicePort",
     "FileSystemPort",
     "FileStat",
+    "CommitInfo",
+    "ChangedFiles",
+    "RepositoryInfo",
     "TextSearchPort",
     "TextSearchQuery",
     "TextSearchResult",

@@ -48,11 +48,14 @@ from inxr2.application.ports.repositories import (
     TextContentRepositoryPort,
 )
 from inxr2.application.ports.services import (
+    ChangedFiles,
+    CommitInfo,
     FileStat,
     FileSystemPort,
     GitServicePort,
     ParserServicePort,
     PlaintextParserPort,
+    RepositoryInfo,
     TextSearchPort,
     TextSearchQuery,
     TextSearchResult,
@@ -1879,30 +1882,150 @@ class StubParserService(ParserServicePort):
         self._responses.clear()
 
 
-class StubGitService(GitServicePort):
+class FakeGitService(GitServicePort):
     """
-    Stub implementation of GitServicePort for testing.
+    Fake implementation of GitServicePort for testing.
+
+    Provides configurable git operation responses with typed return values.
 
     Example:
-        git = StubGitService()
-        git.set_file_content("repo/path", "abc123", "main.py", "print('hello')")
-        content = await git.get_file_content(Path("repo/path"), "abc123", Path("main.py"))
+        from inxr2.application.ports.services import CommitInfo, ChangedFiles
+
+        git = FakeGitService()
+        info = git.get_repository_info(Path("/repo"))
+        assert info.current_branch == "main"
     """
 
-    def __init__(self) -> None:
-        """Initialize with empty responses."""
+    def __init__(self, commits: list[CommitInfo] | None = None) -> None:
+        """Initialize with test commits.
+
+        Args:
+            commits: List of CommitInfo objects. If None, provides sensible defaults.
+        """
+        self.commits: list[CommitInfo] = (
+            list(commits)
+            if commits
+            else [
+                CommitInfo(
+                    hash="abc123",
+                    short_hash="abc123",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 1, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 1, 0, 0, 0),
+                    message="Initial commit",
+                    parent_hashes=[],
+                ),
+                CommitInfo(
+                    hash="def456",
+                    short_hash="def456",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 2, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 2, 0, 0, 0),
+                    message="Add feature",
+                    parent_hashes=["abc123"],
+                ),
+            ]
+        )
+        self.files_in_commit: dict[str, list[str]] = {
+            "abc123": ["src/main.py", "src/utils.py"],
+            "def456": ["src/main.py", "src/utils.py", "src/new_file.py"],
+        }
+        self.changed_files_in_commit: dict[str, ChangedFiles] = {
+            "abc123": ChangedFiles(
+                added=["src/main.py", "src/utils.py"],
+                modified=[],
+                deleted=[],
+            ),
+            "def456": ChangedFiles(
+                added=["src/new_file.py"],
+                modified=[],
+                deleted=[],
+            ),
+        }
         self._file_contents: dict[tuple[str, str, str], str] = {}
+        # Tracking for test verification
+        self._list_branch_commits_called = False
+        self._list_branch_commits_args: dict[str, str] = {}
 
-    async def clone_repository(self, url: str, destination: Path) -> None:
-        """Stub - does nothing in tests."""
-        pass
+    def get_repository_info(self, repo_path: Path) -> RepositoryInfo:
+        return RepositoryInfo(
+            name=repo_path.name,
+            url=str(repo_path),
+            current_branch="main",
+            is_bare=False,
+        )
 
-    async def get_file_content(
-        self, repo_path: Path, commit_hash: str, file_path: Path
+    def get_current_commit(self, repo_path: Path, branch: str | None = None) -> str:
+        commit_hash: str = self.commits[-1].hash
+        return commit_hash
+
+    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
+        for commit in self.commits:
+            if commit.hash == commit_hash:
+                return commit
+        return self.commits[-1]
+
+    def list_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        max_count: int | None = 1000,
+        since_days: int | None = None,
+    ) -> list[CommitInfo]:
+        commits = self.commits.copy()
+        if max_count:
+            commits = commits[:max_count]
+        return commits
+
+    def list_branch_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        base_branch: str,
+        max_count: int | None = 1000,
+        since_days: int | None = None,
+    ) -> list[CommitInfo]:
+        self._list_branch_commits_called = True
+        self._list_branch_commits_args = {
+            "branch": branch,
+            "base_branch": base_branch,
+        }
+        if self.commits:
+            return [self.commits[-1]]
+        return []
+
+    def list_files(
+        self,
+        repo_path: Path,
+        commit_hash: str,
+        patterns: list[str] | None = None,
+    ) -> list[str]:
+        return self.files_in_commit.get(commit_hash, [])
+
+    def get_changed_files_in_commit(
+        self, repo_path: Path, commit_hash: str
+    ) -> ChangedFiles:
+        return self.changed_files_in_commit.get(
+            commit_hash,
+            ChangedFiles(added=[], modified=[], deleted=[]),
+        )
+
+    def get_file_content(
+        self, repo_path: Path, commit_hash: str, file_path: str
     ) -> str:
-        """Return predefined file content."""
-        key = (str(repo_path), commit_hash, str(file_path))
-        return self._file_contents.get(key, "")
+        key = (str(repo_path), commit_hash, file_path)
+        if key in self._file_contents:
+            return self._file_contents[key]
+        return f"# Content of {file_path} at {commit_hash}\nprint('hello')"
+
+    def list_branches(self, repo_path: Path) -> list[str]:
+        return ["main"]
 
     # Test helper methods
     def set_file_content(
@@ -2196,7 +2319,7 @@ def create_populated_symbol_repository() -> InMemorySymbolRepository:
 #
 # 2. **Stub**: Returns predefined responses
 #    - Use when: Need to control what dependencies return
-#    - Example: StubParserService, StubGitService
+#    - Example: StubParserService
 #
 # 3. **Fake**: Real working implementation (simpler than production)
 #    - Use when: Need realistic behavior without infrastructure

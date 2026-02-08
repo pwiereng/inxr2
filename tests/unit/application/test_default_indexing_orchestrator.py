@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from inxr2.application.ports.services import ChangedFiles, CommitInfo
 from inxr2.application.use_cases.indexing.default_orchestrator import (
     DefaultIndexingOrchestrator,
 )
@@ -12,6 +13,7 @@ from inxr2.application.use_cases.indexing.orchestrator import (
     IndexRepositoryRequest,
 )
 from tests.fixtures.test_doubles import (
+    FakeGitService,
     FakePlaintextParser,
     InMemoryCommitRepository,
     InMemoryFileRepository,
@@ -21,147 +23,6 @@ from tests.fixtures.test_doubles import (
     InMemorySymbolRepository,
     InMemoryTextContentRepository,
 )
-
-
-class FakeGitService:
-    """Fake git service for testing without real git operations."""
-
-    def __init__(self, commits: list[dict] | None = None):
-        """
-        Initialize with test commits.
-
-        Args:
-            commits: List of dicts matching GitService.list_commits() output
-        """
-        from datetime import datetime
-
-        self.commits = commits or [
-            {
-                "hash": "abc123",
-                "short_hash": "abc123",
-                "author_name": "Test User",
-                "author_email": "test@example.com",
-                "author_date": datetime(2024, 1, 1, 0, 0, 0),
-                "committer_name": "Test User",
-                "committer_email": "test@example.com",
-                "commit_date": datetime(2024, 1, 1, 0, 0, 0),
-                "message": "Initial commit",
-                "parent_hashes": [],
-            },
-            {
-                "hash": "def456",
-                "short_hash": "def456",
-                "author_name": "Test User",
-                "author_email": "test@example.com",
-                "author_date": datetime(2024, 1, 2, 0, 0, 0),
-                "committer_name": "Test User",
-                "committer_email": "test@example.com",
-                "commit_date": datetime(2024, 1, 2, 0, 0, 0),
-                "message": "Add feature",
-                "parent_hashes": ["abc123"],
-            },
-        ]
-        self.files_in_commit: dict[str, list[str]] = {
-            "abc123": ["src/main.py", "src/utils.py"],
-            "def456": ["src/main.py", "src/utils.py", "src/new_file.py"],
-        }
-        # Changed files per commit for delta indexing
-        # First commit: all files are "added"
-        # Second commit: only new_file.py is added
-        self.changed_files_in_commit: dict[str, dict[str, list[str]]] = {
-            "abc123": {
-                "added": ["src/main.py", "src/utils.py"],
-                "modified": [],
-                "deleted": [],
-            },
-            "def456": {
-                "added": ["src/new_file.py"],
-                "modified": [],
-                "deleted": [],
-            },
-        }
-        # Tracking for list_branch_commits calls (for test verification)
-        self._list_branch_commits_called = False
-        self._list_branch_commits_args: dict[str, str] = {}
-
-    def get_repository_info(self, repo_path: Path) -> dict:
-        """Get repository information."""
-        return {
-            "current_branch": "main",
-            "default_branch": "main",
-            "remote_url": str(repo_path),
-        }
-
-    def get_current_commit(self, repo_path: Path, branch: str | None = None) -> str:
-        """Get current commit hash."""
-        commit_hash: str = self.commits[-1]["hash"]
-        return commit_hash
-
-    def get_commit_info(self, repo_path: Path, commit_hash: str) -> dict:
-        """Get detailed information about a commit."""
-        for commit in self.commits:
-            if commit["hash"] == commit_hash:
-                return commit
-        # Return the last commit if not found
-        return self.commits[-1]
-
-    def list_commits(
-        self,
-        repo_path: Path,
-        branch: str,
-        max_count: int | None = None,
-        since_days: int | None = None,
-    ) -> list[dict]:
-        """Get commit history (oldest to newest)."""
-        commits = self.commits.copy()
-        if max_count:
-            commits = commits[:max_count]
-        return commits
-
-    def list_files(
-        self, repo_path: Path, commit_hash: str, patterns: list[str] | None = None
-    ) -> list[str]:
-        """Get list of files in a commit."""
-        return self.files_in_commit.get(commit_hash, [])
-
-    def get_file_content(
-        self, repo_path: Path, commit_hash: str, file_path: str
-    ) -> str:
-        """Get file content at specific commit."""
-        return f"# Content of {file_path} at {commit_hash}\nprint('hello')"
-
-    def get_changed_files_in_commit(
-        self, repo_path: Path, commit_hash: str
-    ) -> dict[str, list[str]]:
-        """Get files changed in a single commit (vs its parent)."""
-        return self.changed_files_in_commit.get(
-            commit_hash, {"added": [], "modified": [], "deleted": []}
-        )
-
-    def list_branch_commits(
-        self,
-        repo_path: Path,
-        branch: str,
-        base_branch: str,
-        max_count: int | None = None,
-        since_days: int | None = None,
-    ) -> list[dict]:
-        """
-        Get commits unique to a branch (after merge-base with base_branch).
-
-        For testing, returns only the last commit to simulate feature branch
-        optimization - as if all earlier commits are shared with base_branch.
-        """
-        # Track that this method was called for test verification
-        self._list_branch_commits_called = True
-        self._list_branch_commits_args = {
-            "branch": branch,
-            "base_branch": base_branch,
-        }
-        # Return only the last commit to simulate branch-specific commits
-        if self.commits:
-            return [self.commits[-1]]
-        return []
 
 
 class FakeParserService:
@@ -563,7 +424,7 @@ class TestGitServiceIntegration:
                 branch: str,
                 max_count: int | None = None,
                 since_days: int | None = None,
-            ) -> list[dict]:
+            ) -> list[CommitInfo]:
                 self.list_commits_called = True
                 self.list_commits_args = {
                     "repo_path": repo_path,
@@ -629,7 +490,7 @@ class TestGitServiceIntegration:
                 branch: str,
                 max_count: int | None = None,
                 since_days: int | None = None,
-            ) -> list[dict]:
+            ) -> list[CommitInfo]:
                 self.since_days_received = since_days
                 return super().list_commits(repo_path, branch, max_count, since_days)
 
@@ -692,26 +553,26 @@ class TestGitServiceIntegration:
                 branch: str,
                 max_count: int | None = None,
                 since_days: int | None = None,
-            ) -> list[dict]:
+            ) -> list[CommitInfo]:
                 # Return empty list to simulate no commits in date range
                 if since_days is not None:
                     return []
                 return super().list_commits(repo_path, branch, max_count, since_days)
 
-            def get_commit_info(self, repo_path: Path, commit_hash: str) -> dict:
+            def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
                 self.get_commit_info_called = True
-                return {
-                    "hash": "def456",
-                    "short_hash": "def456",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 2, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 2, 0, 0, 0),
-                    "message": "HEAD commit",
-                    "parent_hashes": [],
-                }
+                return CommitInfo(
+                    hash="def456",
+                    short_hash="def456",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 2, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 2, 0, 0, 0),
+                    message="HEAD commit",
+                    parent_hashes=[],
+                )
 
         empty_git = EmptyCommitsGitService()
         orchestrator = DefaultIndexingOrchestrator(
@@ -837,18 +698,18 @@ class TestGitServiceIntegration:
                 super().__init__()
                 # Override commits with timezone-aware datetimes (like GitPython returns)
                 self.commits = [
-                    {
-                        "hash": "tz123",
-                        "short_hash": "tz123",
-                        "author_name": "Test User",
-                        "author_email": "test@example.com",
-                        "author_date": datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
-                        "committer_name": "Test User",
-                        "committer_email": "test@example.com",
-                        "commit_date": datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
-                        "message": "Commit with timezone",
-                        "parent_hashes": [],
-                    },
+                    CommitInfo(
+                        hash="tz123",
+                        short_hash="tz123",
+                        author_name="Test User",
+                        author_email="test@example.com",
+                        author_date=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
+                        committer_name="Test User",
+                        committer_email="test@example.com",
+                        commit_date=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
+                        message="Commit with timezone",
+                        parent_hashes=[],
+                    ),
                 ]
                 self.files_in_commit = {
                     "tz123": ["src/main.py"],
@@ -1037,8 +898,8 @@ class TestGitServiceIntegration:
         }
         # Also update changed_files_in_commit for delta indexing
         git_service.changed_files_in_commit = {
-            "abc123": {"added": ["main.c"], "modified": [], "deleted": []},
-            "def456": {"added": [], "modified": [], "deleted": []},  # No changes
+            "abc123": ChangedFiles(added=["main.c"], modified=[], deleted=[]),
+            "def456": ChangedFiles(added=[], modified=[], deleted=[]),  # No changes
         }
 
         request = IndexRepositoryRequest(
@@ -1136,8 +997,8 @@ class TestGitServiceIntegration:
         }
         # Also update changed_files_in_commit for delta indexing
         git_service.changed_files_in_commit = {
-            "abc123": {"added": ["main.c"], "modified": [], "deleted": []},
-            "def456": {"added": [], "modified": [], "deleted": []},  # No changes
+            "abc123": ChangedFiles(added=["main.c"], modified=[], deleted=[]),
+            "def456": ChangedFiles(added=[], modified=[], deleted=[]),  # No changes
         }
 
         request = IndexRepositoryRequest(
@@ -1332,42 +1193,42 @@ class TestHeadFirstIndexing:
         # Create a git service with 3 commits
         three_commit_git = FakeGitService(
             commits=[
-                {
-                    "hash": "commit1",
-                    "short_hash": "commit1",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "message": "Initial",
-                    "parent_hashes": [],
-                },
-                {
-                    "hash": "commit2",
-                    "short_hash": "commit2",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 2, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 2, 0, 0, 0),
-                    "message": "Add file",
-                    "parent_hashes": ["commit1"],
-                },
-                {
-                    "hash": "commit3",
-                    "short_hash": "commit3",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 3, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 3, 0, 0, 0),
-                    "message": "HEAD",
-                    "parent_hashes": ["commit2"],
-                },
+                CommitInfo(
+                    hash="commit1",
+                    short_hash="commit1",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 1, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 1, 0, 0, 0),
+                    message="Initial",
+                    parent_hashes=[],
+                ),
+                CommitInfo(
+                    hash="commit2",
+                    short_hash="commit2",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 2, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 2, 0, 0, 0),
+                    message="Add file",
+                    parent_hashes=["commit1"],
+                ),
+                CommitInfo(
+                    hash="commit3",
+                    short_hash="commit3",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 3, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 3, 0, 0, 0),
+                    message="HEAD",
+                    parent_hashes=["commit2"],
+                ),
             ]
         )
         three_commit_git.files_in_commit = {
@@ -1376,9 +1237,9 @@ class TestHeadFirstIndexing:
             "commit3": ["a.py", "b.py", "c.py"],
         }
         three_commit_git.changed_files_in_commit = {
-            "commit1": {"added": ["a.py"], "modified": [], "deleted": []},
-            "commit2": {"added": ["b.py"], "modified": [], "deleted": []},
-            "commit3": {"added": ["c.py"], "modified": [], "deleted": []},
+            "commit1": ChangedFiles(added=["a.py"], modified=[], deleted=[]),
+            "commit2": ChangedFiles(added=["b.py"], modified=[], deleted=[]),
+            "commit3": ChangedFiles(added=["c.py"], modified=[], deleted=[]),
         }
 
         orchestrator = DefaultIndexingOrchestrator(
@@ -1433,25 +1294,27 @@ class TestHeadFirstIndexing:
 
         single_commit_git = FakeGitService(
             commits=[
-                {
-                    "hash": "only",
-                    "short_hash": "only",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "message": "Only commit",
-                    "parent_hashes": [],
-                },
+                CommitInfo(
+                    hash="only",
+                    short_hash="only",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 1, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 1, 0, 0, 0),
+                    message="Only commit",
+                    parent_hashes=[],
+                ),
             ]
         )
         single_commit_git.files_in_commit = {
             "only": ["a.py", "b.py", "c.py"],
         }
         single_commit_git.changed_files_in_commit = {
-            "only": {"added": ["a.py", "b.py", "c.py"], "modified": [], "deleted": []},
+            "only": ChangedFiles(
+                added=["a.py", "b.py", "c.py"], modified=[], deleted=[]
+            ),
         }
 
         orchestrator = DefaultIndexingOrchestrator(
@@ -2085,18 +1948,18 @@ class TestBranchIndexingOptimization:
 
         git_service = FakeGitService(
             commits=[
-                {
-                    "hash": "abc123",
-                    "short_hash": "abc123",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "message": "Add docs",
-                    "parent_hashes": [],
-                }
+                CommitInfo(
+                    hash="abc123",
+                    short_hash="abc123",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 1, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 1, 0, 0, 0),
+                    message="Add docs",
+                    parent_hashes=[],
+                )
             ]
         )
         # Add non-code files to the commit
@@ -2104,11 +1967,11 @@ class TestBranchIndexingOptimization:
             "abc123": ["README.md", "config.yaml", "Dockerfile"]
         }
         git_service.changed_files_in_commit = {
-            "abc123": {
-                "added": ["README.md", "config.yaml", "Dockerfile"],
-                "modified": [],
-                "deleted": [],
-            }
+            "abc123": ChangedFiles(
+                added=["README.md", "config.yaml", "Dockerfile"],
+                modified=[],
+                deleted=[],
+            )
         }
 
         orchestrator = DefaultIndexingOrchestrator(
@@ -2175,27 +2038,27 @@ class TestBranchIndexingOptimization:
 
         git_service = FakeGitService(
             commits=[
-                {
-                    "hash": "abc123",
-                    "short_hash": "abc123",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "message": "Add docs",
-                    "parent_hashes": [],
-                }
+                CommitInfo(
+                    hash="abc123",
+                    short_hash="abc123",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 1, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 1, 0, 0, 0),
+                    message="Add docs",
+                    parent_hashes=[],
+                )
             ]
         )
         git_service.files_in_commit = {"abc123": ["README.md", "config.yaml"]}
         git_service.changed_files_in_commit = {
-            "abc123": {
-                "added": ["README.md", "config.yaml"],
-                "modified": [],
-                "deleted": [],
-            }
+            "abc123": ChangedFiles(
+                added=["README.md", "config.yaml"],
+                modified=[],
+                deleted=[],
+            )
         }
 
         orchestrator = DefaultIndexingOrchestrator(

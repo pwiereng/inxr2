@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from inxr2.application.ports.services import CommitInfo
 from inxr2.application.use_cases.files import (
     GetFileHistoryRequest,
     GetFileHistoryUseCase,
@@ -18,25 +19,39 @@ from tests.fixtures.test_doubles import (
     InMemoryRepositoryRepository,
 )
 
+# Default CommitInfo for tests that don't need specific values
+_DEFAULT_COMMIT_INFO = CommitInfo(
+    hash="",
+    short_hash="",
+    author_name="",
+    author_email="",
+    author_date=datetime(2025, 1, 1),
+    committer_name="",
+    committer_email="",
+    commit_date=datetime(2025, 1, 1),
+    message="",
+    parent_hashes=[],
+)
+
 
 class StubGitCommitInfoService:
     """Stub git service for testing commit info retrieval."""
 
     def __init__(self) -> None:
         """Initialize with empty commit info map."""
-        self._commit_info: dict[tuple[str, str], dict[str, str]] = {}
+        self._commit_info: dict[tuple[str, str], CommitInfo] = {}
 
     def set_commit_info(
-        self, repo_path: str, commit_hash: str, info: dict[str, str]
+        self, repo_path: str, commit_hash: str, info: CommitInfo
     ) -> None:
         """Set commit info to return for a commit."""
         key = (repo_path, commit_hash)
         self._commit_info[key] = info
 
-    def get_commit_info(self, repo_path: Path, commit_hash: str) -> dict[str, str]:
-        """Return predefined commit info or empty dict."""
+    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
+        """Return predefined commit info or default empty CommitInfo."""
         key = (str(repo_path), commit_hash)
-        return self._commit_info.get(key, {})
+        return self._commit_info.get(key, _DEFAULT_COMMIT_INFO)
 
 
 class TestGetFileHistoryUseCase:
@@ -152,17 +167,50 @@ class TestGetFileHistoryUseCase:
         service.set_commit_info(
             str(repo_path),
             "abc123def456",
-            {"message": "Initial commit"},
+            CommitInfo(
+                hash="abc123def456",
+                short_hash="abc123d",
+                author_name="Test",
+                author_email="test@example.com",
+                author_date=datetime(2025, 1, 1),
+                committer_name="Test",
+                committer_email="test@example.com",
+                commit_date=datetime(2025, 1, 1),
+                message="Initial commit",
+                parent_hashes=[],
+            ),
         )
         service.set_commit_info(
             str(repo_path),
             "def456ghi789",
-            {"message": "Add feature X"},
+            CommitInfo(
+                hash="def456ghi789",
+                short_hash="def456g",
+                author_name="Test",
+                author_email="test@example.com",
+                author_date=datetime(2025, 1, 2),
+                committer_name="Test",
+                committer_email="test@example.com",
+                commit_date=datetime(2025, 1, 2),
+                message="Add feature X",
+                parent_hashes=[],
+            ),
         )
         service.set_commit_info(
             str(repo_path),
             "ghi789jkl012",
-            {"message": "Fix bug in feature X"},
+            CommitInfo(
+                hash="ghi789jkl012",
+                short_hash="ghi789j",
+                author_name="Test",
+                author_email="test@example.com",
+                author_date=datetime(2025, 1, 3),
+                committer_name="Test",
+                committer_email="test@example.com",
+                commit_date=datetime(2025, 1, 3),
+                message="Fix bug in feature X",
+                parent_hashes=[],
+            ),
         )
         return service
 
@@ -392,7 +440,18 @@ class TestGetFileHistoryUseCase:
         git_service.set_commit_info(
             str(repo_path),
             "abc123def456",
-            {"message": long_message},
+            CommitInfo(
+                hash="abc123def456",
+                short_hash="abc123d",
+                author_name="Test",
+                author_email="test@example.com",
+                author_date=datetime(2025, 1, 1),
+                committer_name="Test",
+                committer_email="test@example.com",
+                commit_date=datetime(2025, 1, 1),
+                message=long_message,
+                parent_hashes=[],
+            ),
         )
 
         use_case = GetFileHistoryUseCase(

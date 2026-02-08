@@ -37,7 +37,12 @@ from ...ports.repositories import (
     SymbolRepositoryPort,
     TextContentRepositoryPort,
 )
-from ...ports.services import IndexingOrchestratorPort, PlaintextParserPort
+from ...ports.services import (
+    CommitInfo,
+    GitServicePort,
+    IndexingOrchestratorPort,
+    PlaintextParserPort,
+)
 from .optimize_file_indexing import (
     OptimizeFileIndexingRequest,
     OptimizeFileIndexingUseCase,
@@ -103,7 +108,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         reference_repo: ReferenceRepositoryPort,
         index_status_repo: IndexStatusRepositoryPort,
         text_content_repo: TextContentRepositoryPort,
-        git_service: Any,  # GitServicePort - not yet in ports
+        git_service: GitServicePort,
         parser_service: Any,  # ParserServicePort - exists but simpler interface
         plaintext_parser: PlaintextParserPort,
     ) -> None:
@@ -249,9 +254,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
             # Filter to commits that need processing (after last indexed)
             found_last_indexed = False
-            commits_to_process = []
+            commits_to_process: list[CommitInfo] = []
             for commit_data in commits_data:
-                if commit_data["hash"] == last_indexed_hash:
+                if commit_data.hash == last_indexed_hash:
                     found_last_indexed = True
                     continue
                 if not found_last_indexed:
@@ -294,21 +299,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 repo_path=request.repository_path,
                 commit_hash=head_commit_hash,
             )
-            # Convert to the format expected by _process_commit
-            commits_data = [
-                {
-                    "hash": head_commit_info["hash"],
-                    "short_hash": head_commit_info["short_hash"],
-                    "author_name": head_commit_info["author_name"],
-                    "author_email": head_commit_info["author_email"],
-                    "author_date": head_commit_info["author_date"],
-                    "committer_name": head_commit_info["committer_name"],
-                    "committer_email": head_commit_info["committer_email"],
-                    "commit_date": head_commit_info["commit_date"],
-                    "message": head_commit_info["message"],
-                    "parent_hashes": head_commit_info["parent_hashes"],
-                }
-            ]
+            commits_data = [head_commit_info]
 
         # Reverse commits for HEAD-first indexing:
         # - HEAD (newest) is processed first with ALL files
@@ -334,7 +325,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 # HEAD commit: count all files
                 file_paths = self._git_service.list_files(
                     repo_path=request.repository_path,
-                    commit_hash=commit_data["hash"],
+                    commit_hash=commit_data.hash,
                 )
                 total_files += len(file_paths)
                 stats["files_at_head"] = len(file_paths)  # Track HEAD file count
@@ -342,9 +333,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 # Older commits: count only changed files
                 changed = self._git_service.get_changed_files_in_commit(
                     repo_path=request.repository_path,
-                    commit_hash=commit_data["hash"],
+                    commit_hash=commit_data.hash,
                 )
-                total_files += len(changed["added"]) + len(changed["modified"])
+                total_files += len(changed.added) + len(changed.modified)
         stats["files_total"] = total_files
         stats["files_unchanged"] = 0  # Will be tracked per-commit
 
@@ -414,7 +405,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         # This ensures incremental detection works correctly:
         # - If we indexed up to HEAD, this equals current_head → next run skips
         # - If we only partially indexed (max_history), we'll continue from here
-        last_indexed_commit = commits_data[0]["hash"] if commits_data else current_head
+        last_indexed_commit = commits_data[0].hash if commits_data else current_head
         await self._update_index_status(
             repository_id=repo_id,
             branch=request.branch or "main",
@@ -453,16 +444,16 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             errors=stats["errors"],
             elapsed_seconds=elapsed_seconds,
             db_stats=stats["db_stats"],
-            oldest_commit_hash=oldest_commit["short_hash"] if oldest_commit else None,
+            oldest_commit_hash=oldest_commit.short_hash if oldest_commit else None,
             oldest_commit_date=(
-                oldest_commit["commit_date"].strftime("%Y-%m-%d %H:%M UTC")
-                if oldest_commit and oldest_commit.get("commit_date")
+                oldest_commit.commit_date.strftime("%Y-%m-%d %H:%M UTC")
+                if oldest_commit
                 else None
             ),
-            newest_commit_hash=newest_commit["short_hash"] if newest_commit else None,
+            newest_commit_hash=newest_commit.short_hash if newest_commit else None,
             newest_commit_date=(
-                newest_commit["commit_date"].strftime("%Y-%m-%d %H:%M UTC")
-                if newest_commit and newest_commit.get("commit_date")
+                newest_commit.commit_date.strftime("%Y-%m-%d %H:%M UTC")
+                if newest_commit
                 else None
             ),
         )
@@ -470,7 +461,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
     async def _process_commit(
         self,
         repository_id: int,
-        commit_data: dict,
+        commit_data: CommitInfo,
         request: IndexRepositoryRequest,
         content_hash_cache: dict[str, int],
         stats: dict,
@@ -481,7 +472,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
         Args:
             repository_id: Database ID of the repository
-            commit_data: Git commit information dict
+            commit_data: Git commit metadata
             request: The indexing request
             content_hash_cache: Cache for content-hash optimization
             stats: Statistics dict to update
@@ -491,7 +482,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         """
         from datetime import UTC, datetime
 
-        commit_hash_str = commit_data["hash"]
+        commit_hash_str = commit_data.hash
 
         # Check if commit already exists (for re-indexing scenarios)
         existing_commit = await self._commit_repo.find_by_hash(
@@ -511,8 +502,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
             # Get datetime values from commit data
             # GitPython returns timezone-aware datetimes, DB expects naive UTC
-            author_date = commit_data.get("author_date")
-            commit_date = commit_data.get("commit_date")
+            author_date: datetime | None = commit_data.author_date
+            commit_date: datetime | None = commit_data.commit_date
 
             # Handle both datetime objects (from GitPython) and strings (from tests)
             if isinstance(author_date, str):
@@ -569,7 +560,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             # This is essential for time-travel queries to work correctly
             files_to_process = self._git_service.list_files(
                 repo_path=repo_path,
-                commit_hash=commit_data["hash"],
+                commit_hash=commit_data.hash,
             )
             # No unchanged files for HEAD - we process everything
         else:
@@ -577,19 +568,19 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             # Unchanged files already have records from HEAD or later commits
             changed = self._git_service.get_changed_files_in_commit(
                 repo_path=repo_path,
-                commit_hash=commit_data["hash"],
+                commit_hash=commit_data.hash,
             )
 
             # Only process added and modified files (deleted files don't need processing)
-            files_to_process = changed["added"] + changed["modified"]
+            files_to_process = changed.added + changed.modified
 
             # Track unchanged files (all files minus changed files)
             all_files = self._git_service.list_files(
                 repo_path=repo_path,
-                commit_hash=commit_data["hash"],
+                commit_hash=commit_data.hash,
             )
             unchanged_count = (
-                len(all_files) - len(files_to_process) - len(changed["deleted"])
+                len(all_files) - len(files_to_process) - len(changed.deleted)
             )
             stats["files_unchanged"] = stats.get("files_unchanged", 0) + max(
                 0, unchanged_count
@@ -601,7 +592,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 repository_id=repository_id,
                 commit_id=commit_id,
                 file_path_str=file_path_str,
-                commit_hash=commit_data["hash"],
+                commit_hash=commit_data.hash,
                 repo_path=repo_path,
                 content_hash_cache=content_hash_cache,
                 request=request,
@@ -877,7 +868,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         self,
         repository_id: int,
         commit_id: int,
-        commit_data: dict,
+        commit_data: CommitInfo,
         stats: dict,
     ) -> None:
         """Index commit message as searchable text content.
@@ -885,11 +876,11 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         Args:
             repository_id: Repository database ID
             commit_id: Commit database ID
-            commit_data: Git commit information dict (must include 'message')
+            commit_data: Git commit metadata
             stats: Statistics dict to update
         """
         try:
-            commit_message = commit_data.get("message", "").strip()
+            commit_message = commit_data.message.strip()
 
             # Skip empty commit messages
             if not commit_message:
@@ -917,7 +908,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         except Exception as e:
             # Don't fail indexing if commit message indexing fails
             stats["errors"].append(
-                f"Failed to index commit message for commit {commit_data.get('hash', 'unknown')}: {str(e)}"
+                f"Failed to index commit message for commit {commit_data.hash}: {str(e)}"
             )
 
     async def _index_non_code_file(

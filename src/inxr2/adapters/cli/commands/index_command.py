@@ -377,7 +377,7 @@ async def _run_full_index_async(
 
             # Get repository info for display
             repo_info = git_service.get_repository_info(repo_path)
-            current_branch = branch or repo_info.get("current_branch", "main")
+            current_branch = branch or repo_info.current_branch or "main"
 
             # Show what were about to index
             console.print(f"[cyan]Indexing {repo_path.name}[/cyan]")
@@ -414,8 +414,8 @@ async def _run_full_index_async(
                 oldest = commits[0]
                 newest = commits[-1]
                 console.print(f"  Commits: {len(commits)}")
-                oldest_date = oldest.get("author_date") or oldest.get("commit_date")
-                newest_date = newest.get("author_date") or newest.get("commit_date")
+                oldest_date = oldest.author_date or oldest.commit_date
+                newest_date = newest.author_date or newest.commit_date
                 if oldest_date is not None and hasattr(oldest_date, "strftime"):
                     oldest_str = oldest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
                 else:
@@ -424,8 +424,8 @@ async def _run_full_index_async(
                     newest_str = newest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
                 else:
                     newest_str = str(newest_date) if newest_date else "unknown"
-                console.print(f"  Oldest: {oldest['hash'][:10]} ({oldest_str})")
-                console.print(f"  Newest: {newest['hash'][:10]} ({newest_str})")
+                console.print(f"  Oldest: {oldest.hash[:10]} ({oldest_str})")
+                console.print(f"  Newest: {newest.hash[:10]} ({newest_str})")
             console.print()
 
             # Create indexing request
@@ -615,9 +615,9 @@ async def _show_index_status_async(repo_path: Path, console: Console) -> None:
 
     # Get repository info from git (external service)
     repo_info = git_service.get_repository_info(repo_path)
-    current_branch = repo_info.get("current_branch", "unknown")
+    current_branch = repo_info.current_branch or "unknown"
     current_commit = git_service.get_current_commit(repo_path, current_branch)
-    repo_name = repo_info.get("name", repo_path.name)
+    repo_name = repo_info.name
 
     # Connect to database and execute use case
     db = DatabaseConnection()

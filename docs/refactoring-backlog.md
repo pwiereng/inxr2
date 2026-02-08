@@ -100,30 +100,47 @@
 
 ---
 
+### 2.3 Optimize resolve_references_batch Query
+**Severity:** HIGH | **Effort:** 1 day
+
+**Location:** `src/inxr2/adapters/persistence/repositories/reference_adapter.py:296-378`
+
+**Issue:** The `resolve_references_batch` SQL uses a correlated subquery that runs per-reference in the batch. Scales poorly as symbols/files tables grow across multiple branches.
+
+**Observed:** Indexing `inxr2/automated-testing-agent` branch (187 commits, 663K unresolved refs) took **22 minutes** total. A similar branch (`add-java-support`, 127 commits, 541K unresolved refs) took **3 minutes** — 7x slower despite only 22% more data. The resolving phase dominates total time.
+
+**Root Cause:**
+- Correlated subquery in `UPDATE SET target_symbol_id = (SELECT ... WHERE s.name = r.reference_text ...)` executes per row
+- Two `JOIN files` per reference (for language matching) multiplies cost
+- Performance degrades as more branches add rows to symbols/files tables
+
+**Tasks:**
+- [ ] Rewrite correlated subquery as a JOIN-based bulk UPDATE (single pass)
+- [ ] Add compound index `symbols(repository_id, name)` if missing
+- [ ] Add compound index `references(repository_id, target_symbol_id)` for unresolved lookup
+- [ ] Benchmark before/after on large branch (target: <5 min for 663K refs)
+- [ ] Consider reducing batch size or adding progress per-batch logging
+
+---
+
 ## Priority 3: Architecture (STRUCTURAL IMPROVEMENTS)
 
-### 3.1 Create GitServicePort ⚠️ DEFERRED
-**Severity:** MEDIUM | **Effort:** 1-2 days (revised up from 4 hours)
+### 3.1 Create GitServicePort ✅ DONE
+**Severity:** MEDIUM | **Effort:** 1-2 days
 
 **Location:** `src/inxr2/application/ports/services.py`
 
 **Issue:** `git_service` typed as `Any` in orchestrator, breaking type safety.
 
-**Status:** Attempted 2026-02-07, reverted due to complexity. The refactor touches many files and requires:
-- Changing dict return types to typed dataclasses (`CommitInfo`, `ChangedFiles`)
-- Updating all call sites from dict access (`data["hash"]`) to attribute access (`data.hash`)
-- Updating `FakeGitService` test double to match new interface
-- Cascading changes through orchestrator and tests
-
-**Recommendation:** Defer until after 3.5 (indexing unification) simplifies the orchestrator. Less code to update.
-
-**Tasks:**
-- [ ] Create `GitServicePort` abstract class in `application/ports/services.py`
-- [ ] Define typed dataclasses for return values (`CommitInfo`, `ChangedFiles`, etc.)
-- [ ] Define abstract methods for all git operations used by orchestrator
-- [ ] Update `DefaultIndexingOrchestrator` to use typed port
-- [ ] Update `FakeGitService` test double to implement port
-- [ ] Remove `Any` type hint
+**Completed Tasks:**
+- [x] Create `GitServicePort` abstract class with 9 sync methods
+- [x] Define frozen dataclasses: `CommitInfo`, `ChangedFiles`, `RepositoryInfo`
+- [x] Update `GitService` adapter to implement port, return dataclasses
+- [x] Update `DefaultIndexingOrchestrator` — `git_service: Any` → `GitServicePort`, all dict→attribute access
+- [x] Replace `StubGitService` with full `FakeGitService` in shared test doubles
+- [x] Update orchestrator tests, CLI, API, dependencies, protocol return types
+- [x] Update test stubs in `test_get_file_history_use_case.py` and `test_list_commits_use_case.py`
+- [x] 811 tests pass, mypy clean (0 errors), ruff/black/isort clean
 
 ---
 
@@ -412,7 +429,8 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 1.4 | P1 | 2h | Input validation ✅ DONE |
 | 2.1 | P2 | 1d | N+1 in file search ✅ DONE |
 | 2.2 | P2 | 1d | N+1 in text search ✅ DONE |
-| 3.1 | P3 | 1-2d | GitServicePort ⚠️ DEFERRED |
+| 2.3 | P2 | 1d | Optimize resolve_references_batch query |
+| 3.1 | P3 | 1-2d | GitServicePort ✅ DONE |
 | 3.2 | P3 | 4h | SearchFilesUseCase ✅ DONE |
 | 3.3 | P3 | 2h | Fix adapter dependency ✅ DONE |
 | 3.4 | P3 | 3-4d | Decompose orchestrator (reduced after 3.5) |
@@ -445,7 +463,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 - ~~3.5 Unify full/incremental indexing (4 hours)~~ ✅ DONE
 - ~~3.2 SearchFilesUseCase (4 hours)~~ ✅ DONE
 - ~~3.3 Fix adapter dependency (2 hours)~~ ✅ DONE
-- 3.1 GitServicePort (1-2 days) - deferred, easier after 3.5 simplified orchestrator
+- ~~3.1 GitServicePort (1-2 days)~~ ✅ DONE
 
 ### Week 4: Architecture - Orchestrator Decomposition
 - 3.4 orchestrator decomposition (3-4 days, reduced complexity after 3.5)
@@ -479,6 +497,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 3.5 | 2026-02-07 | f388b6c | Unify full/incremental indexing |
 | 3.2 | 2026-02-07 | 17561ae | Extract SearchFilesUseCase from controller |
 | 3.3 | 2026-02-07 | (pending) | Fix adapter layer dependency (PlaintextParserPort) |
+| 3.1 | 2026-02-08 | (pending) | GitServicePort with typed return values |
 
 ## Architectural Decisions
 
@@ -500,5 +519,5 @@ Both fixes are in the working tree (pending commit).
 ### StrEnum Migration (2026-02-07)
 Fixed 4 pre-existing ruff UP042 warnings: `QueryMode`, `ReferenceType`, `SymbolKind`, and `TextSearchSourceType` changed from `(str, Enum)` to `StrEnum`. Done alongside item 3.3.
 
-### GitServicePort Deferred (2026-02-07)
-Attempted to create typed `GitServicePort` to replace `Any` type hint. Reverted after discovering the refactor was larger than estimated—requires changing dict returns to typed dataclasses throughout orchestrator and test doubles. Recommend completing 3.5 first to reduce the surface area of this change.
+### GitServicePort Completed (2026-02-08)
+Initially attempted 2026-02-07, reverted due to cascading changes. Re-attempted 2026-02-08 after 3.5 unification simplified the orchestrator. Successfully replaced `git_service: Any` with `GitServicePort`, dict returns with frozen dataclasses (`CommitInfo`, `ChangedFiles`, `RepositoryInfo`), and all `data["hash"]` → `data.hash` across codebase. 811 tests pass, mypy clean.

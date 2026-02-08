@@ -83,12 +83,9 @@ class TestGitService:
         """Test getting repository information."""
         info = git_service.get_repository_info(temp_git_repo)
 
-        assert "name" in info
-        assert info["name"] == temp_git_repo.name
-        assert "current_branch" in info
-        assert info["current_branch"] == "main"
-        assert "is_bare" in info
-        assert info["is_bare"] is False
+        assert info.name == temp_git_repo.name
+        assert info.current_branch == "main"
+        assert info.is_bare is False
 
     def test_get_current_commit(
         self, git_service: GitService, temp_git_repo: Path
@@ -107,12 +104,12 @@ class TestGitService:
         commit_hash = git_service.get_current_commit(temp_git_repo)
         info = git_service.get_commit_info(temp_git_repo, commit_hash)
 
-        assert info["hash"] == commit_hash
-        assert len(info["short_hash"]) == 7
-        assert info["author_name"] == "Test User"
-        assert info["author_email"] == "test@example.com"
-        assert "message" in info
-        assert "commit_date" in info
+        assert info.hash == commit_hash
+        assert len(info.short_hash) == 7
+        assert info.author_name == "Test User"
+        assert info.author_email == "test@example.com"
+        assert info.message
+        assert info.commit_date is not None
 
     def test_list_files(self, git_service: GitService, temp_git_repo: Path) -> None:
         """Test listing files at a commit."""
@@ -205,7 +202,7 @@ class TestGitServiceChangedFiles:
         commits = git_service.list_commits(temp_git_repo, "main", max_count=None)
         assert len(commits) == 3  # Initial, add main.py, update README
 
-        initial_commit = commits[0]["hash"]
+        initial_commit = commits[0].hash
 
         # Get commits since initial
         commits_since = git_service.get_commits_since(temp_git_repo, initial_commit)
@@ -216,16 +213,13 @@ class TestGitServiceChangedFiles:
     ) -> None:
         """Test getting changed files between commits."""
         commits = git_service.list_commits(temp_git_repo, "main", max_count=None)
-        initial_commit = commits[0]["hash"]
-        latest_commit = commits[-1]["hash"]
+        initial_commit = commits[0].hash
+        latest_commit = commits[-1].hash
 
         changed = git_service.get_changed_files(
             temp_git_repo, initial_commit, latest_commit
         )
 
-        assert "added" in changed
-        assert "modified" in changed
-        assert "deleted" in changed
         assert isinstance(changed["added"], list)
         assert isinstance(changed["modified"], list)
         assert isinstance(changed["deleted"], list)
@@ -289,22 +283,20 @@ class TestGitServiceTimeTravel:
 
         # Each commit should have required fields
         for commit in commits:
-            assert "hash" in commit
-            assert len(commit["hash"]) == 40
-            assert "short_hash" in commit
-            assert len(commit["short_hash"]) == 7
-            assert "author_name" in commit
-            assert "author_email" in commit
-            assert "commit_date" in commit
-            assert "message" in commit
-            assert "parent_hashes" in commit
+            assert len(commit.hash) == 40
+            assert len(commit.short_hash) == 7
+            assert commit.author_name
+            assert commit.author_email
+            assert commit.commit_date is not None
+            assert commit.message is not None
+            assert isinstance(commit.parent_hashes, list)
 
         # Verify chronological order
-        assert first["commit_date"] <= last["commit_date"]
+        assert first.commit_date <= last.commit_date
 
         # Verify messages
-        assert "Initial commit" in first["message"]
-        assert "Update README" in last["message"]
+        assert "Initial commit" in first.message
+        assert "Update README" in last.message
 
     def test_list_commits_limit(
         self, git_service: GitService, temp_git_repo: Path
@@ -351,40 +343,34 @@ class TestGitServiceTimeTravel:
         """Test getting files changed in a single commit."""
         # Get the commit that added main.py
         commits = git_service.list_commits(temp_git_repo, "main", max_count=None)
-        add_main_commit = commits[1]["hash"]  # Second commit
+        add_main_commit = commits[1].hash  # Second commit
 
         changed = git_service.get_changed_files_in_commit(
             temp_git_repo, add_main_commit
         )
 
-        # Should have the three categories
-        assert "added" in changed
-        assert "modified" in changed
-        assert "deleted" in changed
-
         # src/main.py was added in this commit
-        assert "src/main.py" in changed["added"]
-        assert len(changed["modified"]) == 0
-        assert len(changed["deleted"]) == 0
+        assert "src/main.py" in changed.added
+        assert len(changed.modified) == 0
+        assert len(changed.deleted) == 0
 
     def test_get_changed_files_initial_commit(
         self, git_service: GitService, temp_git_repo: Path
     ) -> None:
         """Test getting changed files for initial commit (no parent)."""
         commits = git_service.list_commits(temp_git_repo, "main", max_count=None)
-        initial_commit = commits[0]["hash"]
+        initial_commit = commits[0].hash
 
         changed = git_service.get_changed_files_in_commit(temp_git_repo, initial_commit)
 
         # Initial commit should have only "added" files
-        assert "added" in changed
-        assert len(changed["added"]) == 2  # README.md and .gitignore
-        assert "README.md" in changed["added"]
-        assert ".gitignore" in changed["added"]
+        assert len(changed.added) == 2  # README.md and .gitignore
+        assert "README.md" in changed.added
+        assert ".gitignore" in changed.added
 
         # No modified or deleted in initial commit
-        assert len(changed["modified"]) == 0
-        assert len(changed["deleted"]) == 0
+        assert len(changed.modified) == 0
+        assert len(changed.deleted) == 0
 
 
 class TestGitServiceMergeBase:
@@ -412,7 +398,7 @@ class TestGitServiceMergeBase:
         """Test merge-base between main and a commit on main returns that commit."""
         # Get an older commit on main
         commits = git_service.list_commits(temp_git_repo, "main", max_count=None)
-        older_commit = commits[0]["hash"]  # Initial commit
+        older_commit = commits[0].hash  # Initial commit
 
         # Merge base between main and an older commit should be the older commit
         merge_base = git_service.get_merge_base(temp_git_repo, "main", older_commit)
@@ -439,7 +425,7 @@ class TestGitServiceMergeBase:
 
         # Should be accessible as a commit
         info = git_service.get_commit_info(temp_git_repo, merge_base)
-        assert info["hash"] == merge_base
+        assert info.hash == merge_base
 
 
 class TestGitServiceBranchCommits:
@@ -477,14 +463,13 @@ class TestGitServiceBranchCommits:
 
         # Feature branch has 1 unique commit
         assert len(commits) == 1
-        assert "Add utils.py" in commits[0]["message"]
+        assert "Add utils.py" in commits[0].message
 
         # Verify commit structure
-        assert "hash" in commits[0]
-        assert len(commits[0]["hash"]) == 40
-        assert "short_hash" in commits[0]
-        assert "author_name" in commits[0]
-        assert "commit_date" in commits[0]
+        assert len(commits[0].hash) == 40
+        assert commits[0].short_hash
+        assert commits[0].author_name
+        assert commits[0].commit_date is not None
 
     def test_list_branch_commits_respects_max_count(
         self, git_service: GitService, temp_git_repo: Path
