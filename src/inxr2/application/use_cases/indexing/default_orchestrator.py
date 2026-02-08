@@ -37,7 +37,7 @@ from ...ports.repositories import (
     SymbolRepositoryPort,
     TextContentRepositoryPort,
 )
-from ...ports.services import IndexingOrchestratorPort
+from ...ports.services import IndexingOrchestratorPort, PlaintextParserPort
 from .optimize_file_indexing import (
     OptimizeFileIndexingRequest,
     OptimizeFileIndexingUseCase,
@@ -105,6 +105,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         text_content_repo: TextContentRepositoryPort,
         git_service: Any,  # GitServicePort - not yet in ports
         parser_service: Any,  # ParserServicePort - exists but simpler interface
+        plaintext_parser: PlaintextParserPort,
     ) -> None:
         """
         Initialize orchestrator with all dependencies.
@@ -119,6 +120,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             text_content_repo: Repository for text content operations
             git_service: Service for git operations
             parser_service: Service for code parsing
+            plaintext_parser: Service for parsing non-code text files
         """
         self._repository_repo = repository_repo
         self._commit_repo = commit_repo
@@ -129,6 +131,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         self._text_content_repo = text_content_repo
         self._git_service = git_service
         self._parser_service = parser_service
+        self._plaintext_parser = plaintext_parser
 
         # Initialize use cases that will be reused
         self._optimize_use_case = OptimizeFileIndexingUseCase(
@@ -139,11 +142,6 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         self._resolve_refs_use_case = ResolveReferencesUseCase(
             reference_repository=reference_repo
         )
-
-        # Initialize plaintext parser for non-code files
-        from inxr2.adapters.external.plaintext_parser import PlaintextParser
-
-        self._plaintext_parser = PlaintextParser()
 
     async def index_repository(
         self,

@@ -1,9 +1,9 @@
 """Text search source type enumeration."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class TextSearchSourceType(str, Enum):
+class TextSearchSourceType(StrEnum):
     """
     Type of source for searchable text content.
 

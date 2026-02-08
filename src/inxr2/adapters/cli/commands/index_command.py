@@ -326,6 +326,7 @@ async def _run_full_index_async(
 ) -> IndexingResult:
     """Async implementation of full indexing using the orchestrator."""
     from inxr2.adapters.external.git_service import GitService
+    from inxr2.adapters.external.plaintext_parser import PlaintextParser
     from inxr2.adapters.external.treesitter import TreeSitterService
     from inxr2.adapters.persistence.repositories import (
         PostgresCommitRepository,
@@ -371,6 +372,7 @@ async def _run_full_index_async(
                 text_content_repo=text_content_repo,
                 git_service=git_service,
                 parser_service=parser_service,
+                plaintext_parser=PlaintextParser(),
             )
 
             # Get repository info for display

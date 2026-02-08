@@ -36,7 +36,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
@@ -52,6 +52,7 @@ from inxr2.application.ports.services import (
     FileSystemPort,
     GitServicePort,
     ParserServicePort,
+    PlaintextParserPort,
     TextSearchPort,
     TextSearchQuery,
     TextSearchResult,
@@ -1914,6 +1915,67 @@ class StubGitService(GitServicePort):
     def clear(self) -> None:
         """Clear all predefined responses."""
         self._file_contents.clear()
+
+
+class FakePlaintextParser(PlaintextParserPort):
+    """Fake plaintext parser for testing.
+
+    Supports a configurable set of file extensions and returns
+    a single chunk containing the full content.
+
+    Example:
+        parser = FakePlaintextParser()
+        assert parser.supports_file("README.md")
+        chunks = parser.parse("hello world", "README.md")
+        assert len(chunks) == 1
+    """
+
+    def __init__(self) -> None:
+        """Initialize with default supported extensions."""
+        self._supported_extensions: set[str] = {
+            ".md",
+            ".markdown",
+            ".rst",
+            ".txt",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".ini",
+            ".cfg",
+            ".json",
+            ".xml",
+        }
+        self._supported_filenames: set[str] = {
+            "Dockerfile",
+            "README",
+            "LICENSE",
+        }
+
+    def supports_file(self, file_path: str) -> bool:
+        """Check if this parser supports the given file."""
+        path = Path(file_path)
+        name = path.name
+
+        if name in self._supported_filenames:
+            return True
+        if path.suffix.lower() in self._supported_extensions:
+            return True
+        if "dockerfile" in name.lower():
+            return True
+        return False
+
+    def parse(self, content: str, file_path: str) -> list[dict[str, Any]]:
+        """Parse file content into a single chunk."""
+        if not content or not content.strip():
+            return []
+        return [
+            {
+                "content": content,
+                "content_type": "plain_text",
+                "source_line": 1,
+                "source_end_line": content.count("\n") + 1,
+            }
+        ]
 
 
 class FakeTextSearch(TextSearchPort):

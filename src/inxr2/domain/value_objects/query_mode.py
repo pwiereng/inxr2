@@ -1,9 +1,9 @@
 """Query mode enumeration for text search."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class QueryMode(str, Enum):
+class QueryMode(StrEnum):
     """
     Query mode for text search operations.
 

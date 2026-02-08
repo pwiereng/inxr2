@@ -127,35 +127,37 @@
 
 ---
 
-### 3.2 Create SearchFilesUseCase
+### 3.2 Create SearchFilesUseCase ✅ DONE
 **Severity:** MEDIUM | **Effort:** 4 hours
 
 **Location:** `src/inxr2/application/use_cases/search/`
 
 **Issue:** 130 lines of business logic in API controller violates Clean Architecture.
 
-**Tasks:**
-- [ ] Create `SearchFilesUseCase` with `SearchFilesRequest` and `SearchFilesResponse`
-- [ ] Move repository/commit resolution logic from controller
-- [ ] Move deduplication semantics to use case
-- [ ] Update controller to be thin wrapper
-- [ ] Add unit tests for use case
-- [ ] Update dependency injection
+**Completed Tasks:**
+- [x] Create `SearchFilesUseCase` with `SearchFilesRequest` and `SearchFilesResponse`
+- [x] Move repository/commit resolution logic from controller
+- [x] Move deduplication semantics to use case
+- [x] Update controller to be thin wrapper
+- [x] Add unit tests for use case
+- [x] Update dependency injection
 
 ---
 
-### 3.3 Fix Adapter Layer Dependency in Orchestrator
+### 3.3 Fix Adapter Layer Dependency in Orchestrator ✅ DONE
 **Severity:** MEDIUM | **Effort:** 2 hours
 
 **Location:** `src/inxr2/application/use_cases/indexing/default_orchestrator.py:145`
 
 **Issue:** Application layer imports `PlaintextParser` from adapter layer.
 
-**Tasks:**
-- [ ] Create `PlaintextParserPort` in `application/ports/services.py`
-- [ ] Inject `PlaintextParser` as constructor parameter
-- [ ] Remove import from `__init__`
-- [ ] Update dependency injection configuration
+**Completed Tasks:**
+- [x] Create `PlaintextParserPort` in `application/ports/services.py`
+- [x] Inject `PlaintextParser` as constructor parameter
+- [x] Remove import from `__init__`
+- [x] Update dependency injection configuration
+- [x] Add `FakePlaintextParser` test double
+- [x] Update all orchestrator test construction sites
 
 ---
 
@@ -411,8 +413,8 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 2.1 | P2 | 1d | N+1 in file search ✅ DONE |
 | 2.2 | P2 | 1d | N+1 in text search ✅ DONE |
 | 3.1 | P3 | 1-2d | GitServicePort ⚠️ DEFERRED |
-| 3.2 | P3 | 4h | SearchFilesUseCase |
-| 3.3 | P3 | 2h | Fix adapter dependency |
+| 3.2 | P3 | 4h | SearchFilesUseCase ✅ DONE |
+| 3.3 | P3 | 2h | Fix adapter dependency ✅ DONE |
 | 3.4 | P3 | 3-4d | Decompose orchestrator (reduced after 3.5) |
 | 3.5 | P3 | 4h | Unify full/incremental indexing ✅ DONE |
 | 4.1 | P4 | 3-4d | Base parser extraction |
@@ -439,10 +441,11 @@ No need to extract this to a use case—the CLI command is sufficient.
 ### Week 2: Performance ✅ DONE
 - ~~2.1, 2.2 (2 days)~~ Completed
 
-### Week 3: Architecture - Indexing Unification ✅ PARTIAL
+### Week 3: Architecture - Indexing Unification ✅ DONE
 - ~~3.5 Unify full/incremental indexing (4 hours)~~ ✅ DONE
-- 3.2, 3.3 (6 hours)
-- 3.1 GitServicePort (1-2 days) - now easier after 3.5 simplified orchestrator
+- ~~3.2 SearchFilesUseCase (4 hours)~~ ✅ DONE
+- ~~3.3 Fix adapter dependency (2 hours)~~ ✅ DONE
+- 3.1 GitServicePort (1-2 days) - deferred, easier after 3.5 simplified orchestrator
 
 ### Week 4: Architecture - Orchestrator Decomposition
 - 3.4 orchestrator decomposition (3-4 days, reduced complexity after 3.5)
@@ -473,7 +476,9 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 1.4 | 2026-02-07 | e0fcde9 | Input validation for search endpoints |
 | 2.1 | 2026-02-07 | e0a5bf5 | N+1 in file search |
 | 2.2 | 2026-02-07 | c1e630c | N+1 in text search |
-| 3.5 | 2026-02-07 | (pending) | Unify full/incremental indexing |
+| 3.5 | 2026-02-07 | f388b6c | Unify full/incremental indexing |
+| 3.2 | 2026-02-07 | 17561ae | Extract SearchFilesUseCase from controller |
+| 3.3 | 2026-02-07 | (pending) | Fix adapter layer dependency (PlaintextParserPort) |
 
 ## Architectural Decisions
 
@@ -491,6 +496,9 @@ Two data-quality bugs discovered during UI testing of the `2026-02-07-refactor` 
 2. **Pagination non-determinism**: Text search `ORDER BY rank DESC` had no tiebreaker, so rows with identical ranks shuffled across pages. Fixed by adding `TextContentModel.id` as secondary sort key.
 
 Both fixes are in the working tree (pending commit).
+
+### StrEnum Migration (2026-02-07)
+Fixed 4 pre-existing ruff UP042 warnings: `QueryMode`, `ReferenceType`, `SymbolKind`, and `TextSearchSourceType` changed from `(str, Enum)` to `StrEnum`. Done alongside item 3.3.
 
 ### GitServicePort Deferred (2026-02-07)
 Attempted to create typed `GitServicePort` to replace `Any` type hint. Reverted after discovering the refactor was larger than estimated—requires changing dict returns to typed dataclasses throughout orchestrator and test doubles. Recommend completing 3.5 first to reduce the surface area of this change.

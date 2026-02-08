@@ -12,6 +12,7 @@ from inxr2.application.use_cases.indexing.orchestrator import (
     IndexRepositoryRequest,
 )
 from tests.fixtures.test_doubles import (
+    FakePlaintextParser,
     InMemoryCommitRepository,
     InMemoryFileRepository,
     InMemoryIndexStatusRepository,
@@ -315,6 +316,7 @@ def orchestrator(
         text_content_repo=text_content_repo,
         git_service=git_service,
         parser_service=parser_service,
+        plaintext_parser=FakePlaintextParser(),
     )
 
 
@@ -582,6 +584,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=spy_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
@@ -641,6 +644,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=spy_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Test with since_days=30
@@ -720,6 +724,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=empty_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
@@ -789,6 +794,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=spy_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
@@ -859,6 +865,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=tz_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
@@ -940,6 +947,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=dict_parser,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
@@ -1019,6 +1027,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=no_end_parser,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Update git service to return .c files
@@ -1117,6 +1126,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=string_type_parser,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Update git service to return .c files
@@ -1185,6 +1195,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
@@ -1275,6 +1286,7 @@ class TestHeadFirstIndexing:
             text_content_repo=text_content_repo,
             git_service=tracking_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
@@ -1379,6 +1391,7 @@ class TestHeadFirstIndexing:
             text_content_repo=text_content_repo,
             git_service=three_commit_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
@@ -1451,6 +1464,7 @@ class TestHeadFirstIndexing:
             text_content_repo=text_content_repo,
             git_service=single_commit_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
@@ -1523,6 +1537,7 @@ class TestBranchCommitsPopulation:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
@@ -1570,6 +1585,7 @@ class TestBranchCommitsPopulation:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # First index
@@ -1619,6 +1635,7 @@ class TestBranchCommitsPopulation:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Index main branch
@@ -1673,6 +1690,7 @@ class TestBranchIndexingOptimization:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Request with base_branch different from branch
@@ -1717,6 +1735,7 @@ class TestBranchIndexingOptimization:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Request with base_branch same as branch (no optimization needed)
@@ -1759,6 +1778,7 @@ class TestBranchIndexingOptimization:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Request without base_branch
@@ -1803,6 +1823,7 @@ class TestBranchIndexingOptimization:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Index with optimization (base_branch set)
@@ -2100,6 +2121,7 @@ class TestBranchIndexingOptimization:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
@@ -2186,6 +2208,7 @@ class TestBranchIndexingOptimization:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(

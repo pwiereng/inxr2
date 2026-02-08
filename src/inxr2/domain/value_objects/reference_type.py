@@ -1,9 +1,9 @@
 """Reference type enumeration."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class ReferenceType(str, Enum):
+class ReferenceType(StrEnum):
     """
     Type of symbol reference.
 

@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 from ...domain.entities import Symbol, TextContent
 from ...domain.value_objects import AppConfig
@@ -344,6 +344,20 @@ class TextSearchQuery:
     languages: list[str] | None = None
     limit: int = 20
     offset: int = 0
+
+
+class PlaintextParserPort(ABC):
+    """Port for parsing non-code text files (markdown, YAML, config, etc.)."""
+
+    @abstractmethod
+    def supports_file(self, file_path: str) -> bool:
+        """Check if this parser supports the given file."""
+        pass
+
+    @abstractmethod
+    def parse(self, content: str, file_path: str) -> list[dict[str, Any]]:
+        """Parse file content into searchable chunks."""
+        pass
 
 
 class TextSearchPort(ABC):
