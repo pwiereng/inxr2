@@ -636,9 +636,9 @@ Recent achievements:
 **Phase 1.5: CLI Indexing Engine** - ✅ COMPLETED (2026-01-10)
 
 Recent achievements:
-- CLI framework with Click (`inxr2 index full|incremental|status`)
+- CLI framework with Click (`inxr2 index|status`)
 - Git integration via GitPython (commit tracking, file diffs)
-- Full and incremental indexing workflows
+- Unified indexing workflow (always incremental)
 - Rich progress bars for excellent UX
 - Database adapters: SymbolRepository, ReferenceRepository, IndexStatusRepository
 - Successfully indexed INXR2 itself: 108 files, 440 symbols, 473 references
@@ -752,14 +752,14 @@ Test repositories live in a **separate location** (`../test-repos`, mounted as `
 
 ```bash
 # ✅ CORRECT: Index via config file
-inxr2 index full --config config.yaml --repo inxr2
+inxr2 index --config config.yaml --repo inxr2
 
 # ✅ CORRECT: Index all configured repos
-inxr2 index full --config config.yaml
+inxr2 index --config config.yaml
 
 # ❌ WRONG: Never index working directory
-inxr2 index full --path /workspace
-inxr2 index full --path .
+inxr2 index --path /workspace
+inxr2 index --path .
 ```
 
 **Why this matters:**
@@ -840,9 +840,8 @@ alembic upgrade head              # Apply migrations
 alembic revision --autogenerate   # Create migration
 
 # Indexing (ALWAYS use config file, NEVER --path /workspace)
-inxr2 index full --config config.yaml              # Index all repos
-inxr2 index full --config config.yaml --repo X     # Index specific repo
-inxr2 index incremental --config config.yaml       # Incremental update
+inxr2 index --config config.yaml              # Index all repos
+inxr2 index --config config.yaml --repo X     # Index specific repo
 
 # Running apps
 inxr2 serve --reload              # Backend

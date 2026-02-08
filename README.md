@@ -224,16 +224,16 @@ If you need to rebuild the database from scratch or re-index a repository:
 ```bash
 # From your host machine - reset database then index all repos:
 docker exec inxr2-dev inxr2 db reset --yes
-docker exec inxr2-dev inxr2 index full --config config.yaml
+docker exec inxr2-dev inxr2 index --config config.yaml
 
 # Or as a single command:
-docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index full --config config.yaml"
+docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index --config config.yaml"
 
 # Index a specific repo only:
-docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index full --config config.yaml --repo inxr2"
+docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index --config config.yaml --repo inxr2"
 
 # Limit commit history for faster indexing (e.g., last 10 commits):
-docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index full --config config.yaml --history 10"
+docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index --config config.yaml --history 10"
 ```
 
 **Reset Database Only (clears all data):**
@@ -244,25 +244,25 @@ docker exec inxr2-dev inxr2 db reset --yes
 ./scripts/dev-reset-db.sh
 ```
 
-**Full Index Commands:**
+**Index Commands:**
 ```bash
 # Index all repositories in config
-docker exec inxr2-dev inxr2 index full --config config.yaml
+docker exec inxr2-dev inxr2 index --config config.yaml
 
 # Index a specific repository from config
-docker exec inxr2-dev inxr2 index full --config config.yaml --repo myrepo
+docker exec inxr2-dev inxr2 index --config config.yaml --repo myrepo
 
 # Force re-index a single repo (clears its existing data first)
-docker exec inxr2-dev inxr2 index full --config config.yaml --repo myrepo --force
+docker exec inxr2-dev inxr2 index --config config.yaml --repo myrepo --force
 
 # Limit commit history (useful for large repos)
-docker exec inxr2-dev inxr2 index full --config config.yaml --history 50
+docker exec inxr2-dev inxr2 index --config config.yaml --history 50
 
 # Index only commits from last 30 days
-docker exec inxr2-dev inxr2 index full --config config.yaml --days 30
+docker exec inxr2-dev inxr2 index --config config.yaml --days 30
 
 # With verbose output
-docker exec inxr2-dev inxr2 index full --config config.yaml --verbose
+docker exec inxr2-dev inxr2 index --config config.yaml --verbose
 ```
 
 **Branch Indexing Behavior:**
@@ -284,14 +284,8 @@ repositories:
       - feature-b   # Only indexed if has commits within --days
 ```
 
-**Incremental Index (only changed files):**
-```bash
-# Faster - only indexes files changed since last index
-docker exec inxr2-dev inxr2 index incremental --config config.yaml
-
-# Specify a specific repository
-docker exec inxr2-dev inxr2 index incremental --config config.yaml --repo myrepo
-```
+**Note on Incremental Indexing:**
+Indexing is always incremental - it only indexes commits not yet in the database. For a complete reindex, first reset the database.
 
 **Check Index Status:**
 ```bash
@@ -305,7 +299,7 @@ docker exec -it inxr2-dev bash
 
 # Now you can run without docker exec prefix:
 inxr2 db reset --yes
-inxr2 index full --config config.yaml
+inxr2 index --config config.yaml
 ```
 
 **Performance Note:** The indexer uses content-hash based reuse - files with identical content
@@ -351,7 +345,7 @@ docker-compose -f docker-compose.dev.yml up -d
 docker exec inxr2-dev inxr2 config validate /workspace/config.yaml
 
 # Index all repositories
-docker exec inxr2-dev inxr2 index full --config /workspace/config.yaml
+docker exec inxr2-dev inxr2 index --config /workspace/config.yaml
 
 # Start the servers
 docker exec -d inxr2-dev bash -c "cd /workspace && inxr2 serve --reload"

@@ -203,12 +203,12 @@
 **Completed Tasks:**
 - [x] Merge `index_repository` and `index_incremental` into single `index` method
 - [x] Update `IndexingOrchestratorPort` interface (remove `index_incremental`)
-- [x] Remove CLI `index incremental` command (keep `index full` but it's now always incremental)
+- [x] Removed CLI `index incremental` and `index full` subcommands - unified to just `index`
 - [x] Remove `IncrementalIndexRequest` (use `IndexRepositoryRequest` only)
 - [x] Update all tests
-- [ ] Update CLAUDE.md command reference (deferred - command still works, just simpler)
+- [x] Update CLAUDE.md command reference
 
-**Full reindex workflow:** `inxr2 db reset --yes && inxr2 index full --config config.yaml`
+**Full reindex workflow:** `inxr2 db reset --yes && inxr2 index --config config.yaml`
 
 **Supersedes:** The original 3.5 "Extract Shared Logic" item is now obsolete—unification eliminates the duplication entirely.
 
@@ -483,7 +483,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 ## Architectural Decisions
 
 ### Indexing is Always Incremental (2026-02-07)
-Decided to remove the "full" vs "incremental" distinction. Indexing always indexes commits not yet in the database. For a complete reindex:
+Decided to remove the "full" vs "incremental" distinction. The command is now just `inxr2 index`, which always indexes commits not yet in the database. For a complete reindex:
 ```bash
 inxr2 db reset --yes && inxr2 index --config config.yaml
 ```
