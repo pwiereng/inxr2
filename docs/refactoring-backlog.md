@@ -100,10 +100,10 @@
 
 ---
 
-### 2.3 Optimize resolve_references_batch Query
+### 2.3 Optimize resolve_references_batch Query ✅ DONE
 **Severity:** HIGH | **Effort:** 1 day
 
-**Location:** `src/inxr2/adapters/persistence/repositories/reference_adapter.py:296-378`
+**Location:** `src/inxr2/adapters/persistence/repositories/reference_adapter.py:296-380`
 
 **Issue:** The `resolve_references_batch` SQL uses a correlated subquery that runs per-reference in the batch. Scales poorly as symbols/files tables grow across multiple branches.
 
@@ -114,12 +114,23 @@
 - Two `JOIN files` per reference (for language matching) multiplies cost
 - Performance degrades as more branches add rows to symbols/files tables
 
-**Tasks:**
-- [ ] Rewrite correlated subquery as a JOIN-based bulk UPDATE (single pass)
-- [ ] Add compound index `symbols(repository_id, name)` if missing
-- [ ] Add compound index `references(repository_id, target_symbol_id)` for unresolved lookup
-- [ ] Benchmark before/after on large branch (target: <5 min for 663K refs)
-- [ ] Consider reducing batch size or adding progress per-batch logging
+**Solution:** Replaced correlated subquery with two-pass `UPDATE ... FROM` using a pre-computed lookup table. Pass 1 resolves same-file references (preferred), pass 2 resolves cross-file with lowest symbol ID as tiebreaker. The lookup (`GROUP BY name` on symbols) is small and joined inside the FROM subquery so LIMIT naturally filters to matchable refs only — unresolvable refs (builtins like `str`, `int`) are excluded without extra computation.
+
+Also carried forward already-resolved `target_symbol_id` during content-hash reference copy (via `CopySymbolsResult.id_mapping`), reducing the number of references that need resolution after cross-branch indexing.
+
+Dropped same-language priority from resolution (was causing expensive file JOINs with negligible benefit).
+
+**Results:** Main branch resolving dropped from **47s → 25s** (~2x faster). Full 14-repo/branch indexing improved significantly.
+
+**Completed Tasks:**
+- [x] Rewrite correlated subquery as two-pass `UPDATE ... FROM` with pre-computed lookup
+- [x] Carry forward resolved `target_symbol_id` during reference copy (`CopySymbolsResult`)
+- [x] Drop same-language priority (removes expensive file JOINs)
+- [x] Benchmark before/after on large branch (25s vs 47s baseline on main)
+- [x] Add 7 integration tests for `resolve_references_batch` (SQLite-compatible)
+- [x] Add regression test for unresolvable refs not blocking resolvable ones
+- [ ] Add compound index `symbols(repository_id, name)` (deferred to migration)
+- [ ] Add compound index `references(repository_id, target_symbol_id)` (deferred to migration)
 
 ---
 
@@ -429,7 +440,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 1.4 | P1 | 2h | Input validation ✅ DONE |
 | 2.1 | P2 | 1d | N+1 in file search ✅ DONE |
 | 2.2 | P2 | 1d | N+1 in text search ✅ DONE |
-| 2.3 | P2 | 1d | Optimize resolve_references_batch query |
+| 2.3 | P2 | 1d | Optimize resolve_references_batch query ✅ DONE |
 | 3.1 | P3 | 1-2d | GitServicePort ✅ DONE |
 | 3.2 | P3 | 4h | SearchFilesUseCase ✅ DONE |
 | 3.3 | P3 | 2h | Fix adapter dependency ✅ DONE |
@@ -458,6 +469,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 
 ### Week 2: Performance ✅ DONE
 - ~~2.1, 2.2 (2 days)~~ Completed
+- ~~2.3 Optimize resolve_references_batch (1 day)~~ ✅ DONE
 
 ### Week 3: Architecture - Indexing Unification ✅ DONE
 - ~~3.5 Unify full/incremental indexing (4 hours)~~ ✅ DONE
@@ -497,6 +509,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 3.5 | 2026-02-07 | f388b6c | Unify full/incremental indexing |
 | 3.2 | 2026-02-07 | 17561ae | Extract SearchFilesUseCase from controller |
 | 3.3 | 2026-02-07 | (pending) | Fix adapter layer dependency (PlaintextParserPort) |
+| 2.3 | 2026-02-08 | (pending) | Optimize resolve_references_batch (two-pass UPDATE...FROM) |
 | 3.1 | 2026-02-08 | (pending) | GitServicePort with typed return values |
 
 ## Architectural Decisions
@@ -518,6 +531,15 @@ Both fixes are in the working tree (pending commit).
 
 ### StrEnum Migration (2026-02-07)
 Fixed 4 pre-existing ruff UP042 warnings: `QueryMode`, `ReferenceType`, `SymbolKind`, and `TextSearchSourceType` changed from `(str, Enum)` to `StrEnum`. Done alongside item 3.3.
+
+### Reference Resolution Optimization (2026-02-08)
+Replaced correlated subquery in `resolve_references_batch` with two-pass `UPDATE ... FROM` using pre-computed lookup table. Key design decisions:
+
+1. **Dropped same-language priority** — the expensive `JOIN files` for language matching provided negligible benefit. Resolution now uses: same-file first, then lowest symbol ID as deterministic tiebreaker.
+2. **Pre-computed lookup** — `GROUP BY name` on symbols produces a small result set, joined inside the FROM subquery so `LIMIT` naturally filters to matchable refs only. Unresolvable refs (builtins like `str`, `int`) are excluded without extra computation.
+3. **Carry-forward during copy** — `copy_references_to_file()` now remaps `target_symbol_id` via `CopySymbolsResult.id_mapping`, avoiding re-resolution of already-resolved references after cross-branch content-hash reuse.
+
+Performance: Total 14-repo/branch indexing dropped from ~32m to ~22m. Main branch resolving: 47s → 25s.
 
 ### GitServicePort Completed (2026-02-08)
 Initially attempted 2026-02-07, reverted due to cascading changes. Re-attempted 2026-02-08 after 3.5 unification simplified the orchestrator. Successfully replaced `git_service: Any` with `GitServicePort`, dict returns with frozen dataclasses (`CommitInfo`, `ChangedFiles`, `RepositoryInfo`), and all `data["hash"]` → `data.hash` across codebase. 811 tests pass, mypy clean.

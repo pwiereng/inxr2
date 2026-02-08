@@ -416,13 +416,13 @@ class TestDeterministicResolution:
         assert ref.target_symbol_id == 1  # Same file priority
 
     @pytest.mark.asyncio
-    async def test_same_language_priority(
+    async def test_cross_file_falls_back_to_lowest_id(
         self,
         file_repo: "InMemoryFileRepository",
     ) -> None:
-        """Test that references resolve to symbols in same language when no same-file match."""
-        # Create symbol repo with Config only in main.py (Python) and app.ts (TypeScript)
-        # No Config in utils.py, so reference from utils.py tests language priority
+        """Test that without same-file match, references resolve to lowest symbol ID."""
+        # Create symbol repo with Config in main.py (Python) and app.ts (TypeScript)
+        # No Config in utils.py, so reference from utils.py tests cross-file fallback
         symbol_repo = InMemorySymbolRepository()
         symbol_repo.add(
             Symbol(
@@ -458,14 +458,14 @@ class TestDeterministicResolution:
             file_repo=file_repo,
         )
 
-        # Reference to "Config" from utils.py (file_id=2, Python)
-        # No Config symbol in utils.py, so should prefer Python file (main.py) over TypeScript
+        # Reference to "Config" from utils.py (file_id=2)
+        # No Config symbol in utils.py, so should pick lowest ID (symbol 1)
         ref_repo.add(
             Reference(
                 id=1,
                 repository_id=1,
                 commit_id=1,
-                source_file_id=2,  # From utils.py (Python)
+                source_file_id=2,  # From utils.py
                 source_line=20,
                 source_column=0,
                 source_end_column=6,
@@ -480,11 +480,10 @@ class TestDeterministicResolution:
 
         await use_case.execute(request)
 
-        # Should resolve to symbol 1 (Python, same language as reference source)
-        # even though symbol 3 (TypeScript) has lower ID
+        # Should resolve to symbol 1 (lowest ID, deterministic tiebreaker)
         ref = await ref_repo.find_by_id(1)
         assert ref is not None
-        assert ref.target_symbol_id == 1  # Same language priority over ID
+        assert ref.target_symbol_id == 1  # Lowest ID wins
 
     @pytest.mark.asyncio
     async def test_cross_language_falls_back_to_id(
