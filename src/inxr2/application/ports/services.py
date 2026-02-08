@@ -13,7 +13,6 @@ from ...domain.value_objects import AppConfig
 if TYPE_CHECKING:
     from ..use_cases.indexing.default_orchestrator import IndexingProgress
     from ..use_cases.indexing.orchestrator import (
-        IncrementalIndexRequest,
         IndexRepositoryRequest,
         IndexRepositoryResponse,
     )
@@ -301,31 +300,6 @@ class IndexingOrchestratorPort(ABC):
         Raises:
             ValueError: If request parameters are invalid
             RuntimeError: If indexing fails critically
-        """
-        pass
-
-    @abstractmethod
-    async def index_incremental(
-        self,
-        request: "IncrementalIndexRequest",
-        progress_callback: ProgressCallback | None = None,
-    ) -> "IndexRepositoryResponse":
-        """
-        Incrementally index changes since last index.
-
-        Only processes commits that haven't been indexed yet,
-        reusing content-hash optimization where possible.
-
-        Args:
-            request: Incremental indexing request parameters
-            progress_callback: Optional callback for progress updates
-
-        Returns:
-            Indexing results with statistics
-
-        Raises:
-            ValueError: If request parameters are invalid or repository not found
-            RuntimeError: If incremental indexing fails
         """
         pass
 

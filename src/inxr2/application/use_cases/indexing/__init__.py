@@ -11,8 +11,6 @@ from .optimize_file_indexing import (
     OptimizeFileIndexingUseCase,
 )
 from .orchestrator import (
-    IncrementalIndexRequest,
-    IndexingStrategy,
     IndexRepositoryRequest,
     IndexRepositoryResponse,
 )
@@ -26,8 +24,6 @@ __all__ = [
     "GetIndexStatusRequest",
     "GetIndexStatusResponse",
     "GetIndexStatusUseCase",
-    "IncrementalIndexRequest",
-    "IndexingStrategy",
     "IndexRepositoryRequest",
     "IndexRepositoryResponse",
     "OptimizationResult",

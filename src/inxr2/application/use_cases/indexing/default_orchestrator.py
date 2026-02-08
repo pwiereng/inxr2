@@ -44,7 +44,6 @@ from .optimize_file_indexing import (
 )
 from .orchestrator import (
     DBQueryStats,
-    IncrementalIndexRequest,
     IndexRepositoryRequest,
     IndexRepositoryResponse,
 )
@@ -198,11 +197,76 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             stats["db_stats"].inserts += 1
         repo_id = repository.id
         assert repo_id is not None, "Repository must have an ID after save"
-
-        # Step 2: Get commits to process
-        # list_commits returns commits from oldest to newest, we reverse for HEAD-first
         branch = request.branch or "main"
-        if request.base_branch and request.base_branch != branch:
+
+        # Step 2: Check for last indexed commit (incremental detection)
+        # If we've indexed before, only index new commits since then
+        all_statuses = await self._index_status_repo.list_by_repository(
+            repository_id=repo_id
+        )
+        stats["db_stats"].selects += 1
+        filtered_statuses = [s for s in all_statuses if s.branch == branch]
+        index_status = filtered_statuses[0] if filtered_statuses else None
+        last_indexed_hash = index_status.last_indexed_commit if index_status else None
+
+        # Get current HEAD to check if already up to date
+        current_head = self._git_service.get_current_commit(
+            repo_path=request.repository_path,
+            branch=branch,
+        )
+
+        # If already indexed and HEAD hasn't changed, return early
+        if last_indexed_hash == current_head:
+            elapsed_seconds = time.monotonic() - start_time
+            return IndexRepositoryResponse(
+                repository_id=repo_id,
+                repository_name=repo_name,
+                branch=branch,
+                commits_indexed=0,
+                files_total=0,
+                files_processed=0,
+                files_skipped=0,
+                files_failed=0,
+                symbols_found=0,
+                references_found=0,
+                references_resolved=0,
+                files_reused=0,
+                symbols_reused=0,
+                references_reused=0,
+                errors=[],
+                elapsed_seconds=elapsed_seconds,
+                db_stats=stats["db_stats"],
+            )
+
+        # Step 3: Get commits to process
+        # If previously indexed, get commits since last indexed (incremental)
+        # Otherwise, use max_history/since_days filters (initial index)
+        if last_indexed_hash and not request.force:
+            # Incremental mode: get all commits and filter to new ones
+            commits_data = self._git_service.list_commits(
+                repo_path=request.repository_path,
+                branch=branch,
+                max_count=None,  # Fetch all to find last indexed commit
+            )
+
+            # Filter to commits that need processing (after last indexed)
+            found_last_indexed = False
+            commits_to_process = []
+            for commit_data in commits_data:
+                if commit_data["hash"] == last_indexed_hash:
+                    found_last_indexed = True
+                    continue
+                if not found_last_indexed:
+                    continue
+                commits_to_process.append(commit_data)
+
+            # If last_indexed_hash wasn't found (rebased/deleted), fall back to all
+            if not found_last_indexed and commits_data:
+                commits_to_process = list(commits_data)
+
+            commits_data = commits_to_process
+
+        elif request.base_branch and request.base_branch != branch:
             # Feature branch optimization: only index commits unique to this branch
             # (commits after the merge-base with base_branch)
             commits_data = self._git_service.list_branch_commits(
@@ -300,7 +364,6 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             )
 
         # Step 5: Process each commit (HEAD first, then older commits)
-        last_commit_hash: str | None = None
         for i, commit_data in enumerate(commits_data):
             # First commit is HEAD - process ALL files
             # Subsequent commits use delta indexing (only changed files)
@@ -315,7 +378,6 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 is_head_commit=is_head_commit,
             )
             stats["commits_indexed"] += 1
-            last_commit_hash = commit_data["hash"]
 
         # Step 6: Resolve references with progress
         def on_resolution_progress(p: ResolutionProgress) -> None:
@@ -350,12 +412,17 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         stats["references_resolved"] = resolve_response.resolved_count
 
         # Step 6: Update index status
+        # Save the newest commit we actually indexed (commits_data[0] after reversal)
+        # This ensures incremental detection works correctly:
+        # - If we indexed up to HEAD, this equals current_head → next run skips
+        # - If we only partially indexed (max_history), we'll continue from here
+        last_indexed_commit = commits_data[0]["hash"] if commits_data else current_head
         await self._update_index_status(
             repository_id=repo_id,
             branch=request.branch or "main",
             commits_indexed=stats["commits_indexed"],
             files_indexed=stats["files_processed"],
-            last_indexed_commit=last_commit_hash,
+            last_indexed_commit=last_indexed_commit,
         )
         # index_status save: 1 INSERT/UPSERT
         stats["db_stats"].inserts += 1
@@ -402,268 +469,11 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             ),
         )
 
-    async def index_incremental(
-        self,
-        request: IncrementalIndexRequest,
-        progress_callback: ProgressCallback | None = None,
-    ) -> IndexRepositoryResponse:
-        """
-        Incrementally index changes since last index.
-
-        Similar to full index but only processes new commits.
-        """
-        start_time = time.monotonic()
-
-        stats: dict[str, Any] = {
-            "commits_indexed": 0,
-            "files_total": 0,
-            "files_processed": 0,
-            "files_skipped": 0,
-            "files_failed": 0,
-            "files_at_head": 0,
-            "lines_indexed": 0,
-            "symbols_found": 0,
-            "references_found": 0,
-            "references_resolved": 0,
-            "files_reused": 0,
-            "symbols_reused": 0,
-            "references_reused": 0,
-            "comments_indexed": 0,
-            "docstrings_indexed": 0,
-            "commit_messages_indexed": 0,
-            "non_code_files_indexed": 0,
-            "errors": [],
-            "db_stats": DBQueryStats(),
-        }
-
-        # Get repository
-        repository = await self._repository_repo.find_by_id(request.repository_id)
-        stats["db_stats"].selects += 1
-        if repository is None:
-            raise ValueError(f"Repository {request.repository_id} not found")
-
-        # Find last indexed commit
-        # TODO: Implement get_latest_by_repository_branch in port
-        # For now, simplified - get all statuses and find latest
-        all_statuses = await self._index_status_repo.list_by_repository(
-            repository_id=request.repository_id
-        )
-        stats["db_stats"].selects += 1
-        filtered_statuses = [
-            s for s in all_statuses if s.branch == (request.branch or "main")
-        ]
-        index_status = filtered_statuses[0] if filtered_statuses else None
-
-        last_indexed_hash = index_status.last_indexed_commit if index_status else None
-
-        # Get new commits since last index
-        current_commit = self._git_service.get_current_commit(
-            repo_path=request.repository_path,
-            branch=request.branch or "main",
-        )
-
-        if last_indexed_hash == current_commit:
-            # No new commits, return early
-            elapsed_seconds = time.monotonic() - start_time
-            return IndexRepositoryResponse(
-                repository_id=request.repository_id,
-                repository_name=repository.name,
-                branch=request.branch or "main",
-                commits_indexed=0,
-                files_total=0,
-                files_processed=0,
-                files_skipped=0,
-                files_failed=0,
-                symbols_found=0,
-                references_found=0,
-                references_resolved=0,
-                files_reused=0,
-                symbols_reused=0,
-                references_reused=0,
-                errors=[],
-                elapsed_seconds=elapsed_seconds,
-                db_stats=stats["db_stats"],
-            )
-
-        # Get commits since last indexed
-        # list_commits returns commits from oldest to newest
-        # For incremental indexing, fetch all commits to ensure we find the last indexed one
-        # (otherwise we might miss it if >N commits have been added since last index)
-        commits_data = self._git_service.list_commits(
-            repo_path=request.repository_path,
-            branch=request.branch or "main",
-            max_count=None,  # Fetch all to find last indexed commit
-        )
-
-        # Build content-hash cache
-        content_hash_cache = await self._file_repo.get_content_hash_to_file_id_map(
-            repository_id=request.repository_id
-        )
-        stats["db_stats"].selects += 1
-
-        # Filter to commits that need processing
-        found_last_indexed = False
-        commits_to_process = []
-        for commit_data in commits_data:
-            if last_indexed_hash:
-                if commit_data["hash"] == last_indexed_hash:
-                    found_last_indexed = True
-                    continue
-                if not found_last_indexed:
-                    continue
-            commits_to_process.append(commit_data)
-
-        # If last_indexed_hash was set but not found, it may have been rebased/deleted
-        # or there are too many commits. Fall back to indexing all listed commits.
-        if last_indexed_hash and not found_last_indexed and commits_data:
-            commits_to_process = list(commits_data)
-
-        # Reverse for HEAD-first indexing (newest commit processed first)
-        commits_to_process = list(reversed(commits_to_process))
-
-        # Capture commit range info for summary (after reversing: [0]=newest, [-1]=oldest)
-        newest_commit = commits_to_process[0] if commits_to_process else None
-        oldest_commit = commits_to_process[-1] if commits_to_process else None
-
-        # Count total files to process (for progress)
-        # HEAD commit: ALL files; other commits: only changed files
-        total_files = 0
-        for i, commit_data in enumerate(commits_to_process):
-            if i == 0:
-                # HEAD commit: count all files
-                file_paths = self._git_service.list_files(
-                    repo_path=request.repository_path,
-                    commit_hash=commit_data["hash"],
-                )
-                total_files += len(file_paths)
-                stats["files_at_head"] = len(file_paths)  # Track HEAD file count
-            else:
-                # Older commits: count only changed files
-                changed = self._git_service.get_changed_files_in_commit(
-                    repo_path=request.repository_path,
-                    commit_hash=commit_data["hash"],
-                )
-                total_files += len(changed["added"]) + len(changed["modified"])
-        stats["files_total"] = total_files
-        stats["files_unchanged"] = 0  # Will be tracked per-commit
-
-        # Report initial progress
-        if progress_callback:
-            progress_callback(
-                IndexingProgress(
-                    phase="files",
-                    files_processed=0,
-                    files_total=total_files,
-                    symbols_found=0,
-                    references_found=0,
-                    cache_size=len(content_hash_cache),
-                )
-            )
-
-        # Process each commit (HEAD first, then older commits)
-        last_commit_hash: str | None = None
-        for i, commit_data in enumerate(commits_to_process):
-            is_head_commit = i == 0
-            await self._process_commit(
-                repository_id=request.repository_id,
-                commit_data=commit_data,
-                request=request,
-                content_hash_cache=content_hash_cache,
-                stats=stats,
-                progress_callback=progress_callback,
-                is_head_commit=is_head_commit,
-            )
-            stats["commits_indexed"] += 1
-            last_commit_hash = commit_data["hash"]
-
-        # Resolve references with progress
-        def on_resolution_progress(p: ResolutionProgress) -> None:
-            if progress_callback:
-                progress_callback(
-                    IndexingProgress(
-                        phase="resolving",
-                        files_processed=stats["files_processed"],
-                        files_total=stats["files_total"],
-                        symbols_found=stats["symbols_found"],
-                        references_found=stats["references_found"],
-                        cache_size=len(content_hash_cache),
-                        refs_resolved=p.resolved,
-                        refs_total=p.total,
-                    )
-                )
-            # Track DB operations: each batch is 1 UPDATE
-            stats["db_stats"].updates += 1
-
-        # Initial count query
-        stats["db_stats"].selects += 1
-
-        resolve_request = ResolveReferencesRequest(
-            repository_id=request.repository_id,
-            commit_aware=False,  # Cross-commit resolution: better resolution rate, see docs/2026-02-01-reference-resolution-investigation.md
-        )
-        resolve_response = await self._resolve_refs_use_case.execute_with_progress(
-            resolve_request,
-            progress_callback=on_resolution_progress,
-            batch_size=1000,
-        )
-        stats["references_resolved"] = resolve_response.resolved_count
-
-        # Update index status (use last indexed hash if we processed new commits, else keep the old one)
-        await self._update_index_status(
-            repository_id=request.repository_id,
-            branch=request.branch or "main",
-            commits_indexed=stats["commits_indexed"],
-            files_indexed=stats["files_processed"],
-            last_indexed_commit=last_commit_hash or last_indexed_hash,
-        )
-        stats["db_stats"].inserts += 1
-
-        elapsed_seconds = time.monotonic() - start_time
-
-        return IndexRepositoryResponse(
-            repository_id=request.repository_id,
-            repository_name=repository.name,
-            branch=request.branch or "main",
-            commits_indexed=stats["commits_indexed"],
-            files_total=stats["files_total"],
-            files_processed=stats["files_processed"],
-            files_skipped=stats["files_skipped"],
-            files_failed=stats["files_failed"],
-            files_unchanged=stats.get("files_unchanged", 0),
-            files_at_head=stats.get("files_at_head", 0),
-            lines_indexed=stats.get("lines_indexed", 0),
-            symbols_found=stats["symbols_found"],
-            references_found=stats["references_found"],
-            references_resolved=stats["references_resolved"],
-            files_reused=stats["files_reused"],
-            symbols_reused=stats["symbols_reused"],
-            references_reused=stats["references_reused"],
-            comments_indexed=stats.get("comments_indexed", 0),
-            docstrings_indexed=stats.get("docstrings_indexed", 0),
-            commit_messages_indexed=stats.get("commit_messages_indexed", 0),
-            non_code_files_indexed=stats.get("non_code_files_indexed", 0),
-            errors=stats["errors"],
-            elapsed_seconds=elapsed_seconds,
-            db_stats=stats["db_stats"],
-            oldest_commit_hash=oldest_commit["short_hash"] if oldest_commit else None,
-            oldest_commit_date=(
-                oldest_commit["commit_date"].strftime("%Y-%m-%d %H:%M UTC")
-                if oldest_commit and oldest_commit.get("commit_date")
-                else None
-            ),
-            newest_commit_hash=newest_commit["short_hash"] if newest_commit else None,
-            newest_commit_date=(
-                newest_commit["commit_date"].strftime("%Y-%m-%d %H:%M UTC")
-                if newest_commit and newest_commit.get("commit_date")
-                else None
-            ),
-        )
-
     async def _process_commit(
         self,
         repository_id: int,
         commit_data: dict,
-        request: IndexRepositoryRequest | IncrementalIndexRequest,
+        request: IndexRepositoryRequest,
         content_hash_cache: dict[str, int],
         stats: dict,
         progress_callback: ProgressCallback | None = None,
@@ -745,8 +555,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         )
         stats["db_stats"].inserts += 1
 
-        # Index commit message if text search is enabled
-        if request.enable_text_search:
+        # Index commit message if text search is enabled (skip if commit already exists)
+        if request.enable_text_search and existing_commit is None:
             await self._index_commit_message(
                 repository_id=repository_id,
                 commit_id=commit_id,
@@ -821,7 +631,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         commit_hash: str,
         repo_path: Path,
         content_hash_cache: dict[str, int],
-        request: IndexRepositoryRequest | IncrementalIndexRequest,
+        request: IndexRepositoryRequest,
         stats: dict,
     ) -> None:
         """Process a single file."""
@@ -1029,6 +839,11 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
             # Convert comments to TextContent entities and save
             for comment_data in comments_data:
+                # Skip empty comments
+                comment_content = comment_data.get("content", "")
+                if not comment_content or not comment_content.strip():
+                    continue
+
                 # Map content_type to TextSearchSourceType
                 content_type = comment_data.get("content_type", "inline_comment")
                 if content_type == "docstring":
@@ -1046,7 +861,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                     source_file_id=file_id,
                     source_line=comment_data["source_line"],
                     source_end_line=comment_data.get("source_end_line"),
-                    content=comment_data["content"],
+                    content=comment_content,
                     language=language,
                     content_type=content_type,
                 )

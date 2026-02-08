@@ -461,30 +461,22 @@ class TestIndexCommandIntegration:
         assert result.exit_code == 0
         assert "Repository" in result.output
 
-    def test_index_full_requires_path_or_config(self, runner: CliRunner) -> None:
-        """Test that index full requires either --path or --config."""
+    def test_index_requires_path_or_config(self, runner: CliRunner) -> None:
+        """Test that index requires either --path or --config."""
         from inxr2.cli import main
 
-        result = runner.invoke(main, ["index", "full"])
+        result = runner.invoke(main, ["index"])
         assert result.exit_code != 0
         assert "path" in result.output.lower() or "config" in result.output.lower()
 
-    def test_index_full_validates_git_repo(self, runner: CliRunner) -> None:
-        """Test that index full validates the path is a git repo."""
+    def test_index_validates_git_repo(self, runner: CliRunner) -> None:
+        """Test that index validates the path is a git repo."""
         from inxr2.cli import main
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            result = runner.invoke(main, ["index", "full", "--path", tmpdir])
+            result = runner.invoke(main, ["index", "--path", tmpdir])
             assert result.exit_code != 0
             assert ".git" in result.output or "git" in result.output.lower()
-
-    def test_index_incremental_requires_path_or_config(self, runner: CliRunner) -> None:
-        """Test that index incremental requires either --path or --config."""
-        from inxr2.cli import main
-
-        result = runner.invoke(main, ["index", "incremental"])
-        assert result.exit_code != 0
-        assert "path" in result.output.lower() or "config" in result.output.lower()
 
 
 class TestTimeUtilities:

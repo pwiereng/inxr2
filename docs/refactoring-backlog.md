@@ -8,94 +8,94 @@
 
 ## Priority 1: Security & Correctness (MUST FIX)
 
-### 1.1 Fix SQL Injection in Regex Search Mode
+### 1.1 Fix SQL Injection in Regex Search Mode ✅ DONE
 **Severity:** CRITICAL | **Effort:** 4 hours
 
 **Location:** `src/inxr2/adapters/persistence/repositories/postgres_text_search.py:183`
 
 **Issue:** User-supplied regex passed directly to PostgreSQL without validation. Can cause ReDoS or database exhaustion.
 
-**Tasks:**
-- [ ] Add regex pattern validation (complexity limits, max length)
-- [ ] Add query timeout for regex operations
-- [ ] Add tests for malicious regex patterns
+**Completed Tasks:**
+- [x] Add regex pattern validation (complexity limits, max length)
+- [x] Add query timeout for regex operations
+- [x] Add tests for malicious regex patterns
 - [ ] Document regex limitations in API docs
 
 ---
 
-### 1.2 Fix Invalid tsquery Syntax Construction
+### 1.2 Fix Invalid tsquery Syntax Construction ✅ DONE
 **Severity:** CRITICAL | **Effort:** 2 hours
 
 **Location:** `src/inxr2/adapters/persistence/repositories/postgres_text_search.py:204-206`
 
 **Issue:** Special characters (`:`, `!`, `&`, `|`, `(`, `)`) in user input cause PostgreSQL syntax errors.
 
-**Tasks:**
-- [ ] Replace `to_tsquery()` with `plainto_tsquery()` for keyword mode
-- [ ] Add error handling for query parsing failures
-- [ ] Add tests for queries with special characters
+**Completed Tasks:**
+- [x] Replace `to_tsquery()` with `plainto_tsquery()` for keyword mode
+- [x] Add error handling for query parsing failures
+- [x] Add tests for queries with special characters
 
 ---
 
-### 1.3 Fix Python Docstring Detection Bug
+### 1.3 Fix Python Docstring Detection Bug ✅ DONE
 **Severity:** HIGH | **Effort:** 2 hours
 
 **Location:** `src/inxr2/adapters/external/treesitter/python_parser.py:668-684`
 
 **Issue:** Extracts ANY string in function/class, not just first statement (actual docstring).
 
-**Tasks:**
-- [ ] Track whether non-docstring statement already seen in parent scope
-- [ ] Add test case for string that's not a docstring
-- [ ] Verify existing tests still pass
+**Completed Tasks:**
+- [x] Track whether non-docstring statement already seen in parent scope
+- [x] Add test case for string that's not a docstring
+- [x] Verify existing tests still pass
 
 ---
 
-### 1.4 Add Input Validation for Search Queries
+### 1.4 Add Input Validation for Search Queries ✅ DONE
 **Severity:** HIGH | **Effort:** 2 hours
 
 **Location:** Multiple search endpoints
 
 **Issue:** No max_length on query parameters (DoS vector).
 
-**Tasks:**
-- [ ] Add `max_length=500` to text search query
-- [ ] Add `max_length=200` to file search query
-- [ ] Validate mode parameter against enum values
-- [ ] Validate source_types and languages against known values
+**Completed Tasks:**
+- [x] Add `max_length=500` to text search query
+- [x] Add `max_length=200` to file search query
+- [x] Validate mode parameter against enum values
+- [x] Validate source_types and languages against known values
 
 ---
 
 ## Priority 2: Performance (HIGH IMPACT)
 
-### 2.1 Fix N+1 Queries in File Search
+### 2.1 Fix N+1 Queries in File Search ✅ DONE
 **Severity:** HIGH | **Effort:** 1 day
 
 **Location:** `src/inxr2/adapters/api/routes/search.py:247-260`
 
 **Issue:** 41 queries for 20 results (1 search + 20 repo + 20 commit lookups).
 
-**Tasks:**
-- [ ] Add `find_by_ids(ids: list[int])` to `RepositoryPort`
-- [ ] Add `find_by_ids(ids: list[int])` to `CommitRepositoryPort`
-- [ ] Implement bulk methods in PostgreSQL adapters
-- [ ] Update file search endpoint to use bulk fetch
-- [ ] Add test for bulk methods
-- [ ] Update test doubles to support bulk methods
+**Completed Tasks:**
+- [x] Add `find_by_ids(ids: list[int])` to `RepositoryPort`
+- [x] Add `find_by_ids(ids: list[int])` to `CommitRepositoryPort`
+- [x] Implement bulk methods in PostgreSQL adapters
+- [x] Update file search endpoint to use bulk fetch
+- [x] Add test for bulk methods
+- [x] Update test doubles to support bulk methods
 
 ---
 
-### 2.2 Fix N+1 Queries in Text Search
+### 2.2 Fix N+1 Queries in Text Search ✅ DONE
 **Severity:** HIGH | **Effort:** 1 day
 
 **Location:** `src/inxr2/application/use_cases/search/search_text_use_case.py:176-224`
 
 **Issue:** 81 queries for 20 results (1 search + 20 repo + 20 file + 20 commit + 20 branch).
 
-**Tasks:**
-- [ ] Collect all unique IDs before lookup loop
-- [ ] Use bulk fetch methods (after 2.1 is complete)
-- [ ] Consider joining data in search query itself (better performance)
+**Completed Tasks:**
+- [x] Collect all unique IDs before lookup loop
+- [x] Use bulk fetch methods (after 2.1 is complete)
+- [x] Consider joining data in search query itself (better performance)
 - [ ] Add performance test to prevent regression
 
 ---
@@ -180,7 +180,7 @@
 
 ---
 
-### 3.5 Unify Full/Incremental Indexing ⚡ NEW
+### 3.5 Unify Full/Incremental Indexing ✅ DONE
 **Severity:** HIGH | **Effort:** 4 hours
 
 **Location:** `src/inxr2/application/use_cases/indexing/default_orchestrator.py`
@@ -198,15 +198,15 @@
 - Cleaner mental model for users
 - Reduces orchestrator complexity for 3.4 decomposition
 
-**Tasks:**
-- [ ] Merge `index_repository` and `index_incremental` into single `index` method
-- [ ] Update `IndexingOrchestratorPort` interface (remove `index_incremental`)
-- [ ] Update CLI: replace `index full` and `index incremental` with single `index` command
-- [ ] Remove `IncrementalIndexRequest` (use `IndexRepositoryRequest` only)
-- [ ] Update all tests
-- [ ] Update CLAUDE.md command reference
+**Completed Tasks:**
+- [x] Merge `index_repository` and `index_incremental` into single `index` method
+- [x] Update `IndexingOrchestratorPort` interface (remove `index_incremental`)
+- [x] Remove CLI `index incremental` command (keep `index full` but it's now always incremental)
+- [x] Remove `IncrementalIndexRequest` (use `IndexRepositoryRequest` only)
+- [x] Update all tests
+- [ ] Update CLAUDE.md command reference (deferred - command still works, just simpler)
 
-**Full reindex workflow:** `inxr2 db reset --yes && inxr2 index --config config.yaml`
+**Full reindex workflow:** `inxr2 db reset --yes && inxr2 index full --config config.yaml`
 
 **Supersedes:** The original 3.5 "Extract Shared Logic" item is now obsolete—unification eliminates the duplication entirely.
 
@@ -404,17 +404,17 @@ No need to extract this to a use case—the CLI command is sufficient.
 
 | ID | Priority | Effort | Description |
 |----|----------|--------|-------------|
-| 1.1 | P1 | 4h | SQL injection in regex |
-| 1.2 | P1 | 2h | Invalid tsquery construction |
-| 1.3 | P1 | 2h | Python docstring bug |
-| 1.4 | P1 | 2h | Input validation |
+| 1.1 | P1 | 4h | SQL injection in regex ✅ DONE |
+| 1.2 | P1 | 2h | Invalid tsquery construction ✅ DONE |
+| 1.3 | P1 | 2h | Python docstring bug ✅ DONE |
+| 1.4 | P1 | 2h | Input validation ✅ DONE |
 | 2.1 | P2 | 1d | N+1 in file search ✅ DONE |
 | 2.2 | P2 | 1d | N+1 in text search ✅ DONE |
 | 3.1 | P3 | 1-2d | GitServicePort ⚠️ DEFERRED |
 | 3.2 | P3 | 4h | SearchFilesUseCase |
 | 3.3 | P3 | 2h | Fix adapter dependency |
 | 3.4 | P3 | 3-4d | Decompose orchestrator (reduced after 3.5) |
-| 3.5 | P3 | 4h | **Unify full/incremental indexing** ⚡ |
+| 3.5 | P3 | 4h | Unify full/incremental indexing ✅ DONE |
 | 4.1 | P4 | 3-4d | Base parser extraction |
 | 4.2 | P4 | 2h | Comment stripping utility |
 | 4.3 | P4 | 1h | Standardize content_type |
@@ -432,17 +432,17 @@ No need to extract this to a use case—the CLI command is sufficient.
 
 ## Recommended Execution Order
 
-### Week 1: Security & Critical Fixes
-- 1.1, 1.2, 1.3, 1.4 (10 hours)
+### Week 1: Security & Critical Fixes ✅ DONE
+- ~~1.1, 1.2, 1.3, 1.4 (10 hours)~~ Completed
 - 6.2 partial: Fix critical test double mismatches (4 hours)
 
 ### Week 2: Performance ✅ DONE
 - ~~2.1, 2.2 (2 days)~~ Completed
 
-### Week 3: Architecture - Indexing Unification
-- **3.5 Unify full/incremental indexing (4 hours)** ← Do this first!
+### Week 3: Architecture - Indexing Unification ✅ PARTIAL
+- ~~3.5 Unify full/incremental indexing (4 hours)~~ ✅ DONE
 - 3.2, 3.3 (6 hours)
-- 3.1 GitServicePort (1-2 days) - deferred, do after 3.5 simplifies orchestrator
+- 3.1 GitServicePort (1-2 days) - now easier after 3.5 simplified orchestrator
 
 ### Week 4: Architecture - Orchestrator Decomposition
 - 3.4 orchestrator decomposition (3-4 days, reduced complexity after 3.5)
@@ -467,8 +467,13 @@ No need to extract this to a use case—the CLI command is sufficient.
 
 | ID | Date | Commit | Description |
 |----|------|--------|-------------|
+| 1.1 | 2026-02-07 | 8c5ebfe | SQL injection in regex + tsquery fix |
+| 1.2 | 2026-02-07 | 8c5ebfe | Invalid tsquery construction (combined with 1.1) |
+| 1.3 | 2026-02-07 | be60a4c | Python docstring detection bug |
+| 1.4 | 2026-02-07 | e0fcde9 | Input validation for search endpoints |
 | 2.1 | 2026-02-07 | e0a5bf5 | N+1 in file search |
 | 2.2 | 2026-02-07 | c1e630c | N+1 in text search |
+| 3.5 | 2026-02-07 | (pending) | Unify full/incremental indexing |
 
 ## Architectural Decisions
 
@@ -478,6 +483,14 @@ Decided to remove the "full" vs "incremental" distinction. Indexing always index
 inxr2 db reset --yes && inxr2 index --config config.yaml
 ```
 This simplifies the codebase and mental model. See item 3.5.
+
+### Bugs Found During Exploratory Testing (2026-02-07)
+Two data-quality bugs discovered during UI testing of the `2026-02-07-refactor` branch:
+
+1. **Duplicate commit messages**: `_process_commit` always called `_index_commit_message` even for already-existing commits, inflating text search result counts. Fixed by guarding with `existing_commit is None`.
+2. **Pagination non-determinism**: Text search `ORDER BY rank DESC` had no tiebreaker, so rows with identical ranks shuffled across pages. Fixed by adding `TextContentModel.id` as secondary sort key.
+
+Both fixes are in the working tree (pending commit).
 
 ### GitServicePort Deferred (2026-02-07)
 Attempted to create typed `GitServicePort` to replace `Any` type hint. Reverted after discovering the refactor was larger than estimated—requires changing dict returns to typed dataclasses throughout orchestrator and test doubles. Recommend completing 3.5 first to reduce the surface area of this change.

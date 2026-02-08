@@ -6,7 +6,6 @@ orchestration port, separating indexing concerns from CLI adapter.
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 
 
@@ -39,26 +38,21 @@ class DBQueryStats:
         return self.selects + self.inserts + self.updates + self.deletes
 
 
-class IndexingStrategy(str, Enum):
-    """Strategy for indexing a repository."""
-
-    FULL = "full"  # Index from scratch (optionally with time limits)
-    INCREMENTAL = "incremental"  # Only index new commits since last index
-
-
 @dataclass
 class IndexRepositoryRequest:
     """
     Request to index a repository.
 
+    Indexing is always incremental - it indexes commits not yet in the database.
+    For a full re-index, use `inxr2 db reset` first to clear the database.
+
     Attributes:
         repository_path: Path to the git repository
         branch: Branch to index (None = current branch)
         languages: List of programming languages to parse
-        strategy: Indexing strategy (FULL or INCREMENTAL)
-        max_history: Maximum number of commits to index (None = all)
+        max_history: Maximum number of commits to index on initial index (None = all)
         since_days: Only index commits from last N days (overrides max_history)
-        force: If True, clear existing data before indexing (FULL only)
+        force: If True, ignore last indexed commit and re-process all commits
         base_branch: Base branch to compare against for feature branch indexing.
                      When set, only commits unique to this branch (after merge-base)
                      will be indexed. If None, all reachable commits are indexed.
@@ -69,32 +63,10 @@ class IndexRepositoryRequest:
     repository_path: Path
     branch: str | None = None
     languages: list[str] | None = None
-    strategy: IndexingStrategy = IndexingStrategy.FULL
     max_history: int | None = 100
     since_days: int | None = None
     force: bool = False
     base_branch: str | None = None
-    enable_text_search: bool = False
-
-
-@dataclass
-class IncrementalIndexRequest:
-    """
-    Request for incremental indexing.
-
-    Attributes:
-        repository_id: Database ID of repository to update
-        repository_path: Path to the git repository
-        branch: Branch to index (None = current branch)
-        languages: List of programming languages to parse
-        enable_text_search: If True, extract and index comments/docstrings for text search.
-                           Defaults to False.
-    """
-
-    repository_id: int
-    repository_path: Path
-    branch: str | None = None
-    languages: list[str] | None = None
     enable_text_search: bool = False
 
 

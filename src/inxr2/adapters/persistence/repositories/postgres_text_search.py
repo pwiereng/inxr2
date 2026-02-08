@@ -159,6 +159,7 @@ class PostgresTextSearch(TextSearchPort):
                 TextContentModel.repository_id,
                 TextContentModel.source_file_id,
                 TextContentModel.source_line,
+                TextContentModel.id,
             )
         else:
             # Keyword/phrase mode: order by relevance rank
@@ -169,7 +170,7 @@ class PostgresTextSearch(TextSearchPort):
                     func.ts_rank(content_tsvector, tsquery).label("rank")
                 )
                 .distinct()
-                .order_by(text("rank DESC"))
+                .order_by(text("rank DESC"), TextContentModel.id)
             )
 
         # Apply pagination

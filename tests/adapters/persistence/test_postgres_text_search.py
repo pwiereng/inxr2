@@ -297,6 +297,76 @@ async def test_search_pagination(
 
 
 @pytest.mark.asyncio
+async def test_search_pagination_deterministic_with_tied_ranks(
+    db_session: AsyncSession,
+    test_repository: Repository,
+    test_commit: Commit,
+    test_file: File,
+) -> None:
+    """Test pagination is deterministic when multiple rows have the same rank.
+
+    Without a tiebreaker (e.g., id), rows with identical ts_rank scores can
+    shuffle across pages, causing duplicates on one page and missing results
+    on another.
+    """
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
+    repo = PostgresTextContentRepository(db_session)
+    search = PostgresTextSearch(db_session)
+
+    # Create 10 text contents with identical keyword content so they all
+    # get the same ts_rank score
+    text_contents = [
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=test_commit.id,
+            source_type=TextSearchSourceType.COMMENT.value,
+            source_file_id=test_file.id,
+            source_line=i,
+            content=f"identical keyword line {i}",
+            language="python",
+        )
+        for i in range(1, 11)
+    ]
+    await repo.save_batch(text_contents)
+    await db_session.commit()
+
+    # Fetch page 1
+    query1 = TextSearchQuery(
+        query="identical keyword",
+        mode=QueryMode.KEYWORD.value,
+        repository_id=test_repository.id,
+        limit=5,
+        offset=0,
+    )
+    results1, total1 = await search.search(query1)
+
+    # Fetch page 2
+    query2 = TextSearchQuery(
+        query="identical keyword",
+        mode=QueryMode.KEYWORD.value,
+        repository_id=test_repository.id,
+        limit=5,
+        offset=5,
+    )
+    results2, total2 = await search.search(query2)
+
+    assert total1 == 10
+    assert total2 == 10
+    assert len(results1) == 5
+    assert len(results2) == 5
+
+    # No overlap between pages - this would fail without a tiebreaker
+    ids1 = {r.text_content.id for r in results1}
+    ids2 = {r.text_content.id for r in results2}
+    assert (
+        len(ids1 & ids2) == 0
+    ), f"Pages overlap: {ids1 & ids2} - pagination is non-deterministic"
+
+
+@pytest.mark.asyncio
 async def test_search_with_commit_filter(
     db_session: AsyncSession,
     test_repository: Repository,

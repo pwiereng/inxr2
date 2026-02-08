@@ -9,8 +9,6 @@ from inxr2.application.use_cases.indexing.default_orchestrator import (
     DefaultIndexingOrchestrator,
 )
 from inxr2.application.use_cases.indexing.orchestrator import (
-    IncrementalIndexRequest,
-    IndexingStrategy,
     IndexRepositoryRequest,
 )
 from tests.fixtures.test_doubles import (
@@ -335,7 +333,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -360,7 +357,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -384,7 +380,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -408,7 +403,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -432,7 +426,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             max_history=1,  # Only index 1 commit
         )
 
@@ -443,7 +436,7 @@ class TestDefaultIndexingOrchestrator:
         assert response.commits_indexed == 1  # Limited to 1
 
     @pytest.mark.asyncio
-    async def test_index_incremental_only_processes_new_commits(
+    async def test_second_index_only_processes_new_commits(
         self,
         orchestrator: DefaultIndexingOrchestrator,
         repository_adapter: InMemoryRepositoryRepository,
@@ -451,35 +444,33 @@ class TestDefaultIndexingOrchestrator:
         index_status_repo: InMemoryIndexStatusRepository,
         text_content_repo: InMemoryTextContentRepository,
     ) -> None:
-        """Test that incremental indexing only processes new commits."""
-        # Arrange - first do a partial full index
-        full_request = IndexRepositoryRequest(
+        """Test that second index call only processes new commits (incremental behavior)."""
+        # Arrange - first do an initial index with limited history
+        first_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             max_history=1,  # Only index first commit
         )
-        await orchestrator.index_repository(full_request)
+        await orchestrator.index_repository(first_request)
 
         # Get repository ID
         repo = await repository_adapter.find_by_name("test-repo")
         assert repo is not None
         assert repo.id is not None
 
-        # Now do incremental index
-        incremental_request = IncrementalIndexRequest(
-            repository_id=repo.id,
+        # Now do another index - should automatically be incremental
+        second_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
         )
 
         # Act
-        response = await orchestrator.index_incremental(incremental_request)
+        response = await orchestrator.index_repository(second_request)
 
         # Assert
-        # Should only index the second commit
+        # Should only index the second commit (incremental behavior)
         assert response.commits_indexed == 1
 
     @pytest.mark.asyncio
@@ -492,7 +483,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -523,7 +513,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -599,7 +588,6 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             max_history=100,
             since_days=15,
         )
@@ -660,7 +648,6 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             since_days=30,
         )
 
@@ -739,7 +726,6 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             since_days=15,  # No commits in last 15 days
         )
 
@@ -809,7 +795,6 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -880,7 +865,6 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act - should not raise "can't subtract offset-naive and offset-aware datetimes"
@@ -962,7 +946,6 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act - should not raise "'dict' object has no attribute 'name'"
@@ -1053,7 +1036,6 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["c"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act - should not raise "'source_end_column'" KeyError
@@ -1152,7 +1134,6 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["c"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act - should not raise "'str' object has no attribute 'value'"
@@ -1210,7 +1191,6 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # First indexing run
@@ -1221,11 +1201,13 @@ class TestGitServiceIntegration:
         commits_after_first = await commit_repo.list_by_repository(repository_id=1)
         first_commit_count = len(commits_after_first)
 
-        # Second indexing run - should NOT raise UniqueViolation
+        # Second indexing run - should detect HEAD already indexed and return early
         response2 = await orchestrator.index_repository(request)
 
-        # Should still report commits processed (even if skipped)
-        assert response2.commits_indexed == 2
+        # Should report 0 commits because HEAD hasn't changed (incremental detection)
+        assert (
+            response2.commits_indexed == 0
+        ), "Second run should skip indexing when HEAD unchanged"
 
         # Commits should not be duplicated
         commits_after_second = await commit_repo.list_by_repository(repository_id=1)
@@ -1299,7 +1281,6 @@ class TestHeadFirstIndexing:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -1404,7 +1385,6 @@ class TestHeadFirstIndexing:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -1477,7 +1457,6 @@ class TestHeadFirstIndexing:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -1550,7 +1529,6 @@ class TestBranchCommitsPopulation:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -1568,7 +1546,7 @@ class TestBranchCommitsPopulation:
                 ), f"Commit {commit.id} should be linked to main branch"
 
     @pytest.mark.asyncio
-    async def test_incremental_index_populates_branch_commits(
+    async def test_second_index_populates_branch_commits(
         self,
         repository_adapter: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
@@ -1579,7 +1557,7 @@ class TestBranchCommitsPopulation:
         text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
-        """Test that incremental indexing also populates branch_commits."""
+        """Test that second index call also populates branch_commits."""
         git_service = FakeGitService()
 
         orchestrator = DefaultIndexingOrchestrator(
@@ -1594,24 +1572,21 @@ class TestBranchCommitsPopulation:
             parser_service=parser_service,
         )
 
-        # First do a full index
-        full_request = IndexRepositoryRequest(
+        # First index
+        first_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
-        full_response = await orchestrator.index_repository(full_request)
-        repo_id = full_response.repository_id
+        await orchestrator.index_repository(first_request)
 
-        # Now do incremental index
-        incremental_request = IncrementalIndexRequest(
-            repository_id=repo_id,
+        # Second index (incremental behavior)
+        second_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
         )
-        await orchestrator.index_incremental(incremental_request)
+        await orchestrator.index_repository(second_request)
 
         # Assert - all commits should be linked to the branch
         for commit in commit_repo._commits.values():
@@ -1651,7 +1626,6 @@ class TestBranchCommitsPopulation:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
         await orchestrator.index_repository(main_request)
 
@@ -1660,7 +1634,6 @@ class TestBranchCommitsPopulation:
             repository_path=Path("/repos/test-repo"),
             branch="feature",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
         await orchestrator.index_repository(feature_request)
 
@@ -1707,7 +1680,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="feature",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             base_branch="main",  # Different from branch
         )
 
@@ -1752,7 +1724,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             base_branch="main",  # Same as branch
         )
 
@@ -1795,7 +1766,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="feature",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             base_branch=None,  # No base branch
         )
 
@@ -1840,7 +1810,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="feature",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             base_branch="main",
         )
 
@@ -1879,7 +1848,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             enable_text_search=True,  # Enable text search
         )
 
@@ -1932,7 +1900,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             enable_text_search=False,  # Disable text search
         )
 
@@ -1969,7 +1936,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             enable_text_search=True,
         )
 
@@ -2017,7 +1983,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             enable_text_search=False,  # Disabled
         )
 
@@ -2038,6 +2003,48 @@ class TestBranchIndexingOptimization:
         assert (
             response.commit_messages_indexed == 0
         ), "Response should show 0 commit messages when disabled"
+
+    @pytest.mark.asyncio
+    async def test_existing_commit_message_not_duplicated(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        text_content_repo: InMemoryTextContentRepository,
+        git_service: FakeGitService,
+    ) -> None:
+        """Test that re-indexing does not duplicate commit messages.
+
+        When a commit already exists in the database, its message should NOT
+        be re-indexed. This prevents inflated search result counts.
+        """
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+            enable_text_search=True,
+        )
+
+        # Act: Index once
+        await orchestrator.index_repository(request)
+
+        # Verify initial state: 2 commit messages (one per commit)
+        all_text_contents = text_content_repo.get_all()
+        commit_messages_after_first = [
+            tc for tc in all_text_contents if tc.source_type == "commit_message"
+        ]
+        assert len(commit_messages_after_first) == 2
+
+        # Act: Index again (same commits will be found as existing)
+        await orchestrator.index_repository(request)
+
+        # Assert: Still only 2 commit messages, NOT 4
+        all_text_contents = text_content_repo.get_all()
+        commit_messages_after_second = [
+            tc for tc in all_text_contents if tc.source_type == "commit_message"
+        ]
+        assert len(commit_messages_after_second) == 2, (
+            f"Expected 2 commit messages after re-indexing, "
+            f"got {len(commit_messages_after_second)} (duplicates were created)"
+        )
 
     @pytest.mark.asyncio
     async def test_non_code_files_indexed_when_text_search_enabled(
@@ -2099,7 +2106,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             enable_text_search=True,
         )
 
@@ -2186,7 +2192,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             enable_text_search=False,  # Disabled
         )
 
