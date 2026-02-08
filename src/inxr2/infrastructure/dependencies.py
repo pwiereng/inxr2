@@ -76,7 +76,7 @@ from ..application.use_cases.repositories.get_repository_tree import (
 from ..application.use_cases.repositories.list_repositories import (
     ListRepositoriesUseCase,
 )
-from ..application.use_cases.search import SearchTextUseCase
+from ..application.use_cases.search import SearchFilesUseCase, SearchTextUseCase
 from ..application.use_cases.symbols import (
     GetSymbolReferencesUseCase,
     SearchSymbolsUseCase,
@@ -403,3 +403,21 @@ def get_search_text_use_case(
 
 
 SearchTextUseCaseDep = Annotated[SearchTextUseCase, Depends(get_search_text_use_case)]
+
+
+def get_search_files_use_case(
+    file_adapter: FileAdapter,
+    repository_adapter: RepositoryAdapter,
+    commit_adapter: CommitAdapter,
+) -> SearchFilesUseCase:
+    """Provide SearchFilesUseCase with dependencies."""
+    return SearchFilesUseCase(
+        file_repo=file_adapter,
+        repository_repo=repository_adapter,
+        commit_repo=commit_adapter,
+    )
+
+
+SearchFilesUseCaseDep = Annotated[
+    SearchFilesUseCase, Depends(get_search_files_use_case)
+]
