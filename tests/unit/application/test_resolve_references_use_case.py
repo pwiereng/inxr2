@@ -416,32 +416,18 @@ class TestDeterministicResolution:
         assert ref.target_symbol_id == 1  # Same file priority
 
     @pytest.mark.asyncio
-    async def test_cross_file_falls_back_to_lowest_id(
+    async def test_same_language_priority(
         self,
         file_repo: "InMemoryFileRepository",
     ) -> None:
-        """Test that without same-file match, references resolve to lowest symbol ID."""
-        # Create symbol repo with Config in main.py (Python) and app.ts (TypeScript)
-        # No Config in utils.py, so reference from utils.py tests cross-file fallback
+        """Test that references resolve to same-language symbols over lower IDs."""
+        # Config in app.ts (TypeScript, lower ID=1) and main.py (Python, higher ID=3)
+        # Reference from utils.py (Python) should prefer Python symbol despite higher ID
         symbol_repo = InMemorySymbolRepository()
         symbol_repo.add(
             Symbol(
                 id=1,
-                file_id=1,  # Python file (main.py)
-                repository_id=1,
-                commit_id=1,
-                name="Config",
-                kind=SymbolKind.CLASS,
-                start_line=10,
-                start_column=0,
-                end_line=20,
-                end_column=0,
-            )
-        )
-        symbol_repo.add(
-            Symbol(
-                id=3,
-                file_id=3,  # TypeScript file (app.ts)
+                file_id=3,  # TypeScript file (app.ts) — lower ID
                 repository_id=1,
                 commit_id=1,
                 name="Config",
@@ -452,20 +438,34 @@ class TestDeterministicResolution:
                 end_column=0,
             )
         )
+        symbol_repo.add(
+            Symbol(
+                id=3,
+                file_id=1,  # Python file (main.py) — higher ID
+                repository_id=1,
+                commit_id=1,
+                name="Config",
+                kind=SymbolKind.CLASS,
+                start_line=10,
+                start_column=0,
+                end_line=20,
+                end_column=0,
+            )
+        )
 
         ref_repo = InMemoryReferenceRepository(
             symbol_repo=symbol_repo,
             file_repo=file_repo,
         )
 
-        # Reference to "Config" from utils.py (file_id=2)
-        # No Config symbol in utils.py, so should pick lowest ID (symbol 1)
+        # Reference to "Config" from utils.py (file_id=2, Python)
+        # No Config in utils.py, so should prefer Python symbol (id=3) over TS (id=1)
         ref_repo.add(
             Reference(
                 id=1,
                 repository_id=1,
                 commit_id=1,
-                source_file_id=2,  # From utils.py
+                source_file_id=2,  # From utils.py (Python)
                 source_line=20,
                 source_column=0,
                 source_end_column=6,
@@ -480,10 +480,11 @@ class TestDeterministicResolution:
 
         await use_case.execute(request)
 
-        # Should resolve to symbol 1 (lowest ID, deterministic tiebreaker)
+        # Should resolve to symbol 3 (Python, same language as source file)
+        # even though symbol 1 (TypeScript) has lower ID
         ref = await ref_repo.find_by_id(1)
         assert ref is not None
-        assert ref.target_symbol_id == 1  # Lowest ID wins
+        assert ref.target_symbol_id == 3  # Same language priority over ID
 
     @pytest.mark.asyncio
     async def test_cross_language_falls_back_to_id(

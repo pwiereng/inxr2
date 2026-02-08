@@ -1295,7 +1295,8 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
 
         Resolution priority (matches real implementation):
         1. Same file - most likely the correct local symbol
-        2. Lowest symbol ID - deterministic tiebreaker for consistency
+        2. Same language - cross-file but same language preferred
+        3. Lowest symbol ID - deterministic tiebreaker for consistency
 
         This matches the real DB implementation which only selects refs
         that have a matching symbol (via JOIN), so batch_size limits
@@ -1332,7 +1333,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             if not candidates:
                 continue
 
-            # Pick best match using priority: same-file, lowest symbol ID
+            # Pick best match using priority: same-file, same-language, lowest ID
             matching_symbol = self._pick_best_symbol(ref, candidates)
 
             if matching_symbol is not None and matching_symbol.id is not None:
@@ -1366,7 +1367,8 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
 
         Priority:
         1. Same file (file_id matches)
-        2. Lowest symbol ID (deterministic tiebreaker)
+        2. Same language (requires file_repo)
+        3. Lowest symbol ID (deterministic tiebreaker)
         """
         if not candidates:
             return None
@@ -1374,11 +1376,29 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         if len(candidates) == 1:
             return candidates[0]
 
-        def sort_key(symbol: Symbol) -> tuple[int, int]:
+        # Get reference file language if file_repo is available
+        ref_file_language: str | None = None
+        if self._file_repo is not None:
+            for file in self._file_repo._files.values():
+                if file.id == ref.source_file_id:
+                    ref_file_language = file.language
+                    break
+
+        def sort_key(symbol: Symbol) -> tuple[int, int, int]:
             # Lower values = higher priority
             same_file = 0 if symbol.file_id == ref.source_file_id else 1
+
+            # Same language check (requires file_repo)
+            same_language = 1  # Default: not same language
+            if self._file_repo is not None and ref_file_language is not None:
+                for file in self._file_repo._files.values():
+                    if file.id == symbol.file_id:
+                        if file.language == ref_file_language:
+                            same_language = 0
+                        break
+
             symbol_id = symbol.id if symbol.id is not None else 999999
-            return (same_file, symbol_id)
+            return (same_file, same_language, symbol_id)
 
         candidates.sort(key=sort_key)
         return candidates[0]
@@ -1393,7 +1413,8 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
 
         Uses the same priority logic as resolve_references_batch:
         1. Same file - most likely the correct local symbol
-        2. Lowest symbol ID - deterministic tiebreaker for consistency
+        2. Same language - cross-file but same language preferred
+        3. Lowest symbol ID - deterministic tiebreaker for consistency
         """
         if self._symbol_repo is None:
             # Without a symbol repo, we can't resolve anything
@@ -1421,7 +1442,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                     else:
                         candidates.append(symbol)
 
-            # Pick best match using priority: same-file, lowest symbol ID
+            # Pick best match using priority: same-file, same-language, lowest ID
             matching_symbol = self._pick_best_symbol(ref, candidates)
 
             if matching_symbol is not None and matching_symbol.id is not None:

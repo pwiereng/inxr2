@@ -301,20 +301,22 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
     ) -> int:
         """Resolve a batch of unlinked references.
 
-        Uses a two-pass UPDATE ... FROM with a pre-computed lookup table.
-        The lookup groups symbols by name (small result), then joins refs
+        Uses a three-pass UPDATE ... FROM with pre-computed lookup tables.
+        Each lookup groups symbols by name (small result), then joins refs
         against it inside the FROM subquery. LIMIT applies after the join
         so only matchable refs are selected — unresolvable refs (builtins)
         are naturally excluded.
 
         Resolution priority (deterministic):
         1. Same file - most likely the correct local symbol
-        2. Lowest symbol ID - deterministic tiebreaker for consistency
+        2. Same language - cross-file but same language preferred
+        3. Lowest symbol ID - deterministic tiebreaker for consistency
 
         This ensures clicking on a reference always goes to the same symbol,
         rather than an arbitrary one when multiple symbols share the same name.
         """
-        # Build SQL fragments for commit-aware vs cross-commit mode
+        # Build SQL fragments for commit-aware vs cross-commit mode.
+        # Each pass has its own SELECT/GROUP BY/JOIN fragments.
         if commit_aware:
             sf_select = "s.name, s.file_id, s.commit_id"
             sf_group = "s.name, s.file_id, s.commit_id"
@@ -323,18 +325,28 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                 " AND r.source_file_id = best.file_id"
                 " AND r.commit_id = best.commit_id"
             )
+            sl_select = "s.name, f.language, s.commit_id"
+            sl_group = "s.name, f.language, s.commit_id"
+            sl_best_join = (
+                "ON r.reference_text = best.name"
+                " AND rf.language = best.language"
+                " AND r.commit_id = best.commit_id"
+            )
             cf_select = "s.name, s.commit_id"
             cf_group = "s.name, s.commit_id"
             cf_best_join = (
-                "ON r.reference_text = best.name"
-                " AND r.commit_id = best.commit_id"
+                "ON r.reference_text = best.name" " AND r.commit_id = best.commit_id"
             )
         else:
             sf_select = "s.name, s.file_id"
             sf_group = "s.name, s.file_id"
             sf_best_join = (
-                "ON r.reference_text = best.name"
-                " AND r.source_file_id = best.file_id"
+                "ON r.reference_text = best.name" " AND r.source_file_id = best.file_id"
+            )
+            sl_select = "s.name, f.language"
+            sl_group = "s.name, f.language"
+            sl_best_join = (
+                "ON r.reference_text = best.name" " AND rf.language = best.language"
             )
             cf_select = "s.name"
             cf_group = "s.name"
@@ -369,9 +381,40 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         pass1_count = result.rowcount or 0  # type: ignore[attr-defined]
         total_resolved += pass1_count
 
-        # Pass 2: Cross-file resolution (lowest ID fallback)
+        # Pass 2: Same-language cross-file resolution
+        # Joins files table in the lookup to get language. Joins refs with
+        # their source file to match language. Small lookup (GROUP BY name,
+        # language) avoids the per-row JOIN that made the old approach slow.
+        remaining = batch_size - total_resolved
+        if remaining > 0:
+            result = await self.session.execute(
+                text(f"""
+                    UPDATE "references"
+                    SET target_symbol_id = sub.target_id
+                    FROM (
+                        SELECT r.id AS ref_id, best.min_id AS target_id
+                        FROM "references" r
+                        JOIN files rf ON r.source_file_id = rf.id
+                        JOIN (
+                            SELECT {sl_select}, MIN(s.id) AS min_id
+                            FROM symbols s
+                            JOIN files f ON s.file_id = f.id
+                            WHERE s.repository_id = :repo_id
+                            GROUP BY {sl_group}
+                        ) best {sl_best_join}
+                        WHERE r.repository_id = :repo_id
+                          AND r.target_symbol_id IS NULL
+                        LIMIT :batch_size
+                    ) sub
+                    WHERE "references".id = sub.ref_id
+                """),
+                {"repo_id": repository_id, "batch_size": remaining},
+            )
+            total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
+
+        # Pass 3: Any-match cross-file resolution (lowest ID fallback)
         # Pre-computes best symbol per name, then joins remaining unresolved refs.
-        remaining = batch_size - pass1_count
+        remaining = batch_size - total_resolved
         if remaining > 0:
             result = await self.session.execute(
                 text(f"""

@@ -134,6 +134,28 @@ Dropped same-language priority from resolution (was causing expensive file JOINs
 
 ---
 
+### 2.4 Auto-detect base_branch for Feature Branch Indexing
+**Severity:** MEDIUM | **Effort:** 4 hours
+
+**Location:** `src/inxr2/application/use_cases/indexing/default_orchestrator.py`, `config.yaml`
+
+**Issue:** When indexing feature branches, the indexer walks ALL reachable commits (including shared history with main), even though shared commits are already indexed. Content-hash optimization prevents re-parsing, but the commit-walking, file-change detection, and DB lookups still cost significant time. Example: `automated-testing-agent` (187 total commits, ~10-20 unique) spends 1m 49s on indexing with 100% cache reuse — most of that time is wasted on shared commits.
+
+**Investigation:**
+- `IndexRepositoryRequest.base_branch` already exists but requires manual config
+- Could auto-detect: if branch != default_branch, use default_branch as base_branch
+- Use `git merge-base` to find fork point, only index commits after that
+- Would reduce feature branch indexing from minutes to seconds
+- Need to handle edge cases: branches with no common ancestor, rebased branches
+
+**Tasks:**
+- [ ] Investigate auto-detecting base_branch when not explicitly configured
+- [ ] Benchmark time saved on feature branches with base_branch set
+- [ ] Consider adding `auto_base_branch: true` config option
+- [ ] Update "Oldest/Newest" display to show branch-specific range
+
+---
+
 ## Priority 3: Architecture (STRUCTURAL IMPROVEMENTS)
 
 ### 3.1 Create GitServicePort ✅ DONE
@@ -441,6 +463,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 2.1 | P2 | 1d | N+1 in file search ✅ DONE |
 | 2.2 | P2 | 1d | N+1 in text search ✅ DONE |
 | 2.3 | P2 | 1d | Optimize resolve_references_batch query ✅ DONE |
+| 2.4 | P2 | 4h | Auto-detect base_branch for feature branch indexing |
 | 3.1 | P3 | 1-2d | GitServicePort ✅ DONE |
 | 3.2 | P3 | 4h | SearchFilesUseCase ✅ DONE |
 | 3.3 | P3 | 2h | Fix adapter dependency ✅ DONE |
