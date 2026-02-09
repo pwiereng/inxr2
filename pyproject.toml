@@ -162,6 +162,7 @@ asyncio_default_test_loop_scope = "session"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+    "contract: Contract tests verifying fake-vs-real parity",
 ]
 
 # Coverage configuration
