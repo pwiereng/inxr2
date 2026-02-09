@@ -1,11 +1,14 @@
 """Python language parser using Tree-sitter."""
 
+import logging
 import re
 from typing import Any
 
 from tree_sitter import Node
 
 from .base import BaseLanguageParser
+
+logger = logging.getLogger(__name__)
 
 # Python builtin functions and keywords to exclude from references
 PYTHON_BUILTINS = {
@@ -572,72 +575,80 @@ class PythonParser(BaseLanguageParser):
 
         def visit_node(node: Node, parent_node: Node | None = None) -> None:
             """Recursively visit nodes to extract comments and docstrings."""
-            # Extract inline comments
-            if node.type == "comment":
-                original_text = get_text(node)
-                # Strip the # marker and whitespace
-                stripped_text = original_text
-                if stripped_text.startswith("#"):
-                    stripped_text = stripped_text[1:].strip()
+            try:
+                # Extract inline comments
+                if node.type == "comment":
+                    original_text = get_text(node)
+                    # Strip the # marker and whitespace
+                    stripped_text = original_text
+                    if stripped_text.startswith("#"):
+                        stripped_text = stripped_text[1:].strip()
 
-                if not should_skip_comment(original_text, stripped_text):
-                    comments.append(
-                        {
-                            "content": stripped_text,
-                            "content_type": "single_line_comment",
-                            "source_line": node.start_point[0] + 1,
-                            "source_end_line": node.end_point[0] + 1,
-                        }
-                    )
+                    if not should_skip_comment(original_text, stripped_text):
+                        comments.append(
+                            {
+                                "content": stripped_text,
+                                "content_type": "single_line_comment",
+                                "source_line": node.start_point[0] + 1,
+                                "source_end_line": node.end_point[0] + 1,
+                            }
+                        )
 
-            # Extract docstrings (first string in function/class/module)
-            elif node.type == "expression_statement":
-                # Check if this is the first statement in a function/class/module/block
-                if parent_node and parent_node.type in (
-                    "function_definition",
-                    "class_definition",
-                    "module",
-                    "block",
-                ):
-                    # Verify this is actually the FIRST statement (not just any string)
-                    # A docstring must be the first non-comment child
-                    is_first_statement = True
-                    for sibling in parent_node.children:
-                        # Skip non-statement nodes (decorators, def/class keywords, etc.)
-                        if sibling.type in (
-                            "comment",
-                            "decorator",
-                            "def",
-                            "class",
-                            "identifier",
-                            "parameters",
-                            "argument_list",
-                            ":",
-                            "type",
-                            "return_type",
-                        ):
-                            continue
-                        # First real statement found
-                        if sibling.type == "expression_statement":
-                            # This is the first statement - is it our node?
-                            is_first_statement = sibling.id == node.id
-                        else:
-                            # First statement is not an expression_statement
-                            is_first_statement = False
-                        break
+                # Extract docstrings (first string in function/class/module)
+                elif node.type == "expression_statement":
+                    # Check if this is the first statement in a function/class/module/block
+                    if parent_node and parent_node.type in (
+                        "function_definition",
+                        "class_definition",
+                        "module",
+                        "block",
+                    ):
+                        # Verify this is actually the FIRST statement (not just any string)
+                        # A docstring must be the first non-comment child
+                        is_first_statement = True
+                        for sibling in parent_node.children:
+                            # Skip non-statement nodes (decorators, def/class keywords, etc.)
+                            if sibling.type in (
+                                "comment",
+                                "decorator",
+                                "def",
+                                "class",
+                                "identifier",
+                                "parameters",
+                                "argument_list",
+                                ":",
+                                "type",
+                                "return_type",
+                            ):
+                                continue
+                            # First real statement found
+                            if sibling.type == "expression_statement":
+                                # This is the first statement - is it our node?
+                                is_first_statement = sibling.id == node.id
+                            else:
+                                # First statement is not an expression_statement
+                                is_first_statement = False
+                            break
 
-                    if is_first_statement:
-                        # Find the first child that is a string
-                        for child in node.children:
-                            if child.type == "string":
-                                docstring = extract_docstring_from_string_node(
-                                    child, parent_node.type
-                                )
-                                if docstring:
-                                    comments.append(docstring)
-                                break
+                        if is_first_statement:
+                            # Find the first child that is a string
+                            for child in node.children:
+                                if child.type == "string":
+                                    docstring = extract_docstring_from_string_node(
+                                        child, parent_node.type
+                                    )
+                                    if docstring:
+                                        comments.append(docstring)
+                                    break
+            except Exception as e:
+                logger.warning(
+                    "Skipping comment node %s at line %d: %s",
+                    node.type,
+                    node.start_point[0] + 1,
+                    e,
+                )
 
-            # Recurse into children
+            # Recurse into children (outside try/except to continue traversal)
             for child in node.children:
                 visit_node(child, node)
 

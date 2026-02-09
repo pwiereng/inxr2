@@ -1,9 +1,12 @@
 """Base parser abstraction for Tree-sitter language parsers."""
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
 from tree_sitter import Node
+
+logger = logging.getLogger(__name__)
 
 
 class BaseLanguageParser(ABC):
@@ -61,9 +64,17 @@ class BaseLanguageParser(ABC):
         comments: list[dict[str, Any]] = []
 
         def visit_node(node: Node) -> None:
-            result = self._process_comment_node(node, content)
-            if result is not None:
-                comments.append(result)
+            try:
+                result = self._process_comment_node(node, content)
+                if result is not None:
+                    comments.append(result)
+            except Exception as e:
+                logger.warning(
+                    "Skipping comment node %s at line %d: %s",
+                    node.type,
+                    node.start_point[0] + 1,
+                    e,
+                )
             for child in node.children:
                 visit_node(child)
 

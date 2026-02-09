@@ -164,7 +164,11 @@ class TreeSitterService:
             logger.error(f"Failed to parse {file_path}: {e}")
             return [], []
 
-        return language_parser.extract(tree.root_node, content)
+        try:
+            return language_parser.extract(tree.root_node, content)
+        except Exception as e:
+            logger.error("Failed to extract symbols from %s: %s", file_path, e)
+            return [], []
 
     async def extract_comments(
         self,
@@ -210,4 +214,8 @@ class TreeSitterService:
             logger.error(f"Failed to parse {file_path}: {e}")
             return []
 
-        return language_parser.extract_comments(tree.root_node, content)
+        try:
+            return language_parser.extract_comments(tree.root_node, content)
+        except Exception as e:
+            logger.error("Failed to extract comments from %s: %s", file_path, e)
+            return []

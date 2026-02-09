@@ -267,37 +267,32 @@ Dropped same-language priority from resolution (was causing expensive file JOINs
 
 ## Priority 4: Code Duplication (DRY VIOLATIONS)
 
-### 4.1 Extract Base Tree-Sitter Parser
+### 4.1 Extract Base Tree-Sitter Parser ✅ DONE
 **Severity:** MEDIUM | **Effort:** 3-4 days
 
 **Location:** `src/inxr2/adapters/external/treesitter/`
 
 **Issue:** 40-60% code overlap across Python, TypeScript, Java, C parsers.
 
-**Tasks:**
-- [ ] Create `AbstractTreeSitterParser` base class
-- [ ] Extract shared traversal logic to base
-- [ ] Extract shared scope tracking to base
-- [ ] Extract shared comment extraction to base
-- [ ] Refactor `PythonParser` to extend base
-- [ ] Refactor `TypeScriptParser` to extend base
-- [ ] Refactor `JavaParser` to extend base
-- [ ] Refactor `CParser` to extend base
-- [ ] Verify all existing tests pass
+**Completed Tasks:**
+- [x] Create `BaseLanguageParser` base class with shared helpers
+- [x] Extract `_make_symbol`, `_make_reference`, `_add_reference` dict builders
+- [x] Extract `_strip_block_comment` (also covers 4.2)
+- [x] Extract `extract_comments` template with visitor pattern
+- [x] Refactor all 4 parsers (Python, TypeScript, Java, C) to extend base
+- [x] Add 31 unit tests for base helpers
+- [x] ~460 lines reduced across parsers
 
 ---
 
-### 4.2 Extract Comment Marker Stripping Utility
+### 4.2 Extract Comment Marker Stripping Utility ✅ DONE (subsumed by 4.1)
 **Severity:** LOW | **Effort:** 2 hours
 
 **Location:** TypeScript parser (550-575), C parser (909-931)
 
 **Issue:** Nearly identical `strip_comment_markers()` functions.
 
-**Tasks:**
-- [ ] Create `comment_utils.py` with shared functions
-- [ ] Update TypeScript and C parsers to use shared utility
-- [ ] Add comprehensive tests for utility
+**Resolution:** Subsumed by 4.1 — `_strip_block_comment()` extracted into `BaseLanguageParser`. All parsers now call `self._strip_block_comment(text)` instead of duplicated local functions.
 
 ---
 
@@ -332,18 +327,20 @@ Dropped same-language priority from resolution (was causing expensive file JOINs
 
 ---
 
-### 5.2 Add Error Handling to Comment Parsers
+### 5.2 Add Error Handling to Comment/Symbol Parsers ✅ DONE
 **Severity:** MEDIUM | **Effort:** 2 hours
 
-**Location:** All `extract_comments` methods
+**Location:** All `extract_comments` methods + `TreeSitterService`
 
 **Issue:** No try-except around node traversal. Malformed nodes crash extraction.
 
-**Tasks:**
-- [ ] Add defensive error handling in each parser
-- [ ] Log warnings for skipped nodes
-- [ ] Return partial results on error (don't fail entire file)
-- [ ] Add tests for malformed input
+**Completed Tasks:**
+- [x] Add per-node try/except in `BaseLanguageParser.extract_comments` (covers C, Java, TypeScript)
+- [x] Add per-node try/except in `PythonParser.extract_comments` (overrides base)
+- [x] Wrap `language_parser.extract()` and `extract_comments()` in `TreeSitterService` with try/except
+- [x] Log warnings (per-node) and errors (service-level) with file/line context
+- [x] Return partial results on per-node error; return empty on total extraction failure
+- [x] Add 7 tests for error resilience (partial results, logging, service fallback)
 
 ---
 
@@ -470,11 +467,11 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 3.3 | P3 | 2h | Fix adapter dependency ✅ DONE |
 | 3.4 | P3 | 3-4d | Decompose orchestrator ✅ DONE |
 | 3.5 | P3 | 4h | Unify full/incremental indexing ✅ DONE |
-| 4.1 | P4 | 3-4d | Base parser extraction |
-| 4.2 | P4 | 2h | Comment stripping utility |
+| 4.1 | P4 | 3-4d | Base parser extraction ✅ DONE |
+| 4.2 | P4 | 2h | Comment stripping utility ✅ DONE (subsumed by 4.1) |
 | 4.3 | P4 | 1h | Standardize content_type ✅ DONE |
 | 5.1 | P5 | 4h | Database error handling |
-| 5.2 | P5 | 2h | Parser error handling |
+| 5.2 | P5 | 2h | Parser error handling ✅ DONE |
 | 6.1 | P6 | 2h | C comment tests |
 | 6.2 | P6 | 1d | Fix test doubles |
 | 6.3 | P6 | 4h | Missing integration tests |
@@ -504,12 +501,15 @@ No need to extract this to a use case—the CLI command is sufficient.
 ### Week 4: Architecture - Orchestrator Decomposition ✅ DONE
 - ~~3.4 orchestrator decomposition (3-4 days)~~ ✅ DONE
 
-### Week 5: Code Quality
-- 4.1 base parser extraction (3-4 days)
+### Week 5: Code Quality ✅ DONE (partial)
+- ~~4.1 base parser extraction (3-4 days)~~ ✅ DONE
+- ~~4.2 comment stripping utility (2 hours)~~ ✅ DONE (subsumed by 4.1)
+- ~~4.3 standardize content_type (1 hour)~~ ✅ DONE
 - 5.1 database error handling (4 hours)
 
 ### Week 6+: Polish
-- Remaining items as time permits
+- ~~5.2 Parser error handling~~ ✅ DONE
+- Remaining items as time permits (2.4, 5.1, 6.x, 7.2, 8.x)
 
 ---
 
@@ -532,10 +532,14 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 2.2 | 2026-02-07 | c1e630c | N+1 in text search |
 | 3.5 | 2026-02-07 | f388b6c | Unify full/incremental indexing |
 | 3.2 | 2026-02-07 | 17561ae | Extract SearchFilesUseCase from controller |
-| 3.3 | 2026-02-07 | (pending) | Fix adapter layer dependency (PlaintextParserPort) |
-| 2.3 | 2026-02-08 | (pending) | Optimize resolve_references_batch (two-pass UPDATE...FROM) |
-| 3.1 | 2026-02-08 | (pending) | GitServicePort with typed return values |
-| 3.4 | 2026-02-08 | (pending) | Decompose orchestrator (ProcessFileUseCase + ProcessCommitUseCase) |
+| 3.3 | 2026-02-07 | 985556a | Fix adapter layer dependency (PlaintextParserPort) |
+| 2.3 | 2026-02-08 | 8ada668, 3b64639, 23a9922 | Optimize resolve_references_batch (two-pass UPDATE...FROM) |
+| 3.1 | 2026-02-08 | d74197c | GitServicePort with typed return values |
+| 3.4 | 2026-02-08 | 4fbfde5 | Decompose orchestrator (ProcessFileUseCase + ProcessCommitUseCase) |
+| 4.1 | 2026-02-08 | 609f429 | Extract shared helpers into BaseLanguageParser |
+| 4.2 | 2026-02-08 | 609f429 | Comment stripping utility (subsumed by 4.1) |
+| 4.3 | 2026-02-08 | fb091e3 | Standardize content_type naming |
+| 5.2 | 2026-02-08 | — | Parser error handling (per-node + service-level) |
 
 ## Architectural Decisions
 
@@ -552,7 +556,7 @@ Two data-quality bugs discovered during UI testing of the `2026-02-07-refactor` 
 1. **Duplicate commit messages**: `_process_commit` always called `_index_commit_message` even for already-existing commits, inflating text search result counts. Fixed by guarding with `existing_commit is None`.
 2. **Pagination non-determinism**: Text search `ORDER BY rank DESC` had no tiebreaker, so rows with identical ranks shuffled across pages. Fixed by adding `TextContentModel.id` as secondary sort key.
 
-Both fixes are in the working tree (pending commit).
+Both fixes committed in f388b6c.
 
 ### StrEnum Migration (2026-02-07)
 Fixed 4 pre-existing ruff UP042 warnings: `QueryMode`, `ReferenceType`, `SymbolKind`, and `TextSearchSourceType` changed from `(str, Enum)` to `StrEnum`. Done alongside item 3.3.
