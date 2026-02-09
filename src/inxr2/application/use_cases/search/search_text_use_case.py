@@ -50,7 +50,7 @@ class SearchTextResultItem:
         source_end_line: End line number
         source_type: Source type (comment, docstring, commit_message, file_content)
         content: The searchable text content
-        content_type: Content type (inline_comment, block_comment, etc.)
+        content_type: Content type (single_line_comment, block_comment, etc.)
         language: Programming language
         commit_hash: Commit hash
         branch: Branch name (if applicable)

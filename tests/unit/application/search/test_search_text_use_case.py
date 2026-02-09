@@ -82,7 +82,7 @@ class TestSearchTextUseCase:
                 source_end_line=42,
                 content="TODO: refactor this function",
                 language="python",
-                content_type="inline_comment",
+                content_type="single_line_comment",
             )
         )
         return repo

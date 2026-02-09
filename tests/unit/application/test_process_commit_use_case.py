@@ -61,7 +61,7 @@ class FakeParserService:
         return [
             {
                 "content": f"Comment in {Path(file_path).name}",
-                "content_type": "inline_comment",
+                "content_type": "single_line_comment",
                 "source_line": 1,
             }
         ]

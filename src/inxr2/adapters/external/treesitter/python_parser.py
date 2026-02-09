@@ -584,7 +584,7 @@ class PythonParser(BaseLanguageParser):
                     comments.append(
                         {
                             "content": stripped_text,
-                            "content_type": "inline_comment",
+                            "content_type": "single_line_comment",
                             "source_line": node.start_point[0] + 1,
                             "source_end_line": node.end_point[0] + 1,
                         }

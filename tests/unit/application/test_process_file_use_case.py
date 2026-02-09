@@ -65,7 +65,7 @@ class FakeParserService:
         return [
             {
                 "content": f"Comment in {Path(file_path).name}",
-                "content_type": "inline_comment",
+                "content_type": "single_line_comment",
                 "source_line": 1,
             }
         ]
@@ -306,7 +306,7 @@ class TestProcessFileUseCase:
             },
             {
                 "content": "An inline comment",
-                "content_type": "inline_comment",
+                "content_type": "single_line_comment",
                 "source_line": 5,
             },
         ]
@@ -327,7 +327,7 @@ class TestProcessFileUseCase:
 
         all_text = text_content_repo.get_all()
         docstrings = [tc for tc in all_text if tc.content_type == "docstring"]
-        comments = [tc for tc in all_text if tc.content_type == "inline_comment"]
+        comments = [tc for tc in all_text if tc.content_type == "single_line_comment"]
         assert len(docstrings) == 1
         assert len(comments) == 1
 

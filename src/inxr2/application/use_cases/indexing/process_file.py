@@ -376,7 +376,7 @@ class ProcessFileUseCase:
                 if not comment_content or not comment_content.strip():
                     continue
 
-                content_type = comment_data.get("content_type", "inline_comment")
+                content_type = comment_data.get("content_type", "single_line_comment")
                 if content_type == "docstring":
                     source_type = TextSearchSourceType.DOCSTRING.value
                     docstrings_indexed += 1

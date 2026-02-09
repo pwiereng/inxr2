@@ -301,16 +301,16 @@ Dropped same-language priority from resolution (was causing expensive file JOINs
 
 ---
 
-### 4.3 Standardize content_type Naming
+### 4.3 Standardize content_type Naming ✅ DONE
 **Severity:** LOW | **Effort:** 1 hour
 
 **Issue:** Python uses `inline_comment`, others use `single_line_comment`.
 
 **Tasks:**
-- [ ] Decide on standard names
-- [ ] Update Python parser to use `single_line_comment`
-- [ ] Add migration for existing data (if any)
-- [ ] Update search filters
+- [x] Decide on standard names
+- [x] Update Python parser to use `single_line_comment`
+- [x] Add migration for existing data (if any) — not needed, informational column only
+- [x] Update search filters — no filters use content_type; updated default fallback
 
 ---
 
@@ -472,7 +472,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 3.5 | P3 | 4h | Unify full/incremental indexing ✅ DONE |
 | 4.1 | P4 | 3-4d | Base parser extraction |
 | 4.2 | P4 | 2h | Comment stripping utility |
-| 4.3 | P4 | 1h | Standardize content_type |
+| 4.3 | P4 | 1h | Standardize content_type ✅ DONE |
 | 5.1 | P5 | 4h | Database error handling |
 | 5.2 | P5 | 2h | Parser error handling |
 | 6.1 | P6 | 2h | C comment tests |

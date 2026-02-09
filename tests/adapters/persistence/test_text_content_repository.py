@@ -31,7 +31,7 @@ async def test_save_text_content(
         source_end_line=10,
         content="TODO: refactor this function",
         language="python",
-        content_type="inline_comment",
+        content_type="single_line_comment",
     )
 
     saved = await repo.save(text_content)

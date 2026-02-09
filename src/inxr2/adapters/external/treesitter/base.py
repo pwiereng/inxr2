@@ -54,7 +54,7 @@ class BaseLanguageParser(ABC):
         Returns:
             List of comment dicts with keys:
             - content: The comment text (stripped of comment markers)
-            - content_type: Type of comment (inline_comment, block_comment, docstring, etc.)
+            - content_type: Type of comment (single_line_comment, block_comment, docstring, etc.)
             - source_line: Starting line number
             - source_end_line: Ending line number (for multi-line comments)
         """

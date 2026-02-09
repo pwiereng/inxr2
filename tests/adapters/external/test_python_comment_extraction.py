@@ -34,17 +34,17 @@ def hello():
 
         # First comment - module level
         assert comments[0]["content"] == "This is a module-level comment"
-        assert comments[0]["content_type"] == "inline_comment"
+        assert comments[0]["content_type"] == "single_line_comment"
         assert comments[0]["source_line"] == 2
 
         # Second comment - inside function
         assert comments[1]["content"] == "This is an inline comment"
-        assert comments[1]["content_type"] == "inline_comment"
+        assert comments[1]["content_type"] == "single_line_comment"
         assert comments[1]["source_line"] == 4
 
         # Third comment - after code
         assert comments[2]["content"] == "Comment after code"
-        assert comments[2]["content_type"] == "inline_comment"
+        assert comments[2]["content_type"] == "single_line_comment"
         assert comments[2]["source_line"] == 6
 
     @pytest.mark.asyncio
@@ -114,7 +114,7 @@ def foo():
         # Each line is a separate inline comment
         assert len(comments) >= 5
 
-        inline = [c for c in comments if c["content_type"] == "inline_comment"]
+        inline = [c for c in comments if c["content_type"] == "single_line_comment"]
         assert len(inline) >= 5
 
     @pytest.mark.asyncio

@@ -79,7 +79,7 @@ class FakeParserService:
 
         Returns list of dicts with keys:
         - content: The comment text
-        - content_type: Type (inline_comment, block_comment, docstring)
+        - content_type: Type (single_line_comment, block_comment, docstring)
         - source_line: Starting line number
         - source_end_line: Ending line number (optional)
         """
@@ -92,7 +92,7 @@ class FakeParserService:
         return [
             {
                 "content": f"This is a comment in {file_name}",
-                "content_type": "inline_comment",
+                "content_type": "single_line_comment",
                 "source_line": 1,
             }
         ]
@@ -1723,7 +1723,7 @@ class TestBranchIndexingOptimization:
             },
             {
                 "content": "This is an inline comment",
-                "content_type": "inline_comment",
+                "content_type": "single_line_comment",
                 "source_line": 5,
             },
         ]
@@ -1744,7 +1744,7 @@ class TestBranchIndexingOptimization:
         # Verify we have both comment types
         docstrings = [tc for tc in all_text_contents if tc.content_type == "docstring"]
         comments = [
-            tc for tc in all_text_contents if tc.content_type == "inline_comment"
+            tc for tc in all_text_contents if tc.content_type == "single_line_comment"
         ]
 
         assert len(docstrings) > 0, "Should have extracted docstrings"
