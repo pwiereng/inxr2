@@ -1,6 +1,7 @@
 """Test fixtures for CLI tests with database isolation."""
 
 import asyncio
+import os
 from collections.abc import Generator
 from pathlib import Path
 
@@ -41,17 +42,28 @@ def cli_test_db(tmp_path: Path) -> Generator[str, None, None]:
 
 
 @pytest.fixture
-def isolated_cli_runner(cli_test_db: str) -> CliRunner:
+def isolated_cli_runner(
+    cli_test_db: str, tmp_path: Path
+) -> Generator[CliRunner, None, None]:
     """Create a CliRunner that uses an isolated test database.
 
     This fixture provides a Click CliRunner configured to use a temporary
     SQLite database instead of the live PostgreSQL database. Use this for
     any CLI tests that invoke commands which access the database.
 
+    Also changes CWD to tmp_path so that side-effect files (e.g. index.log
+    from _write_csv_log) don't pollute the workspace.
+
     Args:
         cli_test_db: The test database URL from cli_test_db fixture.
+        tmp_path: Temporary directory for test artifacts.
 
-    Returns:
+    Yields:
         A CliRunner with DATABASE_URL set to the test database.
     """
-    return CliRunner(env={"DATABASE_URL": cli_test_db})
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        yield CliRunner(env={"DATABASE_URL": cli_test_db})
+    finally:
+        os.chdir(original_cwd)
