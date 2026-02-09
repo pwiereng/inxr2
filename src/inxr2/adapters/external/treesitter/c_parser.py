@@ -173,10 +173,7 @@ class CParser(BaseLanguageParser):
             return self._get_text(node, content)
 
         def add_reference(ref: dict[str, Any]) -> None:
-            """Add reference only if it has non-empty text."""
-            text = ref.get("text", "")
-            if text and text.strip():
-                references.append(ref)
+            self._add_reference(ref, references)
 
         def process_function_definition(node: Node) -> None:
             """Process a function definition."""
@@ -202,25 +199,16 @@ class CParser(BaseLanguageParser):
 
             # Use name_node position for start (where the name actually is),
             # but use the full function node for end (where the body ends).
-            # This is important for C where return type may be on a separate line.
-            if name_node:
-                start_line = name_node.start_point[0] + 1
-                start_column = name_node.start_point[1]
-            else:
-                start_line = node.start_point[0] + 1
-                start_column = node.start_point[1]
-
+            loc_node = name_node or node
             symbols.append(
-                {
-                    "name": func_name,
-                    "kind": "function",
-                    "start_line": start_line,
-                    "start_column": start_column,
-                    "end_line": node.end_point[0] + 1,
-                    "end_column": node.end_point[1],
-                    "scope": None,
-                    "signature": signature,
-                }
+                self._make_symbol(
+                    func_name,
+                    "function",
+                    loc_node,
+                    end_line=node.end_point[0] + 1,
+                    end_column=node.end_point[1],
+                    signature=signature,
+                )
             )
 
         def extract_function_name_and_node(
@@ -322,14 +310,13 @@ class CParser(BaseLanguageParser):
                     signature = f"{return_type} {func_name}({', '.join(params)})"
 
                     symbols.append(
-                        {
-                            "name": func_name,
-                            "kind": "function",
-                            **self._node_location(declarator),
-                            "scope": None,
-                            "signature": signature,
-                            "is_declaration": True,
-                        }
+                        self._make_symbol(
+                            func_name,
+                            "function",
+                            declarator,
+                            signature=signature,
+                            is_declaration=True,
+                        )
                     )
             elif declarator.type == "pointer_declarator":
                 inner = declarator.child_by_field_name("declarator")
@@ -340,12 +327,7 @@ class CParser(BaseLanguageParser):
                         # Pointer variable
                         var_name = get_text(inner)
                         symbols.append(
-                            {
-                                "name": var_name,
-                                "kind": "variable",
-                                **self._node_location(declarator),
-                                "scope": None,
-                            }
+                            self._make_symbol(var_name, "variable", declarator)
                         )
                     else:
                         # Recursively handle nested declarators (e.g., pointer-to-pointer,
@@ -357,12 +339,7 @@ class CParser(BaseLanguageParser):
                     if inner.type == "identifier":
                         var_name = get_text(inner)
                         symbols.append(
-                            {
-                                "name": var_name,
-                                "kind": "variable",
-                                **self._node_location(declarator),
-                                "scope": None,
-                            }
+                            self._make_symbol(var_name, "variable", declarator)
                         )
                     else:
                         # Recursively handle nested declarators (e.g., arrays of pointers,
@@ -371,14 +348,7 @@ class CParser(BaseLanguageParser):
             elif declarator.type == "identifier":
                 # Simple variable declaration
                 var_name = get_text(declarator)
-                symbols.append(
-                    {
-                        "name": var_name,
-                        "kind": "variable",
-                        **self._node_location(declarator),
-                        "scope": None,
-                    }
-                )
+                symbols.append(self._make_symbol(var_name, "variable", declarator))
             elif declarator.type == "init_declarator":
                 inner = declarator.child_by_field_name("declarator")
                 if inner:
@@ -410,14 +380,7 @@ class CParser(BaseLanguageParser):
                     process_enum_specifier(child, in_typedef=True)
 
             if typedef_name:
-                symbols.append(
-                    {
-                        "name": typedef_name,
-                        "kind": "typedef",
-                        **self._node_location(node),
-                        "scope": None,
-                    }
-                )
+                symbols.append(self._make_symbol(typedef_name, "typedef", node))
 
         def extract_typedef_name(declarator: Node) -> str | None:
             """Extract the name from a typedef declarator."""
@@ -466,14 +429,7 @@ class CParser(BaseLanguageParser):
 
             # Only add struct symbol if it has a name
             if struct_name:
-                symbols.append(
-                    {
-                        "name": struct_name,
-                        "kind": "struct",
-                        **self._node_location(node),
-                        "scope": None,
-                    }
-                )
+                symbols.append(self._make_symbol(struct_name, "struct", node))
 
             # Process fields from field_declaration_list (only if struct has a name)
             if struct_name:
@@ -497,14 +453,7 @@ class CParser(BaseLanguageParser):
                     break
 
             if union_name:
-                symbols.append(
-                    {
-                        "name": union_name,
-                        "kind": "union",
-                        **self._node_location(node),
-                        "scope": None,
-                    }
-                )
+                symbols.append(self._make_symbol(union_name, "union", node))
 
             # Process fields from field_declaration_list (only if union has a name)
             if union_name:
@@ -552,13 +501,7 @@ class CParser(BaseLanguageParser):
                 if child.type == "field_identifier":
                     field_name = get_text(child)
                     symbols.append(
-                        {
-                            "name": field_name,
-                            "kind": field_kind,
-                            **self._node_location(child),
-                            "scope": parent_name,
-                            "qualified_name": f"{parent_name}.{field_name}",
-                        }
+                        self._make_symbol(field_name, field_kind, child, parent_name)
                     )
                 elif child.type in (
                     "pointer_declarator",
@@ -569,13 +512,9 @@ class CParser(BaseLanguageParser):
                     extracted_name = extract_field_identifier(child)
                     if extracted_name:
                         symbols.append(
-                            {
-                                "name": extracted_name,
-                                "kind": field_kind,
-                                **self._node_location(child),
-                                "scope": parent_name,
-                                "qualified_name": f"{parent_name}.{extracted_name}",
-                            }
+                            self._make_symbol(
+                                extracted_name, field_kind, child, parent_name
+                            )
                         )
 
         def process_enum_specifier(node: Node, in_typedef: bool = False) -> None:
@@ -590,14 +529,7 @@ class CParser(BaseLanguageParser):
                     break
 
             if enum_name:
-                symbols.append(
-                    {
-                        "name": enum_name,
-                        "kind": "enum",
-                        **self._node_location(node),
-                        "scope": None,
-                    }
-                )
+                symbols.append(self._make_symbol(enum_name, "enum", node))
 
             # Process enumerators from enumerator_list
             for child in node.children:
@@ -608,18 +540,20 @@ class CParser(BaseLanguageParser):
                             for name_child in enum_child.children:
                                 if name_child.type == "identifier":
                                     enum_value_name = get_text(name_child)
+                                    # For anonymous enums, set qualified_name to just the value name
+                                    qn = (
+                                        f"{enum_name}.{enum_value_name}"
+                                        if enum_name
+                                        else enum_value_name
+                                    )
                                     symbols.append(
-                                        {
-                                            "name": enum_value_name,
-                                            "kind": "enum_value",
-                                            **self._node_location(enum_child),
-                                            "scope": enum_name,
-                                            "qualified_name": (
-                                                f"{enum_name}.{enum_value_name}"
-                                                if enum_name
-                                                else enum_value_name
-                                            ),
-                                        }
+                                        self._make_symbol(
+                                            enum_value_name,
+                                            "enum_value",
+                                            enum_child,
+                                            enum_name,
+                                            qualified_name=qn,
+                                        )
                                     )
                                     break
 
@@ -629,14 +563,7 @@ class CParser(BaseLanguageParser):
             for child in node.children:
                 if child.type == "identifier":
                     macro_name = get_text(child)
-                    symbols.append(
-                        {
-                            "name": macro_name,
-                            "kind": "macro",
-                            **self._node_location(node),
-                            "scope": None,
-                        }
-                    )
+                    symbols.append(self._make_symbol(macro_name, "macro", node))
                     break
 
         def process_preproc_function_def(node: Node) -> None:
@@ -656,13 +583,7 @@ class CParser(BaseLanguageParser):
             if macro_name:
                 signature = f"{macro_name}({', '.join(params)})"
                 symbols.append(
-                    {
-                        "name": macro_name,
-                        "kind": "macro",
-                        **self._node_location(node),
-                        "scope": None,
-                        "signature": signature,
-                    }
+                    self._make_symbol(macro_name, "macro", node, signature=signature)
                 )
 
         def process_preproc_include(node: Node) -> None:
@@ -672,14 +593,7 @@ class CParser(BaseLanguageParser):
                 include_path = get_text(path_node)
                 # Remove quotes or angle brackets
                 include_path = include_path.strip('"<>')
-                add_reference(
-                    {
-                        "text": include_path,
-                        "type": "include",
-                        "source_line": node.start_point[0] + 1,
-                        "source_column": node.start_point[1],
-                    }
-                )
+                add_reference(self._make_reference(include_path, "include", node))
 
         def extract_references(node: Node, scope: str | None = None) -> None:
             """Extract references from the AST."""
@@ -691,26 +605,18 @@ class CParser(BaseLanguageParser):
                         call_name = get_text(func_node)
                         if call_name not in C_BUILTINS:
                             add_reference(
-                                {
-                                    "text": call_name,
-                                    "type": "call",
-                                    "source_line": func_node.start_point[0] + 1,
-                                    "source_column": func_node.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(
+                                    call_name, "call", func_node, scope
+                                )
                             )
                     elif func_node.type == "field_expression":
                         # function pointer in struct: s->func() or s.func()
                         field = func_node.child_by_field_name("field")
                         if field:
                             add_reference(
-                                {
-                                    "text": get_text(field),
-                                    "type": "call",
-                                    "source_line": field.start_point[0] + 1,
-                                    "source_column": field.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(
+                                    get_text(field), "call", field, scope
+                                )
                             )
 
             # Type references (struct/enum/union usage)
@@ -718,13 +624,7 @@ class CParser(BaseLanguageParser):
                 type_name = get_text(node)
                 if type_name not in C_PRIMITIVE_TYPES:
                     add_reference(
-                        {
-                            "text": type_name,
-                            "type": "type_annotation",
-                            "source_line": node.start_point[0] + 1,
-                            "source_column": node.start_point[1],
-                            "scope": scope,
-                        }
+                        self._make_reference(type_name, "type_annotation", node, scope)
                     )
 
             # Variable usage references (field expressions like globals.field)
@@ -736,13 +636,7 @@ class CParser(BaseLanguageParser):
                     # Don't add if it's a builtin or primitive
                     if var_name not in C_BUILTINS and var_name not in C_PRIMITIVE_TYPES:
                         add_reference(
-                            {
-                                "text": var_name,
-                                "type": "usage",
-                                "source_line": argument.start_point[0] + 1,
-                                "source_column": argument.start_point[1],
-                                "scope": scope,
-                            }
+                            self._make_reference(var_name, "usage", argument, scope)
                         )
                 # Get the field being accessed (e.g., "numberOfNodes" in "config.numberOfNodes")
                 # But skip if this field_expression is the function in a call_expression,
@@ -758,13 +652,7 @@ class CParser(BaseLanguageParser):
                     if field and field.type == "field_identifier":
                         field_name = get_text(field)
                         add_reference(
-                            {
-                                "text": field_name,
-                                "type": "usage",
-                                "source_line": field.start_point[0] + 1,
-                                "source_column": field.start_point[1],
-                                "scope": scope,
-                            }
+                            self._make_reference(field_name, "usage", field, scope)
                         )
 
             # sizeof expressions - extract references
@@ -785,13 +673,9 @@ class CParser(BaseLanguageParser):
                                     and name not in C_PRIMITIVE_TYPES
                                 ):
                                     add_reference(
-                                        {
-                                            "text": name,
-                                            "type": "usage",
-                                            "source_line": inner.start_point[0] + 1,
-                                            "source_column": inner.start_point[1],
-                                            "scope": scope,
-                                        }
+                                        self._make_reference(
+                                            name, "usage", inner, scope
+                                        )
                                     )
                     elif child.type == "type_descriptor":
                         # sizeof(struct Foo) - type_identifier inside type_descriptor
@@ -806,13 +690,7 @@ class CParser(BaseLanguageParser):
                     if child.type == "identifier":
                         macro_name = get_text(child)
                         add_reference(
-                            {
-                                "text": macro_name,
-                                "type": "usage",
-                                "source_line": child.start_point[0] + 1,
-                                "source_column": child.start_point[1],
-                                "scope": scope,
-                            }
+                            self._make_reference(macro_name, "usage", child, scope)
                         )
                         break  # Only need the first identifier (the macro name)
 
@@ -829,13 +707,7 @@ class CParser(BaseLanguageParser):
                             and ident_name not in ("NULL", "true", "false")
                         ):
                             add_reference(
-                                {
-                                    "text": ident_name,
-                                    "type": "usage",
-                                    "source_line": child.start_point[0] + 1,
-                                    "source_column": child.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(ident_name, "usage", child, scope)
                             )
                     elif child.type == "initializer_list":
                         # Nested initializer - will be handled by recursion
@@ -895,67 +767,25 @@ class CParser(BaseLanguageParser):
 
         return symbols, references
 
-    def extract_comments(
-        self,
-        root: Node,
-        content: str,
-    ) -> list[dict[str, Any]]:
-        """Extract comments from C AST."""
-        comments: list[dict[str, Any]] = []
+    def _process_comment_node(self, node: Node, content: str) -> dict[str, Any] | None:
+        """Classify and clean a C comment node."""
+        if node.type != "comment":
+            return None
 
-        def get_text(node: Node) -> str:
-            return self._get_text(node, content)
+        text = self._get_text(node, content)
+        is_block = text.startswith("/*")
 
-        def strip_comment_markers(text: str, is_block: bool) -> str:
-            """Strip comment markers and clean up comment text."""
-            if is_block:
-                # Block comment: /* ... */
-                if text.startswith("/*") and text.endswith("*/"):
-                    text = text[2:-2]
+        if is_block:
+            cleaned = self._strip_block_comment(text)
+        else:
+            cleaned = text[2:].strip() if text.startswith("//") else text.strip()
 
-                # Clean up leading/trailing whitespace and asterisks
-                lines = text.split("\n")
-                cleaned_lines = []
-                for line in lines:
-                    line = line.strip()
-                    # Remove leading asterisks (common in multi-line comments)
-                    if line.startswith("*"):
-                        line = line[1:].strip()
-                    cleaned_lines.append(line)
+        if not cleaned:
+            return None
 
-                return "\n".join(cleaned_lines).strip()
-            else:
-                # Single-line comment: // ...
-                if text.startswith("//"):
-                    text = text[2:]
-                return text.strip()
-
-        def visit_node(node: Node) -> None:
-            """Recursively visit nodes to extract comments."""
-            if node.type == "comment":
-                text = get_text(node)
-
-                # Determine if it's a block or single-line comment
-                is_block = text.startswith("/*")
-
-                content_type = "block_comment" if is_block else "single_line_comment"
-                cleaned_text = strip_comment_markers(text, is_block)
-
-                if cleaned_text:
-                    comments.append(
-                        {
-                            "content": cleaned_text,
-                            "content_type": content_type,
-                            "source_line": node.start_point[0] + 1,
-                            "source_end_line": node.end_point[0] + 1,
-                        }
-                    )
-
-            # Recurse into children
-            for child in node.children:
-                visit_node(child)
-
-        # Start extraction
-        visit_node(root)
-
-        return comments
+        return {
+            "content": cleaned,
+            "content_type": "block_comment" if is_block else "single_line_comment",
+            "source_line": node.start_point[0] + 1,
+            "source_end_line": node.end_point[0] + 1,
+        }

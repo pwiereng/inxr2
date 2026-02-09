@@ -180,10 +180,7 @@ class PythonParser(BaseLanguageParser):
             return None
 
         def add_reference(ref: dict[str, Any]) -> None:
-            """Add reference only if it has non-empty text."""
-            text = ref.get("text", "")
-            if text and text.strip():
-                references.append(ref)
+            self._add_reference(ref, references)
 
         def process_class(node: Node, scope: str | None = None) -> None:
             """Process a class definition."""
@@ -198,14 +195,7 @@ class PythonParser(BaseLanguageParser):
                 return
 
             class_name = get_text(name_node)
-            symbols.append(
-                {
-                    "name": class_name,
-                    "kind": "class",
-                    **self._node_location(node),
-                    "scope": scope,
-                }
-            )
+            symbols.append(self._make_symbol(class_name, "class", node, scope))
 
             # Process class body
             for child in node.children:
@@ -237,15 +227,7 @@ class PythonParser(BaseLanguageParser):
                 return
 
             method_name = get_text(name_node)
-            symbols.append(
-                {
-                    "name": method_name,
-                    "kind": "method",
-                    **self._node_location(node),
-                    "scope": class_name,
-                    "qualified_name": f"{class_name}.{method_name}",
-                }
-            )
+            symbols.append(self._make_symbol(method_name, "method", node, class_name))
 
             # Look for instance variable assignments (self.x = ...)
             for child in node.children:
@@ -308,13 +290,9 @@ class PythonParser(BaseLanguageParser):
                 return
 
             symbols.append(
-                {
-                    "name": attr_name,
-                    "kind": "instance_variable",
-                    **self._node_location(first_child),
-                    "scope": class_name,
-                    "qualified_name": f"{class_name}.{attr_name}",
-                }
+                self._make_symbol(
+                    attr_name, "instance_variable", first_child, class_name
+                )
             )
 
         def process_class_variable(node: Node, class_name: str) -> None:
@@ -333,15 +311,7 @@ class PythonParser(BaseLanguageParser):
             else:
                 kind = "class_variable"
 
-            symbols.append(
-                {
-                    "name": var_name,
-                    "kind": kind,
-                    **self._node_location(node),
-                    "scope": class_name,
-                    "qualified_name": f"{class_name}.{var_name}",
-                }
-            )
+            symbols.append(self._make_symbol(var_name, kind, node, class_name))
 
         def process_decorated(node: Node, class_name: str | None) -> None:
             """Process a decorated definition."""
@@ -384,20 +354,18 @@ class PythonParser(BaseLanguageParser):
             else:
                 kind = "function"
 
+            # Use func_def start point (the actual def line), not node
+            qualified = f"{class_name}.{func_name}" if class_name else func_name
             symbols.append(
-                {
-                    "name": func_name,
-                    "kind": kind,
-                    # Use func_def start point (the actual def line), not node
-                    "start_line": func_def.start_point[0] + 1,
-                    "start_column": func_def.start_point[1],
-                    "end_line": node.end_point[0] + 1,
-                    "end_column": node.end_point[1],
-                    "scope": class_name,
-                    "qualified_name": (
-                        f"{class_name}.{func_name}" if class_name else func_name
-                    ),
-                }
+                self._make_symbol(
+                    func_name,
+                    kind,
+                    func_def,
+                    class_name,
+                    end_line=node.end_point[0] + 1,
+                    end_column=node.end_point[1],
+                    qualified_name=qualified,
+                )
             )
 
             # If it's a method, check for instance variables
@@ -419,14 +387,7 @@ class PythonParser(BaseLanguageParser):
                 return
 
             func_name = get_text(name_node)
-            symbols.append(
-                {
-                    "name": func_name,
-                    "kind": "function",
-                    **self._node_location(node),
-                    "scope": scope,
-                }
-            )
+            symbols.append(self._make_symbol(func_name, "function", node, scope))
 
         def process_module_assignment(node: Node) -> None:
             """Process a module-level assignment (constant)."""
@@ -440,14 +401,7 @@ class PythonParser(BaseLanguageParser):
 
             # Only record UPPER_CASE as constants
             if re.match(r"^[A-Z][A-Z0-9_]*$", var_name):
-                symbols.append(
-                    {
-                        "name": var_name,
-                        "kind": "constant",
-                        **self._node_location(node),
-                        "scope": None,
-                    }
-                )
+                symbols.append(self._make_symbol(var_name, "constant", node))
 
         def extract_references(node: Node, scope: str | None = None) -> None:
             """Extract references from the AST."""
@@ -456,23 +410,13 @@ class PythonParser(BaseLanguageParser):
                 for child in node.children:
                     if child.type == "dotted_name":
                         add_reference(
-                            {
-                                "text": get_text(child),
-                                "type": "import",
-                                "source_line": child.start_point[0] + 1,
-                                "source_column": child.start_point[1],
-                            }
+                            self._make_reference(get_text(child), "import", child)
                         )
                     elif child.type == "aliased_import":
                         name = child.child_by_field_name("name")
                         if name:
                             add_reference(
-                                {
-                                    "text": get_text(name),
-                                    "type": "import",
-                                    "source_line": name.start_point[0] + 1,
-                                    "source_column": name.start_point[1],
-                                }
+                                self._make_reference(get_text(name), "import", name)
                             )
                 return
 
@@ -486,25 +430,23 @@ class PythonParser(BaseLanguageParser):
                 for child in node.children:
                     if child.type == "dotted_name" and child != module_node:
                         add_reference(
-                            {
-                                "text": get_text(child),
-                                "type": "import",
-                                "source_line": child.start_point[0] + 1,
-                                "source_column": child.start_point[1],
-                                "from_module": module_node,
-                            }
+                            self._make_reference(
+                                get_text(child),
+                                "import",
+                                child,
+                                from_module=module_node,
+                            )
                         )
                     elif child.type == "aliased_import":
                         name = child.child_by_field_name("name")
                         if name:
                             add_reference(
-                                {
-                                    "text": get_text(name),
-                                    "type": "import",
-                                    "source_line": name.start_point[0] + 1,
-                                    "source_column": name.start_point[1],
-                                    "from_module": module_node,
-                                }
+                                self._make_reference(
+                                    get_text(name),
+                                    "import",
+                                    name,
+                                    from_module=module_node,
+                                )
                             )
                 return
 
@@ -516,13 +458,9 @@ class PythonParser(BaseLanguageParser):
                         call_name = get_text(func_node)
                         if call_name not in PYTHON_BUILTINS:
                             add_reference(
-                                {
-                                    "text": call_name,
-                                    "type": "call",
-                                    "source_line": func_node.start_point[0] + 1,
-                                    "source_column": func_node.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(
+                                    call_name, "call", func_node, scope
+                                )
                             )
                     elif func_node.type == "attribute":
                         # Method call like obj.method()
@@ -533,13 +471,9 @@ class PythonParser(BaseLanguageParser):
                                 break
                         if attr_node:
                             add_reference(
-                                {
-                                    "text": get_text(attr_node),
-                                    "type": "call",
-                                    "source_line": attr_node.start_point[0] + 1,
-                                    "source_column": attr_node.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(
+                                    get_text(attr_node), "call", attr_node, scope
+                                )
                             )
 
             # Type annotations
@@ -549,13 +483,9 @@ class PythonParser(BaseLanguageParser):
                     type_name = get_text(type_id)
                     if type_name not in PYTHON_TYPE_BUILTINS:
                         add_reference(
-                            {
-                                "text": type_name,
-                                "type": "type_annotation",
-                                "source_line": type_id.start_point[0] + 1,
-                                "source_column": type_id.start_point[1],
-                                "scope": scope,
-                            }
+                            self._make_reference(
+                                type_name, "type_annotation", type_id, scope
+                            )
                         )
                 # Also check for the first identifier child
                 for child in node.children:
@@ -563,13 +493,9 @@ class PythonParser(BaseLanguageParser):
                         type_name = get_text(child)
                         if type_name not in PYTHON_TYPE_BUILTINS:
                             add_reference(
-                                {
-                                    "text": type_name,
-                                    "type": "type_annotation",
-                                    "source_line": child.start_point[0] + 1,
-                                    "source_column": child.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(
+                                    type_name, "type_annotation", child, scope
+                                )
                             )
                         break
 

@@ -190,10 +190,7 @@ class TypeScriptParser(BaseLanguageParser):
             return None
 
         def add_reference(ref: dict[str, Any]) -> None:
-            """Add reference only if it has non-empty text."""
-            text = ref.get("text", "")
-            if text and text.strip():
-                references.append(ref)
+            self._add_reference(ref, references)
 
         def process_interface(node: Node) -> None:
             """Process an interface declaration."""
@@ -201,14 +198,7 @@ class TypeScriptParser(BaseLanguageParser):
             if not name:
                 return
 
-            symbols.append(
-                {
-                    "name": name,
-                    "kind": "interface",
-                    **self._node_location(node),
-                    "scope": None,
-                }
-            )
+            symbols.append(self._make_symbol(name, "interface", node))
 
             # Extract interface properties
             for child in node.children:
@@ -218,25 +208,17 @@ class TypeScriptParser(BaseLanguageParser):
                             prop_name = get_name_from_node(prop)
                             if prop_name:
                                 symbols.append(
-                                    {
-                                        "name": prop_name,
-                                        "kind": "interface_property",
-                                        **self._node_location(prop),
-                                        "scope": name,
-                                        "qualified_name": f"{name}.{prop_name}",
-                                    }
+                                    self._make_symbol(
+                                        prop_name, "interface_property", prop, name
+                                    )
                                 )
                         elif prop.type == "method_signature":
                             method_name = get_name_from_node(prop)
                             if method_name:
                                 symbols.append(
-                                    {
-                                        "name": method_name,
-                                        "kind": "interface_method",
-                                        **self._node_location(prop),
-                                        "scope": name,
-                                        "qualified_name": f"{name}.{method_name}",
-                                    }
+                                    self._make_symbol(
+                                        method_name, "interface_method", prop, name
+                                    )
                                 )
 
         def process_type_alias(node: Node) -> None:
@@ -245,14 +227,7 @@ class TypeScriptParser(BaseLanguageParser):
             if not name:
                 return
 
-            symbols.append(
-                {
-                    "name": name,
-                    "kind": "type",
-                    **self._node_location(node),
-                    "scope": None,
-                }
-            )
+            symbols.append(self._make_symbol(name, "type", node))
 
         def process_enum(node: Node) -> None:
             """Process an enum declaration."""
@@ -260,14 +235,7 @@ class TypeScriptParser(BaseLanguageParser):
             if not name:
                 return
 
-            symbols.append(
-                {
-                    "name": name,
-                    "kind": "enum",
-                    **self._node_location(node),
-                    "scope": None,
-                }
-            )
+            symbols.append(self._make_symbol(name, "enum", node))
 
             # Extract enum members
             for child in node.children:
@@ -277,13 +245,9 @@ class TypeScriptParser(BaseLanguageParser):
                             member_name = get_name_from_node(member)
                             if member_name:
                                 symbols.append(
-                                    {
-                                        "name": member_name,
-                                        "kind": "enum_member",
-                                        **self._node_location(member),
-                                        "scope": name,
-                                        "qualified_name": f"{name}.{member_name}",
-                                    }
+                                    self._make_symbol(
+                                        member_name, "enum_member", member, name
+                                    )
                                 )
 
         def process_class(node: Node) -> None:
@@ -292,14 +256,7 @@ class TypeScriptParser(BaseLanguageParser):
             if not name:
                 return
 
-            symbols.append(
-                {
-                    "name": name,
-                    "kind": "class",
-                    **self._node_location(node),
-                    "scope": None,
-                }
-            )
+            symbols.append(self._make_symbol(name, "class", node))
 
             # Process class body
             for child in node.children:
@@ -327,15 +284,7 @@ class TypeScriptParser(BaseLanguageParser):
                 elif child.type == "set":
                     kind = "setter"
 
-            symbols.append(
-                {
-                    "name": name,
-                    "kind": kind,
-                    **self._node_location(node),
-                    "scope": class_name,
-                    "qualified_name": f"{class_name}.{name}",
-                }
-            )
+            symbols.append(self._make_symbol(name, kind, node, class_name))
 
         def process_field(node: Node, class_name: str) -> None:
             """Process a class field definition."""
@@ -354,15 +303,7 @@ class TypeScriptParser(BaseLanguageParser):
             else:
                 kind = "field"
 
-            symbols.append(
-                {
-                    "name": name,
-                    "kind": kind,
-                    **self._node_location(node),
-                    "scope": class_name,
-                    "qualified_name": f"{class_name}.{name}",
-                }
-            )
+            symbols.append(self._make_symbol(name, kind, node, class_name))
 
         def process_function(node: Node, is_exported: bool = False) -> None:
             """Process a function declaration."""
@@ -370,14 +311,7 @@ class TypeScriptParser(BaseLanguageParser):
             if not name:
                 return
 
-            symbols.append(
-                {
-                    "name": name,
-                    "kind": "function",
-                    **self._node_location(node),
-                    "scope": None,
-                }
-            )
+            symbols.append(self._make_symbol(name, "function", node))
 
         def process_variable_declaration(node: Node, is_exported: bool = False) -> None:
             """Process variable declarations (const, let, var)."""
@@ -398,24 +332,10 @@ class TypeScriptParser(BaseLanguageParser):
                     # Check if it's an arrow function
                     value_node = child.child_by_field_name("value")
                     if value_node and value_node.type == "arrow_function":
-                        symbols.append(
-                            {
-                                "name": var_name,
-                                "kind": "function",
-                                **self._node_location(child),
-                                "scope": None,
-                            }
-                        )
+                        symbols.append(self._make_symbol(var_name, "function", child))
                     elif re.match(r"^[A-Z][A-Z0-9_]*$", var_name):
                         # UPPER_CASE constant
-                        symbols.append(
-                            {
-                                "name": var_name,
-                                "kind": "constant",
-                                **self._node_location(child),
-                                "scope": None,
-                            }
-                        )
+                        symbols.append(self._make_symbol(var_name, "constant", child))
 
         def extract_references(node: Node, scope: str | None = None) -> None:
             """Extract references from the AST."""
@@ -431,13 +351,12 @@ class TypeScriptParser(BaseLanguageParser):
                         for sub in child.children:
                             if sub.type == "identifier":
                                 add_reference(
-                                    {
-                                        "text": get_text(sub),
-                                        "type": "import",
-                                        "source_line": sub.start_point[0] + 1,
-                                        "source_column": sub.start_point[1],
-                                        "from_module": from_module,
-                                    }
+                                    self._make_reference(
+                                        get_text(sub),
+                                        "import",
+                                        sub,
+                                        from_module=from_module,
+                                    )
                                 )
                             elif sub.type == "named_imports":
                                 for imp in sub.children:
@@ -445,14 +364,12 @@ class TypeScriptParser(BaseLanguageParser):
                                         imp_name = get_name_from_node(imp)
                                         if imp_name:
                                             add_reference(
-                                                {
-                                                    "text": imp_name,
-                                                    "type": "import",
-                                                    "source_line": imp.start_point[0]
-                                                    + 1,
-                                                    "source_column": imp.start_point[1],
-                                                    "from_module": from_module,
-                                                }
+                                                self._make_reference(
+                                                    imp_name,
+                                                    "import",
+                                                    imp,
+                                                    from_module=from_module,
+                                                )
                                             )
                 return
 
@@ -464,25 +381,17 @@ class TypeScriptParser(BaseLanguageParser):
                         call_name = get_text(func_node)
                         if call_name not in TS_BUILTINS:
                             add_reference(
-                                {
-                                    "text": call_name,
-                                    "type": "call",
-                                    "source_line": func_node.start_point[0] + 1,
-                                    "source_column": func_node.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(
+                                    call_name, "call", func_node, scope
+                                )
                             )
                     elif func_node.type == "member_expression":
                         prop = func_node.child_by_field_name("property")
                         if prop:
                             add_reference(
-                                {
-                                    "text": get_text(prop),
-                                    "type": "call",
-                                    "source_line": prop.start_point[0] + 1,
-                                    "source_column": prop.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(
+                                    get_text(prop), "call", prop, scope
+                                )
                             )
 
             # Type references
@@ -490,13 +399,7 @@ class TypeScriptParser(BaseLanguageParser):
                 type_name = get_text(node)
                 if type_name not in TS_TYPE_BUILTINS:
                     add_reference(
-                        {
-                            "text": type_name,
-                            "type": "type_annotation",
-                            "source_line": node.start_point[0] + 1,
-                            "source_column": node.start_point[1],
-                            "scope": scope,
-                        }
+                        self._make_reference(type_name, "type_annotation", node, scope)
                     )
 
             # Recurse
@@ -536,80 +439,35 @@ class TypeScriptParser(BaseLanguageParser):
 
         return symbols, references
 
-    def extract_comments(
-        self,
-        root: Node,
-        content: str,
-    ) -> list[dict[str, Any]]:
-        """Extract comments from TypeScript/JavaScript AST."""
-        comments: list[dict[str, Any]] = []
+    def _process_comment_node(self, node: Node, content: str) -> dict[str, Any] | None:
+        """Classify and clean a TypeScript/JavaScript comment node."""
+        if node.type != "comment":
+            return None
 
-        def get_text(node: Node) -> str:
-            return self._get_text(node, content)
+        text = self._get_text(node, content)
 
-        def strip_comment_markers(text: str, is_block: bool, is_jsdoc: bool) -> str:
-            """Strip comment markers and clean up comment text."""
-            if is_jsdoc:
-                # JSDoc comment: /** ... */
-                if text.startswith("/**") and text.endswith("*/"):
-                    text = text[3:-2]
-            elif is_block:
-                # Block comment: /* ... */
-                if text.startswith("/*") and text.endswith("*/"):
-                    text = text[2:-2]
-            else:
-                # Single-line comment: // ...
-                if text.startswith("//"):
-                    text = text[2:]
+        # Determine comment type
+        is_jsdoc = text.startswith("/**")
+        is_block = text.startswith("/*") and not is_jsdoc
 
-            # Clean up leading/trailing whitespace and asterisks (common in block comments)
-            lines = text.split("\n")
-            cleaned_lines = []
-            for line in lines:
-                line = line.strip()
-                # Remove leading asterisks (common in multi-line comments)
-                if line.startswith("*"):
-                    line = line[1:].strip()
-                cleaned_lines.append(line)
+        if is_jsdoc:
+            content_type = "jsdoc_comment"
+        elif is_block:
+            content_type = "block_comment"
+        else:
+            content_type = "single_line_comment"
 
-            return "\n".join(cleaned_lines).strip()
+        if is_jsdoc or is_block:
+            cleaned = self._strip_block_comment(text)
+        else:
+            cleaned = text[2:].strip() if text.startswith("//") else text.strip()
 
-        def visit_node(node: Node) -> None:
-            """Recursively visit nodes to extract comments."""
-            # Tree-sitter treats all comments as "comment" nodes
-            if node.type == "comment":
-                text = get_text(node)
+        if not cleaned:
+            return None
 
-                # Determine comment type
-                is_jsdoc = text.startswith("/**")
-                is_block = text.startswith("/*") and not is_jsdoc
-
-                # Determine content_type
-                if is_jsdoc:
-                    content_type = "jsdoc_comment"
-                elif is_block:
-                    content_type = "block_comment"
-                else:
-                    content_type = "single_line_comment"
-
-                # Strip markers and clean up
-                cleaned_text = strip_comment_markers(text, is_block, is_jsdoc)
-
-                if cleaned_text:
-                    comments.append(
-                        {
-                            "content": cleaned_text,
-                            "content_type": content_type,
-                            "source_line": node.start_point[0] + 1,
-                            "source_end_line": node.end_point[0] + 1,
-                        }
-                    )
-
-            # Recurse into children
-            for child in node.children:
-                visit_node(child)
-
-        # Start extraction
-        visit_node(root)
-
-        return comments
+        return {
+            "content": cleaned,
+            "content_type": content_type,
+            "source_line": node.start_point[0] + 1,
+            "source_end_line": node.end_point[0] + 1,
+        }
