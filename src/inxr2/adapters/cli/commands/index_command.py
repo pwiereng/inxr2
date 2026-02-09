@@ -414,11 +414,11 @@ async def _run_full_index_async(
                 oldest_date = oldest.author_date or oldest.commit_date
                 newest_date = newest.author_date or newest.commit_date
                 if oldest_date is not None and hasattr(oldest_date, "strftime"):
-                    oldest_str = oldest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
+                    oldest_str = oldest_date.strftime("%Y-%m-%d %H:%M:%S %z")
                 else:
                     oldest_str = str(oldest_date) if oldest_date else "unknown"
                 if newest_date is not None and hasattr(newest_date, "strftime"):
-                    newest_str = newest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
+                    newest_str = newest_date.strftime("%Y-%m-%d %H:%M:%S %z")
                 else:
                     newest_str = str(newest_date) if newest_date else "unknown"
                 console.print(f"  Oldest: {oldest.hash[:10]} ({oldest_str})")
