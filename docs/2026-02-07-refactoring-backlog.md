@@ -2,7 +2,7 @@
 
 **Created:** 2026-02-07
 **Branch:** main (create feature branches per item)
-**Source:** Consolidated from `2026-02-07-code-review.md` and `2026-02-07-architecture-review.md`
+**Source:** Consolidated from `archived/2026-02-07-code-review.md` and `archived/2026-02-07-architecture-review.md`
 
 ---
 
@@ -636,3 +636,44 @@ The refactoring cycle was well-executed. Clean Architecture boundaries hold, the
 1. Fix test double drift (6.2) — prevents false confidence in tests
 2. Extract CLI rendering (7.2) — unblocks clean CLI additions
 3. Resume Phase 1.12 (Remote Repository Support) — the architecture is ready
+
+### Indexing Performance Baseline (2026-02-09)
+
+Full re-index of all configured repos after completing the refactoring cycle. Run inside `inxr2-dev` container against PostgreSQL.
+
+#### Small Repos (1 commit each)
+
+| Repo | Language | Files | Symbols | References | Resolved % | Total Time |
+|------|----------|-------|---------|------------|------------|------------|
+| crisp | py/ts/js/c | 55 | 1,324 | 5,780 | 82% | 5.5s |
+| inxr | py/ts/js | 10 | 248 | 1,062 | 25% | 1.1s |
+| multidockerdevcontainer | py/ts/js | 133 | 738 | 4,966 | 16% | 6.3s |
+| soccer-stats | java | 53 | 210 | 1,364 | 65% | 1.6s |
+| cJSON | c | 154 | 2,632 | 8,972 | 84% | 11.3s |
+
+#### inxr2 Multi-Branch (content-hash reuse)
+
+| Branch | Commits | Files Processed | Reused | Reuse % | Index Time | Resolve Time | Total |
+|--------|---------|-----------------|--------|---------|------------|--------------|-------|
+| main | 196 | 2,106 | 864 | 41% | 161.7s | 24.1s | 185.8s |
+| architecture-review | 150 | 1,766 | 1,766 | 100% | 63.0s | 5.0s | 68.0s |
+| 2026-02-07-refactor | 210 | 2,278 | 2,190 | 96% | 110.4s | 9.7s | 120.1s |
+| add-file-search | 194 | 2,165 | 2,165 | 100% | 101.9s | 11.5s | 113.4s |
+| add-java-support | 127 | 1,628 | 1,628 | 100% | 79.7s | 12.4s | 92.1s |
+| automated-testing-agent | 187 | 2,123 | 2,123 | 100% | 113.8s | 19.8s | 133.7s |
+| exploring-freetext-search | 180 | 2,017 | 2,017 | 100% | 117.6s | 22.3s | 139.9s |
+| fix-more-bugs-with-c | 111 | 1,525 | 1,525 | 100% | 89.8s | 17.9s | 107.7s |
+
+#### Large Repo
+
+| Repo | Commits | Files | Symbols | References | Resolved % | Index Time | Resolve Time | Total |
+|------|---------|-------|---------|------------|------------|------------|--------------|-------|
+| Java | 1,000 | 3,863 | 26,231 | 185,620 | 56% | 240.7s | 135.7s | 376.5s |
+
+#### Key Observations
+
+1. **Content-hash reuse is excellent** — feature branches hit 96-100% reuse since they share most files with main. No re-parsing happens, just DB copies.
+2. **Commit-walking is still the bottleneck** — even with 100% reuse, feature branches still take 68-140s because the indexer walks every reachable commit. Backlog item **2.4 (auto-detect base_branch)** would fix this by using `git merge-base` to skip shared commits, dropping feature branch time from minutes to seconds.
+3. **Java repo is the outlier** — 1,000 commits, 376s total. The 135.7s resolve time (36% of total) is the largest resolve cost in the suite; 185K references is the biggest batch.
+4. **Resolution rates vary by ecosystem** — C (84%), Python (82%), Java (65%) resolve well. Repos referencing many external libraries (inxr at 25%, multidockerdevcontainer at 16%) resolve less since those symbols aren't indexed.
+5. **Total re-index time** — all 14 repo/branch combinations: ~23 minutes. Dominated by inxr2 multi-branch (~15 min) and Java (~6 min).
