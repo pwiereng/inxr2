@@ -51,7 +51,7 @@ from ..application.ports.repositories import (
     SymbolRepositoryPort,
     TextContentRepositoryPort,
 )
-from ..application.ports.services import FileSystemPort, TextSearchPort
+from ..application.ports.services import FileSystemPort, GitServicePort, TextSearchPort
 from ..application.use_cases.commits import ListCommitsUseCase
 from ..application.use_cases.files import (
     GetFileContentUseCase,
@@ -76,7 +76,7 @@ from ..application.use_cases.repositories.get_repository_tree import (
 from ..application.use_cases.repositories.list_repositories import (
     ListRepositoriesUseCase,
 )
-from ..application.use_cases.search import SearchTextUseCase
+from ..application.use_cases.search import SearchFilesUseCase, SearchTextUseCase
 from ..application.use_cases.symbols import (
     GetSymbolReferencesUseCase,
     SearchSymbolsUseCase,
@@ -152,10 +152,10 @@ TextSearchDep = Annotated[TextSearchPort, Depends(get_text_search)]
 # =============================================================================
 
 # Singleton instance for GitService (stateless, reusable)
-_git_service: GitService | None = None
+_git_service: GitServicePort | None = None
 
 
-def get_git_service() -> GitService:
+def get_git_service() -> GitServicePort:
     """Provide GitService singleton."""
     global _git_service
     if _git_service is None:
@@ -163,7 +163,7 @@ def get_git_service() -> GitService:
     return _git_service
 
 
-GitServiceDep = Annotated[GitService, Depends(get_git_service)]
+GitServiceDep = Annotated[GitServicePort, Depends(get_git_service)]
 
 # Singleton instance for LocalFileSystem (stateless, reusable)
 _local_filesystem: LocalFileSystem | None = None
@@ -403,3 +403,21 @@ def get_search_text_use_case(
 
 
 SearchTextUseCaseDep = Annotated[SearchTextUseCase, Depends(get_search_text_use_case)]
+
+
+def get_search_files_use_case(
+    file_adapter: FileAdapter,
+    repository_adapter: RepositoryAdapter,
+    commit_adapter: CommitAdapter,
+) -> SearchFilesUseCase:
+    """Provide SearchFilesUseCase with dependencies."""
+    return SearchFilesUseCase(
+        file_repo=file_adapter,
+        repository_repo=repository_adapter,
+        commit_repo=commit_adapter,
+    )
+
+
+SearchFilesUseCaseDep = Annotated[
+    SearchFilesUseCase, Depends(get_search_files_use_case)
+]

@@ -164,7 +164,11 @@ class TreeSitterService:
             logger.error(f"Failed to parse {file_path}: {e}")
             return [], []
 
-        return language_parser.extract(tree.root_node, content)
+        try:
+            return language_parser.extract(tree.root_node, content)
+        except Exception as e:
+            logger.error("Failed to extract symbols from %s: %s", file_path, e)
+            return [], []
 
     async def extract_comments(
         self,
@@ -183,7 +187,7 @@ class TreeSitterService:
         Returns:
             List of comment dicts with keys:
             - content: The comment text (stripped of comment markers)
-            - content_type: Type of comment (inline_comment, block_comment, docstring, etc.)
+            - content_type: Type of comment (single_line_comment, block_comment, docstring, etc.)
             - source_line: Starting line number
             - source_end_line: Ending line number (for multi-line comments)
         """
@@ -210,4 +214,8 @@ class TreeSitterService:
             logger.error(f"Failed to parse {file_path}: {e}")
             return []
 
-        return language_parser.extract_comments(tree.root_node, content)
+        try:
+            return language_parser.extract_comments(tree.root_node, content)
+        except Exception as e:
+            logger.error("Failed to extract comments from %s: %s", file_path, e)
+            return []

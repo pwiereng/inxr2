@@ -6,8 +6,10 @@ Handles markdown, YAML, config files, Dockerfiles, and other text-based formats.
 
 from pathlib import Path
 
+from inxr2.application.ports.services import PlaintextParserPort
 
-class PlaintextParser:
+
+class PlaintextParser(PlaintextParserPort):
     """
     Parser for non-code text files.
 

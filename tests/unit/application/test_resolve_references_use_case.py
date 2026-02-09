@@ -420,28 +420,14 @@ class TestDeterministicResolution:
         self,
         file_repo: "InMemoryFileRepository",
     ) -> None:
-        """Test that references resolve to symbols in same language when no same-file match."""
-        # Create symbol repo with Config only in main.py (Python) and app.ts (TypeScript)
-        # No Config in utils.py, so reference from utils.py tests language priority
+        """Test that references resolve to same-language symbols over lower IDs."""
+        # Config in app.ts (TypeScript, lower ID=1) and main.py (Python, higher ID=3)
+        # Reference from utils.py (Python) should prefer Python symbol despite higher ID
         symbol_repo = InMemorySymbolRepository()
         symbol_repo.add(
             Symbol(
                 id=1,
-                file_id=1,  # Python file (main.py)
-                repository_id=1,
-                commit_id=1,
-                name="Config",
-                kind=SymbolKind.CLASS,
-                start_line=10,
-                start_column=0,
-                end_line=20,
-                end_column=0,
-            )
-        )
-        symbol_repo.add(
-            Symbol(
-                id=3,
-                file_id=3,  # TypeScript file (app.ts)
+                file_id=3,  # TypeScript file (app.ts) — lower ID
                 repository_id=1,
                 commit_id=1,
                 name="Config",
@@ -452,6 +438,20 @@ class TestDeterministicResolution:
                 end_column=0,
             )
         )
+        symbol_repo.add(
+            Symbol(
+                id=3,
+                file_id=1,  # Python file (main.py) — higher ID
+                repository_id=1,
+                commit_id=1,
+                name="Config",
+                kind=SymbolKind.CLASS,
+                start_line=10,
+                start_column=0,
+                end_line=20,
+                end_column=0,
+            )
+        )
 
         ref_repo = InMemoryReferenceRepository(
             symbol_repo=symbol_repo,
@@ -459,7 +459,7 @@ class TestDeterministicResolution:
         )
 
         # Reference to "Config" from utils.py (file_id=2, Python)
-        # No Config symbol in utils.py, so should prefer Python file (main.py) over TypeScript
+        # No Config in utils.py, so should prefer Python symbol (id=3) over TS (id=1)
         ref_repo.add(
             Reference(
                 id=1,
@@ -480,11 +480,11 @@ class TestDeterministicResolution:
 
         await use_case.execute(request)
 
-        # Should resolve to symbol 1 (Python, same language as reference source)
-        # even though symbol 3 (TypeScript) has lower ID
+        # Should resolve to symbol 3 (Python, same language as source file)
+        # even though symbol 1 (TypeScript) has lower ID
         ref = await ref_repo.find_by_id(1)
         assert ref is not None
-        assert ref.target_symbol_id == 1  # Same language priority over ID
+        assert ref.target_symbol_id == 3  # Same language priority over ID
 
     @pytest.mark.asyncio
     async def test_cross_language_falls_back_to_id(

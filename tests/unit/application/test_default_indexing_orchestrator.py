@@ -5,15 +5,16 @@ from pathlib import Path
 
 import pytest
 
+from inxr2.application.ports.services import ChangedFiles, CommitInfo
 from inxr2.application.use_cases.indexing.default_orchestrator import (
     DefaultIndexingOrchestrator,
 )
 from inxr2.application.use_cases.indexing.orchestrator import (
-    IncrementalIndexRequest,
-    IndexingStrategy,
     IndexRepositoryRequest,
 )
 from tests.fixtures.test_doubles import (
+    FakeGitService,
+    FakePlaintextParser,
     InMemoryCommitRepository,
     InMemoryFileRepository,
     InMemoryIndexStatusRepository,
@@ -22,147 +23,6 @@ from tests.fixtures.test_doubles import (
     InMemorySymbolRepository,
     InMemoryTextContentRepository,
 )
-
-
-class FakeGitService:
-    """Fake git service for testing without real git operations."""
-
-    def __init__(self, commits: list[dict] | None = None):
-        """
-        Initialize with test commits.
-
-        Args:
-            commits: List of dicts matching GitService.list_commits() output
-        """
-        from datetime import datetime
-
-        self.commits = commits or [
-            {
-                "hash": "abc123",
-                "short_hash": "abc123",
-                "author_name": "Test User",
-                "author_email": "test@example.com",
-                "author_date": datetime(2024, 1, 1, 0, 0, 0),
-                "committer_name": "Test User",
-                "committer_email": "test@example.com",
-                "commit_date": datetime(2024, 1, 1, 0, 0, 0),
-                "message": "Initial commit",
-                "parent_hashes": [],
-            },
-            {
-                "hash": "def456",
-                "short_hash": "def456",
-                "author_name": "Test User",
-                "author_email": "test@example.com",
-                "author_date": datetime(2024, 1, 2, 0, 0, 0),
-                "committer_name": "Test User",
-                "committer_email": "test@example.com",
-                "commit_date": datetime(2024, 1, 2, 0, 0, 0),
-                "message": "Add feature",
-                "parent_hashes": ["abc123"],
-            },
-        ]
-        self.files_in_commit: dict[str, list[str]] = {
-            "abc123": ["src/main.py", "src/utils.py"],
-            "def456": ["src/main.py", "src/utils.py", "src/new_file.py"],
-        }
-        # Changed files per commit for delta indexing
-        # First commit: all files are "added"
-        # Second commit: only new_file.py is added
-        self.changed_files_in_commit: dict[str, dict[str, list[str]]] = {
-            "abc123": {
-                "added": ["src/main.py", "src/utils.py"],
-                "modified": [],
-                "deleted": [],
-            },
-            "def456": {
-                "added": ["src/new_file.py"],
-                "modified": [],
-                "deleted": [],
-            },
-        }
-        # Tracking for list_branch_commits calls (for test verification)
-        self._list_branch_commits_called = False
-        self._list_branch_commits_args: dict[str, str] = {}
-
-    def get_repository_info(self, repo_path: Path) -> dict:
-        """Get repository information."""
-        return {
-            "current_branch": "main",
-            "default_branch": "main",
-            "remote_url": str(repo_path),
-        }
-
-    def get_current_commit(self, repo_path: Path, branch: str | None = None) -> str:
-        """Get current commit hash."""
-        commit_hash: str = self.commits[-1]["hash"]
-        return commit_hash
-
-    def get_commit_info(self, repo_path: Path, commit_hash: str) -> dict:
-        """Get detailed information about a commit."""
-        for commit in self.commits:
-            if commit["hash"] == commit_hash:
-                return commit
-        # Return the last commit if not found
-        return self.commits[-1]
-
-    def list_commits(
-        self,
-        repo_path: Path,
-        branch: str,
-        max_count: int | None = None,
-        since_days: int | None = None,
-    ) -> list[dict]:
-        """Get commit history (oldest to newest)."""
-        commits = self.commits.copy()
-        if max_count:
-            commits = commits[:max_count]
-        return commits
-
-    def list_files(
-        self, repo_path: Path, commit_hash: str, patterns: list[str] | None = None
-    ) -> list[str]:
-        """Get list of files in a commit."""
-        return self.files_in_commit.get(commit_hash, [])
-
-    def get_file_content(
-        self, repo_path: Path, commit_hash: str, file_path: str
-    ) -> str:
-        """Get file content at specific commit."""
-        return f"# Content of {file_path} at {commit_hash}\nprint('hello')"
-
-    def get_changed_files_in_commit(
-        self, repo_path: Path, commit_hash: str
-    ) -> dict[str, list[str]]:
-        """Get files changed in a single commit (vs its parent)."""
-        return self.changed_files_in_commit.get(
-            commit_hash, {"added": [], "modified": [], "deleted": []}
-        )
-
-    def list_branch_commits(
-        self,
-        repo_path: Path,
-        branch: str,
-        base_branch: str,
-        max_count: int | None = None,
-        since_days: int | None = None,
-    ) -> list[dict]:
-        """
-        Get commits unique to a branch (after merge-base with base_branch).
-
-        For testing, returns only the last commit to simulate feature branch
-        optimization - as if all earlier commits are shared with base_branch.
-        """
-        # Track that this method was called for test verification
-        self._list_branch_commits_called = True
-        self._list_branch_commits_args = {
-            "branch": branch,
-            "base_branch": base_branch,
-        }
-        # Return only the last commit to simulate branch-specific commits
-        if self.commits:
-            return [self.commits[-1]]
-        return []
 
 
 class FakeParserService:
@@ -219,7 +79,7 @@ class FakeParserService:
 
         Returns list of dicts with keys:
         - content: The comment text
-        - content_type: Type (inline_comment, block_comment, docstring)
+        - content_type: Type (single_line_comment, block_comment, docstring)
         - source_line: Starting line number
         - source_end_line: Ending line number (optional)
         """
@@ -232,7 +92,7 @@ class FakeParserService:
         return [
             {
                 "content": f"This is a comment in {file_name}",
-                "content_type": "inline_comment",
+                "content_type": "single_line_comment",
                 "source_line": 1,
             }
         ]
@@ -317,6 +177,7 @@ def orchestrator(
         text_content_repo=text_content_repo,
         git_service=git_service,
         parser_service=parser_service,
+        plaintext_parser=FakePlaintextParser(),
     )
 
 
@@ -335,7 +196,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -360,7 +220,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -384,7 +243,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -408,7 +266,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -432,7 +289,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             max_history=1,  # Only index 1 commit
         )
 
@@ -443,7 +299,7 @@ class TestDefaultIndexingOrchestrator:
         assert response.commits_indexed == 1  # Limited to 1
 
     @pytest.mark.asyncio
-    async def test_index_incremental_only_processes_new_commits(
+    async def test_second_index_only_processes_new_commits(
         self,
         orchestrator: DefaultIndexingOrchestrator,
         repository_adapter: InMemoryRepositoryRepository,
@@ -451,35 +307,33 @@ class TestDefaultIndexingOrchestrator:
         index_status_repo: InMemoryIndexStatusRepository,
         text_content_repo: InMemoryTextContentRepository,
     ) -> None:
-        """Test that incremental indexing only processes new commits."""
-        # Arrange - first do a partial full index
-        full_request = IndexRepositoryRequest(
+        """Test that second index call only processes new commits (incremental behavior)."""
+        # Arrange - first do an initial index with limited history
+        first_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             max_history=1,  # Only index first commit
         )
-        await orchestrator.index_repository(full_request)
+        await orchestrator.index_repository(first_request)
 
         # Get repository ID
         repo = await repository_adapter.find_by_name("test-repo")
         assert repo is not None
         assert repo.id is not None
 
-        # Now do incremental index
-        incremental_request = IncrementalIndexRequest(
-            repository_id=repo.id,
+        # Now do another index - should automatically be incremental
+        second_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
         )
 
         # Act
-        response = await orchestrator.index_incremental(incremental_request)
+        response = await orchestrator.index_repository(second_request)
 
         # Assert
-        # Should only index the second commit
+        # Should only index the second commit (incremental behavior)
         assert response.commits_indexed == 1
 
     @pytest.mark.asyncio
@@ -492,7 +346,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -523,7 +376,6 @@ class TestDefaultIndexingOrchestrator:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -572,7 +424,7 @@ class TestGitServiceIntegration:
                 branch: str,
                 max_count: int | None = None,
                 since_days: int | None = None,
-            ) -> list[dict]:
+            ) -> list[CommitInfo]:
                 self.list_commits_called = True
                 self.list_commits_args = {
                     "repo_path": repo_path,
@@ -593,13 +445,13 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=spy_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             max_history=100,
             since_days=15,
         )
@@ -638,7 +490,7 @@ class TestGitServiceIntegration:
                 branch: str,
                 max_count: int | None = None,
                 since_days: int | None = None,
-            ) -> list[dict]:
+            ) -> list[CommitInfo]:
                 self.since_days_received = since_days
                 return super().list_commits(repo_path, branch, max_count, since_days)
 
@@ -653,6 +505,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=spy_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Test with since_days=30
@@ -660,7 +513,6 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             since_days=30,
         )
 
@@ -701,26 +553,26 @@ class TestGitServiceIntegration:
                 branch: str,
                 max_count: int | None = None,
                 since_days: int | None = None,
-            ) -> list[dict]:
+            ) -> list[CommitInfo]:
                 # Return empty list to simulate no commits in date range
                 if since_days is not None:
                     return []
                 return super().list_commits(repo_path, branch, max_count, since_days)
 
-            def get_commit_info(self, repo_path: Path, commit_hash: str) -> dict:
+            def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
                 self.get_commit_info_called = True
-                return {
-                    "hash": "def456",
-                    "short_hash": "def456",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 2, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 2, 0, 0, 0),
-                    "message": "HEAD commit",
-                    "parent_hashes": [],
-                }
+                return CommitInfo(
+                    hash="def456",
+                    short_hash="def456",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 2, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 2, 0, 0, 0),
+                    message="HEAD commit",
+                    parent_hashes=[],
+                )
 
         empty_git = EmptyCommitsGitService()
         orchestrator = DefaultIndexingOrchestrator(
@@ -733,13 +585,13 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=empty_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             since_days=15,  # No commits in last 15 days
         )
 
@@ -803,13 +655,13 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=spy_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -846,18 +698,18 @@ class TestGitServiceIntegration:
                 super().__init__()
                 # Override commits with timezone-aware datetimes (like GitPython returns)
                 self.commits = [
-                    {
-                        "hash": "tz123",
-                        "short_hash": "tz123",
-                        "author_name": "Test User",
-                        "author_email": "test@example.com",
-                        "author_date": datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
-                        "committer_name": "Test User",
-                        "committer_email": "test@example.com",
-                        "commit_date": datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
-                        "message": "Commit with timezone",
-                        "parent_hashes": [],
-                    },
+                    CommitInfo(
+                        hash="tz123",
+                        short_hash="tz123",
+                        author_name="Test User",
+                        author_email="test@example.com",
+                        author_date=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
+                        committer_name="Test User",
+                        committer_email="test@example.com",
+                        commit_date=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
+                        message="Commit with timezone",
+                        parent_hashes=[],
+                    ),
                 ]
                 self.files_in_commit = {
                     "tz123": ["src/main.py"],
@@ -874,13 +726,13 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=tz_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act - should not raise "can't subtract offset-naive and offset-aware datetimes"
@@ -956,13 +808,13 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=dict_parser,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act - should not raise "'dict' object has no attribute 'name'"
@@ -1036,6 +888,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=no_end_parser,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Update git service to return .c files
@@ -1045,15 +898,14 @@ class TestGitServiceIntegration:
         }
         # Also update changed_files_in_commit for delta indexing
         git_service.changed_files_in_commit = {
-            "abc123": {"added": ["main.c"], "modified": [], "deleted": []},
-            "def456": {"added": [], "modified": [], "deleted": []},  # No changes
+            "abc123": ChangedFiles(added=["main.c"], modified=[], deleted=[]),
+            "def456": ChangedFiles(added=[], modified=[], deleted=[]),  # No changes
         }
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["c"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act - should not raise "'source_end_column'" KeyError
@@ -1135,6 +987,7 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=string_type_parser,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Update git service to return .c files
@@ -1144,15 +997,14 @@ class TestGitServiceIntegration:
         }
         # Also update changed_files_in_commit for delta indexing
         git_service.changed_files_in_commit = {
-            "abc123": {"added": ["main.c"], "modified": [], "deleted": []},
-            "def456": {"added": [], "modified": [], "deleted": []},  # No changes
+            "abc123": ChangedFiles(added=["main.c"], modified=[], deleted=[]),
+            "def456": ChangedFiles(added=[], modified=[], deleted=[]),  # No changes
         }
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["c"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act - should not raise "'str' object has no attribute 'value'"
@@ -1204,13 +1056,13 @@ class TestGitServiceIntegration:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # First indexing run
@@ -1221,11 +1073,13 @@ class TestGitServiceIntegration:
         commits_after_first = await commit_repo.list_by_repository(repository_id=1)
         first_commit_count = len(commits_after_first)
 
-        # Second indexing run - should NOT raise UniqueViolation
+        # Second indexing run - should detect HEAD already indexed and return early
         response2 = await orchestrator.index_repository(request)
 
-        # Should still report commits processed (even if skipped)
-        assert response2.commits_indexed == 2
+        # Should report 0 commits because HEAD hasn't changed (incremental detection)
+        assert (
+            response2.commits_indexed == 0
+        ), "Second run should skip indexing when HEAD unchanged"
 
         # Commits should not be duplicated
         commits_after_second = await commit_repo.list_by_repository(repository_id=1)
@@ -1293,13 +1147,13 @@ class TestHeadFirstIndexing:
             text_content_repo=text_content_repo,
             git_service=tracking_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -1339,42 +1193,42 @@ class TestHeadFirstIndexing:
         # Create a git service with 3 commits
         three_commit_git = FakeGitService(
             commits=[
-                {
-                    "hash": "commit1",
-                    "short_hash": "commit1",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "message": "Initial",
-                    "parent_hashes": [],
-                },
-                {
-                    "hash": "commit2",
-                    "short_hash": "commit2",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 2, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 2, 0, 0, 0),
-                    "message": "Add file",
-                    "parent_hashes": ["commit1"],
-                },
-                {
-                    "hash": "commit3",
-                    "short_hash": "commit3",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 3, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 3, 0, 0, 0),
-                    "message": "HEAD",
-                    "parent_hashes": ["commit2"],
-                },
+                CommitInfo(
+                    hash="commit1",
+                    short_hash="commit1",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 1, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 1, 0, 0, 0),
+                    message="Initial",
+                    parent_hashes=[],
+                ),
+                CommitInfo(
+                    hash="commit2",
+                    short_hash="commit2",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 2, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 2, 0, 0, 0),
+                    message="Add file",
+                    parent_hashes=["commit1"],
+                ),
+                CommitInfo(
+                    hash="commit3",
+                    short_hash="commit3",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 3, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 3, 0, 0, 0),
+                    message="HEAD",
+                    parent_hashes=["commit2"],
+                ),
             ]
         )
         three_commit_git.files_in_commit = {
@@ -1383,9 +1237,9 @@ class TestHeadFirstIndexing:
             "commit3": ["a.py", "b.py", "c.py"],
         }
         three_commit_git.changed_files_in_commit = {
-            "commit1": {"added": ["a.py"], "modified": [], "deleted": []},
-            "commit2": {"added": ["b.py"], "modified": [], "deleted": []},
-            "commit3": {"added": ["c.py"], "modified": [], "deleted": []},
+            "commit1": ChangedFiles(added=["a.py"], modified=[], deleted=[]),
+            "commit2": ChangedFiles(added=["b.py"], modified=[], deleted=[]),
+            "commit3": ChangedFiles(added=["c.py"], modified=[], deleted=[]),
         }
 
         orchestrator = DefaultIndexingOrchestrator(
@@ -1398,13 +1252,13 @@ class TestHeadFirstIndexing:
             text_content_repo=text_content_repo,
             git_service=three_commit_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -1440,25 +1294,27 @@ class TestHeadFirstIndexing:
 
         single_commit_git = FakeGitService(
             commits=[
-                {
-                    "hash": "only",
-                    "short_hash": "only",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "message": "Only commit",
-                    "parent_hashes": [],
-                },
+                CommitInfo(
+                    hash="only",
+                    short_hash="only",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 1, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 1, 0, 0, 0),
+                    message="Only commit",
+                    parent_hashes=[],
+                ),
             ]
         )
         single_commit_git.files_in_commit = {
             "only": ["a.py", "b.py", "c.py"],
         }
         single_commit_git.changed_files_in_commit = {
-            "only": {"added": ["a.py", "b.py", "c.py"], "modified": [], "deleted": []},
+            "only": ChangedFiles(
+                added=["a.py", "b.py", "c.py"], modified=[], deleted=[]
+            ),
         }
 
         orchestrator = DefaultIndexingOrchestrator(
@@ -1471,13 +1327,13 @@ class TestHeadFirstIndexing:
             text_content_repo=text_content_repo,
             git_service=single_commit_git,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -1544,13 +1400,13 @@ class TestBranchCommitsPopulation:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
 
         # Act
@@ -1568,7 +1424,7 @@ class TestBranchCommitsPopulation:
                 ), f"Commit {commit.id} should be linked to main branch"
 
     @pytest.mark.asyncio
-    async def test_incremental_index_populates_branch_commits(
+    async def test_second_index_populates_branch_commits(
         self,
         repository_adapter: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
@@ -1579,7 +1435,7 @@ class TestBranchCommitsPopulation:
         text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
-        """Test that incremental indexing also populates branch_commits."""
+        """Test that second index call also populates branch_commits."""
         git_service = FakeGitService()
 
         orchestrator = DefaultIndexingOrchestrator(
@@ -1592,26 +1448,24 @@ class TestBranchCommitsPopulation:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
-        # First do a full index
-        full_request = IndexRepositoryRequest(
-            repository_path=Path("/repos/test-repo"),
-            branch="main",
-            languages=["python"],
-            strategy=IndexingStrategy.FULL,
-        )
-        full_response = await orchestrator.index_repository(full_request)
-        repo_id = full_response.repository_id
-
-        # Now do incremental index
-        incremental_request = IncrementalIndexRequest(
-            repository_id=repo_id,
+        # First index
+        first_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
         )
-        await orchestrator.index_incremental(incremental_request)
+        await orchestrator.index_repository(first_request)
+
+        # Second index (incremental behavior)
+        second_request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            languages=["python"],
+        )
+        await orchestrator.index_repository(second_request)
 
         # Assert - all commits should be linked to the branch
         for commit in commit_repo._commits.values():
@@ -1644,6 +1498,7 @@ class TestBranchCommitsPopulation:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Index main branch
@@ -1651,7 +1506,6 @@ class TestBranchCommitsPopulation:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
         await orchestrator.index_repository(main_request)
 
@@ -1660,7 +1514,6 @@ class TestBranchCommitsPopulation:
             repository_path=Path("/repos/test-repo"),
             branch="feature",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
         )
         await orchestrator.index_repository(feature_request)
 
@@ -1700,6 +1553,7 @@ class TestBranchIndexingOptimization:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Request with base_branch different from branch
@@ -1707,7 +1561,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="feature",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             base_branch="main",  # Different from branch
         )
 
@@ -1745,6 +1598,7 @@ class TestBranchIndexingOptimization:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Request with base_branch same as branch (no optimization needed)
@@ -1752,7 +1606,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             base_branch="main",  # Same as branch
         )
 
@@ -1788,6 +1641,7 @@ class TestBranchIndexingOptimization:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Request without base_branch
@@ -1795,7 +1649,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="feature",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             base_branch=None,  # No base branch
         )
 
@@ -1833,6 +1686,7 @@ class TestBranchIndexingOptimization:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         # Index with optimization (base_branch set)
@@ -1840,7 +1694,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="feature",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
             base_branch="main",
         )
 
@@ -1853,7 +1706,7 @@ class TestBranchIndexingOptimization:
         ), "Should index only 1 commit when using branch optimization"
 
     @pytest.mark.asyncio
-    async def test_text_search_enabled_extracts_and_saves_comments(
+    async def test_extracts_and_saves_comments(
         self,
         orchestrator: DefaultIndexingOrchestrator,
         text_content_repo: InMemoryTextContentRepository,
@@ -1870,7 +1723,7 @@ class TestBranchIndexingOptimization:
             },
             {
                 "content": "This is an inline comment",
-                "content_type": "inline_comment",
+                "content_type": "single_line_comment",
                 "source_line": 5,
             },
         ]
@@ -1879,8 +1732,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
-            enable_text_search=True,  # Enable text search
         )
 
         # Act
@@ -1893,7 +1744,7 @@ class TestBranchIndexingOptimization:
         # Verify we have both comment types
         docstrings = [tc for tc in all_text_contents if tc.content_type == "docstring"]
         comments = [
-            tc for tc in all_text_contents if tc.content_type == "inline_comment"
+            tc for tc in all_text_contents if tc.content_type == "single_line_comment"
         ]
 
         assert len(docstrings) > 0, "Should have extracted docstrings"
@@ -1912,49 +1763,7 @@ class TestBranchIndexingOptimization:
         ), "Response should track docstring count"
 
     @pytest.mark.asyncio
-    async def test_text_search_disabled_does_not_extract_comments(
-        self,
-        orchestrator: DefaultIndexingOrchestrator,
-        text_content_repo: InMemoryTextContentRepository,
-        parser_service: FakeParserService,
-    ) -> None:
-        """Test that comments are NOT extracted when text search is disabled."""
-        # Arrange: Set up fake comments (should not be used)
-        parser_service.comments_to_return = [
-            {
-                "content": "This comment should not be saved",
-                "content_type": "inline_comment",
-                "source_line": 1,
-            },
-        ]
-
-        request = IndexRepositoryRequest(
-            repository_path=Path("/repos/test-repo"),
-            branch="main",
-            languages=["python"],
-            strategy=IndexingStrategy.FULL,
-            enable_text_search=False,  # Disable text search
-        )
-
-        # Act
-        response = await orchestrator.index_repository(request)
-
-        # Assert: NO text contents should be saved
-        all_text_contents = text_content_repo.get_all()
-        assert (
-            len(all_text_contents) == 0
-        ), "Should NOT have saved text contents when disabled"
-
-        # Verify response shows zero text content counts
-        assert (
-            response.comments_indexed == 0
-        ), "Response should show 0 comments when disabled"
-        assert (
-            response.docstrings_indexed == 0
-        ), "Response should show 0 docstrings when disabled"
-
-    @pytest.mark.asyncio
-    async def test_commit_messages_indexed_when_text_search_enabled(
+    async def test_commit_messages_indexed(
         self,
         orchestrator: DefaultIndexingOrchestrator,
         text_content_repo: InMemoryTextContentRepository,
@@ -1969,8 +1778,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
-            enable_text_search=True,
         )
 
         # Act
@@ -2007,40 +1814,48 @@ class TestBranchIndexingOptimization:
         ), "Response should track commit message count"
 
     @pytest.mark.asyncio
-    async def test_commit_messages_not_indexed_when_text_search_disabled(
+    async def test_existing_commit_message_not_duplicated(
         self,
         orchestrator: DefaultIndexingOrchestrator,
         text_content_repo: InMemoryTextContentRepository,
+        git_service: FakeGitService,
     ) -> None:
-        """Test that commit messages are NOT indexed when text search is disabled."""
+        """Test that re-indexing does not duplicate commit messages.
+
+        When a commit already exists in the database, its message should NOT
+        be re-indexed. This prevents inflated search result counts.
+        """
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
-            enable_text_search=False,  # Disabled
         )
 
-        # Act
-        response = await orchestrator.index_repository(request)
+        # Act: Index once
+        await orchestrator.index_repository(request)
 
-        # Assert: NO commit messages should be saved
+        # Verify initial state: 2 commit messages (one per commit)
         all_text_contents = text_content_repo.get_all()
-        commit_messages = [
+        commit_messages_after_first = [
             tc for tc in all_text_contents if tc.source_type == "commit_message"
         ]
+        assert len(commit_messages_after_first) == 2
 
-        assert (
-            len(commit_messages) == 0
-        ), "Should NOT have saved commit messages when disabled"
+        # Act: Index again (same commits will be found as existing)
+        await orchestrator.index_repository(request)
 
-        # Verify response shows zero commit messages
-        assert (
-            response.commit_messages_indexed == 0
-        ), "Response should show 0 commit messages when disabled"
+        # Assert: Still only 2 commit messages, NOT 4
+        all_text_contents = text_content_repo.get_all()
+        commit_messages_after_second = [
+            tc for tc in all_text_contents if tc.source_type == "commit_message"
+        ]
+        assert len(commit_messages_after_second) == 2, (
+            f"Expected 2 commit messages after re-indexing, "
+            f"got {len(commit_messages_after_second)} (duplicates were created)"
+        )
 
     @pytest.mark.asyncio
-    async def test_non_code_files_indexed_when_text_search_enabled(
+    async def test_non_code_files_indexed(
         self,
         repository_adapter: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
@@ -2057,18 +1872,18 @@ class TestBranchIndexingOptimization:
 
         git_service = FakeGitService(
             commits=[
-                {
-                    "hash": "abc123",
-                    "short_hash": "abc123",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "message": "Add docs",
-                    "parent_hashes": [],
-                }
+                CommitInfo(
+                    hash="abc123",
+                    short_hash="abc123",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 1, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 1, 0, 0, 0),
+                    message="Add docs",
+                    parent_hashes=[],
+                )
             ]
         )
         # Add non-code files to the commit
@@ -2076,11 +1891,11 @@ class TestBranchIndexingOptimization:
             "abc123": ["README.md", "config.yaml", "Dockerfile"]
         }
         git_service.changed_files_in_commit = {
-            "abc123": {
-                "added": ["README.md", "config.yaml", "Dockerfile"],
-                "modified": [],
-                "deleted": [],
-            }
+            "abc123": ChangedFiles(
+                added=["README.md", "config.yaml", "Dockerfile"],
+                modified=[],
+                deleted=[],
+            )
         }
 
         orchestrator = DefaultIndexingOrchestrator(
@@ -2093,14 +1908,13 @@ class TestBranchIndexingOptimization:
             text_content_repo=text_content_repo,
             git_service=git_service,
             parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
         )
 
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            strategy=IndexingStrategy.FULL,
-            enable_text_search=True,
         )
 
         # Act
@@ -2128,82 +1942,3 @@ class TestBranchIndexingOptimization:
         assert (
             response.non_code_files_indexed >= 3
         ), "Response should track non-code files indexed"
-
-    @pytest.mark.asyncio
-    async def test_non_code_files_not_indexed_when_text_search_disabled(
-        self,
-        repository_adapter: InMemoryRepositoryRepository,
-        commit_repo: InMemoryCommitRepository,
-        file_repo: InMemoryFileRepository,
-        symbol_repo: InMemorySymbolRepository,
-        reference_repo: InMemoryReferenceRepository,
-        index_status_repo: InMemoryIndexStatusRepository,
-        text_content_repo: InMemoryTextContentRepository,
-        parser_service: FakeParserService,
-    ) -> None:
-        """Test that non-code files are NOT indexed when text search is disabled."""
-        # Arrange: Create a git service with non-code files
-        from datetime import datetime
-
-        git_service = FakeGitService(
-            commits=[
-                {
-                    "hash": "abc123",
-                    "short_hash": "abc123",
-                    "author_name": "Test User",
-                    "author_email": "test@example.com",
-                    "author_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "committer_name": "Test User",
-                    "committer_email": "test@example.com",
-                    "commit_date": datetime(2024, 1, 1, 0, 0, 0),
-                    "message": "Add docs",
-                    "parent_hashes": [],
-                }
-            ]
-        )
-        git_service.files_in_commit = {"abc123": ["README.md", "config.yaml"]}
-        git_service.changed_files_in_commit = {
-            "abc123": {
-                "added": ["README.md", "config.yaml"],
-                "modified": [],
-                "deleted": [],
-            }
-        }
-
-        orchestrator = DefaultIndexingOrchestrator(
-            repository_repo=repository_adapter,
-            commit_repo=commit_repo,
-            file_repo=file_repo,
-            symbol_repo=symbol_repo,
-            reference_repo=reference_repo,
-            index_status_repo=index_status_repo,
-            text_content_repo=text_content_repo,
-            git_service=git_service,
-            parser_service=parser_service,
-        )
-
-        request = IndexRepositoryRequest(
-            repository_path=Path("/repos/test-repo"),
-            branch="main",
-            languages=["python"],
-            strategy=IndexingStrategy.FULL,
-            enable_text_search=False,  # Disabled
-        )
-
-        # Act
-        response = await orchestrator.index_repository(request)
-
-        # Assert: NO file content should be saved
-        all_text_contents = text_content_repo.get_all()
-        file_contents = [
-            tc for tc in all_text_contents if tc.source_type == "file_content"
-        ]
-
-        assert (
-            len(file_contents) == 0
-        ), "Should NOT have indexed non-code files when disabled"
-
-        # Verify response shows zero non-code files
-        assert (
-            response.non_code_files_indexed == 0
-        ), "Response should show 0 non-code files when disabled"

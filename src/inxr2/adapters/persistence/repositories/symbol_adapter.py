@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....application.ports.repositories import SymbolRepositoryPort
+from ....application.ports.repositories import CopySymbolsResult, SymbolRepositoryPort
 from ....domain.entities import Symbol
 from ..mappers import SymbolMapper
 from ..models.file import FileModel
@@ -211,7 +211,7 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         target_file_id: int,
         target_commit_id: int,
         target_repository_id: int,
-    ) -> int:
+    ) -> CopySymbolsResult:
         """Copy all symbols from source file to target file.
 
         Creates new symbol records with the target file/commit IDs while
@@ -232,7 +232,7 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         source_symbols = list(result.scalars().all())
 
         if not source_symbols:
-            return 0
+            return CopySymbolsResult(count=0, id_mapping={})
 
         # Track source symbols that have parents (for second pass)
         symbols_with_parents: list[tuple[int, int]] = []  # (source_id, parent_id)
@@ -289,4 +289,4 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
                     )
             await self.session.flush()
 
-        return len(source_symbols)
+        return CopySymbolsResult(count=len(source_symbols), id_mapping=old_to_new_id)

@@ -51,6 +51,18 @@ class PostgresRepositoryAdapter(RepositoryPort):
 
         return self.mapper.to_domain(model) if model else None
 
+    async def find_by_ids(self, repository_ids: list[int]) -> list[Repository]:
+        """Find multiple repositories by IDs in a single query."""
+        if not repository_ids:
+            return []
+
+        result = await self.session.execute(
+            select(RepositoryModel).where(RepositoryModel.id.in_(repository_ids))
+        )
+        models = result.scalars().all()
+
+        return [self.mapper.to_domain(model) for model in models]
+
     async def find_by_name(self, name: str) -> Repository | None:
         """Find repository by unique name."""
         result = await self.session.execute(

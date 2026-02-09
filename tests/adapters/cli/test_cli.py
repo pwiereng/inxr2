@@ -46,25 +46,19 @@ class TestIndexCommands:
         """Test index help command."""
         result = runner.invoke(main, ["index", "--help"])
         assert result.exit_code == 0
-        assert "full" in result.output
-        assert "incremental" in result.output
+        # Index command now runs directly (no "full" subcommand needed)
+        assert "--config" in result.output
+        assert "--path" in result.output
         assert "status" in result.output
 
     def test_index_full_help(self, runner: CliRunner) -> None:
         """Test index full help command."""
-        result = runner.invoke(main, ["index", "full", "--help"])
+        result = runner.invoke(main, ["index", "--help"])
         assert result.exit_code == 0
         assert "--path" in result.output
         assert "--branch" in result.output
         assert "--languages" in result.output
         assert "--verbose" in result.output
-
-    def test_index_incremental_help(self, runner: CliRunner) -> None:
-        """Test index incremental help command."""
-        result = runner.invoke(main, ["index", "incremental", "--help"])
-        assert result.exit_code == 0
-        assert "--path" in result.output
-        assert "--branch" in result.output
 
     def test_index_status_help(self, runner: CliRunner) -> None:
         """Test index status help command."""
@@ -74,7 +68,7 @@ class TestIndexCommands:
 
     def test_index_full_missing_path_or_config(self, runner: CliRunner) -> None:
         """Test index full without path or config."""
-        result = runner.invoke(main, ["index", "full"])
+        result = runner.invoke(main, ["index"])
         assert result.exit_code != 0
         assert (
             "--path or --config" in result.output
@@ -83,7 +77,7 @@ class TestIndexCommands:
 
     def test_index_full_invalid_path(self, runner: CliRunner) -> None:
         """Test index full with invalid path."""
-        result = runner.invoke(main, ["index", "full", "--path", "/nonexistent/path"])
+        result = runner.invoke(main, ["index", "--path", "/nonexistent/path"])
         assert result.exit_code != 0
 
     def test_index_full_not_git_repo(self, runner: CliRunner) -> None:
@@ -92,19 +86,19 @@ class TestIndexCommands:
             # Create a directory that's not a git repo
             Path("not-a-repo").mkdir()
 
-            result = runner.invoke(main, ["index", "full", "--path", "not-a-repo"])
+            result = runner.invoke(main, ["index", "--path", "not-a-repo"])
             assert result.exit_code != 0
             assert "No .git directory" in result.output
 
     def test_index_full_days_must_be_positive(self, runner: CliRunner) -> None:
         """Test that --days rejects zero or negative values."""
         # Test zero
-        result = runner.invoke(main, ["index", "full", "--path", ".", "--days", "0"])
+        result = runner.invoke(main, ["index", "--path", ".", "--days", "0"])
         assert result.exit_code != 0
         assert "positive integer" in result.output.lower()
 
         # Test negative
-        result = runner.invoke(main, ["index", "full", "--path", ".", "--days", "-5"])
+        result = runner.invoke(main, ["index", "--path", ".", "--days", "-5"])
         assert result.exit_code != 0
         assert "positive integer" in result.output.lower()
 
@@ -267,7 +261,7 @@ indexing:
         """Test that branches without recent commits are skipped when --days is used."""
         result = runner.invoke(
             main,
-            ["index", "full", "--config", str(config_file), "--days", "7"],
+            ["index", "--config", str(config_file), "--days", "7"],
             catch_exceptions=False,
         )
 
@@ -284,7 +278,7 @@ indexing:
         """Test that all branches are indexed when --days is not used."""
         result = runner.invoke(
             main,
-            ["index", "full", "--config", str(config_file)],
+            ["index", "--config", str(config_file)],
             catch_exceptions=False,
         )
 
@@ -299,7 +293,7 @@ indexing:
         """Test that the primary branch (first in config) is always indexed even with --days."""
         result = runner.invoke(
             main,
-            ["index", "full", "--config", str(config_file), "--days", "7"],
+            ["index", "--config", str(config_file), "--days", "7"],
             catch_exceptions=False,
         )
 
@@ -324,7 +318,7 @@ indexing:
         """Test that primary branch uses --days filter when it has recent commits."""
         result = runner.invoke(
             main,
-            ["index", "full", "--config", str(config_file), "--days", "7"],
+            ["index", "--config", str(config_file), "--days", "7"],
             catch_exceptions=False,
         )
 
@@ -401,7 +395,7 @@ indexing:
         """Test that primary branch falls back to HEAD only when no recent commits."""
         result = runner.invoke(
             main,
-            ["index", "full", "--config", str(config_file_primary_old), "--days", "7"],
+            ["index", "--config", str(config_file_primary_old), "--days", "7"],
             catch_exceptions=False,
         )
 

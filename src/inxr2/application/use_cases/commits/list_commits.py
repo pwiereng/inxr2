@@ -10,6 +10,7 @@ from typing import Protocol
 from ....domain.entities import Commit
 from ....domain.exceptions import RepositoryNotFound
 from ...ports.repositories import CommitRepositoryPort, RepositoryPort
+from ...ports.services import CommitInfo
 
 
 class GitCommitInfoProtocol(Protocol):
@@ -19,7 +20,7 @@ class GitCommitInfoProtocol(Protocol):
     The concrete GitService class implements these methods.
     """
 
-    def get_commit_info(self, repo_path: Path, commit_hash: str) -> dict[str, str]:
+    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
         """Get commit information including message and author.
 
         Args:
@@ -27,8 +28,7 @@ class GitCommitInfoProtocol(Protocol):
             commit_hash: The commit hash to look up
 
         Returns:
-            Dictionary with commit info including 'message', 'author_name',
-            'author_email', 'committer_name', 'committer_email', 'parent_hashes'
+            CommitInfo with commit metadata
         """
         ...
 
@@ -157,9 +157,9 @@ class ListCommitsUseCase:
                 info = self._git_service.get_commit_info(
                     repo_path, commit.commit_hash.value
                 )
-                message = info.get("message", "")[:200]  # Truncate for list view
-                author_name = info.get("author_name", "")
-                author_email = info.get("author_email", "")
+                message = info.message[:200]  # Truncate for list view
+                author_name = info.author_name
+                author_email = info.author_email
             except Exception:
                 # Git query failed - use empty values
                 message = ""

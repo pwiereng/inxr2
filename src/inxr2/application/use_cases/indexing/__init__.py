@@ -11,10 +11,18 @@ from .optimize_file_indexing import (
     OptimizeFileIndexingUseCase,
 )
 from .orchestrator import (
-    IncrementalIndexRequest,
-    IndexingStrategy,
     IndexRepositoryRequest,
     IndexRepositoryResponse,
+)
+from .process_commit import (
+    ProcessCommitRequest,
+    ProcessCommitResult,
+    ProcessCommitUseCase,
+)
+from .process_file import (
+    ProcessFileRequest,
+    ProcessFileResult,
+    ProcessFileUseCase,
 )
 from .resolve_references import (
     ResolveReferencesRequest,
@@ -26,13 +34,17 @@ __all__ = [
     "GetIndexStatusRequest",
     "GetIndexStatusResponse",
     "GetIndexStatusUseCase",
-    "IncrementalIndexRequest",
-    "IndexingStrategy",
     "IndexRepositoryRequest",
     "IndexRepositoryResponse",
     "OptimizationResult",
     "OptimizeFileIndexingRequest",
     "OptimizeFileIndexingUseCase",
+    "ProcessCommitRequest",
+    "ProcessCommitResult",
+    "ProcessCommitUseCase",
+    "ProcessFileRequest",
+    "ProcessFileResult",
+    "ProcessFileUseCase",
     "ResolveReferencesRequest",
     "ResolveReferencesResponse",
     "ResolveReferencesUseCase",

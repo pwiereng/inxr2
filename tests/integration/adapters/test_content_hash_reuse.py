@@ -22,6 +22,7 @@ from inxr2.adapters.persistence.repositories.repository_adapter import (
 from inxr2.adapters.persistence.repositories.symbol_adapter import (
     PostgresSymbolRepository,
 )
+from inxr2.application.ports.repositories import CopySymbolsResult
 from inxr2.domain.entities import Commit, File, Reference, Repository, Symbol
 from inxr2.domain.value_objects import CommitHash, ReferenceType, SymbolKind
 
@@ -309,15 +310,17 @@ class TestCopySymbolsToFile:
         await symbol_adapter.save_many(symbols)
 
         # Act
-        copied_count = await symbol_adapter.copy_symbols_to_file(
+        copy_result = await symbol_adapter.copy_symbols_to_file(
             source_file_id=source_file.id,
             target_file_id=saved_target_file.id,
             target_commit_id=target_commit.id,
             target_repository_id=repo.id,
         )
 
-        # Assert
-        assert copied_count == 2
+        # Assert - returns CopySymbolsResult with count and id_mapping
+        assert isinstance(copy_result, CopySymbolsResult)
+        assert copy_result.count == 2
+        assert len(copy_result.id_mapping) == 2
 
         # Verify symbols were copied to target file
         target_symbols = await symbol_adapter.list_by_file(saved_target_file.id)
@@ -360,7 +363,7 @@ class TestCopySymbolsToFile:
         symbol_adapter = PostgresSymbolRepository(db_session)
 
         # Act
-        copied_count = await symbol_adapter.copy_symbols_to_file(
+        copy_result = await symbol_adapter.copy_symbols_to_file(
             source_file_id=source_file.id,
             target_file_id=saved_target_file.id,
             target_commit_id=target_commit.id,
@@ -368,7 +371,9 @@ class TestCopySymbolsToFile:
         )
 
         # Assert
-        assert copied_count == 0
+        assert isinstance(copy_result, CopySymbolsResult)
+        assert copy_result.count == 0
+        assert copy_result.id_mapping == {}
         target_symbols = await symbol_adapter.list_by_file(saved_target_file.id)
         assert len(target_symbols) == 0
 
@@ -433,7 +438,7 @@ class TestCopySymbolsToFile:
         await symbol_adapter.save(child_symbol)
 
         # Act
-        copied_count = await symbol_adapter.copy_symbols_to_file(
+        copy_result = await symbol_adapter.copy_symbols_to_file(
             source_file_id=source_file.id,
             target_file_id=saved_target_file.id,
             target_commit_id=target_commit.id,
@@ -441,7 +446,7 @@ class TestCopySymbolsToFile:
         )
 
         # Assert
-        assert copied_count == 2
+        assert copy_result.count == 2
 
         # Verify symbols were copied and parent reference was remapped
         target_symbols = await symbol_adapter.list_by_file(saved_target_file.id)
@@ -625,10 +630,119 @@ class TestCopyReferencesToFile:
         target_refs = await reference_adapter.list_by_file(saved_target_file.id)
         assert len(target_refs) == 0
 
-    async def test_copy_references_clears_target_symbol_id(
+    async def test_copy_references_remaps_target_symbol_id(
         self, db_session: AsyncSession
     ) -> None:
-        """Test that copied references have target_symbol_id set to NULL."""
+        """Test that copied references remap target_symbol_id via mapping."""
+        # Arrange
+        repo, source_commit, target_commit, source_file = await self._create_test_data(
+            db_session
+        )
+        assert repo.id is not None
+        assert source_commit.id is not None
+        assert target_commit.id is not None
+        assert source_file.id is not None
+
+        # Create symbols in the source file
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        symbol = Symbol(
+            file_id=source_file.id,
+            repository_id=repo.id,
+            commit_id=source_commit.id,
+            name="target_func",
+            kind=SymbolKind.FUNCTION,
+            start_line=1,
+            start_column=0,
+            end_line=5,
+            end_column=0,
+        )
+        saved_symbol = await symbol_adapter.save(symbol)
+        assert saved_symbol.id is not None
+
+        # Create target file
+        file_adapter = PostgresFileRepository(db_session)
+        target_file = File(
+            repository_id=repo.id,
+            commit_id=target_commit.id,
+            path="src/caller.py",
+            content_hash="caller_content",
+            size_bytes=100,
+            language="python",
+        )
+        saved_target_file = await file_adapter.save(target_file)
+        assert saved_target_file.id is not None
+
+        # Copy symbols to get the mapping
+        copy_result = await symbol_adapter.copy_symbols_to_file(
+            source_file_id=source_file.id,
+            target_file_id=saved_target_file.id,
+            target_commit_id=target_commit.id,
+            target_repository_id=repo.id,
+        )
+        assert saved_symbol.id in copy_result.id_mapping
+
+        # Create references: one resolved, one unresolved
+        reference_adapter = PostgresReferenceRepository(db_session)
+        resolved_ref = Reference(
+            source_file_id=source_file.id,
+            repository_id=repo.id,
+            commit_id=source_commit.id,
+            source_line=10,
+            source_column=4,
+            source_end_column=15,
+            reference_text="target_func",
+            reference_type=ReferenceType.CALL,
+            target_symbol_id=saved_symbol.id,  # Already resolved
+        )
+        unresolved_ref = Reference(
+            source_file_id=source_file.id,
+            repository_id=repo.id,
+            commit_id=source_commit.id,
+            source_line=20,
+            source_column=4,
+            source_end_column=18,
+            reference_text="unknown_func",
+            reference_type=ReferenceType.CALL,
+            target_symbol_id=None,  # Unresolved
+        )
+        await reference_adapter.save(resolved_ref)
+        await reference_adapter.save(unresolved_ref)
+
+        # Act - copy with symbol_id_mapping
+        copied_count = await reference_adapter.copy_references_to_file(
+            source_file_id=source_file.id,
+            target_file_id=saved_target_file.id,
+            target_commit_id=target_commit.id,
+            target_repository_id=repo.id,
+            symbol_id_mapping=copy_result.id_mapping,
+        )
+
+        # Assert
+        assert copied_count == 2
+
+        target_refs = await reference_adapter.list_by_file(saved_target_file.id)
+        assert len(target_refs) == 2
+
+        # Find the resolved and unresolved copied references
+        resolved_copy = next(
+            r for r in target_refs if r.reference_text == "target_func"
+        )
+        unresolved_copy = next(
+            r for r in target_refs if r.reference_text == "unknown_func"
+        )
+
+        # Resolved ref should have remapped target_symbol_id (new symbol ID)
+        new_symbol_id = copy_result.id_mapping[saved_symbol.id]
+        assert resolved_copy.target_symbol_id == new_symbol_id
+        assert resolved_copy.target_symbol_id != saved_symbol.id  # Not the old ID
+
+        # Unresolved ref should still be NULL
+        assert unresolved_copy.target_symbol_id is None
+
+    async def test_copy_references_without_mapping_clears_target(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that without mapping, target_symbol_id is set to NULL (backward compat)."""
         # Arrange
         repo, source_commit, target_commit, source_file = await self._create_test_data(
             db_session
@@ -682,7 +796,7 @@ class TestCopyReferencesToFile:
         )
         await reference_adapter.save(ref)
 
-        # Act
+        # Act - copy WITHOUT mapping (backward compat)
         copied_count = await reference_adapter.copy_references_to_file(
             source_file_id=source_file.id,
             target_file_id=saved_target_file.id,

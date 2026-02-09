@@ -1,9 +1,9 @@
 """Symbol kind enumeration."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class SymbolKind(str, Enum):
+class SymbolKind(StrEnum):
     """
     Type of code symbol.
 

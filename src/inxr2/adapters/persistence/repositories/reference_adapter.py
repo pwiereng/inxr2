@@ -301,81 +301,146 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
     ) -> int:
         """Resolve a batch of unlinked references.
 
-        Uses a subquery to limit the update to batch_size references at a time.
+        Uses a three-pass UPDATE ... FROM with pre-computed lookup tables.
+        Each lookup groups symbols by name (small result), then joins refs
+        against it inside the FROM subquery. LIMIT applies after the join
+        so only matchable refs are selected — unresolvable refs (builtins)
+        are naturally excluded.
 
         Resolution priority (deterministic):
         1. Same file - most likely the correct local symbol
         2. Same language - cross-file but same language preferred
-        3. Symbol ID - deterministic tiebreaker for consistency
+        3. Lowest symbol ID - deterministic tiebreaker for consistency
 
         This ensures clicking on a reference always goes to the same symbol,
         rather than an arbitrary one when multiple symbols share the same name.
         """
+        # Build SQL fragments for commit-aware vs cross-commit mode.
+        # Each pass has its own SELECT/GROUP BY/JOIN fragments.
         if commit_aware:
-            # Time travel mode: only match references to symbols from same commit
-            # Uses correlated subquery to pick best match per reference
-            result = await self.session.execute(
-                text("""
-                    UPDATE "references" r
-                    SET target_symbol_id = (
-                        SELECT s.id
-                        FROM symbols s
-                        JOIN files sf ON s.file_id = sf.id
-                        JOIN files rf ON r.source_file_id = rf.id
-                        WHERE s.name = r.reference_text
-                          AND s.repository_id = r.repository_id
-                          AND s.commit_id = r.commit_id
-                        ORDER BY
-                            (s.file_id = r.source_file_id) DESC,
-                            (sf.language = rf.language) DESC,
-                            s.id
-                        LIMIT 1
-                    )
-                    WHERE r.id IN (
-                        SELECT r2.id FROM "references" r2
-                        JOIN symbols s2 ON r2.reference_text = s2.name
-                            AND r2.repository_id = s2.repository_id
-                            AND r2.commit_id = s2.commit_id
-                        WHERE r2.repository_id = :repo_id
-                          AND r2.target_symbol_id IS NULL
-                        LIMIT :batch_size
-                    )
-                """),
-                {"repo_id": repository_id, "batch_size": batch_size},
+            sf_select = "s.name, s.file_id, s.commit_id"
+            sf_group = "s.name, s.file_id, s.commit_id"
+            sf_best_join = (
+                "ON r.reference_text = best.name"
+                " AND r.source_file_id = best.file_id"
+                " AND r.commit_id = best.commit_id"
+            )
+            sl_select = "s.name, f.language, s.commit_id"
+            sl_group = "s.name, f.language, s.commit_id"
+            sl_best_join = (
+                "ON r.reference_text = best.name"
+                " AND rf.language = best.language"
+                " AND r.commit_id = best.commit_id"
+            )
+            cf_select = "s.name, s.commit_id"
+            cf_group = "s.name, s.commit_id"
+            cf_best_join = (
+                "ON r.reference_text = best.name" " AND r.commit_id = best.commit_id"
             )
         else:
-            # Cross-commit mode: match references to any symbol in repository
-            # Uses correlated subquery to pick best match per reference
-            result = await self.session.execute(
-                text("""
-                    UPDATE "references" r
-                    SET target_symbol_id = (
-                        SELECT s.id
-                        FROM symbols s
-                        JOIN files sf ON s.file_id = sf.id
-                        JOIN files rf ON r.source_file_id = rf.id
-                        WHERE s.name = r.reference_text
-                          AND s.repository_id = r.repository_id
-                        ORDER BY
-                            (s.file_id = r.source_file_id) DESC,
-                            (sf.language = rf.language) DESC,
-                            s.id
-                        LIMIT 1
-                    )
-                    WHERE r.id IN (
-                        SELECT r2.id FROM "references" r2
-                        JOIN symbols s2 ON r2.reference_text = s2.name
-                            AND r2.repository_id = s2.repository_id
-                        WHERE r2.repository_id = :repo_id
-                          AND r2.target_symbol_id IS NULL
-                        LIMIT :batch_size
-                    )
-                """),
-                {"repo_id": repository_id, "batch_size": batch_size},
+            sf_select = "s.name, s.file_id"
+            sf_group = "s.name, s.file_id"
+            sf_best_join = (
+                "ON r.reference_text = best.name" " AND r.source_file_id = best.file_id"
             )
+            sl_select = "s.name, f.language"
+            sl_group = "s.name, f.language"
+            sl_best_join = (
+                "ON r.reference_text = best.name" " AND rf.language = best.language"
+            )
+            cf_select = "s.name"
+            cf_group = "s.name"
+            cf_best_join = "ON r.reference_text = best.name"
+
+        total_resolved = 0
+
+        # Pass 1: Same-file resolution (preferred)
+        # Pre-computes best symbol per (name, file_id), then joins refs
+        # against it. LIMIT applies after join — only matchable refs selected.
+        result = await self.session.execute(
+            text(f"""
+                UPDATE "references"
+                SET target_symbol_id = sub.target_id
+                FROM (
+                    SELECT r.id AS ref_id, best.min_id AS target_id
+                    FROM "references" r
+                    JOIN (
+                        SELECT {sf_select}, MIN(s.id) AS min_id
+                        FROM symbols s
+                        WHERE s.repository_id = :repo_id
+                        GROUP BY {sf_group}
+                    ) best {sf_best_join}
+                    WHERE r.repository_id = :repo_id
+                      AND r.target_symbol_id IS NULL
+                    LIMIT :batch_size
+                ) sub
+                WHERE "references".id = sub.ref_id
+            """),
+            {"repo_id": repository_id, "batch_size": batch_size},
+        )
+        pass1_count = result.rowcount or 0  # type: ignore[attr-defined]
+        total_resolved += pass1_count
+
+        # Pass 2: Same-language cross-file resolution
+        # Joins files table in the lookup to get language. Joins refs with
+        # their source file to match language. Small lookup (GROUP BY name,
+        # language) avoids the per-row JOIN that made the old approach slow.
+        remaining = batch_size - total_resolved
+        if remaining > 0:
+            result = await self.session.execute(
+                text(f"""
+                    UPDATE "references"
+                    SET target_symbol_id = sub.target_id
+                    FROM (
+                        SELECT r.id AS ref_id, best.min_id AS target_id
+                        FROM "references" r
+                        JOIN files rf ON r.source_file_id = rf.id
+                        JOIN (
+                            SELECT {sl_select}, MIN(s.id) AS min_id
+                            FROM symbols s
+                            JOIN files f ON s.file_id = f.id
+                            WHERE s.repository_id = :repo_id
+                            GROUP BY {sl_group}
+                        ) best {sl_best_join}
+                        WHERE r.repository_id = :repo_id
+                          AND r.target_symbol_id IS NULL
+                        LIMIT :batch_size
+                    ) sub
+                    WHERE "references".id = sub.ref_id
+                """),
+                {"repo_id": repository_id, "batch_size": remaining},
+            )
+            total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
+
+        # Pass 3: Any-match cross-file resolution (lowest ID fallback)
+        # Pre-computes best symbol per name, then joins remaining unresolved refs.
+        remaining = batch_size - total_resolved
+        if remaining > 0:
+            result = await self.session.execute(
+                text(f"""
+                    UPDATE "references"
+                    SET target_symbol_id = sub.target_id
+                    FROM (
+                        SELECT r.id AS ref_id, best.min_id AS target_id
+                        FROM "references" r
+                        JOIN (
+                            SELECT {cf_select}, MIN(s.id) AS min_id
+                            FROM symbols s
+                            WHERE s.repository_id = :repo_id
+                            GROUP BY {cf_group}
+                        ) best {cf_best_join}
+                        WHERE r.repository_id = :repo_id
+                          AND r.target_symbol_id IS NULL
+                        LIMIT :batch_size
+                    ) sub
+                    WHERE "references".id = sub.ref_id
+                """),
+                {"repo_id": repository_id, "batch_size": remaining},
+            )
+            total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
 
         await self.session.flush()
-        return result.rowcount or 0  # type: ignore[attr-defined]
+        return total_resolved
 
     async def resolve_unlinked_references(
         self, repository_id: int, commit_aware: bool = False
@@ -433,12 +498,14 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         target_file_id: int,
         target_commit_id: int,
         target_repository_id: int,
+        symbol_id_mapping: dict[int, int] | None = None,
     ) -> int:
         """Copy all references from source file to target file.
 
         Creates new reference records with the target file/commit IDs while
-        preserving all other reference attributes. target_symbol_id is set to
-        NULL and will be resolved later by resolve_unlinked_references.
+        preserving all other reference attributes. When symbol_id_mapping is
+        provided, already-resolved target_symbol_id values are remapped via
+        the mapping instead of being set to NULL.
         """
         # Fetch source references
         result = await self.session.execute(
@@ -453,28 +520,35 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
 
         # Create new references with updated file/commit/repository IDs
         now = datetime.now(UTC).replace(tzinfo=None)
-        new_refs = [
-            ReferenceModel(
-                repository_id=target_repository_id,
-                commit_id=target_commit_id,
-                source_file_id=target_file_id,
-                source_line=ref.source_line,
-                source_column=ref.source_column,
-                source_end_column=ref.source_end_column,
-                reference_text=ref.reference_text,
-                reference_type=ref.reference_type,
-                is_definition=ref.is_definition,
-                is_write=ref.is_write,
-                resolution_confidence=ref.resolution_confidence,
-                extra_metadata=ref.extra_metadata,
-                # target_symbol_id set to NULL for later resolution
-                target_symbol_id=None,
-                target_repository_id=None,
-                # Explicitly set indexed_at for SQLite compatibility in tests
-                indexed_at=now,
+        new_refs: list[ReferenceModel] = []
+        for ref in source_refs:
+            # Remap target_symbol_id if mapping is available
+            old_target = ref.target_symbol_id
+            if symbol_id_mapping and old_target and old_target in symbol_id_mapping:
+                new_target_symbol_id = symbol_id_mapping[old_target]
+            else:
+                new_target_symbol_id = None
+
+            new_refs.append(
+                ReferenceModel(
+                    repository_id=target_repository_id,
+                    commit_id=target_commit_id,
+                    source_file_id=target_file_id,
+                    source_line=ref.source_line,
+                    source_column=ref.source_column,
+                    source_end_column=ref.source_end_column,
+                    reference_text=ref.reference_text,
+                    reference_type=ref.reference_type,
+                    is_definition=ref.is_definition,
+                    is_write=ref.is_write,
+                    resolution_confidence=ref.resolution_confidence,
+                    extra_metadata=ref.extra_metadata,
+                    target_symbol_id=new_target_symbol_id,
+                    target_repository_id=None,
+                    # Explicitly set indexed_at for SQLite compatibility in tests
+                    indexed_at=now,
+                )
             )
-            for ref in source_refs
-        ]
 
         self.session.add_all(new_refs)
         await self.session.flush()

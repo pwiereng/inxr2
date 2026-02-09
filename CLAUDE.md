@@ -435,7 +435,7 @@ qa-agent/                      # Browser automation for exploratory testing
 ## Important Files
 
 - **DESIGN.md** - Complete design document with architecture decisions
-- **IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.12)
+- **docs/archived/IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.12)
 - **CONTRIBUTING.md** - Coding standards, testing philosophy, git workflow
 - **docs/database-schema.md** - Complete database schema with design rationale
 - **qa-agent/README.md** - QA agent API documentation for exploratory testing
@@ -636,9 +636,9 @@ Recent achievements:
 **Phase 1.5: CLI Indexing Engine** - ✅ COMPLETED (2026-01-10)
 
 Recent achievements:
-- CLI framework with Click (`inxr2 index full|incremental|status`)
+- CLI framework with Click (`inxr2 index|status`)
 - Git integration via GitPython (commit tracking, file diffs)
-- Full and incremental indexing workflows
+- Unified indexing workflow (always incremental)
 - Rich progress bars for excellent UX
 - Database adapters: SymbolRepository, ReferenceRepository, IndexStatusRepository
 - Successfully indexed INXR2 itself: 108 files, 440 symbols, 473 references
@@ -697,7 +697,7 @@ Recent achievements:
 
 **Next Phase:** 1.12 Remote Repository Support - Clone and index repositories from URLs
 
-See `IMPLEMENTATION_PLAN.md` for complete roadmap.
+See `docs/archived/IMPLEMENTATION_PLAN.md` for complete roadmap.
 
 ## Special Considerations
 
@@ -752,14 +752,14 @@ Test repositories live in a **separate location** (`../test-repos`, mounted as `
 
 ```bash
 # ✅ CORRECT: Index via config file
-inxr2 index full --config config.yaml --repo inxr2
+inxr2 index --config config.yaml --repo inxr2
 
 # ✅ CORRECT: Index all configured repos
-inxr2 index full --config config.yaml
+inxr2 index --config config.yaml
 
 # ❌ WRONG: Never index working directory
-inxr2 index full --path /workspace
-inxr2 index full --path .
+inxr2 index --path /workspace
+inxr2 index --path .
 ```
 
 **Why this matters:**
@@ -814,7 +814,7 @@ See `config.yaml` for the current repository configuration.
 ## Getting Help
 
 - **Architecture questions:** See DESIGN.md
-- **Implementation plan:** See IMPLEMENTATION_PLAN.md
+- **Implementation plan:** See docs/archived/IMPLEMENTATION_PLAN.md
 - **Database schema:** See docs/database-schema.md
 - **Coding standards:** See CONTRIBUTING.md
 - **Development tasks:** See README.md
@@ -840,9 +840,8 @@ alembic upgrade head              # Apply migrations
 alembic revision --autogenerate   # Create migration
 
 # Indexing (ALWAYS use config file, NEVER --path /workspace)
-inxr2 index full --config config.yaml              # Index all repos
-inxr2 index full --config config.yaml --repo X     # Index specific repo
-inxr2 index incremental --config config.yaml       # Incremental update
+inxr2 index --config config.yaml              # Index all repos
+inxr2 index --config config.yaml --repo X     # Index specific repo
 
 # Running apps
 inxr2 serve --reload              # Backend

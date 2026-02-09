@@ -1,17 +1,27 @@
 """Search API endpoints for free text search."""
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
-from ....application.use_cases.search import SearchTextRequest
+from ....application.use_cases.search import SearchFilesRequest, SearchTextRequest
+from ....domain.exceptions import CommitNotFound, RepositoryNotFound
+from ....domain.value_objects import QueryMode, TextSearchSourceType
 from ....infrastructure.dependencies import (
-    CommitAdapter,
-    FileAdapter,
-    RepositoryAdapter,
+    SearchFilesUseCaseDep,
     SearchTextUseCaseDep,
 )
 
 router = APIRouter(prefix="/search", tags=["search"])
+
+# Valid values for validation
+VALID_MODES = [m.value for m in QueryMode]
+VALID_SOURCE_TYPES = [s.value for s in TextSearchSourceType]
+
+# Query length limits
+MAX_TEXT_QUERY_LENGTH = 500
+MAX_FILE_QUERY_LENGTH = 200
 
 
 # Response models
@@ -76,8 +86,15 @@ class FileSearchListResponse(BaseModel):
 @router.get("/text", response_model=SearchTextListResponse)
 async def search_text(
     use_case: SearchTextUseCaseDep,
-    q: str = Query(..., description="Search query"),
-    mode: str = Query("keyword", description="Query mode: keyword, phrase, regex"),
+    q: str = Query(
+        ...,
+        min_length=1,
+        max_length=MAX_TEXT_QUERY_LENGTH,
+        description="Search query",
+    ),
+    mode: Literal["keyword", "phrase", "regex"] = Query(
+        "keyword", description="Query mode: keyword, phrase, regex"
+    ),
     repo: int | None = Query(
         None, alias="repository_id", description="Repository ID filter"
     ),
@@ -85,9 +102,9 @@ async def search_text(
     commit: str | None = Query(
         None, alias="commit_hash", description="Commit hash filter"
     ),
-    source_types: list[str] | None = Query(
-        None, description="Source types filter (e.g., comment, docstring)"
-    ),
+    source_types: (
+        list[Literal["comment", "docstring", "commit_message", "file_content"]] | None
+    ) = Query(None, description="Source types filter (e.g., comment, docstring)"),
     languages: list[str] | None = Query(
         None, description="Languages filter (e.g., python, typescript)"
     ),
@@ -129,7 +146,7 @@ async def search_text(
                 repository_id=repo,
                 branch=branch,
                 commit_hash=commit,
-                source_types=source_types,
+                source_types=list(source_types) if source_types else None,
                 languages=languages,
                 limit=limit,
                 offset=offset,
@@ -168,10 +185,13 @@ async def search_text(
 
 @router.get("/files", response_model=FileSearchListResponse)
 async def search_files(
-    file_adapter: FileAdapter,
-    repository_adapter: RepositoryAdapter,
-    commit_adapter: CommitAdapter,
-    q: str = Query(..., min_length=1, description="File name/path search query"),
+    use_case: SearchFilesUseCaseDep,
+    q: str = Query(
+        ...,
+        min_length=1,
+        max_length=MAX_FILE_QUERY_LENGTH,
+        description="File name/path search query",
+    ),
     repository: str | None = Query(None, description="Repository name filter"),
     branch: str | None = Query(None, description="Branch filter"),
     commit_hash: str | None = Query(None, description="Commit hash filter"),
@@ -196,102 +216,37 @@ async def search_files(
     - files: List of matching files with metadata
     - total_count: Number of files returned (at most ``limit``)
     """
-    # Validate: branch/commit_hash require repository to be specified
-    if (branch or commit_hash) and not repository:
-        raise HTTPException(
-            status_code=400,
-            detail="repository parameter is required when using branch or commit_hash",
+    try:
+        response = await use_case.execute(
+            SearchFilesRequest(
+                query=q,
+                repository_name=repository,
+                branch=branch,
+                commit_hash=commit_hash,
+                language=language,
+                limit=limit,
+            )
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    except RepositoryNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    except CommitNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
 
-    # Resolve repository ID from name if provided
-    repository_id: int | None = None
-    if repository:
-        repo = await repository_adapter.find_by_name(repository)
-        if not repo:
-            raise HTTPException(
-                status_code=404, detail=f"Repository '{repository}' not found"
-            )
-        repository_id = repo.id
-
-    # Resolve commit ID from hash if provided
-    commit_id: int | None = None
-    if commit_hash and repository_id:
-        commit = await commit_adapter.find_by_hash(repository_id, commit_hash)
-        if not commit:
-            raise HTTPException(
-                status_code=404, detail=f"Commit '{commit_hash}' not found"
-            )
-        commit_id = commit.id
-    elif branch and repository_id:
-        # If branch is specified but no commit, get latest commit on branch
-        commit = await commit_adapter.find_latest_by_branch(repository_id, branch)
-        if commit:
-            commit_id = commit.id
-
-    # Search files
-    files = await file_adapter.search_by_name(
-        query=q,
-        repository_id=repository_id,
-        commit_id=commit_id,
-        language=language,
-        limit=limit,
-    )
-
-    # Build response with repository names and commit hashes
-    results: list[FileSearchResultResponse] = []
-
-    # Collect unique IDs for lookup (using is not None to handle ID=0 correctly)
-    repo_ids = {f.repository_id for f in files if f.repository_id is not None}
-    commit_ids = {f.commit_id for f in files if f.commit_id is not None}
-
-    # Fetch repositories (N+1 for now; bulk fetch would require new port method)
-    repo_map: dict[int, str] = {}
-    for rid in repo_ids:
-        repo = await repository_adapter.find_by_id(rid)
-        if repo:
-            repo_map[rid] = repo.name
-
-    # Fetch commits (N+1 for now; bulk fetch would require new port method)
-    commit_map: dict[int, str] = {}
-    for cid in commit_ids:
-        commit = await commit_adapter.find_by_id(cid)
-        if commit:
-            commit_map[cid] = commit.commit_hash.value
-
-    for file in files:
-        # Validate required fields - these should always be set for persisted files
-        if file.id is None or file.repository_id is None or file.commit_id is None:
-            raise HTTPException(
-                status_code=500,
-                detail="File search returned incomplete data; this indicates a data integrity issue.",
-            )
-
-        # Validate we have the required metadata
-        if file.repository_id not in repo_map:
-            raise HTTPException(
-                status_code=500,
-                detail="File references unknown repository; data integrity issue.",
-            )
-        if file.commit_id not in commit_map:
-            raise HTTPException(
-                status_code=500,
-                detail="File references unknown commit; data integrity issue.",
-            )
-
-        # Extract filename from path
-        filename = file.path.rsplit("/", 1)[-1] if "/" in file.path else file.path
-
-        results.append(
+    return FileSearchListResponse(
+        files=[
             FileSearchResultResponse(
-                id=file.id,
-                path=file.path,
-                name=filename,
-                language=file.language,
-                repository_id=file.repository_id,
-                repository_name=repo_map[file.repository_id],
-                commit_id=file.commit_id,
-                commit_hash=commit_map[file.commit_id],
+                id=f.id,
+                path=f.path,
+                name=f.name,
+                language=f.language,
+                repository_id=f.repository_id,
+                repository_name=f.repository_name,
+                commit_id=f.commit_id,
+                commit_hash=f.commit_hash,
             )
-        )
-
-    return FileSearchListResponse(files=results, total_count=len(results))
+            for f in response.files
+        ],
+        total_count=response.total_count,
+    )

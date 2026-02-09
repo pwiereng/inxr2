@@ -26,7 +26,7 @@ class TextContent:
         id: Database ID (None for new entities)
         source_end_line: Ending line number (for multi-line content)
         language: Programming language (python, typescript, markdown, etc.)
-        content_type: Specific content type (inline_comment, block_comment, docstring, etc.)
+        content_type: Specific content type (single_line_comment, block_comment, docstring, etc.)
         indexed_at: When this content was indexed
     """
 

@@ -1,5 +1,6 @@
 """PostgreSQL text search implementation."""
 
+import re
 from typing import Any
 
 from sqlalchemy import column, func, select, text
@@ -16,17 +17,65 @@ from ..mappers import TextContentMapper
 from ..models.branch_commit import BranchCommitModel
 from ..models.text_content import TextContentModel
 
+# Regex validation constants
+MAX_REGEX_LENGTH = 500
+# Patterns that can cause catastrophic backtracking (ReDoS)
+DANGEROUS_REGEX_PATTERNS = [
+    r"\(\.\*\)\+",  # (.*)+
+    r"\(\.\+\)\+",  # (.+)+
+    r"\([^)]*\+\)\+",  # (x+)+ pattern
+    r"\([^)]*\*\)\+",  # (x*)+
+    r"\([^)]*\+\)\*",  # (x+)*
+    r"\([^)]*\*\)\*",  # (x*)*
+]
+
+
+def _validate_regex_pattern(pattern: str) -> None:
+    """
+    Validate regex pattern for safety.
+
+    Args:
+        pattern: The regex pattern to validate
+
+    Raises:
+        ValueError: If pattern is invalid or potentially dangerous
+    """
+    # Check length
+    if len(pattern) > MAX_REGEX_LENGTH:
+        raise ValueError(
+            f"Regex pattern too long: {len(pattern)} characters "
+            f"(max {MAX_REGEX_LENGTH})"
+        )
+
+    # Check for dangerous patterns that can cause catastrophic backtracking
+    for dangerous in DANGEROUS_REGEX_PATTERNS:
+        if re.search(dangerous, pattern):
+            raise ValueError(
+                "Regex pattern contains potentially dangerous nested quantifiers "
+                "that could cause performance issues"
+            )
+
+    # Try to compile the regex to catch syntax errors early
+    try:
+        re.compile(pattern)
+    except re.error as e:
+        raise ValueError(f"Invalid regex pattern: {e}") from None
+
 
 class PostgresTextSearch(TextSearchPort):
     """
     PostgreSQL implementation of TextSearchPort.
 
     Uses tsvector and GIN indexes for full-text search with support for:
-    - Keyword search (to_tsquery)
+    - Keyword search (plainto_tsquery - handles raw user input safely)
     - Phrase search (phraseto_tsquery)
     - Regex search (PostgreSQL ~ operator, bypasses tsvector)
 
     Also supports branch filtering via JOIN with branch_commits table.
+
+    Security notes:
+    - Regex patterns are validated for length and dangerous patterns
+    - Keyword queries use plainto_tsquery to safely handle special characters
     """
 
     def __init__(self, session: AsyncSession):
@@ -110,6 +159,7 @@ class PostgresTextSearch(TextSearchPort):
                 TextContentModel.repository_id,
                 TextContentModel.source_file_id,
                 TextContentModel.source_line,
+                TextContentModel.id,
             )
         else:
             # Keyword/phrase mode: order by relevance rank
@@ -120,7 +170,7 @@ class PostgresTextSearch(TextSearchPort):
                     func.ts_rank(content_tsvector, tsquery).label("rank")
                 )
                 .distinct()
-                .order_by(text("rank DESC"))
+                .order_by(text("rank DESC"), TextContentModel.id)
             )
 
         # Apply pagination
@@ -180,6 +230,8 @@ class PostgresTextSearch(TextSearchPort):
             return query_builder.where(content_tsvector.op("@@")(tsquery))
         elif query.mode == QueryMode.REGEX.value:
             # Regex search bypasses tsvector, uses PostgreSQL ~ operator
+            # Validate pattern for safety before sending to database
+            _validate_regex_pattern(query.query)
             return query_builder.where(TextContentModel.content.op("~")(query.query))
         else:
             # Default to keyword search
@@ -195,12 +247,17 @@ class PostgresTextSearch(TextSearchPort):
 
         Returns:
             SQLAlchemy text expression for tsquery
+
+        Notes:
+            - Uses plainto_tsquery for keyword mode to safely handle user input
+              (special characters like :, !, &, |, (, ) are handled automatically)
+            - Uses phraseto_tsquery for phrase mode for exact phrase matching
         """
         if query.mode == QueryMode.PHRASE.value:
             # Use phraseto_tsquery for exact phrase matching
             return func.phraseto_tsquery("english", query.query)
         else:
-            # Use to_tsquery for keyword search (default)
-            # Replace spaces with & for AND operator
-            query_text = " & ".join(query.query.split())
-            return func.to_tsquery("english", query_text)
+            # Use plainto_tsquery for keyword search (default)
+            # This safely handles special characters in user input
+            # (e.g., "TODO: fix" works without crashing on the colon)
+            return func.plainto_tsquery("english", query.query)

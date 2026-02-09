@@ -50,7 +50,7 @@ class SearchTextResultItem:
         source_end_line: End line number
         source_type: Source type (comment, docstring, commit_message, file_content)
         content: The searchable text content
-        content_type: Content type (inline_comment, block_comment, etc.)
+        content_type: Content type (single_line_comment, block_comment, etc.)
         language: Programming language
         commit_hash: Commit hash
         branch: Branch name (if applicable)
@@ -172,36 +172,55 @@ class SearchTextUseCase:
         # Execute search
         results, total = await self._text_search.search(search_query)
 
+        # Collect unique IDs for bulk fetching
+        repo_ids = {r.text_content.repository_id for r in results}
+        file_ids = {
+            r.text_content.source_file_id
+            for r in results
+            if r.text_content.source_file_id is not None
+        }
+        commit_ids = {r.text_content.commit_id for r in results}
+
+        # Bulk fetch repositories, files, and commits (single query each)
+        repositories = await self._repository_repo.find_by_ids(list(repo_ids))
+        repo_map = {r.id: r.name for r in repositories if r.id is not None}
+
+        files = await self._file_repo.find_by_ids(list(file_ids))
+        # files is already a dict[int, File]
+
+        commits = await self._commit_repo.find_by_ids(list(commit_ids))
+        commit_map = {c.id: c for c in commits if c.id is not None}
+
+        # Bulk fetch branches for all commits
+        branches_map = await self._commit_repo.get_branches_for_commits(
+            list(commit_ids)
+        )
+
         # Hydrate results with repository, file, and commit info
         enriched_results = []
         for result in results:
             text_content = result.text_content
 
-            # Get repository name
-            repository = await self._repository_repo.find_by_id(
-                text_content.repository_id
-            )
-            repository_name = repository.name if repository else "unknown"
+            # Get repository name from bulk-fetched data
+            repository_name = repo_map.get(text_content.repository_id, "unknown")
 
-            # Get file path (if applicable)
+            # Get file path from bulk-fetched data
             file_path = None
             if text_content.source_file_id:
-                file = await self._file_repo.find_by_id(text_content.source_file_id)
+                file = files.get(text_content.source_file_id)
                 if file:
                     file_path = file.path
 
-            # Get commit hash
-            commit = await self._commit_repo.find_by_id(text_content.commit_id)
+            # Get commit hash from bulk-fetched data
+            commit = commit_map.get(text_content.commit_id)
             commit_hash = commit.commit_hash.value if commit else "unknown"
 
-            # Get branch (if applicable)
+            # Get branch from bulk-fetched data
             # Note: A commit can be on multiple branches, we'll take the first one
-            # or None if not on any branch
             branch = None
-            if commit and commit.id is not None:
-                branches = await self._commit_repo.get_branches_for_commit(commit.id)
-                if branches:
-                    branch = branches[0]
+            branches = branches_map.get(text_content.commit_id, [])
+            if branches:
+                branch = branches[0]
 
             enriched_results.append(
                 SearchTextResultItem(

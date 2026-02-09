@@ -15,6 +15,7 @@ from ...ports.repositories import (
     FileRepositoryPort,
     RepositoryPort,
 )
+from ...ports.services import CommitInfo
 
 
 class GitCommitInfoProtocol(Protocol):
@@ -24,7 +25,7 @@ class GitCommitInfoProtocol(Protocol):
     The concrete GitService class implements these methods.
     """
 
-    def get_commit_info(self, repo_path: Path, commit_hash: str) -> dict[str, str]:
+    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
         """Get commit information including message.
 
         Args:
@@ -32,7 +33,7 @@ class GitCommitInfoProtocol(Protocol):
             commit_hash: The commit hash to look up
 
         Returns:
-            Dictionary with commit info including 'message' key
+            CommitInfo with commit metadata
         """
         ...
 
@@ -213,6 +214,6 @@ class GetFileHistoryUseCase:
         """
         try:
             git_info = self._git_service.get_commit_info(repo_path, commit_hash)
-            return git_info.get("message", "")[:100]
+            return git_info.message[:100]
         except Exception:
             return ""

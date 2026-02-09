@@ -68,6 +68,18 @@ class PostgresCommitRepository(CommitRepositoryPort):
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
 
+    async def find_by_ids(self, commit_ids: list[int]) -> list[Commit]:
+        """Find multiple commits by IDs in a single query."""
+        if not commit_ids:
+            return []
+
+        result = await self.session.execute(
+            select(CommitModel).where(CommitModel.id.in_(commit_ids))
+        )
+        models = result.scalars().all()
+
+        return [self.mapper.to_domain(model) for model in models]
+
     async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
         """Find commit by repository and hash.
 
@@ -182,6 +194,28 @@ class PostgresCommitRepository(CommitRepositoryPort):
             )
         )
         return list(result.scalars().all())
+
+    async def get_branches_for_commits(
+        self, commit_ids: list[int]
+    ) -> dict[int, list[str]]:
+        """Get branches for multiple commits in a single query."""
+        if not commit_ids:
+            return {}
+
+        result = await self.session.execute(
+            select(BranchCommitModel.commit_id, BranchCommitModel.branch).where(
+                BranchCommitModel.commit_id.in_(commit_ids)
+            )
+        )
+        rows = result.all()
+
+        # Group branches by commit_id
+        branches_by_commit: dict[int, list[str]] = {cid: [] for cid in commit_ids}
+        for commit_id, branch in rows:
+            if commit_id in branches_by_commit:
+                branches_by_commit[commit_id].append(branch)
+
+        return branches_by_commit
 
     async def list_by_repository(
         self, repository_id: int, branch: str | None = None, limit: int = 100

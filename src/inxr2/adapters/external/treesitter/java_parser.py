@@ -143,10 +143,7 @@ class JavaParser(BaseLanguageParser):
             return self._get_text(node, content)
 
         def add_reference(ref: dict[str, Any]) -> None:
-            """Add reference only if it has non-empty text."""
-            text = ref.get("text", "")
-            if text and text.strip():
-                references.append(ref)
+            self._add_reference(ref, references)
 
         def get_modifiers(node: Node) -> list[str]:
             """Extract modifiers from a declaration node."""
@@ -204,29 +201,23 @@ class JavaParser(BaseLanguageParser):
                 return
 
             qualified_name = f"{scope}.{class_name}" if scope else class_name
+            loc_node = name_node or node
 
             symbols.append(
-                {
-                    "name": class_name,
-                    "kind": "class",
-                    "start_line": (
-                        name_node.start_point[0] + 1
-                        if name_node
-                        else node.start_point[0] + 1
-                    ),
-                    "start_column": (
-                        name_node.start_point[1] if name_node else node.start_point[1]
-                    ),
-                    "end_line": node.end_point[0] + 1,
-                    "end_column": node.end_point[1],
-                    "scope": scope,
-                    "qualified_name": qualified_name,
-                    "is_abstract": is_abstract(modifiers),
-                    "is_final": is_final(modifiers),
-                    "is_static": is_static(modifiers),
+                self._make_symbol(
+                    class_name,
+                    "class",
+                    loc_node,
+                    scope,
+                    end_line=node.end_point[0] + 1,
+                    end_column=node.end_point[1],
+                    qualified_name=qualified_name,
+                    is_abstract=is_abstract(modifiers),
+                    is_final=is_final(modifiers),
+                    is_static=is_static(modifiers),
                     # In Java, static nested classes are not "inner" classes
-                    "is_inner": is_inner and not is_static(modifiers),
-                }
+                    is_inner=is_inner and not is_static(modifiers),
+                )
             )
 
             # Process extends and implements
@@ -253,24 +244,18 @@ class JavaParser(BaseLanguageParser):
                 return
 
             qualified_name = f"{scope}.{interface_name}" if scope else interface_name
+            loc_node = name_node or node
 
             symbols.append(
-                {
-                    "name": interface_name,
-                    "kind": "interface",
-                    "start_line": (
-                        name_node.start_point[0] + 1
-                        if name_node
-                        else node.start_point[0] + 1
-                    ),
-                    "start_column": (
-                        name_node.start_point[1] if name_node else node.start_point[1]
-                    ),
-                    "end_line": node.end_point[0] + 1,
-                    "end_column": node.end_point[1],
-                    "scope": scope,
-                    "qualified_name": qualified_name,
-                }
+                self._make_symbol(
+                    interface_name,
+                    "interface",
+                    loc_node,
+                    scope,
+                    end_line=node.end_point[0] + 1,
+                    end_column=node.end_point[1],
+                    qualified_name=qualified_name,
+                )
             )
 
             # Process extends
@@ -295,24 +280,18 @@ class JavaParser(BaseLanguageParser):
                 return
 
             qualified_name = f"{scope}.{enum_name}" if scope else enum_name
+            loc_node = name_node or node
 
             symbols.append(
-                {
-                    "name": enum_name,
-                    "kind": "enum",
-                    "start_line": (
-                        name_node.start_point[0] + 1
-                        if name_node
-                        else node.start_point[0] + 1
-                    ),
-                    "start_column": (
-                        name_node.start_point[1] if name_node else node.start_point[1]
-                    ),
-                    "end_line": node.end_point[0] + 1,
-                    "end_column": node.end_point[1],
-                    "scope": scope,
-                    "qualified_name": qualified_name,
-                }
+                self._make_symbol(
+                    enum_name,
+                    "enum",
+                    loc_node,
+                    scope,
+                    end_line=node.end_point[0] + 1,
+                    end_column=node.end_point[1],
+                    qualified_name=qualified_name,
+                )
             )
 
             # Process enum body
@@ -339,24 +318,18 @@ class JavaParser(BaseLanguageParser):
                 return
 
             qualified_name = f"{scope}.{annotation_name}" if scope else annotation_name
+            loc_node = name_node or node
 
             symbols.append(
-                {
-                    "name": annotation_name,
-                    "kind": "annotation",
-                    "start_line": (
-                        name_node.start_point[0] + 1
-                        if name_node
-                        else node.start_point[0] + 1
-                    ),
-                    "start_column": (
-                        name_node.start_point[1] if name_node else node.start_point[1]
-                    ),
-                    "end_line": node.end_point[0] + 1,
-                    "end_column": node.end_point[1],
-                    "scope": scope,
-                    "qualified_name": qualified_name,
-                }
+                self._make_symbol(
+                    annotation_name,
+                    "annotation",
+                    loc_node,
+                    scope,
+                    end_line=node.end_point[0] + 1,
+                    end_column=node.end_point[1],
+                    qualified_name=qualified_name,
+                )
             )
 
         def process_record_declaration(node: Node, scope: str | None = None) -> None:
@@ -374,24 +347,18 @@ class JavaParser(BaseLanguageParser):
                 return
 
             qualified_name = f"{scope}.{record_name}" if scope else record_name
+            loc_node = name_node or node
 
             symbols.append(
-                {
-                    "name": record_name,
-                    "kind": "record",
-                    "start_line": (
-                        name_node.start_point[0] + 1
-                        if name_node
-                        else node.start_point[0] + 1
-                    ),
-                    "start_column": (
-                        name_node.start_point[1] if name_node else node.start_point[1]
-                    ),
-                    "end_line": node.end_point[0] + 1,
-                    "end_column": node.end_point[1],
-                    "scope": scope,
-                    "qualified_name": qualified_name,
-                }
+                self._make_symbol(
+                    record_name,
+                    "record",
+                    loc_node,
+                    scope,
+                    end_line=node.end_point[0] + 1,
+                    end_column=node.end_point[1],
+                    qualified_name=qualified_name,
+                )
             )
 
             # Process record components as fields
@@ -407,19 +374,17 @@ class JavaParser(BaseLanguageParser):
             """Process record components as fields."""
             for child in node.children:
                 if child.type == "formal_parameter":
-                    param_name = None
                     for param_child in child.children:
                         if param_child.type == "identifier":
                             param_name = get_text(param_child)
                             symbols.append(
-                                {
-                                    "name": param_name,
-                                    "kind": "field",
-                                    **self._node_location(param_child),
-                                    "scope": scope,
-                                    "qualified_name": f"{scope}.{param_name}",
-                                    "is_final": True,  # Record components are implicitly final
-                                }
+                                self._make_symbol(
+                                    param_name,
+                                    "field",
+                                    param_child,
+                                    scope,
+                                    is_final=True,
+                                )
                             )
                             break
 
@@ -430,13 +395,9 @@ class JavaParser(BaseLanguageParser):
                     superclass_name = get_text(child)
                     if superclass_name not in JAVA_BUILTINS:
                         add_reference(
-                            {
-                                "text": superclass_name,
-                                "type": "inheritance",
-                                "source_line": child.start_point[0] + 1,
-                                "source_column": child.start_point[1],
-                                "scope": scope,
-                            }
+                            self._make_reference(
+                                superclass_name, "inheritance", child, scope
+                            )
                         )
                 elif child.type == "generic_type":
                     process_generic_type_reference(child, scope, "inheritance")
@@ -450,13 +411,12 @@ class JavaParser(BaseLanguageParser):
                             interface_name = get_text(type_child)
                             if interface_name not in JAVA_BUILTINS:
                                 add_reference(
-                                    {
-                                        "text": interface_name,
-                                        "type": "inheritance",
-                                        "source_line": type_child.start_point[0] + 1,
-                                        "source_column": type_child.start_point[1],
-                                        "scope": scope,
-                                    }
+                                    self._make_reference(
+                                        interface_name,
+                                        "inheritance",
+                                        type_child,
+                                        scope,
+                                    )
                                 )
                         elif type_child.type == "generic_type":
                             process_generic_type_reference(
@@ -472,13 +432,12 @@ class JavaParser(BaseLanguageParser):
                             interface_name = get_text(type_child)
                             if interface_name not in JAVA_BUILTINS:
                                 add_reference(
-                                    {
-                                        "text": interface_name,
-                                        "type": "inheritance",
-                                        "source_line": type_child.start_point[0] + 1,
-                                        "source_column": type_child.start_point[1],
-                                        "scope": scope,
-                                    }
+                                    self._make_reference(
+                                        interface_name,
+                                        "inheritance",
+                                        type_child,
+                                        scope,
+                                    )
                                 )
                         elif type_child.type == "generic_type":
                             process_generic_type_reference(
@@ -497,13 +456,7 @@ class JavaParser(BaseLanguageParser):
                         and type_name not in JAVA_PRIMITIVE_TYPES
                     ):
                         add_reference(
-                            {
-                                "text": type_name,
-                                "type": ref_type,
-                                "source_line": child.start_point[0] + 1,
-                                "source_column": child.start_point[1],
-                                "scope": scope,
-                            }
+                            self._make_reference(type_name, ref_type, child, scope)
                         )
                 elif child.type == "type_arguments":
                     # Process type arguments recursively
@@ -515,13 +468,12 @@ class JavaParser(BaseLanguageParser):
                                 and arg_name not in JAVA_PRIMITIVE_TYPES
                             ):
                                 add_reference(
-                                    {
-                                        "text": arg_name,
-                                        "type": "type_annotation",
-                                        "source_line": arg_child.start_point[0] + 1,
-                                        "source_column": arg_child.start_point[1],
-                                        "scope": scope,
-                                    }
+                                    self._make_reference(
+                                        arg_name,
+                                        "type_annotation",
+                                        arg_child,
+                                        scope,
+                                    )
                                 )
                         elif arg_child.type == "generic_type":
                             process_generic_type_reference(arg_child, scope)
@@ -583,13 +535,7 @@ class JavaParser(BaseLanguageParser):
                 if child.type == "identifier":
                     constant_name = get_text(child)
                     symbols.append(
-                        {
-                            "name": constant_name,
-                            "kind": "enum_value",
-                            **self._node_location(child),
-                            "scope": scope,
-                            "qualified_name": f"{scope}.{constant_name}",
-                        }
+                        self._make_symbol(constant_name, "enum_value", child, scope)
                     )
                     break
 
@@ -633,31 +579,24 @@ class JavaParser(BaseLanguageParser):
             params = extract_parameters(node)
             signature = f"{return_type or 'void'} {method_name}({', '.join(params)})"
 
+            loc_node = name_node or node
             symbols.append(
-                {
-                    "name": method_name,
-                    "kind": "method",
-                    "start_line": (
-                        name_node.start_point[0] + 1
-                        if name_node
-                        else node.start_point[0] + 1
-                    ),
-                    "start_column": (
-                        name_node.start_point[1] if name_node else node.start_point[1]
-                    ),
-                    "end_line": node.end_point[0] + 1,
-                    "end_column": node.end_point[1],
-                    "scope": scope,
-                    "qualified_name": f"{scope}.{method_name}",
-                    "signature": signature,
-                    "is_static": is_static(modifiers),
+                self._make_symbol(
+                    method_name,
+                    "method",
+                    loc_node,
+                    scope,
+                    end_line=node.end_point[0] + 1,
+                    end_column=node.end_point[1],
+                    signature=signature,
+                    is_static=is_static(modifiers),
                     # Interface methods are abstract only if explicitly abstract or lacking a body
-                    "is_abstract": is_abstract(modifiers)
+                    is_abstract=is_abstract(modifiers)
                     or (
                         is_interface
                         and not any(child.type == "block" for child in node.children)
                     ),
-                }
+                )
             )
 
         def process_constructor_declaration(node: Node, scope: str) -> None:
@@ -678,24 +617,17 @@ class JavaParser(BaseLanguageParser):
             params = extract_parameters(node)
             signature = f"{constructor_name}({', '.join(params)})"
 
+            loc_node = name_node or node
             symbols.append(
-                {
-                    "name": constructor_name,
-                    "kind": "constructor",
-                    "start_line": (
-                        name_node.start_point[0] + 1
-                        if name_node
-                        else node.start_point[0] + 1
-                    ),
-                    "start_column": (
-                        name_node.start_point[1] if name_node else node.start_point[1]
-                    ),
-                    "end_line": node.end_point[0] + 1,
-                    "end_column": node.end_point[1],
-                    "scope": scope,
-                    "qualified_name": f"{scope}.{constructor_name}",
-                    "signature": signature,
-                }
+                self._make_symbol(
+                    constructor_name,
+                    "constructor",
+                    loc_node,
+                    scope,
+                    end_line=node.end_point[0] + 1,
+                    end_column=node.end_point[1],
+                    signature=signature,
+                )
             )
 
         def extract_parameters(node: Node) -> list[str]:
@@ -759,15 +691,14 @@ class JavaParser(BaseLanguageParser):
                                 else "field"
                             )
                             symbols.append(
-                                {
-                                    "name": field_name,
-                                    "kind": kind,
-                                    **self._node_location(var_child),
-                                    "scope": scope,
-                                    "qualified_name": f"{scope}.{field_name}",
-                                    "is_static": is_static(modifiers),
-                                    "is_final": is_final(modifiers),
-                                }
+                                self._make_symbol(
+                                    field_name,
+                                    kind,
+                                    var_child,
+                                    scope,
+                                    is_static=is_static(modifiers),
+                                    is_final=is_final(modifiers),
+                                )
                             )
                             break
 
@@ -779,15 +710,14 @@ class JavaParser(BaseLanguageParser):
                         if var_child.type == "identifier":
                             constant_name = get_text(var_child)
                             symbols.append(
-                                {
-                                    "name": constant_name,
-                                    "kind": "constant",
-                                    **self._node_location(var_child),
-                                    "scope": scope,
-                                    "qualified_name": f"{scope}.{constant_name}",
-                                    "is_static": True,
-                                    "is_final": True,
-                                }
+                                self._make_symbol(
+                                    constant_name,
+                                    "constant",
+                                    var_child,
+                                    scope,
+                                    is_static=True,
+                                    is_final=True,
+                                )
                             )
                             break
 
@@ -820,13 +750,12 @@ class JavaParser(BaseLanguageParser):
                 location_node = path_node or node
 
                 add_reference(
-                    {
-                        "text": import_path,
-                        "type": "import",
-                        "source_line": location_node.start_point[0] + 1,
-                        "source_column": location_node.start_point[1],
-                        "is_static": is_static_import,
-                    }
+                    self._make_reference(
+                        import_path,
+                        "import",
+                        location_node,
+                        is_static=is_static_import,
+                    )
                 )
 
         def extract_references(node: Node, scope: str | None = None) -> None:
@@ -851,13 +780,9 @@ class JavaParser(BaseLanguageParser):
                     method_name, method_node = identifiers[-1]
                     if method_name not in JAVA_BUILTINS:
                         add_reference(
-                            {
-                                "text": method_name,
-                                "type": "call",
-                                "source_line": method_node.start_point[0] + 1,
-                                "source_column": method_node.start_point[1],
-                                "scope": scope,
-                            }
+                            self._make_reference(
+                                method_name, "call", method_node, scope
+                            )
                         )
 
                     # If there are multiple identifiers (e.g., ClassName.method()),
@@ -874,13 +799,9 @@ class JavaParser(BaseLanguageParser):
                                 "type_annotation" if obj_name[0].isupper() else "usage"
                             )
                             add_reference(
-                                {
-                                    "text": obj_name,
-                                    "type": ref_type,
-                                    "source_line": obj_node.start_point[0] + 1,
-                                    "source_column": obj_node.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(
+                                    obj_name, ref_type, obj_node, scope
+                                )
                             )
 
             # Object creation (new Foo())
@@ -890,13 +811,9 @@ class JavaParser(BaseLanguageParser):
                         type_name = get_text(child)
                         if type_name not in JAVA_BUILTINS:
                             add_reference(
-                                {
-                                    "text": type_name,
-                                    "type": "instantiation",
-                                    "source_line": child.start_point[0] + 1,
-                                    "source_column": child.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(
+                                    type_name, "instantiation", child, scope
+                                )
                             )
                     elif child.type == "generic_type":
                         process_generic_type_reference(
@@ -940,13 +857,9 @@ class JavaParser(BaseLanguageParser):
                         and type_name not in JAVA_PRIMITIVE_TYPES
                     ):
                         add_reference(
-                            {
-                                "text": type_name,
-                                "type": "type_annotation",
-                                "source_line": node.start_point[0] + 1,
-                                "source_column": node.start_point[1],
-                                "scope": scope,
-                            }
+                            self._make_reference(
+                                type_name, "type_annotation", node, scope
+                            )
                         )
 
             # Field access
@@ -960,13 +873,9 @@ class JavaParser(BaseLanguageParser):
                         "super",
                     ):
                         add_reference(
-                            {
-                                "text": field_obj_name,
-                                "type": "usage",
-                                "source_line": field_obj_node.start_point[0] + 1,
-                                "source_column": field_obj_node.start_point[1],
-                                "scope": scope,
-                            }
+                            self._make_reference(
+                                field_obj_name, "usage", field_obj_node, scope
+                            )
                         )
                 # Get the field being accessed (but not if this is a method call)
                 parent = node.parent
@@ -979,13 +888,9 @@ class JavaParser(BaseLanguageParser):
                         field_name = get_text(field_node)
                         if field_name not in JAVA_BUILTINS:
                             add_reference(
-                                {
-                                    "text": field_name,
-                                    "type": "usage",
-                                    "source_line": field_node.start_point[0] + 1,
-                                    "source_column": field_node.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(
+                                    field_name, "usage", field_node, scope
+                                )
                             )
 
             # Annotation usage (@Override, @Deprecated, etc.)
@@ -995,13 +900,9 @@ class JavaParser(BaseLanguageParser):
                         annotation_name = get_text(child)
                         if annotation_name not in JAVA_BUILTINS:
                             add_reference(
-                                {
-                                    "text": annotation_name,
-                                    "type": "usage",
-                                    "source_line": child.start_point[0] + 1,
-                                    "source_column": child.start_point[1],
-                                    "scope": scope,
-                                }
+                                self._make_reference(
+                                    annotation_name, "usage", child, scope
+                                )
                             )
                         break
 
@@ -1065,80 +966,31 @@ class JavaParser(BaseLanguageParser):
 
         return symbols, references
 
-    def extract_comments(
-        self,
-        root: Node,
-        content: str,
-    ) -> list[dict[str, Any]]:
-        """Extract comments from Java AST."""
-        comments: list[dict[str, Any]] = []
+    def _process_comment_node(self, node: Node, content: str) -> dict[str, Any] | None:
+        """Classify and clean a Java comment node."""
+        if node.type == "line_comment":
+            text = self._get_text(node, content)
+            cleaned = text[2:].strip() if text.startswith("//") else text.strip()
+            if not cleaned:
+                return None
+            return {
+                "content": cleaned,
+                "content_type": "single_line_comment",
+                "source_line": node.start_point[0] + 1,
+                "source_end_line": node.end_point[0] + 1,
+            }
 
-        def get_text(node: Node) -> str:
-            return self._get_text(node, content)
+        if node.type == "block_comment":
+            text = self._get_text(node, content)
+            is_javadoc = text.startswith("/**")
+            cleaned = self._strip_block_comment(text)
+            if not cleaned:
+                return None
+            return {
+                "content": cleaned,
+                "content_type": "javadoc_comment" if is_javadoc else "block_comment",
+                "source_line": node.start_point[0] + 1,
+                "source_end_line": node.end_point[0] + 1,
+            }
 
-        def strip_comment_markers(text: str, node_type: str) -> str:
-            """Strip comment markers and clean up comment text."""
-            if node_type == "block_comment":
-                # Block comment: /* ... */ or /** ... */
-                is_javadoc = text.startswith("/**")
-                if text.startswith("/*") and text.endswith("*/"):
-                    text = text[3:-2] if is_javadoc else text[2:-2]
-
-                # Clean up leading/trailing whitespace and asterisks
-                lines = text.split("\n")
-                cleaned_lines = []
-                for line in lines:
-                    line = line.strip()
-                    # Remove leading asterisks (common in multi-line comments)
-                    if line.startswith("*"):
-                        line = line[1:].strip()
-                    cleaned_lines.append(line)
-
-                return "\n".join(cleaned_lines).strip()
-            else:
-                # Single-line comment: // ...
-                if text.startswith("//"):
-                    text = text[2:]
-                return text.strip()
-
-        def visit_node(node: Node) -> None:
-            """Recursively visit nodes to extract comments."""
-            if node.type == "line_comment":
-                text = get_text(node)
-                cleaned_text = strip_comment_markers(text, "line_comment")
-
-                if cleaned_text:
-                    comments.append(
-                        {
-                            "content": cleaned_text,
-                            "content_type": "single_line_comment",
-                            "source_line": node.start_point[0] + 1,
-                            "source_end_line": node.end_point[0] + 1,
-                        }
-                    )
-
-            elif node.type == "block_comment":
-                text = get_text(node)
-                is_javadoc = text.startswith("/**")
-                cleaned_text = strip_comment_markers(text, "block_comment")
-
-                if cleaned_text:
-                    comments.append(
-                        {
-                            "content": cleaned_text,
-                            "content_type": (
-                                "javadoc_comment" if is_javadoc else "block_comment"
-                            ),
-                            "source_line": node.start_point[0] + 1,
-                            "source_end_line": node.end_point[0] + 1,
-                        }
-                    )
-
-            # Recurse into children
-            for child in node.children:
-                visit_node(child)
-
-        # Start extraction
-        visit_node(root)
-
-        return comments
+        return None

@@ -1,6 +1,8 @@
 """Tests for index_command utility functions and classes."""
 
+import csv
 import tempfile
+from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from inxr2.adapters.cli.commands.index_command import (
     _dict_to_symbol,
     _filter_files_by_language,
     _shorten_path,
+    _write_csv_log,
 )
 from inxr2.domain.value_objects import ReferenceType, SymbolKind
 
@@ -461,30 +464,22 @@ class TestIndexCommandIntegration:
         assert result.exit_code == 0
         assert "Repository" in result.output
 
-    def test_index_full_requires_path_or_config(self, runner: CliRunner) -> None:
-        """Test that index full requires either --path or --config."""
+    def test_index_requires_path_or_config(self, runner: CliRunner) -> None:
+        """Test that index requires either --path or --config."""
         from inxr2.cli import main
 
-        result = runner.invoke(main, ["index", "full"])
+        result = runner.invoke(main, ["index"])
         assert result.exit_code != 0
         assert "path" in result.output.lower() or "config" in result.output.lower()
 
-    def test_index_full_validates_git_repo(self, runner: CliRunner) -> None:
-        """Test that index full validates the path is a git repo."""
+    def test_index_validates_git_repo(self, runner: CliRunner) -> None:
+        """Test that index validates the path is a git repo."""
         from inxr2.cli import main
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            result = runner.invoke(main, ["index", "full", "--path", tmpdir])
+            result = runner.invoke(main, ["index", "--path", tmpdir])
             assert result.exit_code != 0
             assert ".git" in result.output or "git" in result.output.lower()
-
-    def test_index_incremental_requires_path_or_config(self, runner: CliRunner) -> None:
-        """Test that index incremental requires either --path or --config."""
-        from inxr2.cli import main
-
-        result = runner.invoke(main, ["index", "incremental"])
-        assert result.exit_code != 0
-        assert "path" in result.output.lower() or "config" in result.output.lower()
 
 
 class TestTimeUtilities:
@@ -526,3 +521,124 @@ class TestTimeUtilities:
         assert result is not None
         assert result.tzinfo is None
         assert result.hour == 17  # Should be same since input was UTC
+
+
+@dataclass
+class _FakeResponse:
+    """Minimal stub matching IndexRepositoryResponse fields used by _write_csv_log."""
+
+    repository_name: str = "test-repo"
+    branch: str = "main"
+    commits_indexed: int = 5
+    files_at_head: int = 100
+    files_processed: int = 80
+    files_failed: int = 2
+    files_reused: int = 18
+    symbols_found: int = 400
+    references_found: int = 300
+    references_resolved: int = 250
+    elapsed_seconds: float = 12.34
+    indexing_seconds: float = 10.12
+    resolving_seconds: float = 2.22
+    lines_indexed: int = 5000
+
+
+class TestWriteCsvLog:
+    """Tests for _write_csv_log helper."""
+
+    def test_creates_file_with_header_and_data(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """First call should create file with header row + one data row."""
+        monkeypatch.chdir(tmp_path)
+        _write_csv_log(_FakeResponse())
+
+        log = tmp_path / "index.log"
+        assert log.exists()
+
+        rows = list(csv.reader(log.open()))
+        assert len(rows) == 2
+        assert rows[0][0] == "timestamp"
+        assert rows[0][-1] == "lines_indexed"
+        assert rows[1][1] == "test-repo"
+        assert rows[1][2] == "main"
+
+    def test_appends_without_duplicate_headers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Second call should append data row without repeating headers."""
+        monkeypatch.chdir(tmp_path)
+        _write_csv_log(_FakeResponse())
+        _write_csv_log(_FakeResponse(branch="dev", commits_indexed=10))
+
+        rows = list(csv.reader((tmp_path / "index.log").open()))
+        assert len(rows) == 3
+        # Only one header row
+        assert rows[0][0] == "timestamp"
+        assert rows[1][0] != "timestamp"
+        assert rows[2][0] != "timestamp"
+        # Second row has different branch
+        assert rows[2][2] == "dev"
+
+    def test_numeric_fields_correct(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Numeric fields should match response values."""
+        monkeypatch.chdir(tmp_path)
+        resp = _FakeResponse(
+            commits_indexed=7,
+            files_at_head=200,
+            files_processed=150,
+            files_failed=3,
+            files_reused=47,
+            symbols_found=900,
+            references_found=800,
+            references_resolved=700,
+            elapsed_seconds=45.678,
+            indexing_seconds=30.123,
+            resolving_seconds=15.555,
+            lines_indexed=12000,
+        )
+        _write_csv_log(resp)
+
+        rows = list(csv.reader((tmp_path / "index.log").open()))
+        data = rows[1]
+        # columns: ts, repo, branch, commits, files_at_head, processed, failed,
+        #          reused, symbols, refs, resolved, elapsed, indexing, resolving, lines
+        assert data[3] == "7"
+        assert data[4] == "200"
+        assert data[5] == "150"
+        assert data[6] == "3"
+        assert data[7] == "47"
+        assert data[8] == "900"
+        assert data[9] == "800"
+        assert data[10] == "700"
+        assert data[11] == "45.7"  # rounded to 1 decimal
+        assert data[12] == "30.1"
+        assert data[13] == "15.6"
+        assert data[14] == "12000"
+
+    def test_does_not_crash_on_write_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Write failures should be silently swallowed."""
+        # Point to a non-existent directory so open() fails
+        monkeypatch.chdir(tmp_path)
+        bad_dir = tmp_path / "no_such_dir"
+        monkeypatch.setattr(
+            "inxr2.adapters.cli.commands.index_command.Path",
+            lambda _: bad_dir / "index.log",
+        )
+        # Should not raise
+        _write_csv_log(_FakeResponse())
+
+    def test_has_15_columns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CSV should have exactly 15 columns."""
+        monkeypatch.chdir(tmp_path)
+        _write_csv_log(_FakeResponse())
+
+        rows = list(csv.reader((tmp_path / "index.log").open()))
+        assert len(rows[0]) == 15
+        assert len(rows[1]) == 15

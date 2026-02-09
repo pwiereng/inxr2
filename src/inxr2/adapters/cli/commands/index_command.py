@@ -5,6 +5,7 @@ Handles full and incremental indexing with rich progress output.
 """
 
 import asyncio
+import csv
 import logging
 import os
 import signal
@@ -266,7 +267,6 @@ def run_full_index(
     force: bool = False,
     since_days: int | None = None,
     base_branch: str | None = None,
-    enable_text_search: bool = False,
 ) -> IndexingResult | None:
     """
     Run full indexing of a repository with time travel support.
@@ -284,7 +284,6 @@ def run_full_index(
         since_days: Only index commits from the last N days (overrides max_history)
         base_branch: Base branch for feature branch optimization. When set,
                      only commits unique to this branch (after merge-base) are indexed.
-        enable_text_search: If True, extract and index comments/docstrings for text search
 
     Returns:
         IndexingResult with stats for the final summary, or None if interrupted
@@ -304,7 +303,6 @@ def run_full_index(
                 force=force,
                 since_days=since_days,
                 base_branch=base_branch,
-                enable_text_search=enable_text_search,
             )
         )
     except KeyboardInterrupt:
@@ -322,10 +320,10 @@ async def _run_full_index_async(
     force: bool = False,
     since_days: int | None = None,
     base_branch: str | None = None,
-    enable_text_search: bool = False,
 ) -> IndexingResult:
     """Async implementation of full indexing using the orchestrator."""
     from inxr2.adapters.external.git_service import GitService
+    from inxr2.adapters.external.plaintext_parser import PlaintextParser
     from inxr2.adapters.external.treesitter import TreeSitterService
     from inxr2.adapters.persistence.repositories import (
         PostgresCommitRepository,
@@ -340,7 +338,6 @@ async def _run_full_index_async(
         DefaultIndexingOrchestrator,
     )
     from inxr2.application.use_cases.indexing.orchestrator import (
-        IndexingStrategy,
         IndexRepositoryRequest,
     )
 
@@ -372,11 +369,12 @@ async def _run_full_index_async(
                 text_content_repo=text_content_repo,
                 git_service=git_service,
                 parser_service=parser_service,
+                plaintext_parser=PlaintextParser(),
             )
 
             # Get repository info for display
             repo_info = git_service.get_repository_info(repo_path)
-            current_branch = branch or repo_info.get("current_branch", "main")
+            current_branch = branch or repo_info.current_branch or "main"
 
             # Show what were about to index
             console.print(f"[cyan]Indexing {repo_path.name}[/cyan]")
@@ -413,18 +411,18 @@ async def _run_full_index_async(
                 oldest = commits[0]
                 newest = commits[-1]
                 console.print(f"  Commits: {len(commits)}")
-                oldest_date = oldest.get("author_date") or oldest.get("commit_date")
-                newest_date = newest.get("author_date") or newest.get("commit_date")
+                oldest_date = oldest.author_date or oldest.commit_date
+                newest_date = newest.author_date or newest.commit_date
                 if oldest_date is not None and hasattr(oldest_date, "strftime"):
-                    oldest_str = oldest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
+                    oldest_str = oldest_date.strftime("%Y-%m-%d %H:%M:%S %z")
                 else:
                     oldest_str = str(oldest_date) if oldest_date else "unknown"
                 if newest_date is not None and hasattr(newest_date, "strftime"):
-                    newest_str = newest_date.strftime("%Y-%m-%d %H:%M:%S UTC")
+                    newest_str = newest_date.strftime("%Y-%m-%d %H:%M:%S %z")
                 else:
                     newest_str = str(newest_date) if newest_date else "unknown"
-                console.print(f"  Oldest: {oldest['hash'][:10]} ({oldest_str})")
-                console.print(f"  Newest: {newest['hash'][:10]} ({newest_str})")
+                console.print(f"  Oldest: {oldest.hash[:10]} ({oldest_str})")
+                console.print(f"  Newest: {newest.hash[:10]} ({newest_str})")
             console.print()
 
             # Create indexing request
@@ -432,11 +430,9 @@ async def _run_full_index_async(
                 repository_path=repo_path,
                 branch=current_branch,
                 languages=languages,
-                strategy=IndexingStrategy.FULL,
                 max_history=max_history,
                 since_days=since_days,
                 base_branch=base_branch,
-                enable_text_search=enable_text_search,
             )
 
             # Import progress types
@@ -565,315 +561,21 @@ async def _run_full_index_async(
                 stats,
                 commits_indexed=response.commits_indexed,
                 elapsed_seconds=response.elapsed_seconds,
+                indexing_seconds=response.indexing_seconds,
+                resolving_seconds=response.resolving_seconds,
                 repo_name=repo_path.name,
                 branch=current_branch,
                 max_history=max_history,
                 since_days=since_days,
             )
 
+            _write_csv_log(response)
+
             await session.commit()
 
             # Return result for final summary
             return IndexingResult(
                 repo_name=repo_path.name,
-                branch=current_branch,
-                success=True,
-                files_total=response.files_total,
-                commits_indexed=response.commits_indexed,
-                symbols_found=response.symbols_found,
-                references_found=response.references_found,
-                references_resolved=response.references_resolved,
-                lines_indexed=response.lines_indexed,
-                elapsed_seconds=response.elapsed_seconds,
-                oldest_commit_hash=response.oldest_commit_hash,
-                oldest_commit_date=response.oldest_commit_date,
-                newest_commit_hash=response.newest_commit_hash,
-                newest_commit_date=response.newest_commit_date,
-            )
-
-    finally:
-        await db.close()
-
-
-def run_incremental_index(
-    repo_path: Path,
-    branch: str | None,
-    languages: list[str],
-    console: Console,
-    max_history: int = 1,  # Ignored for incremental - only indexes since last commit
-    force: bool = False,  # Ignored for incremental - accepted for API compatibility
-    enable_text_search: bool = False,
-) -> IndexingResult | None:
-    """
-    Run incremental indexing of a repository.
-
-    Only indexes files that have changed since the last index.
-    The max_history and force parameters are accepted for API compatibility
-    but ignored (incremental always indexes from the last indexed commit to HEAD).
-
-    Args:
-        enable_text_search: If True, extract and index comments/docstrings for text search
-
-    Returns:
-        IndexingResult with stats for the final summary, or None if interrupted
-    """
-    # Set up signal handlers for clean shutdown on Ctrl+C
-    _setup_signal_handlers()
-
-    try:
-        return asyncio.run(
-            _run_incremental_index_async(
-                repo_path=repo_path,
-                branch=branch,
-                languages=languages,
-                console=console,
-                enable_text_search=enable_text_search,
-            )
-        )
-    except KeyboardInterrupt:
-        # Signal handler should have already exited, but just in case
-        _cleanup_and_exit()
-        return None
-
-
-async def _run_incremental_index_async(
-    repo_path: Path,
-    branch: str | None,
-    languages: list[str],
-    console: Console,
-    enable_text_search: bool = False,
-) -> IndexingResult:
-    """Async implementation of incremental indexing using the orchestrator."""
-    from inxr2.adapters.external.git_service import GitService
-    from inxr2.adapters.external.treesitter import TreeSitterService
-    from inxr2.adapters.persistence.repositories import (
-        PostgresCommitRepository,
-        PostgresFileRepository,
-        PostgresIndexStatusRepository,
-        PostgresReferenceRepository,
-        PostgresRepositoryAdapter,
-        PostgresSymbolRepository,
-        PostgresTextContentRepository,
-    )
-    from inxr2.application.use_cases.indexing.default_orchestrator import (
-        DefaultIndexingOrchestrator,
-    )
-    from inxr2.application.use_cases.indexing.orchestrator import (
-        IncrementalIndexRequest,
-    )
-
-    # Initialize database connection
-    db = DatabaseConnection()
-    try:
-        # Initialize services
-        git_service = GitService()
-        parser_service = TreeSitterService()
-
-        # Get repository info
-        repo_info = git_service.get_repository_info(repo_path)
-        current_branch = branch or repo_info.get("current_branch", "main")
-        repo_name = repo_info.get("name", repo_path.name)
-
-        # Initialize repositories
-        async with db.session() as session:
-            repository_repo = PostgresRepositoryAdapter(session)
-            commit_repo = PostgresCommitRepository(session)
-            file_repo = PostgresFileRepository(session)
-            symbol_repo = PostgresSymbolRepository(session)
-            reference_repo = PostgresReferenceRepository(session)
-            index_status_repo = PostgresIndexStatusRepository(session)
-            text_content_repo = PostgresTextContentRepository(session)
-
-            # Find repository in database
-            db_repo = await repository_repo.find_by_name(repo_name)
-            if db_repo is None:
-                console.print(
-                    f"[yellow]Repository {repo_name} not found in database.[/yellow]"
-                )
-                console.print(
-                    "[dim]Run full index first: inxr2 index full --config config.yaml[/dim]"
-                )
-                return IndexingResult(
-                    repo_name=repo_name,
-                    branch=current_branch,
-                    success=False,
-                    error_message="Repository not found in database",
-                )
-
-            # Create orchestrator
-            orchestrator = DefaultIndexingOrchestrator(
-                repository_repo=repository_repo,
-                commit_repo=commit_repo,
-                file_repo=file_repo,
-                symbol_repo=symbol_repo,
-                reference_repo=reference_repo,
-                index_status_repo=index_status_repo,
-                text_content_repo=text_content_repo,
-                git_service=git_service,
-                parser_service=parser_service,
-            )
-
-            # Show what were about to index
-            console.print(f"[cyan]Incremental indexing {repo_path.name}[/cyan]")
-            console.print(f"  Branch: [cyan]{current_branch}[/cyan]")
-            console.print()
-
-            # Create incremental index request
-            assert db_repo.id is not None, "Repository must have an ID"
-            request = IncrementalIndexRequest(
-                repository_id=db_repo.id,
-                repository_path=repo_path,
-                branch=current_branch,
-                languages=languages,
-                enable_text_search=enable_text_search,
-            )
-
-            # Import progress types
-            # Progress at specific percentages: 0, 1, 2, 5, 10, 15, 20, ...
-            import sys
-
-            from inxr2.application.use_cases.indexing.default_orchestrator import (
-                IndexingProgress,
-            )
-
-            milestones = {
-                0,
-                1,
-                2,
-                5,
-                10,
-                15,
-                20,
-                25,
-                30,
-                35,
-                40,
-                45,
-                50,
-                55,
-                60,
-                65,
-                70,
-                75,
-                80,
-                85,
-                90,
-                95,
-                100,
-            }
-
-            # Mutable progress state (using class for proper typing)
-            class ProgressState:
-                pcts: set[int] = set()
-                phase: str = ""
-                shown_start: bool = False
-
-            state = ProgressState()
-
-            def on_progress(p: IndexingProgress) -> None:
-                # Show initial info at start
-                if not state.shown_start and p.files_total > 0:
-                    state.shown_start = True
-                    console.print(
-                        f"  [dim]Files to process: {p.files_total} | "
-                        f"Cache size: {p.cache_size}[/dim]"
-                    )
-
-                if p.phase == "files" and p.files_total > 0:
-                    pct = int((p.files_processed / p.files_total) * 100)
-                    if pct in milestones and pct not in state.pcts:
-                        state.pcts.add(pct)
-                        sys.stdout.write(
-                            f"\r  {pct}% ({p.files_processed}/{p.files_total}) | "
-                            f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
-                            f"Cache: {p.cache_size}    "
-                        )
-                        sys.stdout.flush()
-                elif p.phase == "resolving":
-                    if state.phase != "resolving":
-                        # First resolving update - print header
-                        state.phase = "resolving"
-                        state.pcts = set()  # Reset milestones for resolution
-                        sys.stdout.write("\n")
-                        if p.refs_total > 0:
-                            console.print(
-                                f"  [cyan]Resolving references "
-                                f"({p.refs_total} to process)...[/cyan]"
-                            )
-                        else:
-                            console.print("  [cyan]Resolving references...[/cyan]")
-                    # Show resolution progress at milestone percentages
-                    if p.refs_total > 0:
-                        pct = int((p.refs_resolved / p.refs_total) * 100)
-                        if pct in milestones and pct not in state.pcts:
-                            state.pcts.add(pct)
-                            sys.stdout.write(
-                                f"\r  Resolving: {pct}% "
-                                f"({p.refs_resolved}/{p.refs_total})    "
-                            )
-                            sys.stdout.flush()
-
-            # Run indexing with progress callback
-            response = await orchestrator.index_incremental(
-                request, progress_callback=on_progress
-            )
-
-            # Show final resolution result if we were in resolving phase
-            if state.phase == "resolving" and response.references_found > 0:
-                pct = response.references_resolved * 100 // response.references_found
-                sys.stdout.write(
-                    f"\r  Resolved: {response.references_resolved}/"
-                    f"{response.references_found} ({pct}%)    \n"
-                )
-                sys.stdout.flush()
-
-            # Check if there were new commits
-            if response.commits_indexed == 0:
-                console.print("[green]Already up to date.[/green]")
-                return IndexingResult(
-                    repo_name=repo_name,
-                    branch=current_branch,
-                    success=True,
-                    commits_indexed=0,
-                )
-
-            # Print summary
-            stats = IndexingStats(
-                files_total=response.files_total,
-                files_processed=response.files_processed,
-                files_skipped=response.files_skipped,
-                files_failed=response.files_failed,
-                files_unchanged=response.files_unchanged,
-                files_at_head=response.files_at_head,
-                lines_indexed=response.lines_indexed,
-                symbols_found=response.symbols_found,
-                references_found=response.references_found,
-                references_resolved=response.references_resolved,
-                files_reused=response.files_reused,
-                symbols_reused=response.symbols_reused,
-                references_reused=response.references_reused,
-                comments_indexed=response.comments_indexed,
-                docstrings_indexed=response.docstrings_indexed,
-                commit_messages_indexed=response.commit_messages_indexed,
-                errors=response.errors,
-                db_stats=response.db_stats,
-            )
-
-            _print_summary(
-                console,
-                stats,
-                is_incremental=True,
-                commits_indexed=response.commits_indexed,
-                elapsed_seconds=response.elapsed_seconds,
-                repo_name=repo_name,
-                branch=current_branch,
-            )
-
-            await session.commit()
-
-            # Return result for final summary
-            return IndexingResult(
-                repo_name=repo_name,
                 branch=current_branch,
                 success=True,
                 files_total=response.files_total,
@@ -913,9 +615,9 @@ async def _show_index_status_async(repo_path: Path, console: Console) -> None:
 
     # Get repository info from git (external service)
     repo_info = git_service.get_repository_info(repo_path)
-    current_branch = repo_info.get("current_branch", "unknown")
+    current_branch = repo_info.current_branch or "unknown"
     current_commit = git_service.get_current_commit(repo_path, current_branch)
-    repo_name = repo_info.get("name", repo_path.name)
+    repo_name = repo_info.name
 
     # Connect to database and execute use case
     db = DatabaseConnection()
@@ -1050,12 +752,67 @@ def _format_duration(seconds: float) -> str:
     return f"{hours}h {mins}m {secs:.0f}s"
 
 
+def _write_csv_log(response: Any) -> None:
+    """Append a one-line CSV summary to index.log after each indexing run.
+
+    Creates the file with headers if it doesn't exist. Failures are silently
+    logged — CSV writing should never crash the CLI.
+    """
+    log_path = Path("index.log")
+    headers = [
+        "timestamp",
+        "repository",
+        "branch",
+        "commits_indexed",
+        "files_at_head",
+        "files_processed",
+        "files_failed",
+        "files_reused",
+        "symbols_found",
+        "references_found",
+        "references_resolved",
+        "elapsed_seconds",
+        "indexing_seconds",
+        "resolving_seconds",
+        "lines_indexed",
+    ]
+    try:
+        write_header = not log_path.exists()
+        with open(log_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            if write_header:
+                writer.writerow(headers)
+            writer.writerow(
+                [
+                    datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+                    response.repository_name,
+                    response.branch,
+                    response.commits_indexed,
+                    response.files_at_head,
+                    response.files_processed,
+                    response.files_failed,
+                    response.files_reused,
+                    response.symbols_found,
+                    response.references_found,
+                    response.references_resolved,
+                    round(response.elapsed_seconds, 1),
+                    round(response.indexing_seconds, 1),
+                    round(response.resolving_seconds, 1),
+                    response.lines_indexed,
+                ]
+            )
+    except Exception:
+        logger.debug("Failed to write CSV log to %s", log_path, exc_info=True)
+
+
 def _print_summary(
     console: Console,
     stats: IndexingStats,
     is_incremental: bool = False,
     commits_indexed: int | None = None,
     elapsed_seconds: float | None = None,
+    indexing_seconds: float | None = None,
+    resolving_seconds: float | None = None,
     repo_name: str | None = None,
     branch: str | None = None,
     max_history: int | None = None,
@@ -1138,6 +895,16 @@ def _print_summary(
     if elapsed_seconds is not None:
         table.add_row("", "")  # Separator
         table.add_row("Total Time", f"[blue]{_format_duration(elapsed_seconds)}[/blue]")
+        if indexing_seconds is not None and indexing_seconds > 0:
+            table.add_row(
+                "  Indexing",
+                f"[dim]{_format_duration(indexing_seconds)}[/dim]",
+            )
+        if resolving_seconds is not None and resolving_seconds > 0:
+            table.add_row(
+                "  Resolving",
+                f"[dim]{_format_duration(resolving_seconds)}[/dim]",
+            )
 
     # Show DB query statistics
     db = stats.db_stats

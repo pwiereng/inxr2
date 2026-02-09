@@ -142,12 +142,12 @@ async def get_commit(
     repo_path = Path(repository.url)
     try:
         info = git_service.get_commit_info(repo_path, commit.commit_hash.value)
-        message = info.get("message", "")
-        author_name = info.get("author_name", "")
-        author_email = info.get("author_email", "")
-        committer_name = info.get("committer_name", "")
-        committer_email = info.get("committer_email", "")
-        parent_hashes = info.get("parent_hashes", [])
+        message = info.message
+        author_name = info.author_name
+        author_email = info.author_email
+        committer_name = info.committer_name
+        committer_email = info.committer_email
+        parent_hashes = info.parent_hashes
     except Exception:
         # Git query failed - use empty values
         message = ""

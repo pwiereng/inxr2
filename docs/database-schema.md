@@ -1,7 +1,7 @@
 # INXR2 Database Schema Design
 
-**Version:** 2.0
-**Date:** 2026-01-26
+**Version:** 3.0
+**Date:** 2026-02-09
 **Status:** Implemented
 
 ## Overview
@@ -251,13 +251,22 @@ CREATE INDEX idx_symbols_name_fts ON symbols USING GIN(name_tsvector);
 - `function`: Top-level function
 - `class`: Class definition
 - `method`: Instance method
-- `staticmethod`: Static method
-- `classmethod`: Class method
+- `staticmethod`: Static method (Python `@staticmethod`)
+- `classmethod`: Class method (Python `@classmethod`)
 - `property`: Property (getter/setter)
-- `variable`: Variable/constant
+- `variable`: Module-level variable
+- `constant`: Module-level constant (UPPER_CASE)
+- `class_variable`: Class-level variable
+- `class_constant`: Class-level constant (UPPER_CASE)
+- `instance_variable`: Instance variable (`self.x` in `__init__`)
 - `interface`: TypeScript interface
 - `enum`: Enumeration
+- `enum_member`: Enum member/variant
 - `type_alias`: Type alias
+- `struct`: C struct
+- `union`: C union
+- `macro`: C preprocessor macro
+- `typedef`: C typedef
 
 **JSONB metadata examples:**
 
@@ -407,6 +416,62 @@ CREATE INDEX idx_index_status_status ON index_status(indexing_status);
 
 ---
 
+### 8. text_contents
+
+Stores searchable text extracted from code comments, docstrings, commit messages, and non-code files (markdown, YAML, etc.) for full-text search.
+
+```sql
+CREATE TABLE text_contents (
+    id                  BIGSERIAL PRIMARY KEY,
+    repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    commit_id           BIGINT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
+
+    -- Source information
+    source_type         VARCHAR(50) NOT NULL,       -- comment, docstring, commit_message, non_code_file
+    source_file_id      BIGINT REFERENCES files(id) ON DELETE CASCADE,  -- NULL for commit messages
+    source_line         INTEGER,                    -- Start line in source file
+    source_end_line     INTEGER,                    -- End line in source file
+
+    -- Searchable content
+    content             TEXT NOT NULL,               -- Extracted text (stripped of comment markers)
+
+    -- Full-text search vector (PostgreSQL only, managed by triggers)
+    -- content_tsvector tsvector,
+
+    -- Metadata
+    language            VARCHAR(50),                -- Language of source file (NULL for commit messages)
+    content_type        VARCHAR(50),                -- single_line_comment, block_comment, docstring, etc.
+
+    indexed_at          TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_text_contents_source_type ON text_contents(source_type);
+CREATE INDEX idx_text_contents_source_file ON text_contents(source_file_id);
+CREATE INDEX idx_text_contents_language ON text_contents(language);
+-- CREATE INDEX idx_text_contents_fts ON text_contents USING GIN(content_tsvector);  -- PostgreSQL only
+```
+
+**Fields:**
+- `source_type`: What kind of text this is — `comment`, `docstring`, `commit_message`, or `non_code_file`
+- `source_file_id`: FK to files table (NULL for commit messages which have no source file)
+- `source_line/source_end_line`: Location in source file (for comments/docstrings)
+- `content`: The extracted text, stripped of comment markers (e.g., `#`, `//`, `/* */`)
+- `language`: Programming language of the source file
+- `content_type`: Finer classification — `single_line_comment`, `block_comment`, `docstring`, `jsdoc`, etc.
+
+**Source Types:**
+- `comment`: Code comments (single-line or block)
+- `docstring`: Python docstrings, JSDoc, Javadoc
+- `commit_message`: Git commit messages
+- `non_code_file`: Content from markdown, YAML, text files, etc.
+
+**Design Notes:**
+- Full-text search vector (`content_tsvector`) is managed by PostgreSQL triggers, not the ORM
+- The tsvector column is excluded from SQLAlchemy mappings for SQLite compatibility
+- Comments are deduplicated per-file per-commit (same file at same commit won't have duplicate entries)
+
+---
+
 ## Relationships Diagram
 
 ```
@@ -414,8 +479,11 @@ repositories (1) ──────< (N) commits
     │                        │
     │                        ├──< branch_commits (junction)
     │                        │
+    │                        ├──< text_contents
+    │                        │
     └────────────────< files ┘
                         │
+                        ├──< text_contents (source_file)
                         │
                     symbols
                       │  │
@@ -507,6 +575,12 @@ For a medium-sized repository (100k LOC):
 
 For 10 repositories: ~10 GB database size
 
+**Observed data (2026-02-09):**
+Indexing 7 repos across 14 branches produced:
+- inxr2 main (196 commits, 322 files): 36K symbols, 177K references, 64K resolved (36%)
+- Java master (1,000 commits, 1,559 files): 26K symbols, 186K references, 104K resolved (56%)
+- Content-hash reuse across branches: 96-100% for feature branches sharing history with main
+
 ---
 
 ## Migration History
@@ -517,6 +591,8 @@ For 10 repositories: ~10 GB database size
 | `add_time_travel_001` | Add oldest_indexed_commit to index_status for time-travel range |
 | `normalize_branch_001` | Add branch_commits junction table, remove branch column from commits |
 | `remove_redundant_commit_001` | Remove redundant columns from commits (author, message, etc.) |
+| `bc889896e6d7` | Add unique constraint and cleanup orphaned schema artifacts |
+| `add_text_contents_001` | Add text_contents table for full-text search |
 
 ---
 
@@ -538,6 +614,10 @@ Git's model allows a commit to exist on multiple branches (e.g., after merging).
 - Avoids storing duplicate commits per branch
 - Makes branch filtering queries explicit
 
+### Why `extra_metadata` in ORM but `metadata` in SQL?
+
+SQLAlchemy reserves `metadata` as an attribute on its `Base` class. The ORM models use `extra_metadata` as the Python attribute name, mapped to the `metadata` column in the database. Domain entities use `metadata` (no conflict). The mapper layer handles the translation. See `adapters/persistence/mappers.py`.
+
 ### Why dialect-agnostic?
 
 The schema and ORM code work with both PostgreSQL and SQLite, enabling:
@@ -553,3 +633,4 @@ The schema and ORM code work with both PostgreSQL and SQLite, enabling:
 |---------|------|--------|---------|
 | 1.0 | 2026-01-04 | Claude + User | Initial schema design |
 | 2.0 | 2026-01-26 | Claude + User | Normalized branches, removed redundant commit columns, added time-travel support |
+| 3.0 | 2026-02-09 | Claude + User | Added text_contents table, expanded symbol kinds (C/Java), updated migration history, added observed data volumes |

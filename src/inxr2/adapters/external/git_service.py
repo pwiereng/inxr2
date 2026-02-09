@@ -11,10 +11,17 @@ from typing import Any
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
+from ...application.ports.services import (
+    ChangedFiles,
+    CommitInfo,
+    GitServicePort,
+    RepositoryInfo,
+)
+
 logger = logging.getLogger(__name__)
 
 
-class GitService:
+class GitService(GitServicePort):
     """
     Git operations service using GitPython.
 
@@ -22,7 +29,7 @@ class GitService:
     and file content retrieval needed for indexing.
     """
 
-    def get_repository_info(self, repo_path: Path) -> dict[str, Any]:
+    def get_repository_info(self, repo_path: Path) -> RepositoryInfo:
         """
         Get basic repository information.
 
@@ -30,11 +37,7 @@ class GitService:
             repo_path: Path to the git repository
 
         Returns:
-            Dictionary with repository info:
-                - name: Repository name (from directory)
-                - url: Remote URL (if available)
-                - current_branch: Current branch name
-                - is_bare: Whether repo is bare
+            RepositoryInfo with name, url, current_branch, is_bare
         """
         try:
             repo = Repo(repo_path)
@@ -55,12 +58,12 @@ class GitService:
                 # Detached HEAD state
                 current_branch = None
 
-            return {
-                "name": repo_path.name,
-                "url": url,
-                "current_branch": current_branch,
-                "is_bare": repo.bare,
-            }
+            return RepositoryInfo(
+                name=repo_path.name,
+                url=url,
+                current_branch=current_branch,
+                is_bare=repo.bare,
+            )
 
         except InvalidGitRepositoryError as e:
             raise ValueError(f"Not a valid git repository: {repo_path}") from e
@@ -92,7 +95,7 @@ class GitService:
 
         return commit.hexsha
 
-    def get_commit_info(self, repo_path: Path, commit_hash: str) -> dict[str, Any]:
+    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
         """
         Get detailed information about a commit.
 
@@ -101,29 +104,27 @@ class GitService:
             commit_hash: Full or short commit hash
 
         Returns:
-            Dictionary with commit info:
-                - hash: Full commit hash
-                - short_hash: Short (7-char) hash
-                - author_name, author_email, author_date
-                - committer_name, committer_email, commit_date
-                - message: Commit message
-                - parent_hashes: List of parent commit hashes
+            CommitInfo with full commit metadata
         """
         repo = Repo(repo_path)
         commit = repo.commit(commit_hash)
 
-        return {
-            "hash": commit.hexsha,
-            "short_hash": commit.hexsha[:7],
-            "author_name": commit.author.name,
-            "author_email": commit.author.email,
-            "author_date": commit.authored_datetime,
-            "committer_name": commit.committer.name,
-            "committer_email": commit.committer.email,
-            "commit_date": commit.committed_datetime,
-            "message": commit.message.strip(),
-            "parent_hashes": [p.hexsha for p in commit.parents],
-        }
+        message = commit.message
+        if isinstance(message, bytes):
+            message = message.decode("utf-8", errors="replace")
+
+        return CommitInfo(
+            hash=commit.hexsha,
+            short_hash=commit.hexsha[:7],
+            author_name=commit.author.name or "",
+            author_email=commit.author.email or "",
+            author_date=commit.authored_datetime,
+            committer_name=commit.committer.name or "",
+            committer_email=commit.committer.email or "",
+            commit_date=commit.committed_datetime,
+            message=message.strip(),
+            parent_hashes=[p.hexsha for p in commit.parents],
+        )
 
     def get_commits_since(
         self,
@@ -357,7 +358,7 @@ class GitService:
         branch: str,
         max_count: int | None = 1000,
         since_days: int | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[CommitInfo]:
         """
         List commits for a branch, from oldest to newest.
 
@@ -368,13 +369,7 @@ class GitService:
             since_days: Only include commits from the last N days (None = no date filter)
 
         Returns:
-            List of commit info dicts (oldest first), each containing:
-                - hash: Full 40-char commit hash
-                - short_hash: 7-char hash
-                - author_name, author_email, author_date
-                - committer_name, committer_email, commit_date
-                - message: Commit message
-                - parent_hashes: List of parent commit hashes
+            List of CommitInfo (oldest first)
         """
         from datetime import UTC, datetime, timedelta
 
@@ -403,21 +398,7 @@ class GitService:
         # iter_commits returns newest first, reverse to get oldest first
         commits = list(reversed(commits))
 
-        return [
-            {
-                "hash": c.hexsha,
-                "short_hash": c.hexsha[:7],
-                "author_name": c.author.name,
-                "author_email": c.author.email,
-                "author_date": c.authored_datetime,
-                "committer_name": c.committer.name,
-                "committer_email": c.committer.email,
-                "commit_date": c.committed_datetime,
-                "message": c.message.strip(),
-                "parent_hashes": [p.hexsha for p in c.parents],
-            }
-            for c in commits
-        ]
+        return self._commits_to_info(commits)
 
     def get_merge_base(
         self,
@@ -473,7 +454,7 @@ class GitService:
         base_branch: str,
         max_count: int | None = 1000,
         since_days: int | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[CommitInfo]:
         """
         List commits that were made on a branch (from creation to merge/HEAD).
 
@@ -489,7 +470,7 @@ class GitService:
             since_days: Only include commits from the last N days (None = no date filter)
 
         Returns:
-            List of commit info dicts (oldest first)
+            List of CommitInfo (oldest first)
         """
         repo = Repo(repo_path)
 
@@ -536,7 +517,7 @@ class GitService:
                     repo.iter_commits(f"{merge_base}..{branch_ref}", **iter_kwargs)
                 )
                 commits = list(reversed(commits))
-                return self._commits_to_dicts(commits)
+                return self._commits_to_info(commits)
         except Exception as e:
             # Best-effort detection of unmerged commits failed; fall back to
             # merge-commit analysis below instead of failing the entire operation.
@@ -584,30 +565,35 @@ class GitService:
                                 )
                             )
                             commits = list(reversed(commits))
-                            return self._commits_to_dicts(commits)
+                            return self._commits_to_info(commits)
         except Exception as e:
             logger.warning(f"Error finding merge commit for {branch}: {e}")
 
         # Fallback: return empty if we can't determine branch commits
         return []
 
-    def _commits_to_dicts(self, commits: list[Any]) -> list[dict[str, Any]]:
-        """Convert git commit objects to dictionaries."""
-        return [
-            {
-                "hash": c.hexsha,
-                "short_hash": c.hexsha[:7],
-                "author_name": c.author.name,
-                "author_email": c.author.email,
-                "author_date": c.authored_datetime,
-                "committer_name": c.committer.name,
-                "committer_email": c.committer.email,
-                "commit_date": c.committed_datetime,
-                "message": c.message.strip(),
-                "parent_hashes": [p.hexsha for p in c.parents],
-            }
-            for c in commits
-        ]
+    def _commits_to_info(self, commits: list[Any]) -> list[CommitInfo]:
+        """Convert git commit objects to CommitInfo dataclasses."""
+        result = []
+        for c in commits:
+            message = c.message
+            if isinstance(message, bytes):
+                message = message.decode("utf-8", errors="replace")
+            result.append(
+                CommitInfo(
+                    hash=c.hexsha,
+                    short_hash=c.hexsha[:7],
+                    author_name=c.author.name or "",
+                    author_email=c.author.email or "",
+                    author_date=c.authored_datetime,
+                    committer_name=c.committer.name or "",
+                    committer_email=c.committer.email or "",
+                    commit_date=c.committed_datetime,
+                    message=message.strip(),
+                    parent_hashes=[p.hexsha for p in c.parents],
+                )
+            )
+        return result
 
     def get_files_at_commit(
         self,
@@ -713,7 +699,7 @@ class GitService:
         self,
         repo_path: Path,
         commit_hash: str,
-    ) -> dict[str, list[str]]:
+    ) -> ChangedFiles:
         """
         Get files changed in a single commit (vs its parent).
 
@@ -722,10 +708,7 @@ class GitService:
             commit_hash: Commit hash
 
         Returns:
-            Dictionary with:
-                - added: List of added file paths
-                - modified: List of modified file paths
-                - deleted: List of deleted file paths
+            ChangedFiles with added, modified, and deleted file paths
         """
         repo = Repo(repo_path)
         commit = repo.commit(commit_hash)
@@ -737,7 +720,7 @@ class GitService:
         if not commit.parents:
             # Initial commit - all files are "added"
             added = self.list_files(repo_path, commit_hash)
-            return {"added": added, "modified": modified, "deleted": deleted}
+            return ChangedFiles(added=added, modified=modified, deleted=deleted)
 
         # Compare with first parent
         parent = commit.parents[0]
@@ -758,4 +741,4 @@ class GitService:
                 if path:
                     modified.append(path)
 
-        return {"added": added, "modified": modified, "deleted": deleted}
+        return ChangedFiles(added=added, modified=modified, deleted=deleted)

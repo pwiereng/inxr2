@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from inxr2.application.ports.services import CommitInfo
 from inxr2.application.use_cases.commits import (
     ListCommitsRequest,
     ListCommitsUseCase,
@@ -17,17 +18,31 @@ from tests.fixtures.test_doubles import (
     InMemoryRepositoryRepository,
 )
 
+# Default CommitInfo for tests that don't need specific values
+_DEFAULT_COMMIT_INFO = CommitInfo(
+    hash="",
+    short_hash="",
+    author_name="",
+    author_email="",
+    author_date=datetime(2025, 1, 1),
+    committer_name="",
+    committer_email="",
+    commit_date=datetime(2025, 1, 1),
+    message="",
+    parent_hashes=[],
+)
+
 
 class StubGitCommitInfoService:
     """Stub git service for testing commit info hydration."""
 
     def __init__(self) -> None:
         """Initialize with empty commit info map."""
-        self._commit_info: dict[tuple[str, str], dict[str, str]] = {}
+        self._commit_info: dict[tuple[str, str], CommitInfo] = {}
         self._fail_on: set[tuple[str, str]] = set()
 
     def set_commit_info(
-        self, repo_path: str, commit_hash: str, info: dict[str, str]
+        self, repo_path: str, commit_hash: str, info: CommitInfo
     ) -> None:
         """Set commit info to return for a commit."""
         key = (repo_path, commit_hash)
@@ -38,12 +53,12 @@ class StubGitCommitInfoService:
         key = (repo_path, commit_hash)
         self._fail_on.add(key)
 
-    def get_commit_info(self, repo_path: Path, commit_hash: str) -> dict[str, str]:
+    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
         """Return predefined commit info or raise error."""
         key = (str(repo_path), commit_hash)
         if key in self._fail_on:
             raise RuntimeError("Git lookup failed")
-        return self._commit_info.get(key, {})
+        return self._commit_info.get(key, _DEFAULT_COMMIT_INFO)
 
 
 class TestListCommitsUseCase:
@@ -113,29 +128,50 @@ class TestListCommitsUseCase:
         service.set_commit_info(
             str(repo_path),
             "abc123def456",
-            {
-                "message": "Initial commit",
-                "author_name": "Alice",
-                "author_email": "alice@example.com",
-            },
+            CommitInfo(
+                hash="abc123def456",
+                short_hash="abc123d",
+                author_name="Alice",
+                author_email="alice@example.com",
+                author_date=datetime(2025, 1, 1),
+                committer_name="Alice",
+                committer_email="alice@example.com",
+                commit_date=datetime(2025, 1, 1),
+                message="Initial commit",
+                parent_hashes=[],
+            ),
         )
         service.set_commit_info(
             str(repo_path),
             "def456ghi789",
-            {
-                "message": "Add feature X",
-                "author_name": "Bob",
-                "author_email": "bob@example.com",
-            },
+            CommitInfo(
+                hash="def456ghi789",
+                short_hash="def456g",
+                author_name="Bob",
+                author_email="bob@example.com",
+                author_date=datetime(2025, 1, 2),
+                committer_name="Bob",
+                committer_email="bob@example.com",
+                commit_date=datetime(2025, 1, 2),
+                message="Add feature X",
+                parent_hashes=[],
+            ),
         )
         service.set_commit_info(
             str(repo_path),
             "ghi789jkl012",
-            {
-                "message": "Fix bug in feature X",
-                "author_name": "Alice",
-                "author_email": "alice@example.com",
-            },
+            CommitInfo(
+                hash="ghi789jkl012",
+                short_hash="ghi789j",
+                author_name="Alice",
+                author_email="alice@example.com",
+                author_date=datetime(2025, 1, 3),
+                committer_name="Alice",
+                committer_email="alice@example.com",
+                commit_date=datetime(2025, 1, 3),
+                message="Fix bug in feature X",
+                parent_hashes=[],
+            ),
         )
         return service
 
@@ -263,11 +299,18 @@ class TestListCommitsUseCase:
         git_service.set_commit_info(
             str(repo_path),
             "abc123def456",
-            {
-                "message": long_message,
-                "author_name": "Alice",
-                "author_email": "alice@example.com",
-            },
+            CommitInfo(
+                hash="abc123def456",
+                short_hash="abc123d",
+                author_name="Alice",
+                author_email="alice@example.com",
+                author_date=datetime(2025, 1, 1),
+                committer_name="Alice",
+                committer_email="alice@example.com",
+                commit_date=datetime(2025, 1, 1),
+                message=long_message,
+                parent_hashes=[],
+            ),
         )
 
         use_case = ListCommitsUseCase(

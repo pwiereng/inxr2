@@ -21,7 +21,7 @@ class TestTextContentModel:
             source_end_line=42,
             content="TODO: refactor this function",
             language="python",
-            content_type="inline_comment",
+            content_type="single_line_comment",
             indexed_at=now,
         )
 
@@ -34,7 +34,7 @@ class TestTextContentModel:
         assert model.source_end_line == 42
         assert model.content == "TODO: refactor this function"
         assert model.language == "python"
-        assert model.content_type == "inline_comment"
+        assert model.content_type == "single_line_comment"
         assert model.indexed_at == now
 
     def test_text_content_model_commit_message(self) -> None:

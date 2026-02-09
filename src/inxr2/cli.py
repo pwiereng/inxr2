@@ -68,7 +68,6 @@ def _run_single_repo_index(
     max_history: int | None = 100,
     force: bool = False,
     since_days: int | None = None,
-    enable_text_search: bool = False,
 ) -> None:
     """Run indexing for a single repository path."""
     # Validate git repository
@@ -112,7 +111,6 @@ def _run_single_repo_index(
             "console": console,
             "max_history": max_history,
             "force": force,
-            "enable_text_search": enable_text_search,
         }
         if index_type == "Full" and since_days is not None:
             kwargs["since_days"] = since_days
@@ -135,7 +133,6 @@ def _run_config_based_index(
     max_history_override: int | None = None,
     force: bool = False,
     since_days: int | None = None,
-    enable_text_search: bool = False,
 ) -> None:
     """Run indexing for repositories defined in config file."""
     from inxr2.adapters.config.yaml_config import YamlConfigService
@@ -242,7 +239,7 @@ def _run_config_based_index(
             # Note: get_repository_info returns current_branch=None in detached HEAD state,
             # so we use `or` to handle both missing key and None value
             repo_info = git_service.get_repository_info(resolved_path)
-            branch_name = branch or repo_info.get("current_branch") or "main"
+            branch_name = branch or repo_info.current_branch or "main"
 
             # Determine indexing parameters based on branch type and --days
             max_history = max_history_override or config.indexing.max_commit_history
@@ -331,7 +328,6 @@ def _run_config_based_index(
                     "console": console,
                     "max_history": max_history,
                     "force": force,
-                    "enable_text_search": enable_text_search,
                 }
                 if index_type == "Full" and use_since_days is not None:
                     kwargs["since_days"] = use_since_days
@@ -444,13 +440,7 @@ def main() -> None:
 # =============================================================================
 
 
-@main.group()
-def index() -> None:
-    """Index repositories for code navigation."""
-    pass
-
-
-@index.command("full")
+@main.group(invoke_without_command=True)
 @click.option(
     "--path",
     "-p",
@@ -527,13 +517,9 @@ def index() -> None:
     is_flag=True,
     help="Confirm destructive operations like --reset-db without prompting",
 )
-@click.option(
-    "--enable-text-search",
-    "--text-search",
-    is_flag=True,
-    help="Enable indexing of code comments for text search",
-)
-def index_full(
+@click.pass_context
+def index(
+    ctx: click.Context,
     path: Path | None,
     config: Path | None,
     repo: str | None,
@@ -546,19 +532,24 @@ def index_full(
     force: bool,
     reset_db: bool,
     yes: bool,
-    enable_text_search: bool,
 ) -> None:
     """
-    Perform full indexing of repository/repositories.
+    Index repositories for code navigation.
 
-    Indexes all files from scratch, extracting symbols and references.
-    This will clear any existing index data for the repository.
+    Indexing is always incremental - only new commits since the last index are processed.
+    On first run, indexes commits based on --history or --days limits.
+
+    For a complete re-index, use: inxr2 db reset --yes && inxr2 index ...
 
     Examples:
-        inxr2 index full --path /path/to/repo --branch main
-        inxr2 index full --config config.yaml
-        inxr2 index full --config config.yaml --repo myrepo
+        inxr2 index --path /path/to/repo --branch main
+        inxr2 index --config config.yaml
+        inxr2 index --config config.yaml --repo myrepo
     """
+    # If a subcommand was invoked (like 'status'), don't run indexing
+    if ctx.invoked_subcommand is not None:
+        return
+
     setup_logging(verbose, log_level)
 
     # Validate that either path or config is provided
@@ -602,11 +593,10 @@ def index_full(
             languages_override=languages,
             verbose=verbose,
             index_func=run_full_index,
-            index_type="Full",
+            index_type="Indexing",
             max_history_override=history,
             force=force,
             since_days=days,
-            enable_text_search=enable_text_search,
         )
     else:
         # Single repository path-based indexing
@@ -617,126 +607,11 @@ def index_full(
             languages=languages or "python,typescript",
             verbose=verbose,
             index_func=run_full_index,
-            index_type="Full",
+            index_type="Indexing",
             # --days overrides --history: disable commit cap when filtering by date
             max_history=None if days else (history or 100),
             force=force,
             since_days=days,
-            enable_text_search=enable_text_search,
-        )
-
-
-@index.command("incremental")
-@click.option(
-    "--path",
-    "-p",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-    default=None,
-    help="Path to git repository to index (required if --config not provided)",
-)
-@click.option(
-    "--config",
-    "-c",
-    type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path),
-    default=None,
-    help="Path to YAML configuration file",
-)
-@click.option(
-    "--repo",
-    "-r",
-    default=None,
-    help="Repository name from config to index (indexes all if not specified)",
-)
-@click.option(
-    "--branch",
-    "-b",
-    default=None,
-    help="Branch to index (default: from config or current branch)",
-)
-@click.option(
-    "--languages",
-    "-l",
-    default=None,
-    help="Comma-separated list of languages to index (default: from config or python,typescript)",
-)
-@click.option(
-    "--verbose",
-    "-v",
-    is_flag=True,
-    help="Enable verbose output",
-)
-@click.option(
-    "--log-level",
-    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
-    default="INFO",
-    help="Set log level",
-)
-@click.option(
-    "--enable-text-search",
-    "--text-search",
-    is_flag=True,
-    help="Enable indexing of code comments for text search",
-)
-def index_incremental(
-    path: Path | None,
-    config: Path | None,
-    repo: str | None,
-    branch: str | None,
-    languages: str | None,
-    verbose: bool,
-    log_level: str,
-    enable_text_search: bool,
-) -> None:
-    """
-    Perform incremental indexing of repository/repositories.
-
-    Only indexes files that have changed since the last index.
-    Much faster than full indexing for repositories with few changes.
-
-    Examples:
-        inxr2 index incremental --path /path/to/repo
-        inxr2 index incremental --config config.yaml
-        inxr2 index incremental --config config.yaml --repo myrepo
-    """
-    setup_logging(verbose, log_level)
-
-    # Validate that either path or config is provided
-    if not path and not config:
-        console.print("[red]Error:[/red] Either --path or --config must be specified.")
-        sys.exit(1)
-
-    if path and config:
-        console.print(
-            "[red]Error:[/red] Cannot specify both --path and --config. Use one or the other."
-        )
-        sys.exit(1)
-
-    # Import indexing function (lazy import to speed up CLI startup)
-    from inxr2.adapters.cli.commands.index_command import run_incremental_index
-
-    if config:
-        # Config-based indexing
-        _run_config_based_index(
-            config_path=config,
-            repo_filter=repo,
-            branch_override=branch,
-            languages_override=languages,
-            verbose=verbose,
-            index_func=run_incremental_index,
-            index_type="Incremental",
-            enable_text_search=enable_text_search,
-        )
-    else:
-        # Single repository path-based indexing
-        assert path is not None
-        _run_single_repo_index(
-            path=path,
-            branch=branch,
-            languages=languages or "python,typescript",
-            verbose=verbose,
-            index_func=run_incremental_index,
-            index_type="Incremental",
-            enable_text_search=enable_text_search,
         )
 
 

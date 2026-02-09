@@ -30,15 +30,17 @@ fake_repo.add_test_symbol(Symbol(...))
 ```
 """
 
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
+    CopySymbolsResult,
     FileRepositoryPort,
     IndexStatusRepositoryPort,
     ReferenceRepositoryPort,
@@ -47,10 +49,14 @@ from inxr2.application.ports.repositories import (
     TextContentRepositoryPort,
 )
 from inxr2.application.ports.services import (
+    ChangedFiles,
+    CommitInfo,
     FileStat,
     FileSystemPort,
     GitServicePort,
     ParserServicePort,
+    PlaintextParserPort,
+    RepositoryInfo,
     TextSearchPort,
     TextSearchQuery,
     TextSearchResult,
@@ -212,13 +218,13 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         target_file_id: int,
         target_commit_id: int,
         target_repository_id: int,
-    ) -> int:
+    ) -> CopySymbolsResult:
         """Copy all symbols from source file to target file."""
         source_symbols = [
             s for s in self._symbols.values() if s.file_id == source_file_id
         ]
         if not source_symbols:
-            return 0
+            return CopySymbolsResult(count=0, id_mapping={})
 
         # Map old symbol IDs to new ones for parent_symbol_id remapping
         old_to_new_id: dict[int, int] = {}
@@ -273,7 +279,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                         parent_symbol_id=new_parent_id,
                     )
 
-        return len(source_symbols)
+        return CopySymbolsResult(count=len(source_symbols), id_mapping=old_to_new_id)
 
     # Test helper methods
     def add(self, symbol: Symbol) -> Symbol:
@@ -802,6 +808,14 @@ class InMemoryRepositoryRepository(RepositoryPort):
         """Find repository by ID."""
         return self._repositories.get(repository_id)
 
+    async def find_by_ids(self, repository_ids: list[int]) -> list[Repository]:
+        """Find multiple repositories by IDs."""
+        return [
+            repo
+            for rid in repository_ids
+            if (repo := self._repositories.get(rid)) is not None
+        ]
+
     async def find_by_name(self, name: str) -> Repository | None:
         """Find repository by name."""
         for repo in self._repositories.values():
@@ -949,6 +963,14 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         """Find commit by ID."""
         return self._commits.get(commit_id)
 
+    async def find_by_ids(self, commit_ids: list[int]) -> list[Commit]:
+        """Find multiple commits by IDs."""
+        return [
+            commit
+            for cid in commit_ids
+            if (commit := self._commits.get(cid)) is not None
+        ]
+
     async def find_by_hash(self, repository_id: int, commit_hash: str) -> Commit | None:
         """Find commit by repository and hash.
 
@@ -986,6 +1008,16 @@ class InMemoryCommitRepository(CommitRepositoryPort):
             if cid == commit_id:
                 branches.append(branch)
         return branches
+
+    async def get_branches_for_commits(
+        self, commit_ids: list[int]
+    ) -> dict[int, list[str]]:
+        """Get branches for multiple commits in a single query."""
+        result: dict[int, list[str]] = {cid: [] for cid in commit_ids}
+        for (_repo_id, branch, cid), _ in self._branch_commits.items():
+            if cid in result:
+                result[cid].append(branch)
+        return result
 
     async def list_by_repository(
         self, repository_id: int, branch: str | None = None, limit: int = 100
@@ -1264,7 +1296,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         Resolution priority (matches real implementation):
         1. Same file - most likely the correct local symbol
         2. Same language - cross-file but same language preferred
-        3. Symbol ID - deterministic tiebreaker for consistency
+        3. Lowest symbol ID - deterministic tiebreaker for consistency
 
         This matches the real DB implementation which only selects refs
         that have a matching symbol (via JOIN), so batch_size limits
@@ -1301,7 +1333,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             if not candidates:
                 continue
 
-            # Pick best match using priority: same-file, same-language, symbol ID
+            # Pick best match using priority: same-file, same-language, lowest ID
             matching_symbol = self._pick_best_symbol(ref, candidates)
 
             if matching_symbol is not None and matching_symbol.id is not None:
@@ -1365,9 +1397,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                             same_language = 0
                         break
 
-            # Symbol ID as tiebreaker
             symbol_id = symbol.id if symbol.id is not None else 999999
-
             return (same_file, same_language, symbol_id)
 
         candidates.sort(key=sort_key)
@@ -1384,7 +1414,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         Uses the same priority logic as resolve_references_batch:
         1. Same file - most likely the correct local symbol
         2. Same language - cross-file but same language preferred
-        3. Symbol ID - deterministic tiebreaker for consistency
+        3. Lowest symbol ID - deterministic tiebreaker for consistency
         """
         if self._symbol_repo is None:
             # Without a symbol repo, we can't resolve anything
@@ -1412,7 +1442,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                     else:
                         candidates.append(symbol)
 
-            # Pick best match using priority: same-file, same-language, symbol ID
+            # Pick best match using priority: same-file, same-language, lowest ID
             matching_symbol = self._pick_best_symbol(ref, candidates)
 
             if matching_symbol is not None and matching_symbol.id is not None:
@@ -1447,6 +1477,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         target_file_id: int,
         target_commit_id: int,
         target_repository_id: int,
+        symbol_id_mapping: dict[int, int] | None = None,
     ) -> int:
         """Copy all references from source file to target file."""
         source_refs = [
@@ -1456,6 +1487,13 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             return 0
 
         for source in source_refs:
+            # Remap target_symbol_id if mapping is available
+            old_target = source.target_symbol_id
+            if symbol_id_mapping and old_target and old_target in symbol_id_mapping:
+                new_target_symbol_id = symbol_id_mapping[old_target]
+            else:
+                new_target_symbol_id = None
+
             new_ref = Reference(
                 id=self._next_id,
                 repository_id=target_repository_id,
@@ -1466,7 +1504,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 source_end_column=source.source_end_column,
                 reference_text=source.reference_text,
                 reference_type=source.reference_type,
-                target_symbol_id=None,  # Will be resolved later
+                target_symbol_id=new_target_symbol_id,
                 target_repository_id=None,
                 is_definition=source.is_definition,
                 is_write=source.is_write,
@@ -1851,30 +1889,150 @@ class StubParserService(ParserServicePort):
         self._responses.clear()
 
 
-class StubGitService(GitServicePort):
+class FakeGitService(GitServicePort):
     """
-    Stub implementation of GitServicePort for testing.
+    Fake implementation of GitServicePort for testing.
+
+    Provides configurable git operation responses with typed return values.
 
     Example:
-        git = StubGitService()
-        git.set_file_content("repo/path", "abc123", "main.py", "print('hello')")
-        content = await git.get_file_content(Path("repo/path"), "abc123", Path("main.py"))
+        from inxr2.application.ports.services import CommitInfo, ChangedFiles
+
+        git = FakeGitService()
+        info = git.get_repository_info(Path("/repo"))
+        assert info.current_branch == "main"
     """
 
-    def __init__(self) -> None:
-        """Initialize with empty responses."""
+    def __init__(self, commits: list[CommitInfo] | None = None) -> None:
+        """Initialize with test commits.
+
+        Args:
+            commits: List of CommitInfo objects. If None, provides sensible defaults.
+        """
+        self.commits: list[CommitInfo] = (
+            list(commits)
+            if commits
+            else [
+                CommitInfo(
+                    hash="abc123",
+                    short_hash="abc123",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 1, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 1, 0, 0, 0),
+                    message="Initial commit",
+                    parent_hashes=[],
+                ),
+                CommitInfo(
+                    hash="def456",
+                    short_hash="def456",
+                    author_name="Test User",
+                    author_email="test@example.com",
+                    author_date=datetime(2024, 1, 2, 0, 0, 0),
+                    committer_name="Test User",
+                    committer_email="test@example.com",
+                    commit_date=datetime(2024, 1, 2, 0, 0, 0),
+                    message="Add feature",
+                    parent_hashes=["abc123"],
+                ),
+            ]
+        )
+        self.files_in_commit: dict[str, list[str]] = {
+            "abc123": ["src/main.py", "src/utils.py"],
+            "def456": ["src/main.py", "src/utils.py", "src/new_file.py"],
+        }
+        self.changed_files_in_commit: dict[str, ChangedFiles] = {
+            "abc123": ChangedFiles(
+                added=["src/main.py", "src/utils.py"],
+                modified=[],
+                deleted=[],
+            ),
+            "def456": ChangedFiles(
+                added=["src/new_file.py"],
+                modified=[],
+                deleted=[],
+            ),
+        }
         self._file_contents: dict[tuple[str, str, str], str] = {}
+        # Tracking for test verification
+        self._list_branch_commits_called = False
+        self._list_branch_commits_args: dict[str, str] = {}
 
-    async def clone_repository(self, url: str, destination: Path) -> None:
-        """Stub - does nothing in tests."""
-        pass
+    def get_repository_info(self, repo_path: Path) -> RepositoryInfo:
+        return RepositoryInfo(
+            name=repo_path.name,
+            url=str(repo_path),
+            current_branch="main",
+            is_bare=False,
+        )
 
-    async def get_file_content(
-        self, repo_path: Path, commit_hash: str, file_path: Path
+    def get_current_commit(self, repo_path: Path, branch: str | None = None) -> str:
+        commit_hash: str = self.commits[-1].hash
+        return commit_hash
+
+    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
+        for commit in self.commits:
+            if commit.hash == commit_hash:
+                return commit
+        return self.commits[-1]
+
+    def list_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        max_count: int | None = 1000,
+        since_days: int | None = None,
+    ) -> list[CommitInfo]:
+        commits = self.commits.copy()
+        if max_count:
+            commits = commits[:max_count]
+        return commits
+
+    def list_branch_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        base_branch: str,
+        max_count: int | None = 1000,
+        since_days: int | None = None,
+    ) -> list[CommitInfo]:
+        self._list_branch_commits_called = True
+        self._list_branch_commits_args = {
+            "branch": branch,
+            "base_branch": base_branch,
+        }
+        if self.commits:
+            return [self.commits[-1]]
+        return []
+
+    def list_files(
+        self,
+        repo_path: Path,
+        commit_hash: str,
+        patterns: list[str] | None = None,
+    ) -> list[str]:
+        return self.files_in_commit.get(commit_hash, [])
+
+    def get_changed_files_in_commit(
+        self, repo_path: Path, commit_hash: str
+    ) -> ChangedFiles:
+        return self.changed_files_in_commit.get(
+            commit_hash,
+            ChangedFiles(added=[], modified=[], deleted=[]),
+        )
+
+    def get_file_content(
+        self, repo_path: Path, commit_hash: str, file_path: str
     ) -> str:
-        """Return predefined file content."""
-        key = (str(repo_path), commit_hash, str(file_path))
-        return self._file_contents.get(key, "")
+        key = (str(repo_path), commit_hash, file_path)
+        if key in self._file_contents:
+            return self._file_contents[key]
+        return f"# Content of {file_path} at {commit_hash}\nprint('hello')"
+
+    def list_branches(self, repo_path: Path) -> list[str]:
+        return ["main"]
 
     # Test helper methods
     def set_file_content(
@@ -1889,6 +2047,67 @@ class StubGitService(GitServicePort):
         self._file_contents.clear()
 
 
+class FakePlaintextParser(PlaintextParserPort):
+    """Fake plaintext parser for testing.
+
+    Supports a configurable set of file extensions and returns
+    a single chunk containing the full content.
+
+    Example:
+        parser = FakePlaintextParser()
+        assert parser.supports_file("README.md")
+        chunks = parser.parse("hello world", "README.md")
+        assert len(chunks) == 1
+    """
+
+    def __init__(self) -> None:
+        """Initialize with default supported extensions."""
+        self._supported_extensions: set[str] = {
+            ".md",
+            ".markdown",
+            ".rst",
+            ".txt",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".ini",
+            ".cfg",
+            ".json",
+            ".xml",
+        }
+        self._supported_filenames: set[str] = {
+            "Dockerfile",
+            "README",
+            "LICENSE",
+        }
+
+    def supports_file(self, file_path: str) -> bool:
+        """Check if this parser supports the given file."""
+        path = Path(file_path)
+        name = path.name
+
+        if name in self._supported_filenames:
+            return True
+        if path.suffix.lower() in self._supported_extensions:
+            return True
+        if "dockerfile" in name.lower():
+            return True
+        return False
+
+    def parse(self, content: str, file_path: str) -> list[dict[str, Any]]:
+        """Parse file content into a single chunk."""
+        if not content or not content.strip():
+            return []
+        return [
+            {
+                "content": content,
+                "content_type": "plain_text",
+                "source_line": 1,
+                "source_end_line": content.count("\n") + 1,
+            }
+        ]
+
+
 class FakeTextSearch(TextSearchPort):
     """
     Fake implementation of TextSearchPort for testing.
@@ -1901,6 +2120,17 @@ class FakeTextSearch(TextSearchPort):
         results, total = await text_search.search(TextSearchQuery(query="TODO"))
     """
 
+    # Regex validation constants (match production implementation)
+    MAX_REGEX_LENGTH = 500
+    DANGEROUS_REGEX_PATTERNS = [
+        r"\(\.\*\)\+",  # (.*)+
+        r"\(\.\+\)\+",  # (.+)+
+        r"\([^)]*\+\)\+",  # (x+)+ pattern
+        r"\([^)]*\*\)\+",  # (x*)+
+        r"\([^)]*\+\)\*",  # (x+)*
+        r"\([^)]*\*\)\*",  # (x*)*
+    ]
+
     def __init__(self, text_content_repo: InMemoryTextContentRepository):
         """Initialize with a text content repository.
 
@@ -1908,6 +2138,33 @@ class FakeTextSearch(TextSearchPort):
             text_content_repo: Text content repository to search in
         """
         self._text_content_repo = text_content_repo
+
+    def _validate_regex_pattern(self, pattern: str) -> None:
+        """Validate regex pattern for safety (matches production behavior).
+
+        Args:
+            pattern: The regex pattern to validate
+
+        Raises:
+            ValueError: If pattern is invalid or potentially dangerous
+        """
+        if len(pattern) > self.MAX_REGEX_LENGTH:
+            raise ValueError(
+                f"Regex pattern too long: {len(pattern)} characters "
+                f"(max {self.MAX_REGEX_LENGTH})"
+            )
+
+        for dangerous in self.DANGEROUS_REGEX_PATTERNS:
+            if re.search(dangerous, pattern):
+                raise ValueError(
+                    "Regex pattern contains potentially dangerous nested quantifiers "
+                    "that could cause performance issues"
+                )
+
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            raise ValueError(f"Invalid regex pattern: {e}") from None
 
     async def search(
         self, query: TextSearchQuery
@@ -1951,13 +2208,17 @@ class FakeTextSearch(TextSearchPort):
             if query.languages and tc.language not in query.languages:
                 continue
 
-            # Text matching (simple case-insensitive contains for all modes)
-            # In real implementation, mode would affect PostgreSQL query
+            # Text matching based on mode
             if query.mode == "regex":
-                # For testing, just do simple contains match
-                # Real implementation would use PostgreSQL ~ operator
-                if query.query.lower() in tc.content.lower():
-                    filtered.append(tc)
+                # Validate regex pattern (matches production behavior)
+                self._validate_regex_pattern(query.query)
+                # Use actual regex matching
+                try:
+                    if re.search(query.query, tc.content, re.IGNORECASE):
+                        filtered.append(tc)
+                except re.error:
+                    # Should not happen after validation, but be defensive
+                    pass
             else:  # keyword or phrase
                 # Simple contains match for testing
                 if query.query.lower() in tc.content.lower():
@@ -2065,7 +2326,7 @@ def create_populated_symbol_repository() -> InMemorySymbolRepository:
 #
 # 2. **Stub**: Returns predefined responses
 #    - Use when: Need to control what dependencies return
-#    - Example: StubParserService, StubGitService
+#    - Example: StubParserService
 #
 # 3. **Fake**: Real working implementation (simpler than production)
 #    - Use when: Need realistic behavior without infrastructure
