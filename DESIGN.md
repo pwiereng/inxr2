@@ -76,10 +76,7 @@ Build a cross-reference code browser similar to LXR, but designed for teams work
 - Python
 - TypeScript/JavaScript
 - Java
-- C#
-- Go
 - C
-- C++
 
 **Non-Indexed Languages:**
 Files in languages outside the core set will still be:
@@ -484,7 +481,7 @@ services:
 - **Call Graphs**: Visualize function call relationships
 - **Type Hierarchies**: Show class inheritance and interface implementations
 - **Semantic Search**: Find similar code patterns, detect dead code
-- **Additional Languages**: C, C++, Rust, Ruby, PHP, etc.
+- **Additional Languages**: C#, Go, C++, Rust, Ruby, PHP, etc.
 - **IDE Integration**: Plugins for VS Code, IntelliJ, etc.
 - **Authentication/Authorization**: Multi-tenant support, access controls
 - **API Rate Limiting**: Protect against abuse
@@ -545,7 +542,7 @@ If scale grows beyond initial targets:
 - Implement jump-to-definition
 - Find all references
 - Symbol search
-- Extend to all 7 core languages
+- Extend to all 4 core languages
 
 ### Phase 3: Temporal Navigation
 - Git history integration

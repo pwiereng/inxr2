@@ -12,7 +12,7 @@ INXR2 is similar to LXR (Linux Cross Reference) but built specifically for git-b
 - **Cross-Repository Browsing**: Navigate seamlessly across multiple team repositories
 - **Shareable Permalinks**: Every line and symbol has a permanent, shareable URL
 - **Self-Contained**: Runs in a single Docker container for easy local and cloud deployment
-- **Multi-Language**: Support for Python, TypeScript/JavaScript, Java, C#, Go, C, and C++
+- **Multi-Language**: Support for Python, TypeScript/JavaScript, Java, and C
 
 ## Features
 
@@ -32,10 +32,7 @@ INXR2 is similar to LXR (Linux Cross Reference) but built specifically for git-b
 - Python
 - TypeScript/JavaScript
 - Java
-- C#
-- Go
 - C
-- C++
 
 **All Other Languages:**
 - Displayed with syntax highlighting
@@ -521,7 +518,7 @@ repositories:
       - main
       - develop
 
-  # Remote URLs (Phase 1.9 - not yet implemented)
+  # Remote URLs (Phase 1.12 - not yet implemented)
   # - name: "react"
   #   url: "https://github.com/facebook/react"
   #   branches:
