@@ -580,3 +580,59 @@ Extracted `ProcessFileUseCase` and `ProcessCommitUseCase` from the 1,022-line `D
 
 ### GitServicePort Completed (2026-02-08)
 Initially attempted 2026-02-07, reverted due to cascading changes. Re-attempted 2026-02-08 after 3.5 unification simplified the orchestrator. Successfully replaced `git_service: Any` with `GitServicePort`, dict returns with frozen dataclasses (`CommitInfo`, `ChangedFiles`, `RepositoryInfo`), and all `data["hash"]` → `data.hash` across codebase. 811 tests pass, mypy clean.
+
+---
+
+## Post-Refactoring Review (2026-02-08)
+
+After completing 16 of 21 backlog items (priorities 1-4 fully done, plus 5.2), a full architectural review was performed to assess codebase health before resuming feature work.
+
+### Overall Assessment
+
+The refactoring cycle was well-executed. Clean Architecture boundaries hold, the orchestrator decomposition is clean, and the Tree-sitter parser hierarchy is solid. No critical issues found — the codebase is in good shape to resume feature work (Phase 1.12: Remote Repository Support).
+
+### What Went Well
+
+- **Orchestrator decomposition** (3.4) — Clean separation between `DefaultIndexingOrchestrator` (443 lines), `ProcessCommitUseCase`, and `ProcessFileUseCase`. The coordinator retains appropriate responsibilities (commit selection, progress plumbing).
+- **GitServicePort** (3.1) — Frozen dataclasses replacing dict returns eliminated an entire class of runtime errors. No remaining `data["key"]` patterns.
+- **Base parser hierarchy** (4.1) — `BaseLanguageParser` with template methods and shared helpers (`_make_symbol`, `_make_reference`, `_strip_block_comment`) eliminated ~460 lines of duplication cleanly.
+- **Error handling** (5.2) — Per-node try/except in comment extraction + service-level fallback is the right granularity.
+- **Layer boundaries** — No domain imports of framework code. Adapters properly implement ports. Infrastructure wires things via DI.
+- **Test isolation** — CLI tests use isolated SQLite, repository tests use proper fixtures, no tests touch the live database.
+
+### Issues Identified
+
+#### Fix Before Adding Features
+
+| Priority | Issue | Location | Effort |
+|----------|-------|----------|--------|
+| 1 | Test double behavioral drift (backlog 6.2) | `tests/fixtures/test_doubles.py` | 1 day |
+| 2 | Extract CLI rendering (backlog 7.2) | `index_command.py` (976 lines) | 4 hours |
+
+**Test double drift** is the highest-risk item. `InMemorySymbolRepository.search_by_name` and `InMemoryReferenceRepository.find_references_to_symbol` don't filter to latest file versions like the Postgres adapters do. `InMemoryFileRepository.list_changed_at_commit` is 90+ lines of complex logic that may not match real behavior. If fakes diverge from production, tests pass but production breaks.
+
+**`index_command.py`** at 976 lines mixes CLI orchestration, Rich progress rendering (~200 lines), CSV log writing, summary formatting (~150 lines), and database reset logic. This is already tracked as backlog 7.2.
+
+#### Worth Improving (Not Blocking)
+
+| Priority | Issue | Location | Effort |
+|----------|-------|----------|--------|
+| 3 | Move branch-filtering logic out of `cli.py` | `cli.py:125-342` (~220 lines) | 4 hours |
+| 4 | Type the parser dict returns | `TreeSitterService`, parsers, `ProcessFileUseCase` | 1 day |
+
+**Branch-filtering in cli.py**: `_run_config_based_index` contains ~220 lines of branch-activity filtering, strategy selection, and progress display — application-layer logic living in the adapter layer. Could be folded into the 7.2 extraction.
+
+**Untyped parser returns**: `parse_file` and `extract_comments` return `list[dict[str, Any]]`. These could use `TypedDict` or dataclasses (following the GitServicePort pattern from 3.1), catching bugs at the boundary between parsers and repositories.
+
+### Items Confirmed As Fine
+
+- `ProcessFileUseCase` (453 lines) — well-structured, worth watching but not urgent
+- Mixed sync/async in GitService — GitPython is sync by nature, works fine in current indexing model
+- Port organization (some ISP Protocols, some full ports) — both approaches valid, minor inconsistency
+- `DefaultIndexingOrchestrator` at 443 lines — appropriate coordinator size
+
+### Recommended Path Forward
+
+1. Fix test double drift (6.2) — prevents false confidence in tests
+2. Extract CLI rendering (7.2) — unblocks clean CLI additions
+3. Resume Phase 1.12 (Remote Repository Support) — the architecture is ready
