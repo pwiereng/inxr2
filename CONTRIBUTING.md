@@ -181,7 +181,7 @@ This is a core principle of our testing approach:
 
 **Implementation Guidelines:**
 - Inject dependencies through constructors/parameters
-- Use in-memory databases (SQLite) instead of mocking DB calls
+- Use a PostgreSQL test database instead of mocking DB calls
 - Create lightweight test fixtures and factories
 - Inject fake/stub implementations that follow the same interface
 - Only mock external services you can't control (third-party APIs, network calls)
@@ -411,7 +411,7 @@ from tests.fixtures.git import create_test_git_client
 
 def test_index_repository_extracts_symbols():
     # Arrange - use real lightweight implementations
-    db = create_test_db()  # In-memory SQLite
+    db = create_test_db()  # PostgreSQL test database
     parser = TreeSitterParser()
     git_client = create_test_git_client(fixture_repo="simple-python")
     service = IndexingService(db, parser, git_client)

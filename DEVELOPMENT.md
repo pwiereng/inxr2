@@ -325,7 +325,7 @@ def test_indexing(mock_git, mock_parser, mock_db):
 
 # Good - use real lightweight implementations
 def test_indexing():
-    db = create_in_memory_db()  # Real SQLite in memory
+    db = create_in_memory_db()  # Real PostgreSQL test database
     parser = TreeSitterParser()  # Real parser
     git_client = TestGitClient(fixture="test-repo")  # Lightweight test impl
     # ... test with real behavior

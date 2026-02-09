@@ -1,7 +1,4 @@
-"""Commit repository adapter.
-
-Supports PostgreSQL and SQLite dialects.
-"""
+"""Commit repository adapter."""
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -102,7 +99,6 @@ class PostgresCommitRepository(CommitRepositoryPort):
         Creates an entry in the branch_commits junction table.
         Idempotent - checks for existing link before inserting.
         Handles concurrent inserts via savepoint rollback (TOCTOU race).
-        Works with both PostgreSQL and SQLite.
         """
         # Check if link already exists (dialect-agnostic idempotency)
         existing = await self.session.execute(
@@ -145,7 +141,6 @@ class PostgresCommitRepository(CommitRepositoryPort):
         Bulk version of link_commit_to_branch for efficiency.
         Idempotent - only inserts links that don't already exist.
         Handles concurrent inserts via savepoint rollback (TOCTOU race).
-        Works with both PostgreSQL and SQLite.
         """
         if not branches:
             return

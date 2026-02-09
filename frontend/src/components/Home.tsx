@@ -77,7 +77,11 @@ export function Home() {
           <Typography color="text.secondary">
             No repositories indexed yet. Use the CLI to index a repository.
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2, fontFamily: 'monospace' }}>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mt: 2, fontFamily: 'monospace' }}
+          >
             inxr2 index full --config config.yaml
           </Typography>
         </Paper>

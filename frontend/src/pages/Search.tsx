@@ -189,7 +189,17 @@ export default function Search() {
 
     performSearch()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, mode, selectedRepoId, repoNameParam, branchParam, commitParam, sourceTypesKey, languagesKey, offset])
+  }, [
+    query,
+    mode,
+    selectedRepoId,
+    repoNameParam,
+    branchParam,
+    commitParam,
+    sourceTypesKey,
+    languagesKey,
+    offset,
+  ])
 
   // CodeHeader handlers
   const handleHeaderRepoChange = (newRepoName: string) => {
@@ -436,7 +446,11 @@ export default function Search() {
               >
                 Source Types:
                 {isFileMode && (
-                  <Typography component="span" variant="caption" sx={{ ml: 1, fontStyle: 'italic' }}>
+                  <Typography
+                    component="span"
+                    variant="caption"
+                    sx={{ ml: 1, fontStyle: 'italic' }}
+                  >
                     (not applicable in File mode)
                   </Typography>
                 )}
@@ -549,7 +563,9 @@ export default function Search() {
                           <ListItemButton onClick={() => handleResultClick(result)}>
                             <ListItemText
                               primary={
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                <Box
+                                  sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}
+                                >
                                   <Chip
                                     label={formatSourceType(result.source_type)}
                                     size="small"

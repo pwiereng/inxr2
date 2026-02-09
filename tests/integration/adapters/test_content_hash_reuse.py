@@ -72,7 +72,7 @@ class TestFindOneByContentHashInRepo:
             repository_id=repo.id,
             commit_id=commit.id,
             path="src/main.py",
-            content_hash="abc123def456",
+            content_hash="abc123def456" + "0" * 28,
             size_bytes=100,
             language="python",
         )
@@ -80,14 +80,13 @@ class TestFindOneByContentHashInRepo:
         assert saved_file.id is not None
 
         # Act
-        found = await file_adapter.find_one_by_content_hash_in_repo(
-            repo.id, "abc123def456"
-        )
+        hash_val = "abc123def456" + "0" * 28
+        found = await file_adapter.find_one_by_content_hash_in_repo(repo.id, hash_val)
 
         # Assert
         assert found is not None
         assert found.id == saved_file.id
-        assert found.content_hash == "abc123def456"
+        assert found.content_hash == hash_val
 
     async def test_find_one_by_content_hash_in_repo_no_match(
         self, db_session: AsyncSession
@@ -103,15 +102,13 @@ class TestFindOneByContentHashInRepo:
             repository_id=repo.id,
             commit_id=commit.id,
             path="src/main.py",
-            content_hash="existing_hash",
+            content_hash="e" * 40,
             size_bytes=100,
         )
         await file_adapter.save(file)
 
         # Act
-        found = await file_adapter.find_one_by_content_hash_in_repo(
-            repo.id, "nonexistent_hash"
-        )
+        found = await file_adapter.find_one_by_content_hash_in_repo(repo.id, "f" * 40)
 
         # Assert
         assert found is None
@@ -139,15 +136,13 @@ class TestFindOneByContentHashInRepo:
             repository_id=repo2.id,
             commit_id=commit2.id,
             path="src/shared.py",
-            content_hash="shared_content_hash",
+            content_hash="b" * 40,
             size_bytes=100,
         )
         await file_adapter.save(file_in_repo2)
 
         # Act - search for that hash in repo1 (where it doesn't exist)
-        found = await file_adapter.find_one_by_content_hash_in_repo(
-            repo1.id, "shared_content_hash"
-        )
+        found = await file_adapter.find_one_by_content_hash_in_repo(repo1.id, "b" * 40)
 
         # Assert - should NOT find the file from repo2
         assert found is None
@@ -169,7 +164,7 @@ class TestFindOneByContentHashInRepo:
                 repository_id=repo.id,
                 commit_id=commit.id,
                 path="src/file1.py",
-                content_hash="hash_aaa",
+                content_hash="a" * 40,
                 size_bytes=100,
             )
         )
@@ -178,7 +173,7 @@ class TestFindOneByContentHashInRepo:
                 repository_id=repo.id,
                 commit_id=commit.id,
                 path="src/file2.py",
-                content_hash="hash_bbb",
+                content_hash="b" * 40,
                 size_bytes=100,
             )
         )
@@ -188,7 +183,7 @@ class TestFindOneByContentHashInRepo:
                 repository_id=repo.id,
                 commit_id=commit.id,
                 path="src/file3.py",
-                content_hash="hash_aaa",  # Same as file1
+                content_hash="a" * 40,  # Same as file1
                 size_bytes=100,
             )
         )
@@ -198,10 +193,10 @@ class TestFindOneByContentHashInRepo:
 
         # Assert
         assert len(hash_map) == 2  # Only unique hashes
-        assert "hash_aaa" in hash_map
-        assert "hash_bbb" in hash_map
-        assert hash_map["hash_aaa"] == file1.id
-        assert hash_map["hash_bbb"] == file2.id
+        assert "a" * 40 in hash_map
+        assert "b" * 40 in hash_map
+        assert hash_map["a" * 40] == file1.id
+        assert hash_map["b" * 40] == file2.id
 
 
 @pytest.mark.asyncio
@@ -246,7 +241,7 @@ class TestCopySymbolsToFile:
             repository_id=saved_repo.id,
             commit_id=saved_source_commit.id,
             path="src/module.py",
-            content_hash="same_content",
+            content_hash="c" * 40,
             size_bytes=100,
             language="python",
         )
@@ -272,7 +267,7 @@ class TestCopySymbolsToFile:
             repository_id=repo.id,
             commit_id=target_commit.id,
             path="src/module.py",
-            content_hash="same_content",
+            content_hash="c" * 40,
             size_bytes=100,
             language="python",
         )
@@ -354,7 +349,7 @@ class TestCopySymbolsToFile:
             repository_id=repo.id,
             commit_id=target_commit.id,
             path="src/empty.py",
-            content_hash="empty_content",
+            content_hash="d" * 40,
             size_bytes=0,
         )
         saved_target_file = await file_adapter.save(target_file)
@@ -396,7 +391,7 @@ class TestCopySymbolsToFile:
             repository_id=repo.id,
             commit_id=target_commit.id,
             path="src/module.py",
-            content_hash="same_content",
+            content_hash="c" * 40,
             size_bytes=100,
             language="python",
         )
@@ -505,7 +500,7 @@ class TestCopyReferencesToFile:
             repository_id=saved_repo.id,
             commit_id=saved_source_commit.id,
             path="src/caller.py",
-            content_hash="caller_content",
+            content_hash="1" * 40,
             size_bytes=100,
             language="python",
         )
@@ -531,7 +526,7 @@ class TestCopyReferencesToFile:
             repository_id=repo.id,
             commit_id=target_commit.id,
             path="src/caller.py",
-            content_hash="caller_content",
+            content_hash="1" * 40,
             size_bytes=100,
             language="python",
         )
@@ -609,7 +604,7 @@ class TestCopyReferencesToFile:
             repository_id=repo.id,
             commit_id=target_commit.id,
             path="src/empty.py",
-            content_hash="empty_content",
+            content_hash="d" * 40,
             size_bytes=0,
         )
         saved_target_file = await file_adapter.save(target_file)
@@ -665,7 +660,7 @@ class TestCopyReferencesToFile:
             repository_id=repo.id,
             commit_id=target_commit.id,
             path="src/caller.py",
-            content_hash="caller_content",
+            content_hash="1" * 40,
             size_bytes=100,
             language="python",
         )
@@ -774,7 +769,7 @@ class TestCopyReferencesToFile:
             repository_id=repo.id,
             commit_id=target_commit.id,
             path="src/caller.py",
-            content_hash="caller_content",
+            content_hash="1" * 40,
             size_bytes=100,
             language="python",
         )

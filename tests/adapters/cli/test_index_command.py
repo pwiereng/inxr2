@@ -416,9 +416,9 @@ class TestDictToReference:
 class TestIndexCommandIntegration:
     """Integration tests for index commands using CLI runner.
 
-    These tests use an isolated SQLite database to avoid touching the
-    live PostgreSQL database. The isolated_cli_runner fixture from
-    conftest.py provides database isolation via DATABASE_URL env var.
+    These tests use an isolated PostgreSQL test database. The
+    isolated_cli_runner fixture from conftest.py provides database
+    isolation via DATABASE_URL env var.
     """
 
     @pytest.fixture

@@ -150,7 +150,7 @@ class PostgresTextSearch(TextSearchPort):
         total_count = count_result.scalar_one()
 
         # Add ranking and ordering based on query mode
-        # Note: content_tsvector is not mapped in the ORM (SQLite compatibility)
+        # content_tsvector is managed by triggers, not mapped in the ORM
         content_tsvector: Any = column("content_tsvector")
 
         if query.mode == QueryMode.REGEX.value:
@@ -216,8 +216,7 @@ class PostgresTextSearch(TextSearchPort):
         Returns:
             Updated select statement with query mode filter
         """
-        # Note: content_tsvector is not mapped in the ORM (SQLite compatibility)
-        # We access it using column() for PostgreSQL queries
+        # content_tsvector is managed by triggers, not mapped in the ORM
         content_tsvector: Any = column("content_tsvector")
 
         if query.mode == QueryMode.KEYWORD.value:

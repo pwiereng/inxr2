@@ -417,7 +417,6 @@ class TextSearchPort(ABC):
     This is the key abstraction for database-agnostic text search.
     Implementations can use:
     - PostgreSQL tsvector and GIN indexes
-    - SQLite FTS5
     - Elasticsearch (future)
 
     The port abstracts away database-specific query syntax and ranking algorithms.

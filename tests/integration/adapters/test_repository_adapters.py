@@ -1,7 +1,7 @@
 """Integration tests for repository adapters.
 
 These tests verify that the PostgreSQL adapters work correctly
-with a real database (SQLite in test mode).
+with a real database (PostgreSQL test database).
 """
 
 from datetime import datetime
@@ -261,7 +261,7 @@ class TestPostgresFileRepository:
             repository_id=saved_repo.id,
             commit_id=saved_commit.id,
             path="src/main.py",
-            content_hash="hash123",
+            content_hash="a" * 40,
             size_bytes=1024,
             language="python",
             line_count=50,
@@ -382,7 +382,7 @@ class TestPostgresFileRepository:
             repository_id=saved_repo.id,
             commit_id=saved_commit.id,
             path="unique/path.py",
-            content_hash="hash",
+            content_hash="b" * 40,
             size_bytes=100,
         )
         await file_adapter.save(file)
@@ -459,7 +459,7 @@ class TestPostgresFileRepository:
                 repository_id=saved_repo.id,
                 commit_id=saved_commit.id,
                 path=f"duplicate{i}.py",
-                content_hash="same_content_hash",
+                content_hash="c" * 40,
                 size_bytes=100,
             )
             for i in range(2)
@@ -467,7 +467,7 @@ class TestPostgresFileRepository:
         await file_adapter.save_many(files)
 
         # Act
-        found_files = await file_adapter.find_by_content_hash("same_content_hash")
+        found_files = await file_adapter.find_by_content_hash("c" * 40)
 
         # Assert
         assert len(found_files) >= 2
@@ -497,7 +497,7 @@ class TestPostgresFileRepository:
             repository_id=saved_repo.id,
             commit_id=saved_commit.id,
             path="src/utils/helper.py",
-            content_hash="unique_hash",
+            content_hash="d" * 40,
             size_bytes=200,
             language="python",
         )
@@ -578,7 +578,7 @@ class TestPostgresFileRepository:
             repository_id=saved_repo.id,
             commit_id=saved_old_commit.id,
             path="src/app.py",
-            content_hash="old_hash",
+            content_hash="e" * 40,
             size_bytes=100,
             language="python",
         )
@@ -589,7 +589,7 @@ class TestPostgresFileRepository:
             repository_id=saved_repo.id,
             commit_id=saved_new_commit.id,
             path="src/app.py",
-            content_hash="new_hash",
+            content_hash="f" * 40,
             size_bytes=200,
             language="python",
         )
@@ -604,7 +604,7 @@ class TestPostgresFileRepository:
         assert found is not None
         assert found.id == saved_new_file.id
         assert found.commit_id == saved_new_commit.id
-        assert found.content_hash == "new_hash"
+        assert found.content_hash == "f" * 40
         assert found.size_bytes == 200
 
 
@@ -636,14 +636,14 @@ class TestPostgresSymbolRepository:
             repository_id=saved_repo.id,
             commit_id=saved_commit.id,
             path="src/repo1.py",
-            content_hash="hash1",
+            content_hash="1" * 40,
             size_bytes=100,
         )
         file2 = File(
             repository_id=saved_repo.id,
             commit_id=saved_commit.id,
             path="src/repo2.py",
-            content_hash="hash2",
+            content_hash="2" * 40,
             size_bytes=100,
         )
         saved_file1 = await file_adapter.save(file1)
@@ -770,7 +770,7 @@ class TestPostgresReferenceRepository:
             repository_id=saved_repo.id,
             commit_id=saved_commit.id,
             path="src/caller.py",
-            content_hash="hash1",
+            content_hash="1" * 40,
             size_bytes=100,
         )
         saved_file = await file_adapter.save(file)
@@ -897,7 +897,7 @@ class TestPostgresReferenceRepository:
             repository_id=saved_repo.id,
             commit_id=saved_old_commit.id,
             path="src/caller.py",
-            content_hash="old_hash",
+            content_hash="e" * 40,
             size_bytes=100,
         )
         saved_old_file = await file_adapter.save(old_file)
@@ -931,7 +931,7 @@ class TestPostgresReferenceRepository:
             repository_id=saved_repo.id,
             commit_id=saved_new_commit.id,
             path="src/caller.py",  # Same path as old file
-            content_hash="new_hash",
+            content_hash="f" * 40,
             size_bytes=150,
         )
         saved_new_file = await file_adapter.save(new_file)

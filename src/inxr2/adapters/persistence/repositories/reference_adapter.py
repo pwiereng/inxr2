@@ -545,7 +545,7 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                     extra_metadata=ref.extra_metadata,
                     target_symbol_id=new_target_symbol_id,
                     target_repository_id=None,
-                    # Explicitly set indexed_at for SQLite compatibility in tests
+                    # Explicitly set indexed_at to current time
                     indexed_at=now,
                 )
             )

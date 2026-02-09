@@ -53,7 +53,6 @@ class TextContentModel(Base):
 
     # Full-text search - excluded from ORM operations
     # This column (content_tsvector) is managed by database triggers
-    # We exclude it from the ORM mapping to avoid SQLite compatibility issues
     # The column exists in PostgreSQL but is not mapped in SQLAlchemy
 
     # Metadata

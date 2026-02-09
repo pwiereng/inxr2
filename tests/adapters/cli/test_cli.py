@@ -106,9 +106,9 @@ class TestIndexCommands:
 class TestIndexOnTempRepo:
     """Tests that run indexing on a temporary git repository.
 
-    These tests use an isolated SQLite database to avoid touching the
-    live PostgreSQL database. The temp paths are automatically cleaned
-    up by pytest's tmp_path fixture.
+    These tests use an isolated PostgreSQL test database to avoid touching
+    the live database. The temp paths are automatically cleaned up by
+    pytest's tmp_path fixture.
     """
 
     @pytest.fixture
@@ -186,9 +186,9 @@ class TestStatusCommand:
 class TestBranchActivityFiltering:
     """Tests for branch activity filtering with --days option.
 
-    These tests use an isolated SQLite database to avoid touching the
-    live PostgreSQL database. The isolated_cli_runner fixture from
-    conftest.py provides database isolation via DATABASE_URL env var.
+    These tests use an isolated PostgreSQL test database. The
+    isolated_cli_runner fixture from conftest.py provides database
+    isolation via DATABASE_URL env var.
     """
 
     @pytest.fixture

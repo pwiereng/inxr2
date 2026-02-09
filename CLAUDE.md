@@ -46,7 +46,7 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
      - If the code is wrong, fix the code properly
      - Always fix test failures immediately, even if unrelated to current work
    - **Database Isolation**: Tests MUST NEVER touch the live database:
-     - Unit tests: Use `TEST_DATABASE_URL` (SQLite in-memory) via fixtures in `tests/adapters/persistence/conftest.py`
+     - Unit tests: Use `TEST_DATABASE_URL` (PostgreSQL test database `inxr2_test`) via fixtures in `tests/adapters/persistence/conftest.py`
      - CLI tests: Use CliRunner's `env` parameter to set `DATABASE_URL` to test database
      - Integration tests: Use proper test database fixtures
      - If a test needs database access, it MUST use the isolated test database fixtures
@@ -507,7 +507,6 @@ When adding/modifying database schema:
 7. Update tests
 
 **Common Issues:**
-- SQLite compatibility: Use JSON not ARRAY, Text not TSVECTOR
 - Field name conflicts: Use `extra_metadata` not `metadata` in ORM models
 - Relationship ambiguity: Specify `foreign_keys` parameter explicitly
 

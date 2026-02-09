@@ -1,4 +1,10 @@
-"""Test fixtures for CLI tests with database isolation."""
+"""Test fixtures for CLI tests with database isolation.
+
+CLI commands create their own DatabaseConnection and manage their own
+sessions/commits, so the savepoint pattern used in adapter tests doesn't
+apply here. Instead, we create tables before each test and truncate all
+tables after.
+"""
 
 import asyncio
 import os
@@ -7,38 +13,60 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from inxr2.adapters.persistence.models import Base
 
+# PostgreSQL test database URL — use non-asyncpg prefix since
+# DatabaseConnection auto-converts postgresql:// → postgresql+asyncpg://
+_raw_url = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql://inxr2_user:inxr2_dev_password@postgres:5432/inxr2_test",
+)
+# Strip asyncpg driver if present so DatabaseConnection can do its own conversion
+CLI_TEST_DB_URL = _raw_url.replace("+asyncpg", "")
+
+# asyncpg variant for direct engine operations in fixtures
+if CLI_TEST_DB_URL.startswith("postgresql://"):
+    _ASYNC_URL = CLI_TEST_DB_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+else:
+    _ASYNC_URL = CLI_TEST_DB_URL
+
 
 @pytest.fixture
-def cli_test_db(tmp_path: Path) -> Generator[str, None, None]:
-    """Create an isolated SQLite database for CLI tests.
+def cli_test_db() -> Generator[str, None, None]:
+    """Provide an isolated PostgreSQL test database for CLI tests.
 
-    This fixture creates a temporary file-based SQLite database with the
-    full schema, suitable for CLI integration tests that need database
-    access without touching the live PostgreSQL database.
-
-    Yields:
-        The DATABASE_URL string for the test database.
+    Creates all tables before the test and truncates them after.
+    Yields a DATABASE_URL suitable for DatabaseConnection (postgresql:// prefix).
     """
-    db_path = tmp_path / "cli_test.db"
-    db_url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
 
     async def setup_db() -> None:
-        """Create all tables in the test database."""
-        engine = create_async_engine(db_url, echo=False)
+        engine = create_async_engine(_ASYNC_URL, echo=False)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         await engine.dispose()
 
-    # Run async setup synchronously using asyncio.run()
+    async def teardown_db() -> None:
+        engine = create_async_engine(_ASYNC_URL, echo=False)
+        async with engine.begin() as conn:
+            # Truncate all tables in dependency-safe order
+            await conn.execute(
+                text(
+                    "TRUNCATE TABLE "
+                    'text_contents, "references", symbols, files, '
+                    "index_status, branch_commits, commits, repositories "
+                    "CASCADE"
+                )
+            )
+        await engine.dispose()
+
     asyncio.run(setup_db())
 
-    yield db_url
+    yield CLI_TEST_DB_URL
 
-    # Cleanup is automatic via tmp_path fixture
+    asyncio.run(teardown_db())
 
 
 @pytest.fixture
@@ -47,12 +75,9 @@ def isolated_cli_runner(
 ) -> Generator[CliRunner, None, None]:
     """Create a CliRunner that uses an isolated test database.
 
-    This fixture provides a Click CliRunner configured to use a temporary
-    SQLite database instead of the live PostgreSQL database. Use this for
-    any CLI tests that invoke commands which access the database.
-
-    Also changes CWD to tmp_path so that side-effect files (e.g. index.log
-    from _write_csv_log) don't pollute the workspace.
+    Provides a Click CliRunner configured to use the PostgreSQL test
+    database. Also changes CWD to tmp_path so that side-effect files
+    (e.g. index.log from _write_csv_log) don't pollute the workspace.
 
     Args:
         cli_test_db: The test database URL from cli_test_db fixture.
