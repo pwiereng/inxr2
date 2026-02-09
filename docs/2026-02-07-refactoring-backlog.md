@@ -406,18 +406,24 @@ No need to extract this to a use case—the CLI command is sufficient.
 
 ---
 
-### 7.2 Create IndexingProgressRenderer
+### 7.2 Create IndexingProgressRenderer ✅ DONE
 **Severity:** LOW | **Effort:** 4 hours
 
 **Location:** `src/inxr2/adapters/cli/commands/index_command.py`
 
-**Issue:** Presentation concerns mixed with orchestration (1,267 lines).
+**Issue:** Presentation concerns mixed with orchestration (1,034 lines).
 
-**Tasks:**
-- [ ] Create `IndexingProgressRenderer` class
-- [ ] Move Rich console progress rendering to renderer
-- [ ] Move statistics formatting to renderer
-- [ ] CLI becomes: parse args → call use case → render results
+**Completed Tasks:**
+- [x] Create `IndexingProgressRenderer` class in `src/inxr2/adapters/cli/rendering.py`
+- [x] Extract `format_duration()` and `shorten_path()` as public utilities
+- [x] Move Rich progress bar creation (`create_progress_bar`)
+- [x] Move milestone-based progress callback (`create_progress_callback`)
+- [x] Move final resolution display (`print_final_resolution`)
+- [x] Move summary table formatting (`print_summary`)
+- [x] Deduplicate `_format_duration` from `cli.py` (was duplicated)
+- [x] Delete `_shorten_path`, `_format_duration`, `_print_summary`, `create_progress`, `ProgressState`/`on_progress` from `index_command.py`
+- [x] 39 tests in `test_rendering.py` (pure functions, Console capture, progress callback, final resolution)
+- [x] `index_command.py` reduced from 1,034 → 740 lines (~294 lines moved)
 
 ---
 
@@ -494,7 +500,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 6.2 | P6 | 1d | Fix test doubles ✅ DONE |
 | 6.3 | P6 | 4h | Missing integration tests |
 | ~~7.1~~ | ~~P7~~ | - | ~~ResetDatabaseUseCase~~ (not needed) |
-| 7.2 | P7 | 4h | IndexingProgressRenderer |
+| 7.2 | P7 | 4h | IndexingProgressRenderer ✅ DONE |
 | 8.1 | P8 | 1d | Split useBrowseState |
 | 8.2 | P8 | 2h | ApiError class |
 | 8.3 | P8 | 2h | Fix frontend test warnings |
@@ -528,7 +534,8 @@ No need to extract this to a use case—the CLI command is sufficient.
 
 ### Week 6+: Polish
 - ~~5.2 Parser error handling~~ ✅ DONE
-- Remaining items as time permits (2.4, 5.1, 6.x, 7.2, 8.x)
+- ~~7.2 IndexingProgressRenderer~~ ✅ DONE
+- Remaining items as time permits (2.4, 5.1, 6.x, 8.x)
 
 ---
 
@@ -627,11 +634,11 @@ The refactoring cycle was well-executed. Clean Architecture boundaries hold, the
 | Priority | Issue | Location | Effort |
 |----------|-------|----------|--------|
 | ~~1~~ | ~~Test double behavioral drift (backlog 6.2)~~ | ~~`tests/fixtures/test_doubles.py`~~ | ~~1 day~~ ✅ DONE |
-| 1 | Extract CLI rendering (backlog 7.2) | `index_command.py` (976 lines) | 4 hours |
+| ~~1~~ | ~~Extract CLI rendering (backlog 7.2)~~ | ~~`index_command.py` (976 lines)~~ | ~~4 hours~~ ✅ DONE |
 
 ~~**Test double drift** is the highest-risk item.~~ ✅ FIXED — All 6 fake methods now match Postgres latest-file-version filtering. 24 contract tests verify parity.
 
-**`index_command.py`** at 976 lines mixes CLI orchestration, Rich progress rendering (~200 lines), CSV log writing, summary formatting (~150 lines), and database reset logic. This is already tracked as backlog 7.2.
+~~**`index_command.py`** at 976 lines mixes CLI orchestration, Rich progress rendering (~200 lines), CSV log writing, summary formatting (~150 lines), and database reset logic.~~ ✅ FIXED — Rendering extracted to `IndexingProgressRenderer` in `rendering.py`. `index_command.py` reduced to ~740 lines.
 
 #### Worth Improving (Not Blocking)
 
@@ -654,7 +661,7 @@ The refactoring cycle was well-executed. Clean Architecture boundaries hold, the
 ### Recommended Path Forward
 
 1. ~~Fix test double drift (6.2) — prevents false confidence in tests~~ ✅ DONE
-2. Extract CLI rendering (7.2) — unblocks clean CLI additions
+2. ~~Extract CLI rendering (7.2) — unblocks clean CLI additions~~ ✅ DONE
 3. Resume Phase 1.12 (Remote Repository Support) — the architecture is ready
 
 ### PostgreSQL Test Database Migration (2026-02-08)

@@ -15,17 +15,6 @@ from pathlib import Path
 from typing import Any
 
 from rich.console import Console
-from rich.panel import Panel
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
 from rich.table import Table
 
 from inxr2.application.use_cases.indexing import (
@@ -243,21 +232,6 @@ class IndexingResult:
         return (self.references_resolved / self.references_found) * 100
 
 
-def create_progress() -> Progress:
-    """Create a rich Progress instance with custom columns."""
-    return Progress(
-        SpinnerColumn(),
-        TextColumn("[bold blue]{task.description}"),
-        BarColumn(bar_width=40),
-        TaskProgressColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-        console=Console(),
-        transient=False,
-    )
-
-
 def run_full_index(
     repo_path: Path,
     branch: str | None,
@@ -435,104 +409,23 @@ async def _run_full_index_async(
                 base_branch=base_branch,
             )
 
-            # Import progress types
-            # Progress at specific percentages: 0, 1, 2, 5, 10, 15, 20, ...
-            import sys
+            # Set up progress renderer
+            from inxr2.adapters.cli.rendering import IndexingProgressRenderer
 
-            from inxr2.application.use_cases.indexing.default_orchestrator import (
-                IndexingProgress,
-            )
-
-            milestones = {
-                0,
-                1,
-                2,
-                5,
-                10,
-                15,
-                20,
-                25,
-                30,
-                35,
-                40,
-                45,
-                50,
-                55,
-                60,
-                65,
-                70,
-                75,
-                80,
-                85,
-                90,
-                95,
-                100,
-            }
-
-            # Mutable progress state (using class for proper typing)
-            class ProgressState:
-                pcts: set[int] = set()
-                phase: str = ""
-                shown_start: bool = False
-
-            state = ProgressState()
-
-            def on_progress(p: IndexingProgress) -> None:
-                # Show initial info at start
-                if not state.shown_start and p.files_total > 0:
-                    state.shown_start = True
-                    console.print(
-                        f"  [dim]Files to process: {p.files_total} | "
-                        f"Cache size: {p.cache_size}[/dim]"
-                    )
-
-                if p.phase == "files" and p.files_total > 0:
-                    pct = int((p.files_processed / p.files_total) * 100)
-                    if pct in milestones and pct not in state.pcts:
-                        state.pcts.add(pct)
-                        sys.stdout.write(
-                            f"\r  {pct}% ({p.files_processed}/{p.files_total}) | "
-                            f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
-                            f"Cache: {p.cache_size}    "
-                        )
-                        sys.stdout.flush()
-                elif p.phase == "resolving":
-                    if state.phase != "resolving":
-                        # First resolving update - print header
-                        state.phase = "resolving"
-                        state.pcts = set()  # Reset milestones for resolution
-                        sys.stdout.write("\n")
-                        if p.refs_total > 0:
-                            console.print(
-                                f"  [cyan]Resolving references "
-                                f"({p.refs_total} to process)...[/cyan]"
-                            )
-                        else:
-                            console.print("  [cyan]Resolving references...[/cyan]")
-                    # Show resolution progress at milestone percentages
-                    if p.refs_total > 0:
-                        pct = int((p.refs_resolved / p.refs_total) * 100)
-                        if pct in milestones and pct not in state.pcts:
-                            state.pcts.add(pct)
-                            sys.stdout.write(
-                                f"\r  Resolving: {pct}% "
-                                f"({p.refs_resolved}/{p.refs_total})    "
-                            )
-                            sys.stdout.flush()
+            renderer = IndexingProgressRenderer(console)
+            on_progress = renderer.create_progress_callback()
 
             # Run indexing with progress callback
             response = await orchestrator.index_repository(
                 request, progress_callback=on_progress
             )
 
-            # Show final resolution result if we were in resolving phase
-            if state.phase == "resolving" and response.references_found > 0:
-                pct = response.references_resolved * 100 // response.references_found
-                sys.stdout.write(
-                    f"\r  Resolved: {response.references_resolved}/"
-                    f"{response.references_found} ({pct}%)    \n"
-                )
-                sys.stdout.flush()
+            # Show final resolution result
+            renderer.print_final_resolution(
+                references_found=response.references_found,
+                references_resolved=response.references_resolved,
+                was_resolving=response.references_found > 0,
+            )
 
             # Print summary
             stats = IndexingStats(
@@ -556,8 +449,7 @@ async def _run_full_index_async(
                 db_stats=response.db_stats,
             )
 
-            _print_summary(
-                console,
+            renderer.print_summary(
                 stats,
                 commits_indexed=response.commits_indexed,
                 elapsed_seconds=response.elapsed_seconds,
@@ -729,29 +621,6 @@ def _detect_language(file_path: str) -> str | None:
     return LanguageDetector.detect(file_path)
 
 
-def _shorten_path(path: str, max_len: int = 50) -> str:
-    """Shorten a path for display."""
-    if len(path) <= max_len:
-        return path
-    parts = Path(path).parts
-    if len(parts) <= 2:
-        return path
-    return f".../{'/'.join(parts[-2:])}"
-
-
-def _format_duration(seconds: float) -> str:
-    """Format duration in seconds to human-readable string."""
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-    minutes = int(seconds // 60)
-    secs = seconds % 60
-    if minutes < 60:
-        return f"{minutes}m {secs:.1f}s"
-    hours = minutes // 60
-    mins = minutes % 60
-    return f"{hours}h {mins}m {secs:.0f}s"
-
-
 def _write_csv_log(response: Any) -> None:
     """Append a one-line CSV summary to index.log after each indexing run.
 
@@ -803,130 +672,6 @@ def _write_csv_log(response: Any) -> None:
             )
     except Exception:
         logger.debug("Failed to write CSV log to %s", log_path, exc_info=True)
-
-
-def _print_summary(
-    console: Console,
-    stats: IndexingStats,
-    is_incremental: bool = False,
-    commits_indexed: int | None = None,
-    elapsed_seconds: float | None = None,
-    indexing_seconds: float | None = None,
-    resolving_seconds: float | None = None,
-    repo_name: str | None = None,
-    branch: str | None = None,
-    max_history: int | None = None,
-    since_days: int | None = None,
-) -> None:
-    """Print indexing summary."""
-    console.print()
-
-    index_type = "Incremental" if is_incremental else "Full"
-
-    # Create summary table
-    table = Table(title=f"{index_type} Index Complete", show_header=False, box=None)
-    table.add_column("Metric", style="dim")
-    table.add_column("Value", justify="right")
-
-    # Show repo/branch info
-    if repo_name:
-        table.add_row("Repository", f"[bold]{repo_name}[/bold]")
-    if branch:
-        table.add_row("Branch", f"[cyan]{branch}[/cyan]")
-    # Show indexing range
-    if since_days is not None:
-        table.add_row("Range", f"[dim]last {since_days} days[/dim]")
-    elif max_history is not None:
-        table.add_row("Range", f"[dim]last {max_history} commits[/dim]")
-
-    if repo_name or branch:
-        table.add_row("", "")  # Separator after repo info
-
-    if commits_indexed is not None:
-        table.add_row("Commits Indexed", f"[magenta]{commits_indexed}[/magenta]")
-    if stats.files_at_head > 0:
-        table.add_row("Files at HEAD", f"[cyan]{stats.files_at_head:,}[/cyan]")
-    if stats.lines_indexed > 0:
-        table.add_row("Lines Indexed", f"[cyan]{stats.lines_indexed:,}[/cyan]")
-    table.add_row("Files Processed", f"[green]{stats.files_succeeded}[/green]")
-    if stats.files_unchanged > 0:
-        table.add_row("Files Unchanged", f"[dim]{stats.files_unchanged}[/dim]")
-    if stats.files_skipped > 0:
-        table.add_row("Files Skipped", f"[dim]{stats.files_skipped}[/dim]")
-    if stats.files_failed > 0:
-        table.add_row("Files Failed", f"[red]{stats.files_failed}[/red]")
-    table.add_row("Symbols Found", f"[cyan]{stats.symbols_found}[/cyan]")
-    table.add_row("References Found", f"[cyan]{stats.references_found}[/cyan]")
-    # Show resolution count with rate percentage
-    if stats.references_found > 0:
-        resolution_rate = stats.references_resolved * 100 / stats.references_found
-        table.add_row(
-            "References Resolved",
-            f"[cyan]{stats.references_resolved}[/cyan] [dim]({resolution_rate:.1f}%)[/dim]",
-        )
-    else:
-        table.add_row(
-            "References Resolved", f"[cyan]{stats.references_resolved}[/cyan]"
-        )
-
-    # Show text search statistics if any content was indexed
-    if stats.text_contents_total > 0:
-        table.add_row("", "")  # Separator
-        table.add_row(
-            "Text Content Indexed",
-            f"[cyan]{stats.text_contents_total:,}[/cyan] [dim](comments + docstrings + commit messages)[/dim]",
-        )
-        table.add_row("  Comments", f"[dim]{stats.comments_indexed:,}[/dim]")
-        table.add_row("  Docstrings", f"[dim]{stats.docstrings_indexed:,}[/dim]")
-        table.add_row(
-            "  Commit Messages", f"[dim]{stats.commit_messages_indexed:,}[/dim]"
-        )
-
-    # Show reuse statistics if content-hash optimization was used
-    if stats.files_reused > 0:
-        table.add_row("", "")  # Separator
-        table.add_row("Files Reused", f"[yellow]{stats.files_reused}[/yellow]")
-        table.add_row("Symbols Reused", f"[yellow]{stats.symbols_reused}[/yellow]")
-        table.add_row(
-            "References Reused", f"[yellow]{stats.references_reused}[/yellow]"
-        )
-
-    # Show elapsed time
-    if elapsed_seconds is not None:
-        table.add_row("", "")  # Separator
-        table.add_row("Total Time", f"[blue]{_format_duration(elapsed_seconds)}[/blue]")
-        if indexing_seconds is not None and indexing_seconds > 0:
-            table.add_row(
-                "  Indexing",
-                f"[dim]{_format_duration(indexing_seconds)}[/dim]",
-            )
-        if resolving_seconds is not None and resolving_seconds > 0:
-            table.add_row(
-                "  Resolving",
-                f"[dim]{_format_duration(resolving_seconds)}[/dim]",
-            )
-
-    # Show DB query statistics
-    db = stats.db_stats
-    if db.total > 0:
-        table.add_row("", "")  # Separator
-        table.add_row("DB Queries", f"[dim]{db.total} total[/dim]")
-        table.add_row("  Selects", f"[dim]{db.selects}[/dim]")
-        table.add_row("  Inserts", f"[dim]{db.inserts}[/dim]")
-        if db.updates > 0:
-            table.add_row("  Updates", f"[dim]{db.updates}[/dim]")
-        if db.deletes > 0:
-            table.add_row("  Deletes", f"[dim]{db.deletes}[/dim]")
-
-    console.print(Panel(table, border_style="green"))
-
-    # Print errors if any
-    if stats.errors:
-        console.print(f"\n[yellow]Warnings ({len(stats.errors)}):[/yellow]")
-        for error in stats.errors[:5]:  # Show first 5 errors
-            console.print(f"  [dim]{error}[/dim]")
-        if len(stats.errors) > 5:
-            console.print(f"  [dim]... and {len(stats.errors) - 5} more[/dim]")
 
 
 def _dict_to_symbol(
