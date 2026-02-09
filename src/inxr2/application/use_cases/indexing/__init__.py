@@ -14,6 +14,16 @@ from .orchestrator import (
     IndexRepositoryRequest,
     IndexRepositoryResponse,
 )
+from .process_commit import (
+    ProcessCommitRequest,
+    ProcessCommitResult,
+    ProcessCommitUseCase,
+)
+from .process_file import (
+    ProcessFileRequest,
+    ProcessFileResult,
+    ProcessFileUseCase,
+)
 from .resolve_references import (
     ResolveReferencesRequest,
     ResolveReferencesResponse,
@@ -29,6 +39,12 @@ __all__ = [
     "OptimizationResult",
     "OptimizeFileIndexingRequest",
     "OptimizeFileIndexingUseCase",
+    "ProcessCommitRequest",
+    "ProcessCommitResult",
+    "ProcessCommitUseCase",
+    "ProcessFileRequest",
+    "ProcessFileResult",
+    "ProcessFileUseCase",
     "ResolveReferencesRequest",
     "ResolveReferencesResponse",
     "ResolveReferencesUseCase",

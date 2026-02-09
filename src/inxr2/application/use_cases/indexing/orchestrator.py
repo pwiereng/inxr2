@@ -56,8 +56,6 @@ class IndexRepositoryRequest:
         base_branch: Base branch to compare against for feature branch indexing.
                      When set, only commits unique to this branch (after merge-base)
                      will be indexed. If None, all reachable commits are indexed.
-        enable_text_search: If True, extract and index comments/docstrings for text search.
-                           Defaults to False.
     """
 
     repository_path: Path
@@ -67,7 +65,6 @@ class IndexRepositoryRequest:
     since_days: int | None = None
     force: bool = False
     base_branch: str | None = None
-    enable_text_search: bool = False
 
 
 @dataclass

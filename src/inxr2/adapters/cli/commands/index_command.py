@@ -5,6 +5,7 @@ Handles full and incremental indexing with rich progress output.
 """
 
 import asyncio
+import csv
 import logging
 import os
 import signal
@@ -266,7 +267,6 @@ def run_full_index(
     force: bool = False,
     since_days: int | None = None,
     base_branch: str | None = None,
-    enable_text_search: bool = False,
 ) -> IndexingResult | None:
     """
     Run full indexing of a repository with time travel support.
@@ -284,7 +284,6 @@ def run_full_index(
         since_days: Only index commits from the last N days (overrides max_history)
         base_branch: Base branch for feature branch optimization. When set,
                      only commits unique to this branch (after merge-base) are indexed.
-        enable_text_search: If True, extract and index comments/docstrings for text search
 
     Returns:
         IndexingResult with stats for the final summary, or None if interrupted
@@ -304,7 +303,6 @@ def run_full_index(
                 force=force,
                 since_days=since_days,
                 base_branch=base_branch,
-                enable_text_search=enable_text_search,
             )
         )
     except KeyboardInterrupt:
@@ -322,7 +320,6 @@ async def _run_full_index_async(
     force: bool = False,
     since_days: int | None = None,
     base_branch: str | None = None,
-    enable_text_search: bool = False,
 ) -> IndexingResult:
     """Async implementation of full indexing using the orchestrator."""
     from inxr2.adapters.external.git_service import GitService
@@ -436,7 +433,6 @@ async def _run_full_index_async(
                 max_history=max_history,
                 since_days=since_days,
                 base_branch=base_branch,
-                enable_text_search=enable_text_search,
             )
 
             # Import progress types
@@ -572,6 +568,8 @@ async def _run_full_index_async(
                 max_history=max_history,
                 since_days=since_days,
             )
+
+            _write_csv_log(response)
 
             await session.commit()
 
@@ -752,6 +750,59 @@ def _format_duration(seconds: float) -> str:
     hours = minutes // 60
     mins = minutes % 60
     return f"{hours}h {mins}m {secs:.0f}s"
+
+
+def _write_csv_log(response: Any) -> None:
+    """Append a one-line CSV summary to index.log after each indexing run.
+
+    Creates the file with headers if it doesn't exist. Failures are silently
+    logged — CSV writing should never crash the CLI.
+    """
+    log_path = Path("index.log")
+    headers = [
+        "timestamp",
+        "repository",
+        "branch",
+        "commits_indexed",
+        "files_at_head",
+        "files_processed",
+        "files_failed",
+        "files_reused",
+        "symbols_found",
+        "references_found",
+        "references_resolved",
+        "elapsed_seconds",
+        "indexing_seconds",
+        "resolving_seconds",
+        "lines_indexed",
+    ]
+    try:
+        write_header = not log_path.exists()
+        with open(log_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            if write_header:
+                writer.writerow(headers)
+            writer.writerow(
+                [
+                    datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+                    response.repository_name,
+                    response.branch,
+                    response.commits_indexed,
+                    response.files_at_head,
+                    response.files_processed,
+                    response.files_failed,
+                    response.files_reused,
+                    response.symbols_found,
+                    response.references_found,
+                    response.references_resolved,
+                    round(response.elapsed_seconds, 1),
+                    round(response.indexing_seconds, 1),
+                    round(response.resolving_seconds, 1),
+                    response.lines_indexed,
+                ]
+            )
+    except Exception:
+        logger.debug("Failed to write CSV log to %s", log_path, exc_info=True)
 
 
 def _print_summary(

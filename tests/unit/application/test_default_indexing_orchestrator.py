@@ -1706,7 +1706,7 @@ class TestBranchIndexingOptimization:
         ), "Should index only 1 commit when using branch optimization"
 
     @pytest.mark.asyncio
-    async def test_text_search_enabled_extracts_and_saves_comments(
+    async def test_extracts_and_saves_comments(
         self,
         orchestrator: DefaultIndexingOrchestrator,
         text_content_repo: InMemoryTextContentRepository,
@@ -1732,7 +1732,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            enable_text_search=True,  # Enable text search
         )
 
         # Act
@@ -1764,48 +1763,7 @@ class TestBranchIndexingOptimization:
         ), "Response should track docstring count"
 
     @pytest.mark.asyncio
-    async def test_text_search_disabled_does_not_extract_comments(
-        self,
-        orchestrator: DefaultIndexingOrchestrator,
-        text_content_repo: InMemoryTextContentRepository,
-        parser_service: FakeParserService,
-    ) -> None:
-        """Test that comments are NOT extracted when text search is disabled."""
-        # Arrange: Set up fake comments (should not be used)
-        parser_service.comments_to_return = [
-            {
-                "content": "This comment should not be saved",
-                "content_type": "inline_comment",
-                "source_line": 1,
-            },
-        ]
-
-        request = IndexRepositoryRequest(
-            repository_path=Path("/repos/test-repo"),
-            branch="main",
-            languages=["python"],
-            enable_text_search=False,  # Disable text search
-        )
-
-        # Act
-        response = await orchestrator.index_repository(request)
-
-        # Assert: NO text contents should be saved
-        all_text_contents = text_content_repo.get_all()
-        assert (
-            len(all_text_contents) == 0
-        ), "Should NOT have saved text contents when disabled"
-
-        # Verify response shows zero text content counts
-        assert (
-            response.comments_indexed == 0
-        ), "Response should show 0 comments when disabled"
-        assert (
-            response.docstrings_indexed == 0
-        ), "Response should show 0 docstrings when disabled"
-
-    @pytest.mark.asyncio
-    async def test_commit_messages_indexed_when_text_search_enabled(
+    async def test_commit_messages_indexed(
         self,
         orchestrator: DefaultIndexingOrchestrator,
         text_content_repo: InMemoryTextContentRepository,
@@ -1820,7 +1778,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            enable_text_search=True,
         )
 
         # Act
@@ -1857,38 +1814,6 @@ class TestBranchIndexingOptimization:
         ), "Response should track commit message count"
 
     @pytest.mark.asyncio
-    async def test_commit_messages_not_indexed_when_text_search_disabled(
-        self,
-        orchestrator: DefaultIndexingOrchestrator,
-        text_content_repo: InMemoryTextContentRepository,
-    ) -> None:
-        """Test that commit messages are NOT indexed when text search is disabled."""
-        request = IndexRepositoryRequest(
-            repository_path=Path("/repos/test-repo"),
-            branch="main",
-            languages=["python"],
-            enable_text_search=False,  # Disabled
-        )
-
-        # Act
-        response = await orchestrator.index_repository(request)
-
-        # Assert: NO commit messages should be saved
-        all_text_contents = text_content_repo.get_all()
-        commit_messages = [
-            tc for tc in all_text_contents if tc.source_type == "commit_message"
-        ]
-
-        assert (
-            len(commit_messages) == 0
-        ), "Should NOT have saved commit messages when disabled"
-
-        # Verify response shows zero commit messages
-        assert (
-            response.commit_messages_indexed == 0
-        ), "Response should show 0 commit messages when disabled"
-
-    @pytest.mark.asyncio
     async def test_existing_commit_message_not_duplicated(
         self,
         orchestrator: DefaultIndexingOrchestrator,
@@ -1904,7 +1829,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            enable_text_search=True,
         )
 
         # Act: Index once
@@ -1931,7 +1855,7 @@ class TestBranchIndexingOptimization:
         )
 
     @pytest.mark.asyncio
-    async def test_non_code_files_indexed_when_text_search_enabled(
+    async def test_non_code_files_indexed(
         self,
         repository_adapter: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
@@ -1991,7 +1915,6 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            enable_text_search=True,
         )
 
         # Act
@@ -2019,82 +1942,3 @@ class TestBranchIndexingOptimization:
         assert (
             response.non_code_files_indexed >= 3
         ), "Response should track non-code files indexed"
-
-    @pytest.mark.asyncio
-    async def test_non_code_files_not_indexed_when_text_search_disabled(
-        self,
-        repository_adapter: InMemoryRepositoryRepository,
-        commit_repo: InMemoryCommitRepository,
-        file_repo: InMemoryFileRepository,
-        symbol_repo: InMemorySymbolRepository,
-        reference_repo: InMemoryReferenceRepository,
-        index_status_repo: InMemoryIndexStatusRepository,
-        text_content_repo: InMemoryTextContentRepository,
-        parser_service: FakeParserService,
-    ) -> None:
-        """Test that non-code files are NOT indexed when text search is disabled."""
-        # Arrange: Create a git service with non-code files
-        from datetime import datetime
-
-        git_service = FakeGitService(
-            commits=[
-                CommitInfo(
-                    hash="abc123",
-                    short_hash="abc123",
-                    author_name="Test User",
-                    author_email="test@example.com",
-                    author_date=datetime(2024, 1, 1, 0, 0, 0),
-                    committer_name="Test User",
-                    committer_email="test@example.com",
-                    commit_date=datetime(2024, 1, 1, 0, 0, 0),
-                    message="Add docs",
-                    parent_hashes=[],
-                )
-            ]
-        )
-        git_service.files_in_commit = {"abc123": ["README.md", "config.yaml"]}
-        git_service.changed_files_in_commit = {
-            "abc123": ChangedFiles(
-                added=["README.md", "config.yaml"],
-                modified=[],
-                deleted=[],
-            )
-        }
-
-        orchestrator = DefaultIndexingOrchestrator(
-            repository_repo=repository_adapter,
-            commit_repo=commit_repo,
-            file_repo=file_repo,
-            symbol_repo=symbol_repo,
-            reference_repo=reference_repo,
-            index_status_repo=index_status_repo,
-            text_content_repo=text_content_repo,
-            git_service=git_service,
-            parser_service=parser_service,
-            plaintext_parser=FakePlaintextParser(),
-        )
-
-        request = IndexRepositoryRequest(
-            repository_path=Path("/repos/test-repo"),
-            branch="main",
-            languages=["python"],
-            enable_text_search=False,  # Disabled
-        )
-
-        # Act
-        response = await orchestrator.index_repository(request)
-
-        # Assert: NO file content should be saved
-        all_text_contents = text_content_repo.get_all()
-        file_contents = [
-            tc for tc in all_text_contents if tc.source_type == "file_content"
-        ]
-
-        assert (
-            len(file_contents) == 0
-        ), "Should NOT have indexed non-code files when disabled"
-
-        # Verify response shows zero non-code files
-        assert (
-            response.non_code_files_indexed == 0
-        ), "Response should show 0 non-code files when disabled"

@@ -68,7 +68,6 @@ def _run_single_repo_index(
     max_history: int | None = 100,
     force: bool = False,
     since_days: int | None = None,
-    enable_text_search: bool = False,
 ) -> None:
     """Run indexing for a single repository path."""
     # Validate git repository
@@ -112,7 +111,6 @@ def _run_single_repo_index(
             "console": console,
             "max_history": max_history,
             "force": force,
-            "enable_text_search": enable_text_search,
         }
         if index_type == "Full" and since_days is not None:
             kwargs["since_days"] = since_days
@@ -135,7 +133,6 @@ def _run_config_based_index(
     max_history_override: int | None = None,
     force: bool = False,
     since_days: int | None = None,
-    enable_text_search: bool = False,
 ) -> None:
     """Run indexing for repositories defined in config file."""
     from inxr2.adapters.config.yaml_config import YamlConfigService
@@ -331,7 +328,6 @@ def _run_config_based_index(
                     "console": console,
                     "max_history": max_history,
                     "force": force,
-                    "enable_text_search": enable_text_search,
                 }
                 if index_type == "Full" and use_since_days is not None:
                     kwargs["since_days"] = use_since_days
@@ -521,12 +517,6 @@ def main() -> None:
     is_flag=True,
     help="Confirm destructive operations like --reset-db without prompting",
 )
-@click.option(
-    "--enable-text-search/--no-text-search",
-    "--text-search/--no-text-search",
-    default=True,
-    help="Index code comments for text search (default: enabled)",
-)
 @click.pass_context
 def index(
     ctx: click.Context,
@@ -542,7 +532,6 @@ def index(
     force: bool,
     reset_db: bool,
     yes: bool,
-    enable_text_search: bool,
 ) -> None:
     """
     Index repositories for code navigation.
@@ -608,7 +597,6 @@ def index(
             max_history_override=history,
             force=force,
             since_days=days,
-            enable_text_search=enable_text_search,
         )
     else:
         # Single repository path-based indexing
@@ -624,7 +612,6 @@ def index(
             max_history=None if days else (history or 100),
             force=force,
             since_days=days,
-            enable_text_search=enable_text_search,
         )
 
 

@@ -211,24 +211,25 @@ Dropped same-language priority from resolution (was causing expensive file JOINs
 
 ---
 
-### 3.4 Decompose Orchestrator (God Class)
+### 3.4 Decompose Orchestrator (God Class) ✅ DONE
 **Severity:** HIGH | **Effort:** 3-4 days
 
-**Location:** `src/inxr2/application/use_cases/indexing/default_orchestrator.py` (1,211 lines)
+**Location:** `src/inxr2/application/use_cases/indexing/default_orchestrator.py` (was 1,022 lines → now 443 lines)
 
 **Issue:** Single class handles 10+ responsibilities, violating SRP.
 
-**Tasks:**
-- [ ] Extract `PrepareRepositoryUseCase`
-- [ ] Extract `SelectCommitsUseCase` (single strategy after 3.5 unification)
-- [ ] Extract `ProcessCommitUseCase`
-- [ ] Extract `ProcessFileUseCase`
-- [ ] Extract `IndexTextContentUseCase`
-- [ ] Orchestrator becomes thin coordinator (~200 lines)
-- [ ] Add unit tests for each extracted use case
-- [ ] Update existing integration tests
+**Completed Tasks:**
+- [x] Remove `enable_text_search` flag (text search always on)
+- [x] Extract `ProcessFileUseCase` (~370 lines) — file processing, language detection, comment extraction, non-code indexing
+- [x] Extract `ProcessCommitUseCase` (~170 lines) — commit save/reuse, branch linking, commit message indexing, file delegation
+- [x] Replace mutable `stats: dict` with typed `ProcessCommitResult` dataclass aggregation
+- [x] Orchestrator becomes thin coordinator (443 lines, down from 1,022)
+- [x] Add 7 unit tests for `ProcessFileUseCase`
+- [x] Add 7 unit tests for `ProcessCommitUseCase`
+- [x] All 833 tests pass, mypy clean, ruff/black/isort clean
+- [x] Fix timestamp display (dropped " UTC" — GitPython returns committer's local timezone)
 
-**Note:** Effort reduced from 1 week to 3-4 days after 3.5 unification eliminates dual-path complexity.
+**Note:** Orchestrator is 443 lines rather than ~200 because `_select_commits()` and progress callback plumbing remain as necessary coordinator logic. `PrepareRepositoryUseCase`, `SelectCommitsUseCase`, and `IndexTextContentUseCase` were not extracted as separate use cases — their logic is either trivial or better kept inline in the coordinator.
 
 ---
 
@@ -467,7 +468,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 3.1 | P3 | 1-2d | GitServicePort ✅ DONE |
 | 3.2 | P3 | 4h | SearchFilesUseCase ✅ DONE |
 | 3.3 | P3 | 2h | Fix adapter dependency ✅ DONE |
-| 3.4 | P3 | 3-4d | Decompose orchestrator (reduced after 3.5) |
+| 3.4 | P3 | 3-4d | Decompose orchestrator ✅ DONE |
 | 3.5 | P3 | 4h | Unify full/incremental indexing ✅ DONE |
 | 4.1 | P4 | 3-4d | Base parser extraction |
 | 4.2 | P4 | 2h | Comment stripping utility |
@@ -500,8 +501,8 @@ No need to extract this to a use case—the CLI command is sufficient.
 - ~~3.3 Fix adapter dependency (2 hours)~~ ✅ DONE
 - ~~3.1 GitServicePort (1-2 days)~~ ✅ DONE
 
-### Week 4: Architecture - Orchestrator Decomposition
-- 3.4 orchestrator decomposition (3-4 days, reduced complexity after 3.5)
+### Week 4: Architecture - Orchestrator Decomposition ✅ DONE
+- ~~3.4 orchestrator decomposition (3-4 days)~~ ✅ DONE
 
 ### Week 5: Code Quality
 - 4.1 base parser extraction (3-4 days)
@@ -534,6 +535,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 3.3 | 2026-02-07 | (pending) | Fix adapter layer dependency (PlaintextParserPort) |
 | 2.3 | 2026-02-08 | (pending) | Optimize resolve_references_batch (two-pass UPDATE...FROM) |
 | 3.1 | 2026-02-08 | (pending) | GitServicePort with typed return values |
+| 3.4 | 2026-02-08 | (pending) | Decompose orchestrator (ProcessFileUseCase + ProcessCommitUseCase) |
 
 ## Architectural Decisions
 
@@ -563,6 +565,14 @@ Replaced correlated subquery in `resolve_references_batch` with two-pass `UPDATE
 3. **Carry-forward during copy** — `copy_references_to_file()` now remaps `target_symbol_id` via `CopySymbolsResult.id_mapping`, avoiding re-resolution of already-resolved references after cross-branch content-hash reuse.
 
 Performance: Total 14-repo/branch indexing dropped from ~32m to ~22m. Main branch resolving: 47s → 25s.
+
+### Orchestrator Decomposition (2026-02-08)
+Extracted `ProcessFileUseCase` and `ProcessCommitUseCase` from the 1,022-line `DefaultIndexingOrchestrator`. Key decisions:
+
+1. **Two use cases, not five** — the plan originally considered `PrepareRepositoryUseCase`, `SelectCommitsUseCase`, and `IndexTextContentUseCase`, but these are either trivial (repo prep is 10 lines) or better kept inline (commit selection logic is tightly coupled to the coordinator). Extracting per-file and per-commit processing captured the bulk of the complexity.
+2. **Typed result aggregation** — replaced mutable `stats: dict[str, Any]` with frozen `ProcessFileResult` and `ProcessCommitResult` dataclasses. The orchestrator aggregates `ProcessCommitResult` instances via `_merge_commit_result()`.
+3. **`enable_text_search` removed** — text search (comments, docstrings, commit messages, non-code files) is now always on. Removed the flag from `IndexRepositoryRequest`, CLI, and 3 conditional blocks.
+4. **443 lines, not 200** — the orchestrator retains `_select_commits()` (~55 lines) and progress callback plumbing, which are coordinator concerns. The 57% reduction (1,022 → 443) is the practical sweet spot.
 
 ### GitServicePort Completed (2026-02-08)
 Initially attempted 2026-02-07, reverted due to cascading changes. Re-attempted 2026-02-08 after 3.5 unification simplified the orchestrator. Successfully replaced `git_service: Any` with `GitServicePort`, dict returns with frozen dataclasses (`CommitInfo`, `ChangedFiles`, `RepositoryInfo`), and all `data["hash"]` → `data.hash` across codebase. 811 tests pass, mypy clean.
