@@ -426,12 +426,14 @@ class CSharpParser(BaseLanguageParser):
         # --- Namespace handling ---
 
         def process_namespace_declaration(
-            node: Node, is_file_scoped: bool = False
+            node: Node,
+            parent_scope: str | None = None,
+            is_file_scoped: bool = False,
         ) -> str | None:
             """Process a namespace declaration (block-scoped or file-scoped).
 
-            Returns the namespace name so file-scoped namespaces can scope
-            subsequent sibling declarations.
+            Returns the fully qualified namespace name so file-scoped
+            namespaces can scope subsequent sibling declarations.
             """
             ns_name = None
             name_node = None
@@ -445,6 +447,7 @@ class CSharpParser(BaseLanguageParser):
             if not ns_name:
                 return None
 
+            qualified_ns = f"{parent_scope}.{ns_name}" if parent_scope else ns_name
             loc_node = name_node or node
 
             symbols.append(
@@ -452,17 +455,17 @@ class CSharpParser(BaseLanguageParser):
                     ns_name,
                     "namespace",
                     loc_node,
-                    None,
+                    parent_scope,
                     end_line=node.end_point[0] + 1,
                     end_column=node.end_point[1],
-                    qualified_name=ns_name,
+                    qualified_name=qualified_ns,
                 )
             )
 
             # For block-scoped namespaces, process the body
             for child in node.children:
                 if child.type == "declaration_list":
-                    process_declaration_list(child, ns_name)
+                    process_declaration_list(child, qualified_ns)
                 elif child.type in (
                     "class_declaration",
                     "struct_declaration",
@@ -472,9 +475,9 @@ class CSharpParser(BaseLanguageParser):
                     "delegate_declaration",
                     "namespace_declaration",
                 ):
-                    process_node(child, ns_name)
+                    process_node(child, qualified_ns)
 
-            return ns_name
+            return qualified_ns
 
         # --- Members ---
 
@@ -1065,6 +1068,20 @@ class CSharpParser(BaseLanguageParser):
                             )
                         break
 
+            # Handle compilation_unit with file-scoped namespace (mirrors process_node)
+            if node.type == "compilation_unit":
+                file_ref_scope: str | None = None
+                for child in node.children:
+                    if child.type == "file_scoped_namespace_declaration":
+                        for name_child in child.children:
+                            if name_child.type in ("identifier", "qualified_name"):
+                                file_ref_scope = get_text(name_child)
+                                break
+                        extract_references(child, file_ref_scope)
+                    else:
+                        extract_references(child, file_ref_scope or scope)
+                return
+
             # Recurse into children
             for child in node.children:
                 child_scope = scope
@@ -1211,17 +1228,21 @@ class CSharpParser(BaseLanguageParser):
             elif node.type == "delegate_declaration":
                 process_delegate_declaration(node, scope)
             elif node.type == "namespace_declaration":
-                process_namespace_declaration(node)
+                process_namespace_declaration(node, parent_scope=scope)
             elif node.type == "file_scoped_namespace_declaration":
                 # File-scoped namespace: processed below in compilation_unit
-                process_namespace_declaration(node, is_file_scoped=True)
+                process_namespace_declaration(
+                    node, parent_scope=scope, is_file_scoped=True
+                )
             elif node.type == "compilation_unit":
                 # Check for file-scoped namespace first — it scopes all
                 # subsequent sibling declarations
                 file_scope: str | None = None
                 for child in node.children:
                     if child.type == "file_scoped_namespace_declaration":
-                        ns = process_namespace_declaration(child, is_file_scoped=True)
+                        ns = process_namespace_declaration(
+                            child, parent_scope=scope, is_file_scoped=True
+                        )
                         if ns:
                             file_scope = ns
                     else:

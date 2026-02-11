@@ -535,10 +535,50 @@ class PostgresFileRepository(FileRepositoryPort):
         # to get latest version only, keeping one file per repo/path combination
         if commit_id is None:
             if repository_id is not None:
-                # Single repo: use the commit-date-based helper
-                query_stmt = query_stmt.where(
-                    FileModel.id.in_(latest_file_ids_subquery(repository_id))
-                )
+                if language is None:
+                    # Single repo, no language filter: use the helper
+                    query_stmt = query_stmt.where(
+                        FileModel.id.in_(latest_file_ids_subquery(repository_id))
+                    )
+                else:
+                    # Single repo with language filter: compute latest per
+                    # path within this repo and language so the language
+                    # predicate is applied inside the window, not after.
+                    from sqlalchemy import func as sqla_func
+
+                    from ..models.commit import CommitModel as CM
+
+                    ranked = (
+                        select(
+                            FileModel.id.label("file_id"),
+                            sqla_func.row_number()
+                            .over(
+                                partition_by=(
+                                    FileModel.repository_id,
+                                    FileModel.path,
+                                ),
+                                order_by=(
+                                    CM.commit_date.desc(),
+                                    CM.id.desc(),
+                                    FileModel.id.desc(),
+                                ),
+                            )
+                            .label("rn"),
+                        )
+                        .join(CM, FileModel.commit_id == CM.id)
+                        .where(
+                            FileModel.repository_id == repository_id,
+                            func.lower(FileModel.path).contains(
+                                query_lower, autoescape=True
+                            ),
+                            FileModel.language == language,
+                        )
+                    )
+                    ranked_sq = ranked.subquery()
+                    single_repo_latest = select(ranked_sq.c.file_id).where(
+                        ranked_sq.c.rn == 1
+                    )
+                    query_stmt = query_stmt.where(FileModel.id.in_(single_repo_latest))
             else:
                 # Cross-repo search: use ROW_NUMBER per (repository_id, path)
                 from sqlalchemy import func as sqla_func
