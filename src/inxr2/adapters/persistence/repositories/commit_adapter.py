@@ -85,7 +85,9 @@ class PostgresCommitRepository(CommitRepositoryPort):
         is shorter than 40 characters, uses prefix matching.
         """
         if len(commit_hash) < 40:
-            hash_filter = CommitModel.commit_hash.startswith(commit_hash)
+            hash_filter = CommitModel.commit_hash.startswith(
+                commit_hash, autoescape=True
+            )
         else:
             hash_filter = CommitModel.commit_hash == commit_hash
 

@@ -35,7 +35,11 @@ def latest_file_ids_subquery(
             func.row_number()
             .over(
                 partition_by=FileModel.path,
-                order_by=(CommitModel.commit_date.desc(), CommitModel.id.desc()),
+                order_by=(
+                    CommitModel.commit_date.desc(),
+                    CommitModel.id.desc(),
+                    FileModel.id.desc(),
+                ),
             )
             .label("rn"),
         )

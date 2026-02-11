@@ -259,7 +259,9 @@ class PostgresFileRepository(FileRepositoryPort):
         # First, get the target commit's date for fallback lookup
         # Support short (prefix) commit hashes from the UI
         if len(commit_hash) < 40:
-            hash_filter = CommitModel.commit_hash.startswith(commit_hash)
+            hash_filter = CommitModel.commit_hash.startswith(
+                commit_hash, autoescape=True
+            )
         else:
             hash_filter = CommitModel.commit_hash == commit_hash
 
@@ -543,15 +545,27 @@ class PostgresFileRepository(FileRepositoryPort):
 
                 from ..models.commit import CommitModel as CM
 
-                ranked = select(
-                    FileModel.id.label("file_id"),
-                    sqla_func.row_number()
-                    .over(
-                        partition_by=(FileModel.repository_id, FileModel.path),
-                        order_by=(CM.commit_date.desc(), CM.id.desc()),
+                ranked = (
+                    select(
+                        FileModel.id.label("file_id"),
+                        sqla_func.row_number()
+                        .over(
+                            partition_by=(FileModel.repository_id, FileModel.path),
+                            order_by=(
+                                CM.commit_date.desc(),
+                                CM.id.desc(),
+                                FileModel.id.desc(),
+                            ),
+                        )
+                        .label("rn"),
                     )
-                    .label("rn"),
-                ).join(CM, FileModel.commit_id == CM.id)
+                    .join(CM, FileModel.commit_id == CM.id)
+                    .where(
+                        func.lower(FileModel.path).contains(
+                            query_lower, autoescape=True
+                        )
+                    )
+                )
                 if language is not None:
                     ranked = ranked.where(FileModel.language == language)
                 ranked_sq = ranked.subquery()
