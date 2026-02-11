@@ -1427,17 +1427,13 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         return resolved_count
 
     def _get_repo_id_from_refs(self, refs: list[Reference]) -> int | None:
-        """Get repository_id by looking up source files of references.
+        """Get repository_id directly from references.
 
         Used by find_references_to_symbol which doesn't take repository_id directly.
         """
-        if not refs or self._file_repo is None:
+        if not refs:
             return None
-        for ref in refs:
-            file = self._file_repo._files.get(ref.source_file_id)
-            if file is not None:
-                return file.repository_id
-        return None
+        return refs[0].repository_id
 
     def _pick_best_symbol(
         self, ref: Reference, candidates: list[Symbol]

@@ -34,6 +34,16 @@ else:
     _ASYNC_URL = CLI_TEST_DB_URL
 
 
+def _assert_test_database(url: str) -> None:
+    """Safety guard: refuse to operate on a non-test database."""
+    db_name = url.rsplit("/", 1)[-1].split("?")[0]
+    if not db_name.endswith("_test"):
+        raise RuntimeError(
+            f"Refusing to run tests against database '{db_name}' — "
+            "TEST_DATABASE_URL must point to a database ending with '_test'."
+        )
+
+
 @pytest.fixture
 def cli_test_db() -> Generator[str, None, None]:
     """Provide an isolated PostgreSQL test database for CLI tests.
@@ -62,6 +72,7 @@ def cli_test_db() -> Generator[str, None, None]:
             )
         await engine.dispose()
 
+    _assert_test_database(CLI_TEST_DB_URL)
     asyncio.run(setup_db())
 
     yield CLI_TEST_DB_URL
