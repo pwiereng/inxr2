@@ -705,6 +705,7 @@ def _dict_to_symbol(
         "macro": SymbolKind.MACRO,
         "enum": SymbolKind.ENUM,
         "enum_value": SymbolKind.ENUM_VALUE,
+        "enum_member": SymbolKind.ENUM_MEMBER,
         "struct_field": SymbolKind.STRUCT_FIELD,
         "union_field": SymbolKind.UNION_FIELD,
         # Java-specific kinds

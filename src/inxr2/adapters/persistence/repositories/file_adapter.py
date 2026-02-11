@@ -264,12 +264,17 @@ class PostgresFileRepository(FileRepositoryPort):
             hash_filter = CommitModel.commit_hash == commit_hash
 
         target_commit_result = await self.session.execute(
-            select(CommitModel).where(
+            select(CommitModel)
+            .where(
                 CommitModel.repository_id == repository_id,
                 hash_filter,
             )
+            .limit(2)
         )
-        target_commit = target_commit_result.scalar_one_or_none()
+        target_commit_matches = target_commit_result.scalars().all()
+        target_commit = (
+            target_commit_matches[0] if len(target_commit_matches) == 1 else None
+        )
         if target_commit is None:
             return None
 

@@ -90,13 +90,17 @@ class PostgresCommitRepository(CommitRepositoryPort):
             hash_filter = CommitModel.commit_hash == commit_hash
 
         result = await self.session.execute(
-            select(CommitModel).where(
+            select(CommitModel)
+            .where(
                 CommitModel.repository_id == repository_id,
                 hash_filter,
             )
+            .limit(2)
         )
-        model = result.scalar_one_or_none()
-        return self.mapper.to_domain(model) if model else None
+        models = result.scalars().all()
+        if len(models) != 1:
+            return None
+        return self.mapper.to_domain(models[0])
 
     async def link_commit_to_branch(
         self, repository_id: int, commit_id: int, branch: str

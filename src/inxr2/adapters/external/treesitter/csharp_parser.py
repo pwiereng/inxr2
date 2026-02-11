@@ -968,6 +968,7 @@ class CSharpParser(BaseLanguageParser):
                     "base_list",
                     "simple_base_type",
                     "primary_constructor_base_type",
+                    "variable_declaration",
                 ):
                     pass  # Handled by parent
                 else:

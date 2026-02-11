@@ -1074,15 +1074,19 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         is shorter than 40 characters, uses prefix matching.
         """
         is_prefix = len(commit_hash) < 40
+        matches: list[Commit] = []
         for commit in self._commits.values():
             if commit.repository_id != repository_id:
                 continue
             if is_prefix:
                 if commit.commit_hash.value.startswith(commit_hash):
-                    return commit
+                    matches.append(commit)
             else:
                 if commit.commit_hash.value == commit_hash:
                     return commit
+        # For prefix matches, return only if exactly one match (ambiguous = None)
+        if len(matches) == 1:
+            return matches[0]
         return None
 
     async def link_commit_to_branch(
