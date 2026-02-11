@@ -459,7 +459,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 
 ---
 
-### 8.3 Fix Frontend Test Warnings
+### 8.3 Fix Frontend Test Warnings ✅ DONE
 **Severity:** LOW | **Effort:** 2 hours
 
 **Location:** Frontend test suite
@@ -468,9 +468,11 @@ No need to extract this to a use case—the CLI command is sufficient.
 - React Router v7 future flag warnings (`v7_startTransition`, `v7_relativeSplatPath`) — 6 instances
 - React `act(...)` warnings in `Home` and `CodeHeader` test components — 6 instances
 
-**Tasks:**
-- [ ] Add React Router v7 future flags to test router configuration
-- [ ] Wrap async state updates in `act()` in Home and CodeHeader tests
+**Completed Tasks:**
+- [x] Add React Router v7 future flags to all test router configurations (`App.test.tsx`, `Home.test.tsx`, `CodeHeader.test.tsx`)
+- [x] Fix `act()` warnings by waiting for async data to settle before asserting (`waitFor` on loaded data)
+- [x] Fix CodeHeader loading test: use never-resolving promises to prevent post-assertion state updates
+- [x] All 212 frontend tests pass with zero warnings
 
 ---
 
@@ -503,7 +505,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 7.2 | P7 | 4h | IndexingProgressRenderer ✅ DONE |
 | 8.1 | P8 | 1d | Split useBrowseState |
 | 8.2 | P8 | 2h | ApiError class |
-| 8.3 | P8 | 2h | Fix frontend test warnings |
+| 8.3 | P8 | 2h | Fix frontend test warnings ✅ DONE |
 
 ---
 

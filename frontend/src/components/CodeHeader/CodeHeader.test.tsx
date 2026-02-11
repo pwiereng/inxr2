@@ -89,8 +89,9 @@ const defaultProps = {
 }
 
 // Helper to render component with router
+const routerFuture = { v7_startTransition: true, v7_relativeSplatPath: true } as const
 const renderWithRouter = (ui: React.ReactElement) => {
-  return render(<BrowserRouter>{ui}</BrowserRouter>)
+  return render(<BrowserRouter future={routerFuture}>{ui}</BrowserRouter>)
 }
 
 // Setup mocks before each test
@@ -107,9 +108,12 @@ describe('CodeHeader', () => {
     it('should render home icon button', async () => {
       renderWithRouter(<CodeHeader {...defaultProps} />)
 
+      // Wait for all data to load to avoid act() warnings
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /home/i })).toBeInTheDocument()
+        expect(screen.getByText('abc123d')).toBeInTheDocument()
       })
+
+      expect(screen.getByRole('button', { name: /home/i })).toBeInTheDocument()
     })
 
     it('should render all three tabs', async () => {
@@ -133,9 +137,11 @@ describe('CodeHeader', () => {
 
     it('should show loading state for repositories initially', async () => {
       const api = await import('@/lib/api')
-      vi.mocked(api.getRepositories).mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve(mockRepositories), 1000))
-      )
+      // Use promises that never resolve so loading state persists
+      // and no state updates happen after assertions
+      vi.mocked(api.getRepositories).mockReturnValue(new Promise(() => {}))
+      vi.mocked(api.getRepositoryBranches).mockReturnValue(new Promise(() => {}))
+      vi.mocked(api.getCommits).mockReturnValue(new Promise(() => {}))
 
       renderWithRouter(<CodeHeader {...defaultProps} />)
 
@@ -331,7 +337,7 @@ describe('CodeHeader', () => {
 
       // Change repository
       rerender(
-        <BrowserRouter>
+        <BrowserRouter future={routerFuture}>
           <CodeHeader {...defaultProps} repoName="another-repo" />
         </BrowserRouter>
       )
@@ -352,7 +358,7 @@ describe('CodeHeader', () => {
 
       // Change branch
       rerender(
-        <BrowserRouter>
+        <BrowserRouter future={routerFuture}>
           <CodeHeader {...defaultProps} branch="feature-branch" />
         </BrowserRouter>
       )
