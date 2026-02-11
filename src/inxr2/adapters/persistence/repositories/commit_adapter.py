@@ -81,11 +81,18 @@ class PostgresCommitRepository(CommitRepositoryPort):
         """Find commit by repository and hash.
 
         Commits are unique per (repository_id, commit_hash).
+        Supports short (prefix) commit hashes — when the provided hash
+        is shorter than 40 characters, uses prefix matching.
         """
+        if len(commit_hash) < 40:
+            hash_filter = CommitModel.commit_hash.startswith(commit_hash)
+        else:
+            hash_filter = CommitModel.commit_hash == commit_hash
+
         result = await self.session.execute(
             select(CommitModel).where(
                 CommitModel.repository_id == repository_id,
-                CommitModel.commit_hash == commit_hash,
+                hash_filter,
             )
         )
         model = result.scalar_one_or_none()

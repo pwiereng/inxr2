@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....application.ports.repositories import CopySymbolsResult, SymbolRepositoryPort
 from ....domain.entities import Symbol
 from ..mappers import SymbolMapper
-from ..models.file import FileModel
 from ..models.symbol import SymbolModel
+from ._latest_file_query import latest_file_ids_subquery
 
 
 class PostgresSymbolRepository(SymbolRepositoryPort):
@@ -80,14 +80,8 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
             query = query.where(SymbolModel.repository_id == repository_id)
 
             # Filter to only symbols from latest file versions
-            latest_files = (
-                select(func.max(FileModel.id).label("latest_id"))
-                .where(FileModel.repository_id == repository_id)
-                .group_by(FileModel.path)
-                .subquery()
-            )
             query = query.where(
-                SymbolModel.file_id.in_(select(latest_files.c.latest_id))
+                SymbolModel.file_id.in_(latest_file_ids_subquery(repository_id))
             )
 
         if kind is not None:
@@ -127,14 +121,8 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
             query = query.where(SymbolModel.commit_id == commit_id)
         elif repository_id is not None:
             # Default mode: filter to only symbols from latest file versions
-            latest_files = (
-                select(func.max(FileModel.id).label("latest_id"))
-                .where(FileModel.repository_id == repository_id)
-                .group_by(FileModel.path)
-                .subquery()
-            )
             query = query.where(
-                SymbolModel.file_id.in_(select(latest_files.c.latest_id))
+                SymbolModel.file_id.in_(latest_file_ids_subquery(repository_id))
             )
 
         # Order by qualified_name for consistent ordering
@@ -152,19 +140,11 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         Only returns symbols from the latest version of each file,
         avoiding duplicates from multiple indexed commits.
         """
-        # Filter to only symbols from latest file versions
-        latest_files = (
-            select(func.max(FileModel.id).label("latest_id"))
-            .where(FileModel.repository_id == repository_id)
-            .group_by(FileModel.path)
-            .subquery()
-        )
-
         result = await self.session.execute(
             select(SymbolModel).where(
                 SymbolModel.repository_id == repository_id,
                 SymbolModel.qualified_name == qualified_name,
-                SymbolModel.file_id.in_(select(latest_files.c.latest_id)),
+                SymbolModel.file_id.in_(latest_file_ids_subquery(repository_id)),
             )
         )
         models = result.scalars().all()

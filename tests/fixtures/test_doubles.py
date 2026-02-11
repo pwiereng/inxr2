@@ -771,16 +771,39 @@ class InMemoryFileRepository(FileRepositoryPort):
 
         # When no commit_id, deduplicate by (repository_id, path) keeping latest
         if commit_id is None:
-            latest_by_repo_path: dict[tuple[int | None, str], File] = {}
-            for f in results:
-                key = (f.repository_id, f.path)
-                existing = latest_by_repo_path.get(key)
-                # Keep the one with higher ID (more recently indexed)
-                if existing is None or (
-                    f.id is not None and (existing.id is None or f.id > existing.id)
-                ):
-                    latest_by_repo_path[key] = f
-            results = list(latest_by_repo_path.values())
+            if self._commit_repo is not None:
+                # Use commit dates (matches Postgres ROW_NUMBER approach)
+                commit_keys: dict[int, tuple[datetime, int]] = {}
+                for c in self._commit_repo._commits.values():
+                    if c.id is not None:
+                        commit_keys[c.id] = (c.commit_date, c.id)
+
+                latest_by_repo_path: dict[tuple[int | None, str], File] = {}
+                latest_keys: dict[tuple[int | None, str], tuple[datetime, int]] = {}
+                for f in results:
+                    rp_key = (f.repository_id, f.path)
+                    f_key = commit_keys.get(f.commit_id)
+                    if f_key is None:
+                        # No commit info — only add if nothing else for this path
+                        if rp_key not in latest_by_repo_path:
+                            latest_by_repo_path[rp_key] = f
+                        continue
+                    existing_key = latest_keys.get(rp_key)
+                    if existing_key is None or f_key > existing_key:
+                        latest_by_repo_path[rp_key] = f
+                        latest_keys[rp_key] = f_key
+                results = list(latest_by_repo_path.values())
+            else:
+                # Fallback: max(id) when no commit repo (backward compat)
+                latest_by_repo_path_simple: dict[tuple[int | None, str], File] = {}
+                for f in results:
+                    key = (f.repository_id, f.path)
+                    existing = latest_by_repo_path_simple.get(key)
+                    if existing is None or (
+                        f.id is not None and (existing.id is None or f.id > existing.id)
+                    ):
+                        latest_by_repo_path_simple[key] = f
+                results = list(latest_by_repo_path_simple.values())
 
         # Sort by relevance (exact filename match first, then prefix, then contains)
         def relevance_key(f: File) -> tuple[int, str]:
@@ -801,18 +824,42 @@ class InMemoryFileRepository(FileRepositoryPort):
     def _compute_latest_file_ids(self, repository_id: int) -> set[int]:
         """Compute the latest file ID for each unique path in a repository.
 
-        Mirrors the Postgres pattern: SELECT max(id) FROM files
-        WHERE repository_id = ? GROUP BY path.
+        Mirrors the Postgres pattern: ROW_NUMBER() OVER (PARTITION BY path
+        ORDER BY commit_date DESC, commit_id DESC) where rn=1.
 
-        Since file IDs are auto-incrementing, max(id) per path = latest version.
+        Uses commit dates from _commit_repo when available; falls back to
+        max(id) when no commit repo is set (backward compat for tests that
+        don't wire up commit_repo).
         """
-        latest_by_path: dict[str, int] = {}
+        if self._commit_repo is None:
+            # Fallback: max(id) per path (legacy behavior)
+            latest_by_path: dict[str, int] = {}
+            for file in self._files.values():
+                if file.repository_id == repository_id and file.id is not None:
+                    current = latest_by_path.get(file.path)
+                    if current is None or file.id > current:
+                        latest_by_path[file.path] = file.id
+            return set(latest_by_path.values())
+
+        # Build commit_id -> (commit_date, commit_id) lookup
+        commit_keys: dict[int, tuple[datetime, int]] = {}
+        for c in self._commit_repo._commits.values():
+            if c.repository_id == repository_id and c.id is not None:
+                commit_keys[c.id] = (c.commit_date, c.id)
+
+        # For each path, keep the file whose commit has the newest date
+        latest_by_path_dated: dict[str, tuple[tuple[datetime, int], int]] = {}
         for file in self._files.values():
-            if file.repository_id == repository_id and file.id is not None:
-                current = latest_by_path.get(file.path)
-                if current is None or file.id > current:
-                    latest_by_path[file.path] = file.id
-        return set(latest_by_path.values())
+            if file.repository_id != repository_id or file.id is None:
+                continue
+            key = commit_keys.get(file.commit_id)
+            if key is None:
+                continue
+            existing = latest_by_path_dated.get(file.path)
+            if existing is None or key > existing[0]:
+                latest_by_path_dated[file.path] = (key, file.id)
+
+        return {file_id for _, file_id in latest_by_path_dated.values()}
 
     # Test helper methods
     def add(self, file: File) -> None:
@@ -1023,13 +1070,19 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         """Find commit by repository and hash.
 
         Commits are unique per (repository_id, commit_hash).
+        Supports short (prefix) commit hashes — when the provided hash
+        is shorter than 40 characters, uses prefix matching.
         """
+        is_prefix = len(commit_hash) < 40
         for commit in self._commits.values():
-            if (
-                commit.repository_id == repository_id
-                and commit.commit_hash.value == commit_hash
-            ):
-                return commit
+            if commit.repository_id != repository_id:
+                continue
+            if is_prefix:
+                if commit.commit_hash.value.startswith(commit_hash):
+                    return commit
+            else:
+                if commit.commit_hash.value == commit_hash:
+                    return commit
         return None
 
     async def link_commit_to_branch(

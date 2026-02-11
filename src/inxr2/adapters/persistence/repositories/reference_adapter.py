@@ -11,6 +11,7 @@ from ..mappers import ReferenceMapper
 from ..models.branch_commit import BranchCommitModel
 from ..models.file import FileModel
 from ..models.reference import ReferenceModel
+from ._latest_file_query import latest_file_ids_subquery
 
 
 class PostgresReferenceRepository(ReferenceRepositoryPort):
@@ -113,41 +114,13 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         if repo_id_result is None:
             return []
 
-        if branch is not None:
-            # Branch mode: get files from commits on this branch
-            # Subquery to find all commit IDs on this branch
-            branch_commits = (
-                select(BranchCommitModel.commit_id)
-                .where(
-                    BranchCommitModel.repository_id == repo_id_result,
-                    BranchCommitModel.branch == branch,
-                )
-                .subquery()
-            )
-            # Subquery to find the latest file ID for each path on this branch
-            latest_files = (
-                select(func.max(FileModel.id).label("latest_id"))
-                .where(
-                    FileModel.repository_id == repo_id_result,
-                    FileModel.commit_id.in_(select(branch_commits.c.commit_id)),
-                )
-                .group_by(FileModel.path)
-                .subquery()
-            )
-        else:
-            # Subquery to find the latest file ID for each path
-            latest_files = (
-                select(func.max(FileModel.id).label("latest_id"))
-                .where(FileModel.repository_id == repo_id_result)
-                .group_by(FileModel.path)
-                .subquery()
-            )
+        latest_files_q = latest_file_ids_subquery(repo_id_result, branch=branch)
 
         result = await self.session.execute(
             select(ReferenceModel)
             .where(
                 ReferenceModel.target_symbol_id == symbol_id,
-                ReferenceModel.source_file_id.in_(select(latest_files.c.latest_id)),
+                ReferenceModel.source_file_id.in_(latest_files_q),
             )
             .order_by(ReferenceModel.source_line)
             .limit(limit)
@@ -203,44 +176,14 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
             models = result.scalars().all()
             return [self.mapper.to_domain(model) for model in models]
 
-        if branch is not None:
-            # Branch mode: get files from commits on this branch
-            # Subquery to find all commit IDs on this branch
-            branch_commits = (
-                select(BranchCommitModel.commit_id)
-                .where(
-                    BranchCommitModel.repository_id == repository_id,
-                    BranchCommitModel.branch == branch,
-                )
-                .subquery()
-            )
-            # Subquery to find the latest file ID for each path on this branch
-            latest_files = (
-                select(func.max(FileModel.id).label("latest_id"))
-                .where(
-                    FileModel.repository_id == repository_id,
-                    FileModel.commit_id.in_(select(branch_commits.c.commit_id)),
-                )
-                .group_by(FileModel.path)
-                .subquery()
-            )
-        else:
-            # Default: get from latest version of each file
-            # Subquery to find the latest file ID for each path in the repository
-            # (Since file IDs are auto-incrementing, max ID = latest version)
-            latest_files = (
-                select(func.max(FileModel.id).label("latest_id"))
-                .where(FileModel.repository_id == repository_id)
-                .group_by(FileModel.path)
-                .subquery()
-            )
+        latest_files_q = latest_file_ids_subquery(repository_id, branch=branch)
 
         result = await self.session.execute(
             select(ReferenceModel)
             .where(
                 ReferenceModel.reference_text == text,
                 ReferenceModel.repository_id == repository_id,
-                ReferenceModel.source_file_id.in_(select(latest_files.c.latest_id)),
+                ReferenceModel.source_file_id.in_(latest_files_q),
             )
             .order_by(ReferenceModel.source_file_id, ReferenceModel.source_line)
             .limit(limit)

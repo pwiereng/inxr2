@@ -4,9 +4,13 @@ Each test sets up the same scenario in both implementations via the parametrized
 `repos` fixture, then asserts identical results.
 
 Scenario: A repository with 2 commits indexing the same file path.
-The "latest" file version is from commit 2 (higher file ID).
+The "latest" file version is the one with the newest commit_date.
 Methods should return only symbols/references from the latest file version
 when not in time-travel mode.
+
+The "head_first" variants simulate the real indexer which inserts HEAD files
+first (lower auto-increment IDs) and older commits later (higher IDs).
+This catches bugs where max(id) is incorrectly used to mean "latest".
 """
 
 import pytest
@@ -292,3 +296,147 @@ class TestListChangedAtCommitContract:
         changed = await repos.file.list_changed_at_commit(repo_id, commit2_id)
         assert len(changed) == 1
         assert changed[0].path == "src/f.py"
+
+
+# ---- HEAD-first indexing contracts (newer commit has LOWER file IDs) ----
+#
+# The real indexer processes HEAD first, so HEAD files get lower auto-increment
+# IDs than older commits. These tests verify that latest-file filtering uses
+# commit_date, not max(id).
+
+
+async def _setup_two_commits_head_first(repos: Repos) -> dict[str, int]:
+    """Create a repo simulating HEAD-first indexing.
+
+    Newer commit (commit2, date_offset=1) is inserted FIRST → lower file ID.
+    Older commit (commit1, date_offset=0) is inserted SECOND → higher file ID.
+
+    The "latest" should be commit2's file (newer date, but LOWER ID).
+    """
+    repo_id = await create_test_repo(repos)
+    # Create both commits first (dates determine "latest", not insertion order)
+    commit1_id = await create_test_commit(repos, repo_id, "a" * 40, date_offset_days=0)
+    commit2_id = await create_test_commit(repos, repo_id, "b" * 40, date_offset_days=1)
+
+    # Insert HEAD file first (newer commit) → gets lower auto-increment ID
+    file2_id = await create_test_file(
+        repos, repo_id, commit2_id, "src/main.py", "d" * 40
+    )
+    # Insert older file second → gets higher auto-increment ID
+    file1_id = await create_test_file(
+        repos, repo_id, commit1_id, "src/main.py", "c" * 40
+    )
+
+    # file1_id > file2_id (older commit's file has higher ID)
+    # Symbol at HEAD (commit2)
+    symbol2_id = await create_test_symbol(
+        repos, file2_id, repo_id, commit2_id, "foo", "module.foo"
+    )
+    # Symbol at older commit
+    symbol1_id = await create_test_symbol(
+        repos, file1_id, repo_id, commit1_id, "foo", "module.foo"
+    )
+
+    return {
+        "repo_id": repo_id,
+        "commit1_id": commit1_id,
+        "commit2_id": commit2_id,
+        "file1_id": file1_id,
+        "file2_id": file2_id,
+        "symbol1_id": symbol1_id,
+        "symbol2_id": symbol2_id,
+    }
+
+
+class TestSearchByNameHeadFirst:
+    async def test_returns_symbol_from_newer_commit(self, repos: Repos) -> None:
+        """search_by_name should return symbol from newer commit even if it has lower ID."""
+        data = await _setup_two_commits_head_first(repos)
+
+        results = await repos.symbol.search_by_name(
+            "foo", repository_id=data["repo_id"]
+        )
+
+        assert len(results) == 1
+        assert results[0].file_id == data["file2_id"]
+
+
+class TestFindByExactNameHeadFirst:
+    async def test_returns_symbol_from_newer_commit(self, repos: Repos) -> None:
+        """find_by_exact_name should return symbol from newer commit."""
+        data = await _setup_two_commits_head_first(repos)
+
+        results = await repos.symbol.find_by_exact_name(
+            "foo", repository_id=data["repo_id"]
+        )
+
+        assert len(results) == 1
+        assert results[0].file_id == data["file2_id"]
+
+
+class TestFindByQualifiedNameHeadFirst:
+    async def test_returns_symbol_from_newer_commit(self, repos: Repos) -> None:
+        """find_by_qualified_name should return symbol from newer commit."""
+        data = await _setup_two_commits_head_first(repos)
+
+        results = await repos.symbol.find_by_qualified_name(
+            data["repo_id"], "module.foo"
+        )
+
+        assert len(results) == 1
+        assert results[0].file_id == data["file2_id"]
+
+
+class TestFindReferencesToSymbolHeadFirst:
+    async def test_returns_ref_from_newer_commit(self, repos: Repos) -> None:
+        """find_references_to_symbol should return refs from newer commit's file."""
+        data = await _setup_two_commits_head_first(repos)
+
+        # Refs in both file versions pointing to symbol2
+        await create_test_reference(
+            repos,
+            data["repo_id"],
+            data["commit2_id"],
+            data["file2_id"],
+            "foo",
+            target_symbol_id=data["symbol2_id"],
+        )
+        await create_test_reference(
+            repos,
+            data["repo_id"],
+            data["commit1_id"],
+            data["file1_id"],
+            "foo",
+            target_symbol_id=data["symbol2_id"],
+        )
+
+        results = await repos.reference.find_references_to_symbol(data["symbol2_id"])
+
+        assert len(results) == 1
+        assert results[0].source_file_id == data["file2_id"]
+
+
+class TestFindReferencesByTextHeadFirst:
+    async def test_returns_ref_from_newer_commit(self, repos: Repos) -> None:
+        """find_references_by_text should return refs from newer commit's file."""
+        data = await _setup_two_commits_head_first(repos)
+
+        await create_test_reference(
+            repos,
+            data["repo_id"],
+            data["commit2_id"],
+            data["file2_id"],
+            "bar",
+        )
+        await create_test_reference(
+            repos,
+            data["repo_id"],
+            data["commit1_id"],
+            data["file1_id"],
+            "bar",
+        )
+
+        results = await repos.reference.find_references_by_text("bar", data["repo_id"])
+
+        assert len(results) == 1
+        assert results[0].source_file_id == data["file2_id"]
