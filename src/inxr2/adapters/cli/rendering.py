@@ -104,7 +104,7 @@ class IndexingProgressRenderer:
             MofNCompleteColumn(),
             TimeElapsedColumn(),
             TimeRemainingColumn(),
-            console=Console(),
+            console=self._console,
             transient=False,
         )
 

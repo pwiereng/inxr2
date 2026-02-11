@@ -23,9 +23,21 @@ else:
     TEST_DATABASE_URL = _raw_url
 
 
+def _assert_test_database(url: str) -> None:
+    """Safety guard: refuse to drop_all on a non-test database."""
+    # Extract database name from URL (last path segment)
+    db_name = url.rsplit("/", 1)[-1].split("?")[0]
+    if not db_name.endswith("_test"):
+        raise RuntimeError(
+            f"Refusing to run tests against database '{db_name}' — "
+            "TEST_DATABASE_URL must point to a database ending with '_test'."
+        )
+
+
 @pytest_asyncio.fixture(scope="session")
 async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
     """Create test database engine (once per session)."""
+    _assert_test_database(TEST_DATABASE_URL)
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 
     async with engine.begin() as conn:
