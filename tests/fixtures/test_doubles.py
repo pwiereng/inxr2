@@ -854,6 +854,13 @@ class InMemoryFileRepository(FileRepositoryPort):
                 continue
             key = commit_keys.get(file.commit_id)
             if key is None:
+                # Commit not in repo — fall back to max(id) for this path
+                existing = latest_by_path_dated.get(file.path)
+                if existing is None:
+                    latest_by_path_dated[file.path] = (
+                        (datetime.min, 0),
+                        file.id,
+                    )
                 continue
             existing = latest_by_path_dated.get(file.path)
             if existing is None or key > existing[0]:
