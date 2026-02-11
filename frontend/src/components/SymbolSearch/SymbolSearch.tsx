@@ -30,10 +30,13 @@ function getSymbolIcon(kind: string) {
       return <ClassIcon fontSize="small" sx={{ color: '#4ec9b0' }} />
     case 'function':
     case 'method':
+    case 'delegate':
       return <FunctionsIcon fontSize="small" sx={{ color: '#dcdcaa' }} />
     case 'interface':
     case 'type':
       return <CodeIcon fontSize="small" sx={{ color: '#4fc1ff' }} />
+    case 'event':
+    case 'indexer':
     default:
       return <CodeIcon fontSize="small" sx={{ color: '#9cdcfe' }} />
   }
@@ -47,12 +50,15 @@ function getKindColor(
     case 'class':
       return 'success'
     case 'function':
+    case 'delegate':
       return 'primary'
     case 'method':
       return 'info'
     case 'interface':
     case 'type':
       return 'secondary'
+    case 'event':
+      return 'warning'
     default:
       return 'default'
   }

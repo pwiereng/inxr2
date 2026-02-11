@@ -71,6 +71,9 @@ function getFileColor(language: string | null): string {
     markdown: '#083FA1',
     css: '#563D7C',
     html: '#E34F26',
+    c: '#555555',
+    java: '#B07219',
+    csharp: '#239120',
   }
   return language ? colors[language.toLowerCase()] || '#6e7681' : '#6e7681'
 }

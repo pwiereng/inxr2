@@ -54,12 +54,15 @@ function getSymbolKindIcon(kind: string) {
   switch (kind.toLowerCase()) {
     case 'function':
     case 'method':
+    case 'delegate':
       return <FunctionsIcon fontSize="small" />
     case 'class':
       return <ClassIcon fontSize="small" />
     case 'interface':
     case 'type':
       return <DataObjectIcon fontSize="small" />
+    case 'event':
+    case 'indexer':
     default:
       return <CodeIcon fontSize="small" />
   }
