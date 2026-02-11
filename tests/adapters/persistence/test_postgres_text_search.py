@@ -72,7 +72,7 @@ async def test_search_regex_mode(
     test_commit: Commit,
     test_file: File,
 ) -> None:
-    """Test regex search mode (regex mode)."""
+    """Test regex search mode."""
     assert test_repository.id is not None
     assert test_commit.id is not None
     assert test_file.id is not None

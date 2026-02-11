@@ -10,7 +10,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
-from inxr2.adapters.persistence.models.base import Base
+from inxr2.adapters.persistence.models import Base
 
 # PostgreSQL test database URL (auto-converted to asyncpg if needed)
 _raw_url = os.getenv(
