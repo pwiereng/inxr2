@@ -37,7 +37,7 @@ def upgrade() -> None:
         sa.Column(
             "content_tsvector",
             postgresql.TSVECTOR(),
-            nullable=True,  # NULL in SQLite
+            nullable=True,
         ),
         # Metadata
         sa.Column("language", sa.String(length=50), nullable=True),
@@ -99,9 +99,7 @@ def upgrade() -> None:
         unique=False,
     )
 
-    # Full-text search index (PostgreSQL GIN) - only if using PostgreSQL
-    # Note: This will fail on SQLite, which is handled in tests
-    # SQLite tests use in-memory database without tsvector support
+    # Full-text search index (PostgreSQL GIN)
     op.execute("""
         DO $$
         BEGIN

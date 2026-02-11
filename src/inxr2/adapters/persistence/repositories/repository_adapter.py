@@ -98,9 +98,7 @@ class PostgresRepositoryAdapter(RepositoryPort):
     ) -> tuple[Repository, bool]:
         """Get existing repository by name, or create if not exists.
 
-        Uses a database-agnostic approach that works with both PostgreSQL
-        and SQLite. Handles race conditions by catching IntegrityError
-        on duplicate key.
+        Handles race conditions by catching IntegrityError on duplicate key.
 
         Args:
             name: Unique repository name

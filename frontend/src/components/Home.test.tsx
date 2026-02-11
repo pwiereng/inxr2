@@ -40,7 +40,11 @@ const mockRepositories = [
 ]
 
 const renderWithRouter = (ui: React.ReactElement) => {
-  return render(<BrowserRouter>{ui}</BrowserRouter>)
+  return render(
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      {ui}
+    </BrowserRouter>
+  )
 }
 
 describe('Home', () => {
@@ -52,6 +56,11 @@ describe('Home', () => {
 
   it('should render the home page with title', async () => {
     renderWithRouter(<Home />)
+
+    // Wait for async data loading to complete to avoid act() warnings
+    await waitFor(() => {
+      expect(screen.getByText('test-repo')).toBeInTheDocument()
+    })
 
     expect(screen.getByRole('heading', { name: /INXR2/i, level: 1 })).toBeInTheDocument()
     expect(screen.getByText(/Cross-Reference Code Browser/i)).toBeInTheDocument()

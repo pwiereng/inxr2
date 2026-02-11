@@ -22,7 +22,7 @@ This document defines the PostgreSQL database schema for INXR2, a cross-referenc
 4. **JSONB for Flexibility**: Use JSONB for language-specific metadata
 5. **Indexing Strategy**: Indexes optimized for common query patterns
 6. **Clean Architecture**: ORM models (SQLAlchemy) separate from domain entities
-7. **Dialect Agnostic**: Schema works with both PostgreSQL and SQLite
+7. **PostgreSQL Native**: Schema uses PostgreSQL-specific features (tsvector, GIN indexes, ARRAY)
 
 ---
 
@@ -467,7 +467,7 @@ CREATE INDEX idx_text_contents_language ON text_contents(language);
 
 **Design Notes:**
 - Full-text search vector (`content_tsvector`) is managed by PostgreSQL triggers, not the ORM
-- The tsvector column is excluded from SQLAlchemy mappings for SQLite compatibility
+- The tsvector column is excluded from SQLAlchemy mappings (managed by triggers)
 - Comments are deduplicated per-file per-commit (same file at same commit won't have duplicate entries)
 
 ---
@@ -618,12 +618,12 @@ Git's model allows a commit to exist on multiple branches (e.g., after merging).
 
 SQLAlchemy reserves `metadata` as an attribute on its `Base` class. The ORM models use `extra_metadata` as the Python attribute name, mapped to the `metadata` column in the database. Domain entities use `metadata` (no conflict). The mapper layer handles the translation. See `adapters/persistence/mappers.py`.
 
-### Why dialect-agnostic?
+### Why PostgreSQL-only?
 
-The schema and ORM code work with both PostgreSQL and SQLite, enabling:
-- Faster tests with SQLite
-- Simpler local development
-- Future flexibility in deployment options
+The schema uses PostgreSQL-native features for optimal performance:
+- Full-text search with tsvector and GIN indexes
+- Native ARRAY and JSONB types
+- Tests run against a real PostgreSQL database (`inxr2_test`) for production-accurate behavior
 
 ---
 

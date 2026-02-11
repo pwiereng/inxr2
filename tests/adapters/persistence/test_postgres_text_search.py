@@ -1,12 +1,4 @@
-"""Tests for PostgresTextSearch.
-
-Note: These tests use SQLite which doesn't support PostgreSQL tsvector or regex.
-The tsvector column will be NULL in SQLite tests, and regex operator (~) doesn't work.
-For now, we skip regex tests on SQLite. Full tsvector/regex functionality would
-require PostgreSQL integration tests or implementing SQLite FTS5 (future phase).
-"""
-
-import os
+"""Tests for PostgresTextSearch."""
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,15 +10,6 @@ from inxr2.adapters.persistence.repositories import (
 from inxr2.application.ports.services import TextSearchQuery
 from inxr2.domain.entities import Commit, File, Repository, TextContent
 from inxr2.domain.value_objects import QueryMode, TextSearchSourceType
-
-# Check if we're using PostgreSQL or SQLite
-TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-IS_POSTGRESQL = "postgresql" in TEST_DATABASE_URL or "postgres" in TEST_DATABASE_URL
-
-pytestmark = pytest.mark.skipif(
-    not IS_POSTGRESQL,
-    reason="PostgresTextSearch requires PostgreSQL; SQLite FTS5 is future work",
-)
 
 
 @pytest.mark.asyncio
@@ -68,7 +51,7 @@ async def test_search_with_repository_filter(
     await repo.save(text_content)
     await db_session.commit()
 
-    # Search in regex mode (works in SQLite)
+    # Search in regex mode (regex mode)
     query = TextSearchQuery(
         query="TODO",
         mode=QueryMode.REGEX.value,
@@ -89,7 +72,7 @@ async def test_search_regex_mode(
     test_commit: Commit,
     test_file: File,
 ) -> None:
-    """Test regex search mode (works in SQLite)."""
+    """Test regex search mode."""
     assert test_repository.id is not None
     assert test_commit.id is not None
     assert test_file.id is not None

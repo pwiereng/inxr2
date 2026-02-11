@@ -59,7 +59,6 @@ dev = [
     "pytest-cov>=4.1.0",
     "pytest-asyncio>=0.21.0",
     "pytest-watch>=4.2.0",
-    "aiosqlite>=0.19.0",  # Async SQLite for tests
     "httpx>=0.25.0",  # Async HTTP client for testing FastAPI
 
     # Code quality
@@ -158,10 +157,12 @@ addopts = "-ra -q --strict-markers --strict-config"
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+    "contract: Contract tests verifying fake-vs-real parity",
 ]
 
 # Coverage configuration

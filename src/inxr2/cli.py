@@ -17,22 +17,10 @@ from rich.console import Console
 from rich.logging import RichHandler
 
 from inxr2.adapters.cli.commands import IndexingResult
+from inxr2.adapters.cli.rendering import format_duration
 
 # Initialize rich console for output
 console = Console()
-
-
-def _format_duration(seconds: float) -> str:
-    """Format duration in seconds to human-readable string."""
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-    minutes = int(seconds // 60)
-    secs = seconds % 60
-    if minutes < 60:
-        return f"{minutes}m {secs:.1f}s"
-    hours = minutes // 60
-    mins = minutes % 60
-    return f"{hours}h {mins}m {secs:.0f}s"
 
 
 def setup_logging(verbose: bool, log_level: str) -> None:
@@ -398,7 +386,7 @@ def _run_config_based_index(
             files_str = f"{r.files_total:,} files" if r.files_total > 0 else ""
             lines_str = f"{r.lines_indexed:,} lines" if r.lines_indexed > 0 else ""
             time_str = (
-                _format_duration(r.elapsed_seconds) if r.elapsed_seconds > 0 else ""
+                format_duration(r.elapsed_seconds) if r.elapsed_seconds > 0 else ""
             )
             stats_parts = [
                 p
@@ -425,7 +413,7 @@ def _run_config_based_index(
     console.print(
         f"  [cyan]Resolution:[/cyan] {total_resolved:,}/{total_refs:,} ({overall_resolution:.1f}%)"
     )
-    console.print(f"  [blue]Total Time:[/blue] {_format_duration(total_time)}")
+    console.print(f"  [blue]Total Time:[/blue] {format_duration(total_time)}")
 
 
 @click.group()

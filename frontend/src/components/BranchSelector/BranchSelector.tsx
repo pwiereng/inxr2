@@ -190,7 +190,10 @@ export function BranchSelector({
         }}
         renderValue={(selected) => (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <AccountTreeIcon fontSize="small" sx={{ color: 'text.secondary', fontSize: compact ? '0.875rem' : undefined }} />
+            <AccountTreeIcon
+              fontSize="small"
+              sx={{ color: 'text.secondary', fontSize: compact ? '0.875rem' : undefined }}
+            />
             <Typography variant={compact ? 'caption' : 'body2'}>{selected}</Typography>
           </Box>
         )}

@@ -94,7 +94,9 @@ export function CodeHeader({
 
         const response = await getRepositoryBranches(repo.id)
         // Only show indexed branches
-        const indexedBranches = response.branches.filter((b) => b.commit_count && b.commit_count > 0)
+        const indexedBranches = response.branches.filter(
+          (b) => b.commit_count && b.commit_count > 0
+        )
         setBranches(indexedBranches)
       } catch (error) {
         console.error('Failed to load branches:', error)
@@ -158,7 +160,9 @@ export function CodeHeader({
       elevation={0}
     >
       {/* Row 1: Home icon, Repository dropdown, Branch dropdown, Commit dropdown */}
-      <Toolbar sx={{ gap: 2, minHeight: '48px !important', borderBottom: 1, borderColor: 'divider' }}>
+      <Toolbar
+        sx={{ gap: 2, minHeight: '48px !important', borderBottom: 1, borderColor: 'divider' }}
+      >
         <Tooltip title="Home">
           <IconButton
             edge="start"
@@ -207,7 +211,8 @@ export function CodeHeader({
             </Select>
           </FormControl>
         ) : (
-          repositories.length === 1 && repositories[0] && (
+          repositories.length === 1 &&
+          repositories[0] && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1 }}>
               <FolderIcon fontSize="small" />
               {repositories[0].name}

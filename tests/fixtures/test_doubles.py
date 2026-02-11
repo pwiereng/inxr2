@@ -89,10 +89,17 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         result = await repo.find_by_name("foo")  # Test
     """
 
-    def __init__(self) -> None:
-        """Initialize with empty storage."""
+    def __init__(self, file_repo: "InMemoryFileRepository | None" = None) -> None:
+        """Initialize with empty storage.
+
+        Args:
+            file_repo: Optional file repository for latest-file-version filtering.
+                      When provided, search/find methods filter to only symbols
+                      from the latest version of each file (matching Postgres behavior).
+        """
         self._symbols: dict[int, Symbol] = {}
         self._next_id = 1
+        self._file_repo = file_repo
 
     async def save(self, symbol: Symbol) -> Symbol:
         """Save symbol to in-memory storage."""
@@ -156,7 +163,16 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         kind: str | None = None,
         limit: int = 50,
     ) -> list[Symbol]:
-        """Search symbols by name with optional filters."""
+        """Search symbols by name with optional filters.
+
+        When repository_id is set and file_repo is available, filters to
+        only symbols from the latest version of each file (matching Postgres).
+        """
+        # Compute latest file IDs for filtering (matches Postgres behavior)
+        latest_file_ids: set[int] | None = None
+        if repository_id is not None and self._file_repo is not None:
+            latest_file_ids = self._file_repo._compute_latest_file_ids(repository_id)
+
         results = []
         for symbol in self._symbols.values():
             if name.lower() in symbol.name.lower():
@@ -164,18 +180,34 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                     continue
                 if kind is not None and symbol.kind.value != kind:
                     continue
+                if (
+                    latest_file_ids is not None
+                    and symbol.file_id not in latest_file_ids
+                ):
+                    continue
                 results.append(symbol)
+        results.sort(key=lambda s: s.name)
         return results[:limit]
 
     async def find_by_qualified_name(
         self, repository_id: int, qualified_name: str
     ) -> list[Symbol]:
-        """Find symbols by qualified name."""
-        return [
-            s
-            for s in self._symbols.values()
-            if s.repository_id == repository_id and s.qualified_name == qualified_name
-        ]
+        """Find symbols by qualified name.
+
+        Filters to only symbols from the latest version of each file
+        when file_repo is available (matching Postgres behavior).
+        """
+        latest_file_ids: set[int] | None = None
+        if self._file_repo is not None:
+            latest_file_ids = self._file_repo._compute_latest_file_ids(repository_id)
+
+        results = []
+        for s in self._symbols.values():
+            if s.repository_id == repository_id and s.qualified_name == qualified_name:
+                if latest_file_ids is not None and s.file_id not in latest_file_ids:
+                    continue
+                results.append(s)
+        return results
 
     async def list_by_file(self, file_id: int) -> list[Symbol]:
         """List all symbols in a file."""
@@ -188,7 +220,21 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         commit_id: int | None = None,
         limit: int = 100,
     ) -> list[Symbol]:
-        """Find symbols by exact name."""
+        """Find symbols by exact name.
+
+        When commit_id is None and repository_id is set with file_repo available,
+        filters to only symbols from the latest version of each file
+        (matching Postgres behavior).
+        """
+        # Compute latest file IDs when not in time-travel mode
+        latest_file_ids: set[int] | None = None
+        if (
+            commit_id is None
+            and repository_id is not None
+            and self._file_repo is not None
+        ):
+            latest_file_ids = self._file_repo._compute_latest_file_ids(repository_id)
+
         results = []
         for symbol in self._symbols.values():
             if symbol.name == name:
@@ -196,7 +242,13 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                     continue
                 if commit_id is not None and symbol.commit_id != commit_id:
                     continue
+                if (
+                    latest_file_ids is not None
+                    and symbol.file_id not in latest_file_ids
+                ):
+                    continue
                 results.append(symbol)
+        results.sort(key=lambda s: (s.qualified_name or "", s.id or 0))
         return results[:limit]
 
     async def count_by_repository(self, repository_id: int) -> int:
@@ -596,6 +648,7 @@ class InMemoryFileRepository(FileRepositoryPort):
         - The file's content_hash differs from the most recent prior version
 
         Requires commit_repo to determine commit ordering.
+        Mirrors the Postgres ROW_NUMBER() window function approach.
         """
         if self._commit_repo is None:
             # No commit repo - fall back to returning all files at commit
@@ -617,61 +670,40 @@ class InMemoryFileRepository(FileRepositoryPort):
             if f.repository_id == repository_id and f.commit_id == commit_id
         ]
 
-        # Get all prior commits (commits with date < target commit date)
-        all_commits = self._commit_repo.get_all_commits()
-        prior_commits = [
-            c
-            for c in all_commits
-            if c.repository_id == repository_id
-            and c.id is not None
-            and c.commit_date < target_commit.commit_date
-        ]
-        prior_commit_ids = {c.id for c in prior_commits}
+        if not files_at_commit:
+            return []
 
-        # Build a map of path -> latest content_hash from prior commits
-        prior_content_hashes: dict[str, str] = {}
+        # Build commit_dates lookup: commit_id -> (commit_date, commit_id)
+        # for all commits in this repo
+        commit_dates: dict[int, tuple[datetime, int]] = {}
+        for c in self._commit_repo._commits.values():
+            if c.repository_id == repository_id and c.id is not None:
+                commit_dates[c.id] = (c.commit_date, c.id)
+
+        target_key = (target_commit.commit_date, commit_id)
+
+        # Build prior_hashes: for each path, keep the content_hash from the
+        # most recent commit strictly before the target commit.
+        # "Most recent" = highest (commit_date, commit_id) that is < target_key.
+        prior_hashes: dict[str, str] = {}
+        prior_keys: dict[str, tuple[datetime, int]] = {}
+
         for f in self._files.values():
-            if f.repository_id == repository_id and f.commit_id in prior_commit_ids:
-                # Get commit date for ordering
-                file_commit = next(
-                    (c for c in prior_commits if c.id == f.commit_id), None
-                )
-                if file_commit is None:
-                    continue
-
-                existing_path = prior_content_hashes.get(f.path)
-                if existing_path is None:
-                    prior_content_hashes[f.path] = f.content_hash or ""
-                else:
-                    # Check if this file is from a more recent prior commit
-                    existing_commit = None
-                    for fc in prior_commits:
-                        if fc.id == f.commit_id:
-                            continue
-                        for pf in self._files.values():
-                            if (
-                                pf.repository_id == repository_id
-                                and pf.path == f.path
-                                and pf.commit_id == fc.id
-                                and pf.content_hash == existing_path
-                            ):
-                                existing_commit = fc
-                                break
-                        if existing_commit:
-                            break
-                    if (
-                        existing_commit is None
-                        or file_commit.commit_date > existing_commit.commit_date
-                    ):
-                        prior_content_hashes[f.path] = f.content_hash or ""
+            if f.repository_id != repository_id:
+                continue
+            f_key = commit_dates.get(f.commit_id)
+            if f_key is None or f_key >= target_key:
+                continue
+            # This file is from a prior commit
+            existing_key = prior_keys.get(f.path)
+            if existing_key is None or f_key > existing_key:
+                prior_hashes[f.path] = f.content_hash or ""
+                prior_keys[f.path] = f_key
 
         # Filter to only changed files
         changed_files = []
         for f in files_at_commit:
-            prior_hash = prior_content_hashes.get(f.path)
-            # File is changed if:
-            # - No prior version exists (new file), OR
-            # - Content hash differs from prior version
+            prior_hash = prior_hashes.get(f.path)
             if prior_hash is None or prior_hash != f.content_hash:
                 changed_files.append(f)
 
@@ -765,6 +797,22 @@ class InMemoryFileRepository(FileRepositoryPort):
         results.sort(key=relevance_key)
 
         return results[:limit]
+
+    def _compute_latest_file_ids(self, repository_id: int) -> set[int]:
+        """Compute the latest file ID for each unique path in a repository.
+
+        Mirrors the Postgres pattern: SELECT max(id) FROM files
+        WHERE repository_id = ? GROUP BY path.
+
+        Since file IDs are auto-incrementing, max(id) per path = latest version.
+        """
+        latest_by_path: dict[str, int] = {}
+        for file in self._files.values():
+            if file.repository_id == repository_id and file.id is not None:
+                current = latest_by_path.get(file.path)
+                if current is None or file.id > current:
+                    latest_by_path[file.path] = file.id
+        return set(latest_by_path.values())
 
     # Test helper methods
     def add(self, file: File) -> None:
@@ -1167,6 +1215,10 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             limit: Maximum number of results
             commit_id: Filter by specific commit for time travel (optional)
             branch: Filter by branch name (only show refs from files on this branch)
+
+        When commit_id and branch are both None and file_repo is available,
+        filters to only refs from the latest version of each file
+        (matching Postgres behavior).
         """
         refs = [r for r in self._references.values() if r.target_symbol_id == symbol_id]
         if commit_id is not None:
@@ -1200,6 +1252,12 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 if file is not None and file.commit_id in branch_commit_ids:
                     filtered_refs.append(ref)
             refs = filtered_refs
+        elif commit_id is None and self._file_repo is not None:
+            # Default mode: filter to latest file versions (matches Postgres)
+            inferred_repo_id = self._get_repo_id_from_refs(refs)
+            if inferred_repo_id is not None:
+                latest_ids = self._file_repo._compute_latest_file_ids(inferred_repo_id)
+                refs = [r for r in refs if r.source_file_id in latest_ids]
 
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
         return refs[:limit]
@@ -1226,6 +1284,10 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             limit: Maximum number of results
             commit_id: Filter by specific commit for time travel (optional)
             branch: Filter by branch name (only show refs from files on this branch)
+
+        When commit_id and branch are both None and file_repo is available,
+        filters to only refs from the latest version of each file
+        (matching Postgres behavior).
         """
         refs = [
             r
@@ -1254,6 +1316,10 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 if file is not None and file.commit_id in branch_commit_ids:
                     filtered_refs.append(ref)
             refs = filtered_refs
+        elif commit_id is None and self._file_repo is not None:
+            # Default mode: filter to latest file versions (matches Postgres)
+            latest_ids = self._file_repo._compute_latest_file_ids(repository_id)
+            refs = [r for r in refs if r.source_file_id in latest_ids]
 
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
         return refs[:limit]
@@ -1359,6 +1425,15 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
 
         self._references.update(updated_refs)
         return resolved_count
+
+    def _get_repo_id_from_refs(self, refs: list[Reference]) -> int | None:
+        """Get repository_id directly from references.
+
+        Used by find_references_to_symbol which doesn't take repository_id directly.
+        """
+        if not refs:
+            return None
+        return refs[0].repository_id
 
     def _pick_best_symbol(
         self, ref: Reference, candidates: list[Symbol]

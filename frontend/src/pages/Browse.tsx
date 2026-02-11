@@ -609,11 +609,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                   searchByName={searchByName}
                   selectedCommit={computedState.refCommit}
                   selectedBranch={
-                    diffMode
-                      ? refPanel === 'right'
-                        ? diffBranch
-                        : selectedBranch
-                      : selectedBranch
+                    diffMode ? (refPanel === 'right' ? diffBranch : selectedBranch) : selectedBranch
                   }
                   onReferenceClick={actions.handleRefPanelClick}
                   onDefinitionClick={actions.handleDefinitionClick}

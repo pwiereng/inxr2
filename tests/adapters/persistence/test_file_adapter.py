@@ -768,9 +768,7 @@ class TestPostgresFileRepositorySearchByName:
         assert commit.id is not None
 
         # Create files with different matching patterns
-        # NOTE: Relevance scoring uses PostgreSQL regex (func.substring with pattern).
-        # In SQLite tests, this doesn't work correctly, so ordering may differ.
-        # TODO: Implement cross-dialect filename extraction for consistent ordering.
+        # Relevance scoring uses PostgreSQL regex (func.substring with pattern).
         await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
@@ -796,8 +794,7 @@ class TestPostgresFileRepositorySearchByName:
         results = await file_adapter.search_by_name("config")
 
         assert len(results) == 3
-        # In PostgreSQL: exact match first, prefix second, contains last
-        # In SQLite: ordering may differ due to regex limitation
+        # Exact match first, prefix second, contains last
         assert results[0].path == "src/config.py"
         assert results[1].path == "src/configuration.py"
         assert results[2].path == "src/helpers/config_utils.py"

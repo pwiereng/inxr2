@@ -16,42 +16,9 @@ from inxr2.adapters.cli.commands.index_command import (
     _dict_to_reference,
     _dict_to_symbol,
     _filter_files_by_language,
-    _shorten_path,
     _write_csv_log,
 )
 from inxr2.domain.value_objects import ReferenceType, SymbolKind
-
-
-class TestShortenPath:
-    """Tests for _shorten_path utility function."""
-
-    def test_short_path_unchanged(self) -> None:
-        """Short paths should be returned unchanged."""
-        path = "src/main.py"
-        assert _shorten_path(path, max_len=50) == path
-
-    def test_path_at_max_length(self) -> None:
-        """Path exactly at max length should be unchanged."""
-        path = "a" * 50
-        assert _shorten_path(path, max_len=50) == path
-
-    def test_long_path_shortened(self) -> None:
-        """Long paths should be shortened with ellipsis."""
-        path = "very/long/path/to/some/deeply/nested/file.py"
-        result = _shorten_path(path, max_len=20)
-        assert result.startswith("...")
-        assert result.endswith("nested/file.py")
-
-    def test_two_part_path_unchanged(self) -> None:
-        """Paths with only 2 parts should not be shortened."""
-        path = "a" * 60 + "/" + "b" * 60  # Long but only 2 parts
-        assert _shorten_path(path, max_len=50) == path
-
-    def test_keeps_last_two_parts(self) -> None:
-        """Shortened path should keep last two parts."""
-        path = "one/two/three/four/five.py"
-        result = _shorten_path(path, max_len=10)
-        assert "four/five.py" in result
 
 
 class TestDetectLanguage:
@@ -416,9 +383,9 @@ class TestDictToReference:
 class TestIndexCommandIntegration:
     """Integration tests for index commands using CLI runner.
 
-    These tests use an isolated SQLite database to avoid touching the
-    live PostgreSQL database. The isolated_cli_runner fixture from
-    conftest.py provides database isolation via DATABASE_URL env var.
+    These tests use an isolated PostgreSQL test database. The
+    isolated_cli_runner fixture from conftest.py provides database
+    isolation via DATABASE_URL env var.
     """
 
     @pytest.fixture

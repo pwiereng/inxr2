@@ -23,7 +23,10 @@ const mockRepositories = [
 // Wrapper that provides Router context for App
 const renderApp = (initialEntries: string[] = ['/']) => {
   return render(
-    <MemoryRouter initialEntries={initialEntries}>
+    <MemoryRouter
+      initialEntries={initialEntries}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <App />
     </MemoryRouter>
   )
@@ -46,6 +49,11 @@ describe('App', () => {
 
   it('should render with MUI theme and CssBaseline', async () => {
     const { container } = renderApp(['/'])
+
+    // Wait for async data loading to settle to avoid act() warnings
+    await waitFor(() => {
+      expect(screen.getByText('test-repo')).toBeInTheDocument()
+    })
 
     // CssBaseline adds styles to the body
     expect(container).toBeInTheDocument()

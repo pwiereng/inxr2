@@ -362,18 +362,21 @@ Dropped same-language priority from resolution (was causing expensive file JOINs
 
 ---
 
-### 6.2 Fix Test Double Behavioral Mismatches
+### 6.2 Fix Test Double Behavioral Mismatches ✅ DONE
 **Severity:** HIGH | **Effort:** 1 day
 
 **Location:** `tests/fixtures/test_doubles.py`
 
 **Issue:** Test doubles don't match production behavior for temporal deduplication.
 
-**Tasks:**
-- [ ] Add latest file version filtering to `InMemorySymbolRepository.search_by_name`
-- [ ] Add latest file version filtering to `InMemoryReferenceRepository.find_references_to_symbol`
-- [ ] Simplify `InMemoryFileRepository.list_changed_at_commit` (90 lines → simpler)
-- [ ] Add contract tests verifying fake matches real behavior
+**Completed Tasks:**
+- [x] Add `_compute_latest_file_ids` helper to `InMemoryFileRepository`
+- [x] Add `file_repo` injection to `InMemorySymbolRepository` (optional, backward-compatible)
+- [x] Add latest file version filtering to `InMemorySymbolRepository.search_by_name`, `find_by_exact_name`, `find_by_qualified_name`
+- [x] Add latest file version filtering to `InMemoryReferenceRepository.find_references_to_symbol`, `find_references_by_text`
+- [x] Simplify `InMemoryFileRepository.list_changed_at_commit` (O(N^3) → O(N))
+- [x] Add 24 contract tests (`tests/contract/`) verifying fake-vs-Postgres parity
+- [x] 901 tests pass, mypy clean, ruff/black/isort clean
 
 ---
 
@@ -403,18 +406,24 @@ No need to extract this to a use case—the CLI command is sufficient.
 
 ---
 
-### 7.2 Create IndexingProgressRenderer
+### 7.2 Create IndexingProgressRenderer ✅ DONE
 **Severity:** LOW | **Effort:** 4 hours
 
 **Location:** `src/inxr2/adapters/cli/commands/index_command.py`
 
-**Issue:** Presentation concerns mixed with orchestration (1,267 lines).
+**Issue:** Presentation concerns mixed with orchestration (1,034 lines).
 
-**Tasks:**
-- [ ] Create `IndexingProgressRenderer` class
-- [ ] Move Rich console progress rendering to renderer
-- [ ] Move statistics formatting to renderer
-- [ ] CLI becomes: parse args → call use case → render results
+**Completed Tasks:**
+- [x] Create `IndexingProgressRenderer` class in `src/inxr2/adapters/cli/rendering.py`
+- [x] Extract `format_duration()` and `shorten_path()` as public utilities
+- [x] Move Rich progress bar creation (`create_progress_bar`)
+- [x] Move milestone-based progress callback (`create_progress_callback`)
+- [x] Move final resolution display (`print_final_resolution`)
+- [x] Move summary table formatting (`print_summary`)
+- [x] Deduplicate `_format_duration` from `cli.py` (was duplicated)
+- [x] Delete `_shorten_path`, `_format_duration`, `_print_summary`, `create_progress`, `ProgressState`/`on_progress` from `index_command.py`
+- [x] 39 tests in `test_rendering.py` (pure functions, Console capture, progress callback, final resolution)
+- [x] `index_command.py` reduced from 1,034 → 740 lines (~294 lines moved)
 
 ---
 
@@ -450,6 +459,23 @@ No need to extract this to a use case—the CLI command is sufficient.
 
 ---
 
+### 8.3 Fix Frontend Test Warnings ✅ DONE
+**Severity:** LOW | **Effort:** 2 hours
+
+**Location:** Frontend test suite
+
+**Issue:** 12 warnings in frontend tests:
+- React Router v7 future flag warnings (`v7_startTransition`, `v7_relativeSplatPath`) — 6 instances
+- React `act(...)` warnings in `Home` and `CodeHeader` test components — 6 instances
+
+**Completed Tasks:**
+- [x] Add React Router v7 future flags to all test router configurations (`App.test.tsx`, `Home.test.tsx`, `CodeHeader.test.tsx`)
+- [x] Fix `act()` warnings by waiting for async data to settle before asserting (`waitFor` on loaded data)
+- [x] Fix CodeHeader loading test: use never-resolving promises to prevent post-assertion state updates
+- [x] All 212 frontend tests pass with zero warnings
+
+---
+
 ## Summary Table
 
 | ID | Priority | Effort | Description |
@@ -473,12 +499,13 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 5.1 | P5 | 4h | Database error handling |
 | 5.2 | P5 | 2h | Parser error handling ✅ DONE |
 | 6.1 | P6 | 2h | C comment tests |
-| 6.2 | P6 | 1d | Fix test doubles |
+| 6.2 | P6 | 1d | Fix test doubles ✅ DONE |
 | 6.3 | P6 | 4h | Missing integration tests |
 | ~~7.1~~ | ~~P7~~ | - | ~~ResetDatabaseUseCase~~ (not needed) |
-| 7.2 | P7 | 4h | IndexingProgressRenderer |
+| 7.2 | P7 | 4h | IndexingProgressRenderer ✅ DONE |
 | 8.1 | P8 | 1d | Split useBrowseState |
 | 8.2 | P8 | 2h | ApiError class |
+| 8.3 | P8 | 2h | Fix frontend test warnings ✅ DONE |
 
 ---
 
@@ -486,7 +513,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 
 ### Week 1: Security & Critical Fixes ✅ DONE
 - ~~1.1, 1.2, 1.3, 1.4 (10 hours)~~ Completed
-- 6.2 partial: Fix critical test double mismatches (4 hours)
+- ~~6.2 partial: Fix critical test double mismatches (4 hours)~~ ✅ DONE (full)
 
 ### Week 2: Performance ✅ DONE
 - ~~2.1, 2.2 (2 days)~~ Completed
@@ -509,7 +536,8 @@ No need to extract this to a use case—the CLI command is sufficient.
 
 ### Week 6+: Polish
 - ~~5.2 Parser error handling~~ ✅ DONE
-- Remaining items as time permits (2.4, 5.1, 6.x, 7.2, 8.x)
+- ~~7.2 IndexingProgressRenderer~~ ✅ DONE
+- Remaining items as time permits (2.4, 5.1, 6.x, 8.x)
 
 ---
 
@@ -540,6 +568,7 @@ No need to extract this to a use case—the CLI command is sufficient.
 | 4.2 | 2026-02-08 | 609f429 | Comment stripping utility (subsumed by 4.1) |
 | 4.3 | 2026-02-08 | fb091e3 | Standardize content_type naming |
 | 5.2 | 2026-02-08 | — | Parser error handling (per-node + service-level) |
+| — | 2026-02-08 | 69e9fd4 | Remove SQLite, use PostgreSQL test database (aiosqlite removed, savepoint isolation, 877 tests pass) |
 
 ## Architectural Decisions
 
@@ -598,7 +627,7 @@ The refactoring cycle was well-executed. Clean Architecture boundaries hold, the
 - **Base parser hierarchy** (4.1) — `BaseLanguageParser` with template methods and shared helpers (`_make_symbol`, `_make_reference`, `_strip_block_comment`) eliminated ~460 lines of duplication cleanly.
 - **Error handling** (5.2) — Per-node try/except in comment extraction + service-level fallback is the right granularity.
 - **Layer boundaries** — No domain imports of framework code. Adapters properly implement ports. Infrastructure wires things via DI.
-- **Test isolation** — CLI tests use isolated SQLite, repository tests use proper fixtures, no tests touch the live database.
+- **Test isolation** — CLI tests use isolated PostgreSQL test database, repository tests use savepoint isolation, no tests touch the live database.
 
 ### Issues Identified
 
@@ -606,12 +635,12 @@ The refactoring cycle was well-executed. Clean Architecture boundaries hold, the
 
 | Priority | Issue | Location | Effort |
 |----------|-------|----------|--------|
-| 1 | Test double behavioral drift (backlog 6.2) | `tests/fixtures/test_doubles.py` | 1 day |
-| 2 | Extract CLI rendering (backlog 7.2) | `index_command.py` (976 lines) | 4 hours |
+| ~~1~~ | ~~Test double behavioral drift (backlog 6.2)~~ | ~~`tests/fixtures/test_doubles.py`~~ | ~~1 day~~ ✅ DONE |
+| ~~1~~ | ~~Extract CLI rendering (backlog 7.2)~~ | ~~`index_command.py` (976 lines)~~ | ~~4 hours~~ ✅ DONE |
 
-**Test double drift** is the highest-risk item. `InMemorySymbolRepository.search_by_name` and `InMemoryReferenceRepository.find_references_to_symbol` don't filter to latest file versions like the Postgres adapters do. `InMemoryFileRepository.list_changed_at_commit` is 90+ lines of complex logic that may not match real behavior. If fakes diverge from production, tests pass but production breaks.
+~~**Test double drift** is the highest-risk item.~~ ✅ FIXED — All 6 fake methods now match Postgres latest-file-version filtering. 24 contract tests verify parity.
 
-**`index_command.py`** at 976 lines mixes CLI orchestration, Rich progress rendering (~200 lines), CSV log writing, summary formatting (~150 lines), and database reset logic. This is already tracked as backlog 7.2.
+~~**`index_command.py`** at 976 lines mixes CLI orchestration, Rich progress rendering (~200 lines), CSV log writing, summary formatting (~150 lines), and database reset logic.~~ ✅ FIXED — Rendering extracted to `IndexingProgressRenderer` in `rendering.py`. `index_command.py` reduced to ~740 lines.
 
 #### Worth Improving (Not Blocking)
 
@@ -633,9 +662,22 @@ The refactoring cycle was well-executed. Clean Architecture boundaries hold, the
 
 ### Recommended Path Forward
 
-1. Fix test double drift (6.2) — prevents false confidence in tests
-2. Extract CLI rendering (7.2) — unblocks clean CLI additions
+1. ~~Fix test double drift (6.2) — prevents false confidence in tests~~ ✅ DONE
+2. ~~Extract CLI rendering (7.2) — unblocks clean CLI additions~~ ✅ DONE
 3. Resume Phase 1.12 (Remote Repository Support) — the architecture is ready
+
+### PostgreSQL Test Database Migration (2026-02-08)
+
+Removed all SQLite support and switched tests to a dedicated `inxr2_test` PostgreSQL database. Key decisions:
+
+1. **Savepoint isolation** — `join_transaction_mode="create_savepoint"` (SQLAlchemy 2.0+) wraps each test in a transaction. `session.commit()` releases a SAVEPOINT; the outer transaction rolls back after the test. Zero data persists between tests.
+2. **CLI truncation** — CLI commands manage their own sessions/commits, so savepoint isolation doesn't apply. CLI tests use TRUNCATE after each test instead.
+3. **Session-scoped event loop** — `asyncio_default_test_loop_scope = "session"` and `asyncio_default_fixture_loop_scope = "session"` in pyproject.toml ensure all tests share one event loop with the session-scoped engine.
+4. **`content_tsvector` via raw SQL** — The tsvector column isn't in the ORM model (managed by triggers in production). Test conftest adds it via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` after `create_all`.
+5. **`references` quoting** — PostgreSQL reserved word; must quote as `"references"` in raw SQL (e.g., TRUNCATE).
+6. **CHAR(40) padding** — PostgreSQL CHAR(40) pads short values with spaces. All test content_hash values updated to exactly 40 characters.
+
+Removed: `aiosqlite` dependency, `types.py` (StringArray), all SQLite URL conversion code, 7 SQLite-specific tests, all dual-dialect comments. Result: 877 tests pass (up from 721+skipped), all running against real PostgreSQL.
 
 ### Indexing Performance Baseline (2026-02-09)
 

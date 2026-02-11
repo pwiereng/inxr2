@@ -341,7 +341,14 @@ export function useBrowseState(repoNameProp?: string) {
       ? fileVersions.some((v) => v.commit_hash === urlState.selectedCommit)
       : true
 
-    return { leftCommit, rightCommit, treeCommit, refCommit, currentCommitHash, fileChangedInCommit }
+    return {
+      leftCommit,
+      rightCommit,
+      treeCommit,
+      refCommit,
+      currentCommitHash,
+      fileChangedInCommit,
+    }
   }, [urlState, fileVersions, diffFileVersions])
 
   // ========== Data Loading Effects ==========

@@ -1,7 +1,4 @@
-"""Integration tests for PostgresRepositoryAdapter.
-
-These tests use a real database (SQLite in-memory or test PostgreSQL).
-"""
+"""Integration tests for PostgresRepositoryAdapter."""
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
