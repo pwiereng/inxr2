@@ -12,6 +12,7 @@ SUPPORTED_LANGUAGES_WITH_PARSERS = (
     "javascript",
     "c",
     "java",
+    "csharp",
 )
 
 # Default languages to index when not specified in config

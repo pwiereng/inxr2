@@ -342,6 +342,7 @@ class ProcessFileUseCase:
             ".java": "java",
             ".c": "c",
             ".h": "c",
+            ".cs": "csharp",
         }
         for ext, lang in ext_map.items():
             if file_path.endswith(ext):
