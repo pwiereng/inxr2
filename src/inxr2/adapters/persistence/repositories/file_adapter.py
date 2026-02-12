@@ -534,77 +534,14 @@ class PostgresFileRepository(FileRepositoryPort):
         # If no commit_id specified, we need to deduplicate by (repository_id, path)
         # to get latest version only, keeping one file per repo/path combination
         if commit_id is None:
-            if repository_id is not None:
-                if language is None:
-                    # Single repo, no language filter: use the helper
-                    query_stmt = query_stmt.where(
-                        FileModel.id.in_(latest_file_ids_subquery(repository_id))
-                    )
-                else:
-                    # Single repo with language filter: compute latest per
-                    # path within this repo and language so the language
-                    # predicate is applied inside the window, not after.
-                    ranked = (
-                        select(
-                            FileModel.id.label("file_id"),
-                            func.row_number()
-                            .over(
-                                partition_by=(
-                                    FileModel.repository_id,
-                                    FileModel.path,
-                                ),
-                                order_by=(
-                                    CommitModel.commit_date.desc(),
-                                    CommitModel.commit_hash.desc(),
-                                    FileModel.id.desc(),
-                                ),
-                            )
-                            .label("rn"),
-                        )
-                        .join(CommitModel, FileModel.commit_id == CommitModel.id)
-                        .where(
-                            FileModel.repository_id == repository_id,
-                            func.lower(FileModel.path).contains(
-                                query_lower, autoescape=True
-                            ),
-                            FileModel.language == language,
-                        )
-                    )
-                    ranked_sq = ranked.subquery()
-                    single_repo_latest = select(ranked_sq.c.file_id).where(
-                        ranked_sq.c.rn == 1
-                    )
-                    query_stmt = query_stmt.where(FileModel.id.in_(single_repo_latest))
-            else:
-                # Cross-repo search: use ROW_NUMBER per (repository_id, path)
-                ranked = (
-                    select(
-                        FileModel.id.label("file_id"),
-                        func.row_number()
-                        .over(
-                            partition_by=(FileModel.repository_id, FileModel.path),
-                            order_by=(
-                                CommitModel.commit_date.desc(),
-                                CommitModel.commit_hash.desc(),
-                                FileModel.id.desc(),
-                            ),
-                        )
-                        .label("rn"),
-                    )
-                    .join(CommitModel, FileModel.commit_id == CommitModel.id)
-                    .where(
-                        func.lower(FileModel.path).contains(
-                            query_lower, autoescape=True
-                        )
-                    )
-                )
-                if language is not None:
-                    ranked = ranked.where(FileModel.language == language)
-                ranked_sq = ranked.subquery()
-                cross_repo_latest = select(ranked_sq.c.file_id).where(
-                    ranked_sq.c.rn == 1
-                )
-                query_stmt = query_stmt.where(FileModel.id.in_(cross_repo_latest))
+            # Deduplicate to latest version per path, pushing path/language
+            # filters into the window query for performance.
+            latest_q = latest_file_ids_subquery(
+                repository_id=repository_id,
+                path_contains=query_lower,
+                language=language,
+            )
+            query_stmt = query_stmt.where(FileModel.id.in_(latest_q))
 
         # Order by relevance (lower is better), then by path alphabetically
         query_stmt = query_stmt.order_by(relevance, FileModel.path).limit(limit)
