@@ -716,6 +716,7 @@ def _dict_to_symbol(
         "delegate": SymbolKind.DELEGATE,
         "event": SymbolKind.EVENT,
         "indexer": SymbolKind.INDEXER,
+        "namespace": SymbolKind.NAMESPACE,
     }
 
     kind_str = d.get("kind", "function").lower()

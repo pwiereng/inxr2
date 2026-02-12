@@ -544,28 +544,24 @@ class PostgresFileRepository(FileRepositoryPort):
                     # Single repo with language filter: compute latest per
                     # path within this repo and language so the language
                     # predicate is applied inside the window, not after.
-                    from sqlalchemy import func as sqla_func
-
-                    from ..models.commit import CommitModel as CM
-
                     ranked = (
                         select(
                             FileModel.id.label("file_id"),
-                            sqla_func.row_number()
+                            func.row_number()
                             .over(
                                 partition_by=(
                                     FileModel.repository_id,
                                     FileModel.path,
                                 ),
                                 order_by=(
-                                    CM.commit_date.desc(),
-                                    CM.commit_hash.desc(),
+                                    CommitModel.commit_date.desc(),
+                                    CommitModel.commit_hash.desc(),
                                     FileModel.id.desc(),
                                 ),
                             )
                             .label("rn"),
                         )
-                        .join(CM, FileModel.commit_id == CM.id)
+                        .join(CommitModel, FileModel.commit_id == CommitModel.id)
                         .where(
                             FileModel.repository_id == repository_id,
                             func.lower(FileModel.path).contains(
@@ -581,25 +577,21 @@ class PostgresFileRepository(FileRepositoryPort):
                     query_stmt = query_stmt.where(FileModel.id.in_(single_repo_latest))
             else:
                 # Cross-repo search: use ROW_NUMBER per (repository_id, path)
-                from sqlalchemy import func as sqla_func
-
-                from ..models.commit import CommitModel as CM
-
                 ranked = (
                     select(
                         FileModel.id.label("file_id"),
-                        sqla_func.row_number()
+                        func.row_number()
                         .over(
                             partition_by=(FileModel.repository_id, FileModel.path),
                             order_by=(
-                                CM.commit_date.desc(),
-                                CM.commit_hash.desc(),
+                                CommitModel.commit_date.desc(),
+                                CommitModel.commit_hash.desc(),
                                 FileModel.id.desc(),
                             ),
                         )
                         .label("rn"),
                     )
-                    .join(CM, FileModel.commit_id == CM.id)
+                    .join(CommitModel, FileModel.commit_id == CommitModel.id)
                     .where(
                         func.lower(FileModel.path).contains(
                             query_lower, autoescape=True
