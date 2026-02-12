@@ -784,9 +784,17 @@ class InMemoryFileRepository(FileRepositoryPort):
                     rp_key = (f.repository_id, f.path)
                     f_key = commit_keys.get(f.commit_id)
                     if f_key is None:
-                        # No commit info — only add if nothing else for this path
-                        if rp_key not in latest_by_repo_path:
+                        # No commit info — keep highest file.id among such candidates,
+                        # but any entry with real commit data always wins.
+                        existing = latest_by_repo_path.get(rp_key)
+                        if existing is None:
                             latest_by_repo_path[rp_key] = f
+                        elif rp_key not in latest_keys:
+                            # Existing also has no commit info — prefer higher id
+                            if f.id is not None and (
+                                existing.id is None or f.id > existing.id
+                            ):
+                                latest_by_repo_path[rp_key] = f
                         continue
                     existing_key = latest_keys.get(rp_key)
                     if existing_key is None or f_key > existing_key:
@@ -854,11 +862,17 @@ class InMemoryFileRepository(FileRepositoryPort):
                 continue
             key = commit_keys.get(file.commit_id)
             if key is None:
-                # Commit not in repo — fall back to max(id) for this path
+                # Commit not in repo — fall back to max(id) for this path,
+                # but real commits (date > datetime.min) always win.
                 existing = latest_by_path_dated.get(file.path)
                 if existing is None:
                     latest_by_path_dated[file.path] = (
                         (datetime.min, 0),
+                        file.id,
+                    )
+                elif existing[0][0] == datetime.min and file.id > existing[1]:
+                    latest_by_path_dated[file.path] = (
+                        existing[0],
                         file.id,
                     )
                 continue
