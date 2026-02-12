@@ -406,6 +406,7 @@ async def _run_full_index_async(
                 languages=languages,
                 max_history=max_history,
                 since_days=since_days,
+                force=force,
                 base_branch=base_branch,
             )
 
@@ -461,7 +462,9 @@ async def _run_full_index_async(
                 since_days=since_days,
             )
 
-            _write_csv_log(response)
+            # Only log when actual indexing work was done
+            if response.commits_indexed > 0:
+                _write_csv_log(response)
 
             await session.commit()
 
@@ -702,20 +705,37 @@ def _dict_to_symbol(
         "macro": SymbolKind.MACRO,
         "enum": SymbolKind.ENUM,
         "enum_value": SymbolKind.ENUM_VALUE,
+        "enum_member": SymbolKind.ENUM_MEMBER,
         "struct_field": SymbolKind.STRUCT_FIELD,
         "union_field": SymbolKind.UNION_FIELD,
         # Java-specific kinds
         "annotation": SymbolKind.ANNOTATION,
         "record": SymbolKind.RECORD,
         "constructor": SymbolKind.CONSTRUCTOR,
+        # C#-specific kinds
+        "delegate": SymbolKind.DELEGATE,
+        "event": SymbolKind.EVENT,
+        "indexer": SymbolKind.INDEXER,
+        "namespace": SymbolKind.NAMESPACE,
     }
 
     kind_str = d.get("kind", "function").lower()
     kind = kind_mapping.get(kind_str, SymbolKind.FUNCTION)
 
-    # Build metadata from language-specific flags (e.g., Java)
+    # Build metadata from language-specific flags
     metadata: dict[str, Any] | None = None
-    flag_keys = ["is_static", "is_abstract", "is_final", "is_inner"]
+    flag_keys = [
+        "is_static",
+        "is_abstract",
+        "is_final",
+        "is_inner",
+        "is_sealed",
+        "is_virtual",
+        "is_override",
+        "is_async",
+        "is_readonly",
+        "is_partial",
+    ]
     flags = {k: d[k] for k in flag_keys if k in d}
     if flags:
         metadata = flags

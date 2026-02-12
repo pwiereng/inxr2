@@ -9,6 +9,7 @@ from ..mappers import FileMapper
 from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from ..models.file import FileModel
+from ._latest_file_query import latest_file_ids_subquery
 
 
 class PostgresFileRepository(FileRepositoryPort):
@@ -256,13 +257,26 @@ class PostgresFileRepository(FileRepositoryPort):
         modified at the target commit.
         """
         # First, get the target commit's date for fallback lookup
-        target_commit_result = await self.session.execute(
-            select(CommitModel).where(
-                CommitModel.repository_id == repository_id,
-                CommitModel.commit_hash == commit_hash,
+        # Support short (prefix) commit hashes from the UI
+        if len(commit_hash) < 40:
+            hash_filter = CommitModel.commit_hash.startswith(
+                commit_hash, autoescape=True
             )
+        else:
+            hash_filter = CommitModel.commit_hash == commit_hash
+
+        target_commit_result = await self.session.execute(
+            select(CommitModel)
+            .where(
+                CommitModel.repository_id == repository_id,
+                hash_filter,
+            )
+            .limit(2)
         )
-        target_commit = target_commit_result.scalar_one_or_none()
+        target_commit_matches = target_commit_result.scalars().all()
+        target_commit = (
+            target_commit_matches[0] if len(target_commit_matches) == 1 else None
+        )
         if target_commit is None:
             return None
 
@@ -273,7 +287,7 @@ class PostgresFileRepository(FileRepositoryPort):
             .where(
                 FileModel.repository_id == repository_id,
                 FileModel.path == path,
-                CommitModel.commit_hash == commit_hash,
+                hash_filter,
             )
             .limit(1)
         )
@@ -520,29 +534,14 @@ class PostgresFileRepository(FileRepositoryPort):
         # If no commit_id specified, we need to deduplicate by (repository_id, path)
         # to get latest version only, keeping one file per repo/path combination
         if commit_id is None:
-            # Use a subquery to get the latest version of each (repository_id, path)
-            # Group by both to handle cross-repo search correctly
-            latest_select = select(
-                FileModel.repository_id,
-                FileModel.path,
-                func.max(FileModel.id).label("max_id"),
-            ).group_by(FileModel.repository_id, FileModel.path)
-
-            if repository_id is not None:
-                latest_select = latest_select.where(
-                    FileModel.repository_id == repository_id
-                )
-
-            if language is not None:
-                latest_select = latest_select.where(FileModel.language == language)
-
-            latest_subquery = latest_select.subquery()
-
-            # Join to only include the latest version per (repo, path)
-            query_stmt = query_stmt.join(
-                latest_subquery,
-                FileModel.id == latest_subquery.c.max_id,
+            # Deduplicate to latest version per path, pushing path/language
+            # filters into the window query for performance.
+            latest_q = latest_file_ids_subquery(
+                repository_id=repository_id,
+                path_contains=query_lower,
+                language=language,
             )
+            query_stmt = query_stmt.where(FileModel.id.in_(latest_q))
 
         # Order by relevance (lower is better), then by path alphabetically
         query_stmt = query_stmt.order_by(relevance, FileModel.path).limit(limit)

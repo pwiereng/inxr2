@@ -163,8 +163,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             branch=branch,
         )
 
-        # Already up to date — return early
-        if last_indexed_hash == current_head:
+        # Already up to date — return early (skip when forcing re-index)
+        if last_indexed_hash == current_head and not request.force:
             return IndexRepositoryResponse(
                 repository_id=repo_id,
                 repository_name=repo_name,

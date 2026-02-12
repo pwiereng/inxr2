@@ -53,3 +53,8 @@ class SymbolKind(StrEnum):
     READONLY_FIELD = "readonly_field"  # Readonly class fields
     INTERFACE_METHOD = "interface_method"  # Methods in interfaces
     ENUM_MEMBER = "enum_member"  # Enum members
+
+    # C#-specific kinds
+    DELEGATE = "delegate"  # Delegate types
+    EVENT = "event"  # Event declarations
+    INDEXER = "indexer"  # Indexer declarations (this[])
