@@ -559,7 +559,7 @@ class PostgresFileRepository(FileRepositoryPort):
                                 ),
                                 order_by=(
                                     CM.commit_date.desc(),
-                                    CM.id.desc(),
+                                    CM.commit_hash.desc(),
                                     FileModel.id.desc(),
                                 ),
                             )
@@ -593,7 +593,7 @@ class PostgresFileRepository(FileRepositoryPort):
                             partition_by=(FileModel.repository_id, FileModel.path),
                             order_by=(
                                 CM.commit_date.desc(),
-                                CM.id.desc(),
+                                CM.commit_hash.desc(),
                                 FileModel.id.desc(),
                             ),
                         )

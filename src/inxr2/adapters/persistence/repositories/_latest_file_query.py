@@ -19,7 +19,7 @@ def latest_file_ids_subquery(
     """Build a subquery returning the latest file ID per path.
 
     Uses ROW_NUMBER() partitioned by path, ordered by commit_date desc
-    (with commit.id desc as tiebreaker), then filters to rn=1.
+    (with commit_hash desc as tiebreaker), then filters to rn=1.
 
     Args:
         repository_id: The repository to query.
@@ -37,7 +37,7 @@ def latest_file_ids_subquery(
                 partition_by=FileModel.path,
                 order_by=(
                     CommitModel.commit_date.desc(),
-                    CommitModel.id.desc(),
+                    CommitModel.commit_hash.desc(),
                     FileModel.id.desc(),
                 ),
             )

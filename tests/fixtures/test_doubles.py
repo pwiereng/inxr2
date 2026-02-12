@@ -773,13 +773,13 @@ class InMemoryFileRepository(FileRepositoryPort):
         if commit_id is None:
             if self._commit_repo is not None:
                 # Use commit dates (matches Postgres ROW_NUMBER approach)
-                commit_keys: dict[int, tuple[datetime, int]] = {}
+                commit_keys: dict[int, tuple[datetime, str]] = {}
                 for c in self._commit_repo._commits.values():
                     if c.id is not None:
-                        commit_keys[c.id] = (c.commit_date, c.id)
+                        commit_keys[c.id] = (c.commit_date, c.commit_hash.value)
 
                 latest_by_repo_path: dict[tuple[int | None, str], File] = {}
-                latest_keys: dict[tuple[int | None, str], tuple[datetime, int]] = {}
+                latest_keys: dict[tuple[int | None, str], tuple[datetime, str]] = {}
                 for f in results:
                     rp_key = (f.repository_id, f.path)
                     f_key = commit_keys.get(f.commit_id)
@@ -849,14 +849,14 @@ class InMemoryFileRepository(FileRepositoryPort):
                         latest_by_path[file.path] = file.id
             return set(latest_by_path.values())
 
-        # Build commit_id -> (commit_date, commit_id) lookup
-        commit_keys: dict[int, tuple[datetime, int]] = {}
+        # Build commit_id -> (commit_date, commit_hash) lookup
+        commit_keys: dict[int, tuple[datetime, str]] = {}
         for c in self._commit_repo._commits.values():
             if c.repository_id == repository_id and c.id is not None:
-                commit_keys[c.id] = (c.commit_date, c.id)
+                commit_keys[c.id] = (c.commit_date, c.commit_hash.value)
 
         # For each path, keep the file whose commit has the newest date
-        latest_by_path_dated: dict[str, tuple[tuple[datetime, int], int]] = {}
+        latest_by_path_dated: dict[str, tuple[tuple[datetime, str], int]] = {}
         for file in self._files.values():
             if file.repository_id != repository_id or file.id is None:
                 continue
@@ -867,7 +867,7 @@ class InMemoryFileRepository(FileRepositoryPort):
                 existing = latest_by_path_dated.get(file.path)
                 if existing is None:
                     latest_by_path_dated[file.path] = (
-                        (datetime.min, 0),
+                        (datetime.min, ""),
                         file.id,
                     )
                 elif existing[0][0] == datetime.min and file.id > existing[1]:
