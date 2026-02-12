@@ -833,7 +833,7 @@ class InMemoryFileRepository(FileRepositoryPort):
         """Compute the latest file ID for each unique path in a repository.
 
         Mirrors the Postgres pattern: ROW_NUMBER() OVER (PARTITION BY path
-        ORDER BY commit_date DESC, commit_id DESC) where rn=1.
+        ORDER BY commit_date DESC, commit_hash DESC, file_id DESC) where rn=1.
 
         Uses commit dates from _commit_repo when available; falls back to
         max(id) when no commit repo is set (backward compat for tests that
