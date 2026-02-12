@@ -877,7 +877,11 @@ class InMemoryFileRepository(FileRepositoryPort):
                     )
                 continue
             existing = latest_by_path_dated.get(file.path)
-            if existing is None or key > existing[0]:
+            if (
+                existing is None
+                or key > existing[0]
+                or (key == existing[0] and file.id > existing[1])
+            ):
                 latest_by_path_dated[file.path] = (key, file.id)
 
         return {file_id for _, file_id in latest_by_path_dated.values()}
