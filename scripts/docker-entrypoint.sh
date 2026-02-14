@@ -65,18 +65,21 @@ if ! pg_isready -h localhost -q 2>/dev/null; then
     exit 1
 fi
 
-# Create role if it doesn't exist
-if ! psql -h localhost -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='inxr2_user'" | grep -q 1; then
-    echo "🗄️  Creating inxr2_user role..."
-    psql -h localhost -d postgres -c "CREATE ROLE inxr2_user WITH LOGIN PASSWORD 'inxr2_dev_password' CREATEDB;"
+# Create role if it doesn't exist (uses POSTGRES_PASSWORD from env, or default)
+PG_ROLE="${POSTGRES_USER:-inxr2_user}"
+PG_PASS="${POSTGRES_PASSWORD:-inxr2_dev_password}"
+if ! psql -h localhost -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='$PG_ROLE'" | grep -q 1; then
+    echo "🗄️  Creating $PG_ROLE role..."
+    psql -h localhost -d postgres -v role_name="$PG_ROLE" -v role_password="$PG_PASS" \
+        -c "CREATE ROLE :\"role_name\" WITH LOGIN PASSWORD :'role_password' CREATEDB;"
     echo "✅ Role created"
 fi
 
 # Create databases if they don't exist
-for db in inxr2_dev inxr2_test; do
+for db in "${POSTGRES_DB:-inxr2_dev}" inxr2_test; do
     if ! psql -h localhost -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" | grep -q 1; then
         echo "🗄️  Creating database $db..."
-        psql -h localhost -d postgres -c "CREATE DATABASE $db OWNER inxr2_user;"
+        psql -h localhost -d postgres -c "CREATE DATABASE $db OWNER $PG_ROLE;"
         echo "✅ Database $db created"
     fi
 done

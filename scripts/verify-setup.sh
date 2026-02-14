@@ -18,11 +18,22 @@ NC='\033[0m'
 
 # Derive container name from .env (if present) or default to inxr2
 CONTAINER_PREFIX="inxr2"
+PREFIX_FROM_ENV=""
 if [ -f ".env" ]; then
-    PREFIX_FROM_ENV=$(sed -n 's/^COMPOSE_CONTAINER_PREFIX=\s*//p' .env 2>/dev/null | tr -d '[:space:]"'"'")
+    PREFIX_FROM_ENV=$(sed -n 's/^COMPOSE_CONTAINER_PREFIX=[[:space:]]*//p' .env 2>/dev/null | tr -d '[:space:]"'"'")
     [ -n "$PREFIX_FROM_ENV" ] && CONTAINER_PREFIX="$PREFIX_FROM_ENV"
 fi
 DEV_CONTAINER="${CONTAINER_PREFIX}-dev"
+
+# Validate the expected container is running before proceeding
+if ! docker ps --format '{{.Names}}' | grep -qx "$DEV_CONTAINER"; then
+    echo -e "${RED}❌ Dev container '$DEV_CONTAINER' is not running.${NC}"
+    if [ -f ".env" ] && [ -z "$PREFIX_FROM_ENV" ]; then
+        echo -e "${YELLOW}   Note: .env exists but COMPOSE_CONTAINER_PREFIX is missing. Using default 'inxr2'.${NC}"
+    fi
+    echo -e "${RED}   Run './scripts/dev-start.sh' first.${NC}"
+    exit 1
+fi
 
 echo -e "${BLUE}================================${NC}"
 echo -e "${BLUE}🔍 INXR2 Setup Verification${NC}"
@@ -41,7 +52,7 @@ check() {
 }
 
 echo -e "${YELLOW}1. Checking Docker containers...${NC}"
-docker ps | grep -q "$DEV_CONTAINER" && check "Dev container running ($DEV_CONTAINER)" || check "Dev container running ($DEV_CONTAINER)"
+check "Dev container running ($DEV_CONTAINER)"
 
 echo ""
 echo -e "${YELLOW}2. Checking environment variables...${NC}"

@@ -854,7 +854,7 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 ### How It Works
 
 1. `worktree-create.sh feature-x` creates:
-   - Git worktree at `~/source/wt-inxr2-feature-x/`
+   - Git worktree at `<parent-of-repo>/wt-inxr2-feature-x/`
    - `.env` file with unique ports and container prefix
    - Docker stack: `inxr2-feature-x-dev` container
 2. Each container has its own embedded PostgreSQL (data in `pgdata` volume)

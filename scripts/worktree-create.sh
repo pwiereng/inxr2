@@ -3,7 +3,7 @@
 # Usage: ./scripts/worktree-create.sh <branch-name>
 #
 # This sets up a fully independent development environment:
-#   - Git worktree at ~/source/wt-inxr2-<branch>/
+#   - Git worktree at <parent-of-main-repo>/wt-inxr2-<branch>/
 #   - Separate Docker container with embedded PostgreSQL
 #   - Unique ports so multiple stacks can run simultaneously
 
@@ -42,6 +42,8 @@ check_port() {
         if lsof -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
             return 1
         fi
+    else
+        echo "⚠️  lsof not found — cannot verify port $port is free" >&2
     fi
     return 0
 }

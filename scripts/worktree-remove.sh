@@ -14,7 +14,18 @@ MAIN_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 die() { echo "❌ $*" >&2; exit 1; }
 
-sanitize() { echo "$1" | tr '/' '-'; }
+# Sanitize branch name: replace / with -, validate safe characters
+sanitize() {
+    local name
+    name=$(echo "$1" | tr '/' '-')
+    if ! echo "$name" | grep -qE '^[a-zA-Z0-9._-]+$'; then
+        die "Branch name contains unsafe characters (allowed: a-z A-Z 0-9 . _ -): $1"
+    fi
+    if echo "$name" | grep -qE '\.\.'; then
+        die "Branch name cannot contain '..': $1"
+    fi
+    echo "$name"
+}
 
 # ── Validate arguments ─────────────────────────────────────────────────────
 
@@ -57,8 +68,8 @@ fi
 if [ -f "$SLOTS_FILE" ]; then
     (
         flock -x 200 || die "Could not acquire lock on slots file"
-        # Anchored match: ^SLOT:BRANCH: to avoid substring collisions
-        grep -v "^[0-9]*:${BRANCH}:" "$SLOTS_FILE" > "${SLOTS_FILE}.tmp" 2>/dev/null || true
+        # Anchored match: ^DIGIT(s):BRANCH: to avoid substring collisions
+        grep -v "^[0-9][0-9]*:${BRANCH}:" "$SLOTS_FILE" > "${SLOTS_FILE}.tmp" 2>/dev/null || true
         mv "${SLOTS_FILE}.tmp" "$SLOTS_FILE"
     ) 200>"${SLOTS_FILE}.lock"
     echo "✅ Slot freed"

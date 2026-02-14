@@ -18,7 +18,7 @@ else
     # Derive container name from .env (if present) or default to inxr2-dev
     CONTAINER_PREFIX="inxr2"
     if [ -f ".env" ]; then
-        PREFIX_FROM_ENV=$(sed -n 's/^COMPOSE_CONTAINER_PREFIX=\s*//p' .env 2>/dev/null | tr -d '[:space:]"'"'")
+        PREFIX_FROM_ENV=$(sed -n 's/^COMPOSE_CONTAINER_PREFIX=[[:space:]]*//p' .env 2>/dev/null | tr -d '[:space:]"'"'")
         [ -n "$PREFIX_FROM_ENV" ] && CONTAINER_PREFIX="$PREFIX_FROM_ENV"
     fi
     DEV_CONTAINER="${CONTAINER_PREFIX}-dev"
