@@ -24,6 +24,11 @@ describe('FileTypeIcon', () => {
       expect(renderLabel('app.ts', null)).toBe('TS')
     })
 
+    it('should resolve compound extension before simple extension', () => {
+      // index.d.ts should match the d.ts compound mapping (DT), not the ts mapping (TS)
+      expect(renderLabel('index.d.ts', null)).toBe('DT')
+    })
+
     it('should prioritize filename over language', () => {
       // package.json gets NP (npm package), not {} (generic json)
       expect(renderLabel('package.json', 'json')).toBe('NP')

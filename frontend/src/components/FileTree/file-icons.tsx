@@ -444,20 +444,21 @@ function getFileIconConfig(
     if (langConfig) return langConfig
   }
 
-  // 3. Extension match
+  // 3. Extension match (compound first, then simple)
   const dotIndex = lowerName.lastIndexOf('.')
   if (dotIndex !== -1) {
-    const ext = lowerName.slice(dotIndex + 1)
-    const extConfig = EXTENSION_ICONS[ext]
-    if (extConfig) return extConfig
-
-    // Try compound extension (e.g., "d.ts")
+    // Try compound extension first (e.g., "d.ts") so it takes priority over "ts"
     const secondDot = lowerName.lastIndexOf('.', dotIndex - 1)
     if (secondDot !== -1) {
       const compoundExt = lowerName.slice(secondDot + 1)
       const compoundConfig = EXTENSION_ICONS[compoundExt]
       if (compoundConfig) return compoundConfig
     }
+
+    // Fall back to simple extension (e.g., "ts")
+    const ext = lowerName.slice(dotIndex + 1)
+    const extConfig = EXTENSION_ICONS[ext]
+    if (extConfig) return extConfig
   }
 
   // 4. No match — caller decides on fallback
@@ -494,6 +495,7 @@ export function FileTypeIcon({
   return (
     <Box
       component="span"
+      aria-hidden
       sx={{
         display: 'inline-flex',
         alignItems: 'center',
