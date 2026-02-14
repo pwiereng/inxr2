@@ -5,9 +5,7 @@ import { FileTypeIcon } from './file-icons'
 describe('FileTypeIcon', () => {
   /** Helper: render the icon and return its text content */
   function renderLabel(filename: string, language: string | null): string {
-    const { container } = render(
-      <FileTypeIcon filename={filename} language={language} />,
-    )
+    const { container } = render(<FileTypeIcon filename={filename} language={language} />)
     return container.textContent ?? ''
   }
 
@@ -41,9 +39,7 @@ describe('FileTypeIcon', () => {
 
   describe('fallback for unknown types', () => {
     it('should render empty for unknown files with no fallback', () => {
-      const { container } = render(
-        <FileTypeIcon filename="mystery_file" language={null} />,
-      )
+      const { container } = render(<FileTypeIcon filename="mystery_file" language={null} />)
       expect(container.textContent).toBe('')
     })
 
@@ -53,7 +49,7 @@ describe('FileTypeIcon', () => {
           filename="mystery_file"
           language={null}
           fallback={<span data-testid="fb">?</span>}
-        />,
+        />
       )
       expect(container.textContent).toBe('?')
     })
@@ -66,8 +62,7 @@ describe('FileTypeIcon', () => {
     it('should handle YAML', () => expect(renderLabel('config.yaml', null)).toBe('YM'))
     it('should handle SCSS', () => expect(renderLabel('theme.scss', null)).toBe('SC'))
     it('should handle Vue', () => expect(renderLabel('App.vue', null)).toBe('VU'))
-    it('should handle Svelte', () =>
-      expect(renderLabel('App.svelte', null)).toBe('SV'))
+    it('should handle Svelte', () => expect(renderLabel('App.svelte', null)).toBe('SV'))
   })
 
   describe('systems languages', () => {
@@ -77,8 +72,7 @@ describe('FileTypeIcon', () => {
     it('should handle C#', () => expect(renderLabel('Program.cs', null)).toBe('C#'))
     it('should handle C', () => expect(renderLabel('main.c', null)).toBe('C'))
     it('should handle C++', () => expect(renderLabel('main.cpp', null)).toBe('++'))
-    it('should handle Swift', () =>
-      expect(renderLabel('main.swift', null)).toBe('SW'))
+    it('should handle Swift', () => expect(renderLabel('main.swift', null)).toBe('SW'))
     it('should handle Kotlin', () => expect(renderLabel('Main.kt', null)).toBe('KT'))
     it('should handle Dart', () => expect(renderLabel('main.dart', null)).toBe('DA'))
   })
@@ -93,12 +87,9 @@ describe('FileTypeIcon', () => {
   })
 
   describe('special filenames', () => {
-    it('should handle Makefile', () =>
-      expect(renderLabel('Makefile', null)).toBe('MK'))
-    it('should handle .gitignore', () =>
-      expect(renderLabel('.gitignore', null)).toBe('GI'))
-    it('should handle tsconfig.json', () =>
-      expect(renderLabel('tsconfig.json', null)).toBe('TS'))
+    it('should handle Makefile', () => expect(renderLabel('Makefile', null)).toBe('MK'))
+    it('should handle .gitignore', () => expect(renderLabel('.gitignore', null)).toBe('GI'))
+    it('should handle tsconfig.json', () => expect(renderLabel('tsconfig.json', null)).toBe('TS'))
     it('should handle requirements.txt', () =>
       expect(renderLabel('requirements.txt', null)).toBe('RQ'))
     it('should handle docker-compose.yml', () =>
@@ -114,34 +105,25 @@ describe('FileTypeIcon', () => {
   })
 
   describe('documentation files', () => {
-    it('should handle README.md', () =>
-      expect(renderLabel('README.md', null)).toBe('RM'))
-    it('should handle Markdown', () =>
-      expect(renderLabel('notes.md', null)).toBe('MD'))
-    it('should handle plain text', () =>
-      expect(renderLabel('notes.txt', null)).toBe('TXT'))
+    it('should handle README.md', () => expect(renderLabel('README.md', null)).toBe('RM'))
+    it('should handle Markdown', () => expect(renderLabel('notes.md', null)).toBe('MD'))
+    it('should handle plain text', () => expect(renderLabel('notes.txt', null)).toBe('TXT'))
   })
 
   describe('Python ecosystem', () => {
     it('should handle .py', () => expect(renderLabel('main.py', null)).toBe('PY'))
-    it('should handle .ipynb', () =>
-      expect(renderLabel('notebook.ipynb', null)).toBe('NB'))
-    it('should handle pyproject.toml', () =>
-      expect(renderLabel('pyproject.toml', null)).toBe('PP'))
+    it('should handle .ipynb', () => expect(renderLabel('notebook.ipynb', null)).toBe('NB'))
+    it('should handle pyproject.toml', () => expect(renderLabel('pyproject.toml', null)).toBe('PP'))
   })
 
   describe('rendering', () => {
     it('should render badge with correct text for known type', () => {
-      const { container } = render(
-        <FileTypeIcon filename="app.py" language="python" />,
-      )
+      const { container } = render(<FileTypeIcon filename="app.py" language="python" />)
       expect(container.textContent).toBe('PY')
     })
 
     it('should render badge as a span element', () => {
-      const { container } = render(
-        <FileTypeIcon filename="index.ts" language="typescript" />,
-      )
+      const { container } = render(<FileTypeIcon filename="index.ts" language="typescript" />)
       const badge = container.querySelector('span')
       expect(badge).not.toBeNull()
       expect(badge!.textContent).toBe('TS')

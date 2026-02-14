@@ -129,7 +129,10 @@ function TreeNodeItem({
               language={node.language}
               fontSize="small"
               fallback={
-                <InsertDriveFileIcon fontSize="small" sx={{ color: theme.palette.fileTree.defaultFile }} />
+                <InsertDriveFileIcon
+                  fontSize="small"
+                  sx={{ color: theme.palette.fileTree.defaultFile }}
+                />
               }
             />
           )}
