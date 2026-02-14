@@ -415,6 +415,14 @@ describe('CodeHeader', () => {
     it('should return empty string for invalid date', () => {
       expect(formatCommitDate('not-a-date')).toBe('')
     })
+
+    it('should handle ISO timestamp with time component', () => {
+      expect(formatCommitDate('2025-01-15T10:30:00')).toBe('2025-01-15')
+    })
+
+    it('should handle ISO timestamp with UTC suffix', () => {
+      expect(formatCommitDate('2025-01-15T10:30:00Z')).toBe('2025-01-15')
+    })
   })
 
   describe('error handling', () => {
