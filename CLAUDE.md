@@ -17,7 +17,8 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
 1. **Docker-Only Development**
    - ❌ NEVER run `npm install`, `pip install`, or `uv pip install` on host machine
    - ✅ ALWAYS run package management inside Docker containers
-   - All development must be done inside `inxr2-dev` container
+   - All development must be done inside the dev container (`inxr2-dev` for main, or `inxr2-<branch>-dev` for worktrees)
+   - PostgreSQL is embedded inside the dev container (no separate postgres service)
 
 2. **Testing Requirements**
    - ✅ MANDATORY: Run `./scripts/run-all-tests.sh` before EVERY commit
@@ -91,7 +92,7 @@ For interactive UI testing, use the **`inxr2-playwright`** container. This is a 
 
 ```bash
 # Start the playwright container (requires --profile qa)
-docker-compose -f docker-compose.dev.yml --profile qa up -d inxr2-playwright
+docker compose -f docker-compose.dev.yml --profile qa up -d playwright
 
 # Verify it's running
 curl http://localhost:9222/health
@@ -133,8 +134,8 @@ See `qa-agent/README.md` for complete API documentation.
 ### Starting Development Environment
 
 ```bash
-# Start all services
-docker-compose -f docker-compose.dev.yml up -d
+# Start dev container (includes embedded PostgreSQL)
+docker compose -f docker-compose.dev.yml up -d --build
 
 # Or use helper script
 ./scripts/dev-start.sh
@@ -593,10 +594,11 @@ CORS_ORIGINS=https://yourdomain.com
 ### Environment & Services
 
 **Development Environment:**
-- PostgreSQL: `localhost:5432` (from dev container: `postgres:5432`)
+- PostgreSQL: Embedded inside dev container (`localhost:5432` from within container)
   - Database: `inxr2_dev`
   - User: `inxr2_user`
   - Password: `inxr2_dev_password` (from `.env.dev`)
+  - Data persisted in `pgdata` Docker volume
 
 - Backend API: `http://localhost:8000`
 - Frontend Dev Server: `http://localhost:5173`
@@ -818,11 +820,57 @@ See `config.yaml` for the current repository configuration.
 - **Coding standards:** See CONTRIBUTING.md
 - **Development tasks:** See README.md
 
+## Parallel Development with Git Worktrees
+
+Multiple Claude Code agents can work on separate branches simultaneously, each with a fully isolated environment (own container, own PostgreSQL, own ports).
+
+### Architecture
+
+- PostgreSQL is **embedded** inside each dev container (no separate postgres service)
+- Each worktree gets its own Docker stack with unique ports
+- Slot 0 = main worktree (default ports), slots 1-2 = worktrees
+
+### Port Allocation
+
+| Service    | Slot 0 (main) | Slot 1 | Slot 2 |
+|------------|---------------|--------|--------|
+| Backend    | 8000          | 8010   | 8020   |
+| Frontend   | 5173          | 5183   | 5193   |
+| Playwright | 9222          | 9232   | 9242   |
+
+### Worktree Commands
+
+```bash
+# Create a worktree with isolated Docker stack (runs on host)
+./scripts/worktree-create.sh <branch-name>
+
+# Remove a worktree and its Docker stack
+./scripts/worktree-remove.sh <branch-name>
+
+# List all worktrees with status
+./scripts/worktree-list.sh
+```
+
+### How It Works
+
+1. `worktree-create.sh feature-x` creates:
+   - Git worktree at `~/source/wt-inxr2-feature-x/`
+   - `.env` file with unique ports and container prefix
+   - Docker stack: `inxr2-feature-x-dev` container
+2. Each container has its own embedded PostgreSQL (data in `pgdata` volume)
+3. The main worktree needs no `.env` — defaults work (ports 8000/5173/9222)
+4. All scripts (`dev-shell.sh`, `run-all-tests.sh`, etc.) auto-detect the container name from `.env`
+
+### Container Naming
+
+- Main: `inxr2-dev`, `inxr2-playwright`
+- Worktree: `inxr2-<branch>-dev`, `inxr2-<branch>-playwright`
+
 ## Key Commands Reference
 
 ```bash
 # Quick start
-docker-compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml up -d --build
 docker exec -it inxr2-dev bash
 
 # Development
@@ -846,8 +894,13 @@ inxr2 index --config config.yaml --repo X     # Index specific repo
 inxr2 serve --reload              # Backend
 cd frontend && npm run dev        # Frontend
 
+# Worktrees (run on host)
+./scripts/worktree-create.sh feature-x    # Create isolated worktree
+./scripts/worktree-remove.sh feature-x    # Tear down worktree
+./scripts/worktree-list.sh                # Show all worktrees
+
 # Production
-docker-compose build              # Build
-docker-compose up -d              # Start
-docker-compose logs -f            # Logs
+docker compose build              # Build
+docker compose up -d              # Start
+docker compose logs -f            # Logs
 ```

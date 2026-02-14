@@ -15,12 +15,19 @@ if [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
     WORKDIR="/workspace"
 else
     # On host — run commands via docker exec
-    if ! docker ps | grep -q inxr2-dev; then
-        echo "❌ Error: inxr2-dev container is not running"
-        echo "   Run './scripts/build.sh' first"
+    # Derive container name from .env (if present) or default to inxr2-dev
+    CONTAINER_PREFIX="inxr2"
+    if [ -f ".env" ]; then
+        PREFIX_FROM_ENV=$(grep -E '^COMPOSE_CONTAINER_PREFIX=' .env 2>/dev/null | cut -d= -f2)
+        [ -n "$PREFIX_FROM_ENV" ] && CONTAINER_PREFIX="$PREFIX_FROM_ENV"
+    fi
+    DEV_CONTAINER="${CONTAINER_PREFIX}-dev"
+    if ! docker ps | grep -q "$DEV_CONTAINER"; then
+        echo "❌ Error: $DEV_CONTAINER container is not running"
+        echo "   Run './scripts/dev-start.sh' first"
         exit 1
     fi
-    RUN="docker exec inxr2-dev bash -c"
+    RUN="docker exec $DEV_CONTAINER bash -c"
     WORKDIR="/workspace"
 fi
 

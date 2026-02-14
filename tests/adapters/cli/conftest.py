@@ -22,7 +22,7 @@ from inxr2.adapters.persistence.models import Base
 # DatabaseConnection auto-converts postgresql:// → postgresql+asyncpg://
 _raw_url = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql://inxr2_user:inxr2_dev_password@postgres:5432/inxr2_test",
+    "postgresql://inxr2_user:inxr2_dev_password@localhost:5432/inxr2_test",
 )
 # Strip asyncpg driver if present so DatabaseConnection can do its own conversion
 CLI_TEST_DB_URL = _raw_url.replace("+asyncpg", "")

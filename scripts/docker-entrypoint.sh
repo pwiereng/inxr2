@@ -3,6 +3,82 @@ set -e
 
 echo "🚀 Starting INXR2 dev container..."
 
+# =============================================================================
+# PostgreSQL Setup (embedded — runs as devuser)
+# =============================================================================
+
+PGDATA="${PGDATA:-/home/devuser/pgdata}"
+export PGDATA
+
+# Find the PostgreSQL binary directory
+PG_BIN=$(dirname "$(find /usr/lib/postgresql -name pg_ctl -type f 2>/dev/null | head -1)")
+if [ -z "$PG_BIN" ] || [ ! -x "$PG_BIN/pg_ctl" ]; then
+    echo "❌ PostgreSQL binaries not found"
+    exit 1
+fi
+export PATH="$PG_BIN:$PATH"
+
+# Initialize data directory if empty
+if [ ! -f "$PGDATA/PG_VERSION" ]; then
+    echo "🗄️  Initializing PostgreSQL data directory..."
+    initdb --username=devuser --auth=trust --no-locale --encoding=UTF8 -D "$PGDATA"
+
+    # Configure pg_hba.conf for local trust auth (dev only)
+    cat > "$PGDATA/pg_hba.conf" <<'PGHBA'
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+local   all             all                                     trust
+host    all             all             127.0.0.1/32            trust
+host    all             all             ::1/128                 trust
+PGHBA
+
+    echo "✅ PostgreSQL data directory initialized"
+fi
+
+# Start PostgreSQL if not already running
+if ! pg_isready -h localhost -q 2>/dev/null; then
+    echo "🗄️  Starting PostgreSQL..."
+    pg_ctl start -D "$PGDATA" -l "$PGDATA/logfile" -o "-k /tmp" -w
+    echo "✅ PostgreSQL started"
+else
+    echo "✅ PostgreSQL already running"
+fi
+
+# Wait for readiness
+for i in $(seq 1 30); do
+    if pg_isready -h localhost -q 2>/dev/null; then
+        break
+    fi
+    sleep 0.5
+done
+
+if ! pg_isready -h localhost -q 2>/dev/null; then
+    echo "❌ PostgreSQL failed to start"
+    cat "$PGDATA/logfile" 2>/dev/null || true
+    exit 1
+fi
+
+# Create role if it doesn't exist
+if ! psql -h localhost -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='inxr2_user'" | grep -q 1; then
+    echo "🗄️  Creating inxr2_user role..."
+    psql -h localhost -d postgres -c "CREATE ROLE inxr2_user WITH LOGIN PASSWORD 'inxr2_dev_password' CREATEDB;"
+    echo "✅ Role created"
+fi
+
+# Create databases if they don't exist
+for db in inxr2_dev inxr2_test; do
+    if ! psql -h localhost -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" | grep -q 1; then
+        echo "🗄️  Creating database $db..."
+        psql -h localhost -d postgres -c "CREATE DATABASE $db OWNER inxr2_user;"
+        echo "✅ Database $db created"
+    fi
+done
+
+echo "✅ PostgreSQL ready (databases: inxr2_dev, inxr2_test)"
+
+# =============================================================================
+# Python / Node Setup
+# =============================================================================
+
 # Ensure we're using the virtual environment
 if [ -z "$VIRTUAL_ENV" ]; then
     export VIRTUAL_ENV="/home/devuser/.venv"
@@ -17,6 +93,11 @@ if ! python -c "import fastapi" 2>/dev/null; then
 else
     echo "✅ Python packages already installed"
 fi
+
+# Apply database migrations
+echo "🗄️  Applying database migrations..."
+cd /workspace && alembic upgrade head
+echo "✅ Migrations applied"
 
 # Ensure node_modules directory exists and has correct permissions
 echo "🔍 Checking node_modules permissions..."

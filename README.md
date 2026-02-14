@@ -74,30 +74,58 @@ cd inxr2
 5. Wait for the container to build (~5 minutes first time)
 
 **Option 2: Using Docker Compose Directly**
+
+**Build from scratch:**
 ```bash
-# Start the development environment
-docker-compose -f docker-compose.dev.yml up -d
+# Build and start (first time takes ~2-3 minutes)
+docker compose -f docker-compose.dev.yml up -d --build
+
+# Monitor the build/setup progress (wait for "🎉 Container ready!")
+docker compose -f docker-compose.dev.yml logs -f dev
 
 # Open a shell in the container
 docker exec -it inxr2-dev bash
-
-# Or use the helper scripts
-./scripts/dev-start.sh   # Start containers
-./scripts/dev-shell.sh   # Open shell
-./scripts/dev-stop.sh    # Stop containers
-./scripts/dev-serve.sh   # Start both backend and frontend servers (run inside container)
 ```
 
-The dev container automatically installs all dependencies and includes:
-- Python 3.11 with virtual environment
-- Node.js 18 for the frontend
-- PostgreSQL database
-- All development tools (pytest, black, mypy, etc.)
+The entrypoint automatically handles everything:
+- Starts embedded PostgreSQL
+- Creates databases (`inxr2_dev`, `inxr2_test`) and user role
+- Applies database migrations
+- Installs Python packages (via uv)
+- Installs Node packages (via npm)
+
+**Index repositories:**
+```bash
+# Inside the container
+inxr2 index --config config.yaml
+
+# Or from the host
+docker exec inxr2-dev inxr2 index --config config.yaml
+```
+
+**Start the servers:**
+```bash
+# Inside the container — starts both backend and frontend
+./scripts/dev-serve.sh
+```
+
+**Tear down to nothing (removes containers + all data):**
+```bash
+docker compose -f docker-compose.dev.yml down -v
+```
+
+**Helper scripts (run from host):**
+```bash
+./scripts/dev-start.sh   # Build and start
+./scripts/dev-shell.sh   # Open shell
+./scripts/dev-stop.sh    # Stop (preserves data)
+./scripts/dev-logs.sh    # View logs
+```
 
 **Services Available:**
 - Backend API: `http://localhost:8000` (once started)
 - Frontend: `http://localhost:5173` (once started)
-- PostgreSQL: `localhost:5432`
+- PostgreSQL: embedded inside container (no external port)
 
 For more details, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
@@ -336,7 +364,7 @@ repositories:
 **3. Restart containers and index:**
 ```bash
 # Restart to pick up new mount
-docker-compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml up -d
 
 # Validate config
 docker exec inxr2-dev inxr2 config validate /workspace/config.yaml
@@ -391,20 +419,28 @@ cd frontend && npm run dev  # In another terminal
 
 **Container won't start?**
 ```bash
-docker ps  # Check if Docker is running
-docker-compose -f docker-compose.dev.yml build --no-cache  # Rebuild
+docker ps                                                            # Check if Docker is running
+docker compose -f docker-compose.dev.yml logs dev                    # Check entrypoint logs
+docker compose -f docker-compose.dev.yml build --no-cache            # Full rebuild
+```
+
+**Start completely fresh (nuclear option):**
+```bash
+docker compose -f docker-compose.dev.yml down -v      # Remove containers + volumes
+docker compose -f docker-compose.dev.yml up -d --build # Rebuild everything
 ```
 
 **Packages not installed?**
 The dev container automatically installs packages on startup. If you see import errors, restart the container:
 ```bash
-docker-compose -f docker-compose.dev.yml restart dev
+docker compose -f docker-compose.dev.yml restart dev
 ```
 
 **Database connection issues?**
+PostgreSQL is embedded inside the dev container. Check it's running:
 ```bash
-docker-compose -f docker-compose.dev.yml ps  # Check postgres is healthy
-./scripts/dev-reset-db.sh  # Reset database if needed
+docker exec inxr2-dev pg_isready -h localhost          # Should say "accepting connections"
+./scripts/dev-reset-db.sh                              # Reset database if needed
 ```
 
 ## Deployment
