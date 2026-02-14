@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@/test/utils'
-import { CodeHeader } from './CodeHeader'
+import { CodeHeader, formatCommitDate } from './CodeHeader'
 
 // Mock the API module
 vi.mock('@/lib/api', () => ({
@@ -379,6 +379,41 @@ describe('CodeHeader', () => {
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /switch to dark mode/i })).toBeInTheDocument()
       })
+    })
+  })
+
+  describe('commit date display', () => {
+    it('should display commit dates in dropdown items', async () => {
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('abc123d')).toBeInTheDocument()
+      })
+
+      // Open the commit selector dropdown
+      const comboboxes = screen.getAllByRole('combobox')
+      const commitSelect = comboboxes[2]!
+      fireEvent.mouseDown(commitSelect)
+
+      // Both formatted dates should appear in the dropdown
+      await waitFor(() => {
+        expect(screen.getByText('2024-01-01')).toBeInTheDocument()
+        expect(screen.getByText('2024-01-02')).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('formatCommitDate', () => {
+    it('should format dates as yyyy-mm-dd', () => {
+      expect(formatCommitDate('2024-01-15')).toBe('2024-01-15')
+    })
+
+    it('should return empty string for empty input', () => {
+      expect(formatCommitDate('')).toBe('')
+    })
+
+    it('should return empty string for invalid date', () => {
+      expect(formatCommitDate('not-a-date')).toBe('')
     })
   })
 
