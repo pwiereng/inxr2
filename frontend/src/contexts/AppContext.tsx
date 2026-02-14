@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useLayoutEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useMemo, useLayoutEffect, ReactNode } from 'react'
 import { ApiClient, createApiClient } from '@/lib/api-client'
 
 /**
@@ -67,16 +67,18 @@ export function AppProvider({ children, apiClient }: AppProviderProps) {
     } catch {
       // localStorage blocked — ignore
     }
-    document.body.classList.remove('prism-dark', 'prism-light')
-    document.body.classList.add(themeMode === 'dark' ? 'prism-dark' : 'prism-light')
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('prism-dark', 'prism-light')
+      document.body.classList.add(themeMode === 'dark' ? 'prism-dark' : 'prism-light')
+    }
   }, [themeMode])
 
   const toggleThemeMode = () => {
     setThemeMode((prev) => (prev === 'dark' ? 'light' : 'dark'))
   }
 
-  // Use injected API client or create default one
-  const client = apiClient ?? createApiClient()
+  // Use injected API client or create default one (memoized to prevent recreation on re-renders)
+  const client = useMemo(() => apiClient ?? createApiClient(), [apiClient])
 
   const value: AppContextValue = {
     apiClient: client,

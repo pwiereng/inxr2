@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen, renderHook } from '@/test/utils'
+import { screen } from '@/test/utils'
+import {
+  render as rtlRender,
+  renderHook as rtlRenderHook,
+} from '@testing-library/react'
 import { AppProvider, useApp } from './AppContext'
 import { ApiClient } from '@/lib/api-client'
 
@@ -11,7 +15,9 @@ describe('AppContext', () => {
         return <div>Theme: {themeMode}</div>
       }
 
-      render(
+      // render() from @/test/utils already wraps with AppProvider, so
+      // we use the raw RTL render to test AppProvider in isolation.
+      rtlRender(
         <AppProvider>
           <TestComponent />
         </AppProvider>
@@ -29,7 +35,7 @@ describe('AppContext', () => {
         return <div>{apiClient ? 'Has client' : 'No client'}</div>
       }
 
-      render(
+      rtlRender(
         <AppProvider apiClient={testApiClient}>
           <TestComponent />
         </AppProvider>
@@ -41,7 +47,7 @@ describe('AppContext', () => {
 
   describe('useApp', () => {
     it('should throw error when used outside AppProvider', () => {
-      const { result } = renderHook(() => {
+      const { result } = rtlRenderHook(() => {
         try {
           return useApp()
         } catch (error) {
@@ -54,7 +60,7 @@ describe('AppContext', () => {
     })
 
     it('should return app context when used inside AppProvider', () => {
-      const { result } = renderHook(() => useApp(), {
+      const { result } = rtlRenderHook(() => useApp(), {
         wrapper: ({ children }) => <AppProvider>{children}</AppProvider>,
       })
 

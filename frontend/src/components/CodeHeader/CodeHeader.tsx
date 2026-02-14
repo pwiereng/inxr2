@@ -330,7 +330,6 @@ export function CodeHeader({
             onClick={toggleThemeMode}
             sx={{ color: 'text.secondary' }}
             aria-label={themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            aria-pressed={themeMode === 'dark'}
           >
             {themeMode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
           </IconButton>
