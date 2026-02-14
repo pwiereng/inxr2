@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useTheme } from '@mui/material/styles'
 import {
   Box,
   Typography,
@@ -68,6 +69,7 @@ function TreeNodeItem({
   toggleExpanded,
   selectedRef,
 }: TreeNodeItemProps) {
+  const theme = useTheme()
   const isExpanded = expandedPaths.has(node.path)
   const isDirectory = node.type === 'directory'
   const isSelected = node.file_id != null && node.file_id === selectedFileId
@@ -117,9 +119,9 @@ function TreeNodeItem({
         <ListItemIcon sx={{ minWidth: 28 }}>
           {isDirectory ? (
             isExpanded ? (
-              <FolderOpenIcon fontSize="small" sx={{ color: '#dcb67a' }} />
+              <FolderOpenIcon fontSize="small" sx={{ color: theme.palette.fileTree.folder }} />
             ) : (
-              <FolderIcon fontSize="small" sx={{ color: '#dcb67a' }} />
+              <FolderIcon fontSize="small" sx={{ color: theme.palette.fileTree.folder }} />
             )
           ) : (
             <FileTypeIcon
@@ -127,7 +129,7 @@ function TreeNodeItem({
               language={node.language}
               fontSize="small"
               fallback={
-                <InsertDriveFileIcon fontSize="small" sx={{ color: '#6e7681' }} />
+                <InsertDriveFileIcon fontSize="small" sx={{ color: theme.palette.fileTree.defaultFile }} />
               }
             />
           )}

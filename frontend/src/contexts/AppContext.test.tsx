@@ -71,6 +71,7 @@ describe('AppContext', () => {
       expect(result.current).toHaveProperty('apiClient')
       expect(result.current).toHaveProperty('themeMode')
       expect(result.current).toHaveProperty('setThemeMode')
+      expect(result.current).toHaveProperty('toggleThemeMode')
     })
   })
 })

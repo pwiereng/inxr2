@@ -30,6 +30,10 @@ declare module '@mui/material/styles' {
       call: string
       usage: string
     }
+    fileTree: {
+      folder: string
+      defaultFile: string
+    }
   }
   interface PaletteOptions {
     code?: {
@@ -58,6 +62,10 @@ declare module '@mui/material/styles' {
       import?: string
       call?: string
       usage?: string
+    }
+    fileTree?: {
+      folder?: string
+      defaultFile?: string
     }
   }
 }
@@ -92,6 +100,10 @@ export const darkTheme = createTheme({
       call: '#dcdcaa',
       usage: '#9cdcfe',
     },
+    fileTree: {
+      folder: '#dcb67a',
+      defaultFile: '#6e7681',
+    },
   },
 })
 
@@ -124,6 +136,10 @@ export const lightTheme = createTheme({
       import: '#a31515',
       call: '#795e26',
       usage: '#0070c1',
+    },
+    fileTree: {
+      folder: '#b08d57',
+      defaultFile: '#6a737d',
     },
   },
 })
