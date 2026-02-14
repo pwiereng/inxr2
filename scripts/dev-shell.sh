@@ -4,7 +4,7 @@
 # Derive container prefix from .env (if present) or default to inxr2
 CONTAINER_PREFIX="inxr2"
 if [ -f ".env" ]; then
-    PREFIX_FROM_ENV=$(grep -E '^COMPOSE_CONTAINER_PREFIX=' .env 2>/dev/null | cut -d= -f2)
+    PREFIX_FROM_ENV=$(sed -n 's/^COMPOSE_CONTAINER_PREFIX=\s*//p' .env 2>/dev/null | tr -d '[:space:]"'"'")
     [ -n "$PREFIX_FROM_ENV" ] && CONTAINER_PREFIX="$PREFIX_FROM_ENV"
 fi
 DEV_CONTAINER="${CONTAINER_PREFIX}-dev"

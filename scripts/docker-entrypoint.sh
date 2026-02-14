@@ -23,7 +23,9 @@ if [ ! -f "$PGDATA/PG_VERSION" ]; then
     echo "🗄️  Initializing PostgreSQL data directory..."
     initdb --username=devuser --auth=trust --no-locale --encoding=UTF8 -D "$PGDATA"
 
-    # Configure pg_hba.conf for local trust auth (dev only)
+    # ⚠️  TRUST AUTH — development only, no password required for local connections.
+    # This is safe because Postgres only listens on localhost inside the container.
+    # DO NOT use this configuration in any internet-facing deployment.
     cat > "$PGDATA/pg_hba.conf" <<'PGHBA'
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
 local   all             all                                     trust
@@ -32,6 +34,12 @@ host    all             all             ::1/128                 trust
 PGHBA
 
     echo "✅ PostgreSQL data directory initialized"
+fi
+
+# Clean up stale PID file from unclean shutdown
+if [ -f "$PGDATA/postmaster.pid" ] && ! pg_isready -h localhost -q 2>/dev/null; then
+    echo "⚠️  Removing stale postmaster.pid..."
+    rm -f "$PGDATA/postmaster.pid"
 fi
 
 # Start PostgreSQL if not already running
@@ -94,10 +102,19 @@ else
     echo "✅ Python packages already installed"
 fi
 
-# Apply database migrations
-echo "🗄️  Applying database migrations..."
-cd /workspace && alembic upgrade head
-echo "✅ Migrations applied"
+# Apply database migrations (non-fatal — container still starts on failure)
+if [ "${SKIP_DB_MIGRATIONS:-}" = "true" ]; then
+    echo "⏭️  Skipping database migrations (SKIP_DB_MIGRATIONS=true)"
+else
+    echo "🗄️  Applying database migrations..."
+    if cd /workspace && alembic upgrade head; then
+        echo "✅ Migrations applied"
+    else
+        echo "⚠️  Migration failed — container will start, but the database may be out of date."
+        echo "   Fix the migration and run 'alembic upgrade head' manually."
+        echo "   Set SKIP_DB_MIGRATIONS=true to suppress this on startup."
+    fi
+fi
 
 # Ensure node_modules directory exists and has correct permissions
 echo "🔍 Checking node_modules permissions..."
