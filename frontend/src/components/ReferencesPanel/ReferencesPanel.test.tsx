@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@/test/utils'
 import { ReferencesPanel } from './ReferencesPanel'
 import * as api from '@/lib/api'
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react'
+import { createContext, useContext, useState, useMemo, useLayoutEffect, ReactNode } from 'react'
 import { ApiClient, createApiClient } from '@/lib/api-client'
 
 /**
@@ -16,6 +16,26 @@ interface AppContextValue {
   // State
   themeMode: ThemeMode
   setThemeMode: (mode: ThemeMode) => void
+  toggleThemeMode: () => void
+}
+
+/**
+ * Read initial theme from localStorage, falling back to system preference, then 'dark'.
+ * Guarded for non-browser environments (SSR, restricted storage).
+ */
+function getInitialThemeMode(): ThemeMode {
+  try {
+    if (typeof window === 'undefined') return 'dark'
+
+    const stored = localStorage.getItem('themeMode')
+    if (stored === 'light' || stored === 'dark') return stored
+
+    if (window.matchMedia?.('(prefers-color-scheme: light)').matches) return 'light'
+  } catch {
+    // localStorage blocked or unavailable — fall through to default
+  }
+
+  return 'dark'
 }
 
 /**
@@ -37,15 +57,34 @@ interface AppProviderProps {
  * Provides app-wide services and state via context (dependency injection)
  */
 export function AppProvider({ children, apiClient }: AppProviderProps) {
-  const [themeMode, setThemeMode] = useState<ThemeMode>('light')
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode)
 
-  // Use injected API client or create default one
-  const client = apiClient ?? createApiClient()
+  // Persist to localStorage and sync body class for Prism CSS.
+  // useLayoutEffect runs before paint to avoid a flash of unstyled content.
+  useLayoutEffect(() => {
+    try {
+      localStorage.setItem('themeMode', themeMode)
+    } catch {
+      // localStorage blocked — ignore
+    }
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('prism-dark', 'prism-light')
+      document.body.classList.add(themeMode === 'dark' ? 'prism-dark' : 'prism-light')
+    }
+  }, [themeMode])
+
+  const toggleThemeMode = () => {
+    setThemeMode((prev) => (prev === 'dark' ? 'light' : 'dark'))
+  }
+
+  // Use injected API client or create default one (memoized to prevent recreation on re-renders)
+  const client = useMemo(() => apiClient ?? createApiClient(), [apiClient])
 
   const value: AppContextValue = {
     apiClient: client,
     themeMode,
     setThemeMode,
+    toggleThemeMode,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

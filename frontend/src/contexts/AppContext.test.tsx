@@ -1,9 +1,17 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen, renderHook } from '@/test/utils'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { screen } from '@/test/utils'
+import {
+  render as rtlRender,
+  renderHook as rtlRenderHook,
+} from '@testing-library/react'
 import { AppProvider, useApp } from './AppContext'
 import { ApiClient } from '@/lib/api-client'
 
 describe('AppContext', () => {
+  beforeEach(() => {
+    localStorage.removeItem('themeMode')
+  })
+
   describe('AppProvider', () => {
     it('should provide app context to children', () => {
       const TestComponent = () => {
@@ -11,13 +19,15 @@ describe('AppContext', () => {
         return <div>Theme: {themeMode}</div>
       }
 
-      render(
+      // render() from @/test/utils already wraps with AppProvider, so
+      // we use the raw RTL render to test AppProvider in isolation.
+      rtlRender(
         <AppProvider>
           <TestComponent />
         </AppProvider>
       )
 
-      expect(screen.getByText('Theme: light')).toBeInTheDocument()
+      expect(screen.getByText('Theme: dark')).toBeInTheDocument()
     })
 
     it('should allow injecting custom API client', () => {
@@ -29,7 +39,7 @@ describe('AppContext', () => {
         return <div>{apiClient ? 'Has client' : 'No client'}</div>
       }
 
-      render(
+      rtlRender(
         <AppProvider apiClient={testApiClient}>
           <TestComponent />
         </AppProvider>
@@ -41,7 +51,7 @@ describe('AppContext', () => {
 
   describe('useApp', () => {
     it('should throw error when used outside AppProvider', () => {
-      const { result } = renderHook(() => {
+      const { result } = rtlRenderHook(() => {
         try {
           return useApp()
         } catch (error) {
@@ -54,13 +64,14 @@ describe('AppContext', () => {
     })
 
     it('should return app context when used inside AppProvider', () => {
-      const { result } = renderHook(() => useApp(), {
+      const { result } = rtlRenderHook(() => useApp(), {
         wrapper: ({ children }) => <AppProvider>{children}</AppProvider>,
       })
 
       expect(result.current).toHaveProperty('apiClient')
       expect(result.current).toHaveProperty('themeMode')
       expect(result.current).toHaveProperty('setThemeMode')
+      expect(result.current).toHaveProperty('toggleThemeMode')
     })
   })
 })

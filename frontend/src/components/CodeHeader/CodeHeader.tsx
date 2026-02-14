@@ -18,7 +18,10 @@ import SearchIcon from '@mui/icons-material/Search'
 import HistoryIcon from '@mui/icons-material/History'
 import FolderIcon from '@mui/icons-material/Folder'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
+import LightModeIcon from '@mui/icons-material/LightMode'
+import DarkModeIcon from '@mui/icons-material/DarkMode'
 import { useNavigate } from 'react-router-dom'
+import { useApp } from '@/contexts/AppContext'
 import {
   getRepositories,
   getRepositoryBranches,
@@ -52,6 +55,7 @@ export function CodeHeader({
   onTabChange,
 }: CodeHeaderProps) {
   const navigate = useNavigate()
+  const { themeMode, toggleThemeMode } = useApp()
 
   // Data state
   const [repositories, setRepositories] = useState<Repository[]>([])
@@ -317,6 +321,19 @@ export function CodeHeader({
             ) : null}
           </>
         )}
+
+        <Box sx={{ flex: 1 }} />
+
+        <Tooltip title={themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+          <IconButton
+            size="small"
+            onClick={toggleThemeMode}
+            sx={{ color: 'text.secondary' }}
+            aria-label={themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {themeMode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+          </IconButton>
+        </Tooltip>
       </Toolbar>
 
       {/* Row 2: Tabs */}
