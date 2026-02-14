@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { Box, Typography, Tooltip, IconButton } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import CloseIcon from '@mui/icons-material/Close'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import Prism from 'prismjs'
 import * as Diff from 'diff'
-import 'prismjs/themes/prism-tomorrow.css'
 import 'prismjs/components/prism-python'
 import 'prismjs/components/prism-typescript'
 import 'prismjs/components/prism-javascript'
@@ -154,6 +154,7 @@ export function DiffCodeViewer({
   const leftContainerRef = useRef<HTMLDivElement>(null)
   const rightContainerRef = useRef<HTMLDivElement>(null)
   const [syncScroll] = useState(true)
+  const theme = useTheme()
 
   const prismLanguage = language ? languageMap[language.toLowerCase()] || 'text' : 'text'
   const langGrammar = Prism.languages[prismLanguage]
@@ -460,7 +461,7 @@ export function DiffCodeViewer({
                 '&:hover': onSymbolClick
                   ? {
                       textDecoration: 'underline',
-                      textDecorationColor: '#569cd6',
+                      textDecorationColor: theme.palette.code.symbolUnderline,
                     }
                   : {},
               }}
@@ -496,7 +497,7 @@ export function DiffCodeViewer({
                 cursor: 'pointer',
                 '&:hover': {
                   textDecoration: 'underline',
-                  textDecorationColor: '#4ec9b0',
+                  textDecorationColor: theme.palette.code.referenceUnderline,
                 },
               }}
               dangerouslySetInnerHTML={{ __html: segmentHtml }}
@@ -529,11 +530,11 @@ export function DiffCodeViewer({
   const getDiffBgColor = (type: DiffLine['type'], isLeft: boolean) => {
     switch (type) {
       case 'added':
-        return isLeft ? 'transparent' : 'rgba(46, 160, 67, 0.15)'
+        return isLeft ? 'transparent' : theme.palette.code.diffAddedBg
       case 'removed':
-        return isLeft ? 'rgba(248, 81, 73, 0.15)' : 'transparent'
+        return isLeft ? theme.palette.code.diffRemovedBg : 'transparent'
       case 'modified':
-        return 'rgba(255, 166, 87, 0.15)'
+        return theme.palette.code.diffModifiedBg
       default:
         return 'transparent'
     }
@@ -617,7 +618,7 @@ export function DiffCodeViewer({
             fontFamily: 'monospace',
             fontSize: '13px',
             lineHeight: '1.5',
-            bgcolor: '#1e1e1e',
+            bgcolor: theme.palette.code.background,
           }}
         >
           <Box
@@ -637,11 +638,11 @@ export function DiffCodeViewer({
                     component="tr"
                     key={index}
                     sx={{
-                      bgcolor: isHighlighted ? 'rgba(255, 255, 0, 0.1)' : bgColor,
+                      bgcolor: isHighlighted ? theme.palette.code.highlightBg : bgColor,
                       '&:hover': {
                         bgcolor: isHighlighted
-                          ? 'rgba(255, 255, 0, 0.15)'
-                          : 'rgba(255, 255, 255, 0.05)',
+                          ? theme.palette.code.highlightHoverBg
+                          : theme.palette.code.hoverBg,
                       },
                     }}
                   >
@@ -660,11 +661,12 @@ export function DiffCodeViewer({
                         textAlign: 'right',
                         pr: 1,
                         pl: 1,
-                        color: lineNum === null ? 'transparent' : '#6e7681',
+                        color: lineNum === null ? 'transparent' : theme.palette.code.lineNumber,
                         userSelect: 'none',
                         cursor: lineNum !== null ? 'pointer' : 'default',
-                        borderRight: '1px solid #333',
-                        '&:hover': lineNum !== null ? { color: '#fff' } : {},
+                        borderRight: `1px solid ${theme.palette.code.lineBorder}`,
+                        '&:hover':
+                          lineNum !== null ? { color: theme.palette.code.lineNumberHover } : {},
                       }}
                     >
                       {lineNum ?? ''}
@@ -679,9 +681,9 @@ export function DiffCodeViewer({
                         textAlign: 'center',
                         color:
                           line.type === 'added'
-                            ? '#3fb950'
+                            ? theme.palette.code.diffAddedIndicator
                             : line.type === 'removed'
-                              ? '#f85149'
+                              ? theme.palette.code.diffRemovedIndicator
                               : 'transparent',
                         fontWeight: 'bold',
                       }}
@@ -696,7 +698,7 @@ export function DiffCodeViewer({
                         pl: 1,
                         pr: 2,
                         whiteSpace: 'pre',
-                        color: '#d4d4d4',
+                        color: theme.palette.code.text,
                         textAlign: 'left',
                       }}
                     >

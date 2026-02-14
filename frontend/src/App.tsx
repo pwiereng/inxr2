@@ -1,7 +1,8 @@
 import { Routes, Route } from 'react-router-dom'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
+import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { AppProvider, useApp } from '@/contexts/AppContext'
+import { darkTheme, lightTheme } from '@/theme'
 import { Home } from '@/components/Home'
 import { NotFound } from '@/components/NotFound'
 import Repositories from '@/pages/Repositories'
@@ -17,11 +18,7 @@ import History from '@/pages/History'
 function AppContent() {
   const { themeMode } = useApp()
 
-  const theme = createTheme({
-    palette: {
-      mode: themeMode,
-    },
-  })
+  const theme = themeMode === 'dark' ? darkTheme : lightTheme
 
   return (
     <ThemeProvider theme={theme}>

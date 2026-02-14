@@ -9,6 +9,7 @@ import {
   CircularProgress,
   IconButton,
 } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import CloseIcon from '@mui/icons-material/Close'
 import DownloadIcon from '@mui/icons-material/Download'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -23,15 +24,18 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import { getSymbolReferences, getSymbolsByName, type Reference, type Symbol } from '@/lib/api'
 
 // Get icon for reference type
-function getReferenceIcon(refType: string) {
+function getReferenceIcon(
+  refType: string,
+  palette: { import: string; call: string; usage: string }
+) {
   switch (refType.toLowerCase()) {
     case 'import':
-      return <DownloadIcon fontSize="small" sx={{ color: '#ce9178' }} />
+      return <DownloadIcon fontSize="small" sx={{ color: palette.import }} />
     case 'call':
-      return <PlayArrowIcon fontSize="small" sx={{ color: '#dcdcaa' }} />
+      return <PlayArrowIcon fontSize="small" sx={{ color: palette.call }} />
     case 'usage':
     default:
-      return <VisibilityIcon fontSize="small" sx={{ color: '#9cdcfe' }} />
+      return <VisibilityIcon fontSize="small" sx={{ color: palette.usage }} />
   }
 }
 
@@ -97,6 +101,7 @@ export function ReferencesPanel({
   const [allDefinitions, setAllDefinitions] = useState<Symbol[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const theme = useTheme()
 
   // Determine display name for header
   const displayName = symbol?.name || searchByName?.name || ''
@@ -209,6 +214,8 @@ export function ReferencesPanel({
     },
     {} as Record<string, Reference[]>
   )
+
+  const iconPalette = theme.palette.symbolIcon
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -463,7 +470,7 @@ export function ReferencesPanel({
                         <ListItemText
                           primary={
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              {getReferenceIcon(ref.reference_type)}
+                              {getReferenceIcon(ref.reference_type, iconPalette)}
                               <Chip
                                 label={ref.reference_type}
                                 size="small"

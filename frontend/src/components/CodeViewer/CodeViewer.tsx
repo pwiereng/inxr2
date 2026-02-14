@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Box, Typography, Tooltip } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import Prism from 'prismjs'
-import 'prismjs/themes/prism-tomorrow.css'
 // Import common languages
 import 'prismjs/components/prism-python'
 import 'prismjs/components/prism-typescript'
@@ -76,6 +76,7 @@ export function CodeViewer({
 }: CodeViewerProps) {
   const codeRef = useRef<HTMLElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const theme = useTheme()
 
   // Map language to Prism language
   const prismLanguage = language ? languageMap[language.toLowerCase()] || 'text' : 'text'
@@ -266,7 +267,7 @@ export function CodeViewer({
                 '&:hover': onSymbolClick
                   ? {
                       textDecoration: 'underline',
-                      textDecorationColor: '#569cd6',
+                      textDecorationColor: theme.palette.code.symbolUnderline,
                     }
                   : {},
               }}
@@ -299,7 +300,7 @@ export function CodeViewer({
                 cursor: 'pointer',
                 '&:hover': {
                   textDecoration: 'underline',
-                  textDecorationColor: '#4ec9b0',
+                  textDecorationColor: theme.palette.code.referenceUnderline,
                 },
               }}
               dangerouslySetInnerHTML={{ __html: segmentHtml }}
@@ -338,7 +339,7 @@ export function CodeViewer({
         fontSize: '13px',
         lineHeight: '1.5',
         overflow: 'auto',
-        bgcolor: '#1e1e1e',
+        bgcolor: theme.palette.code.background,
         borderRadius: 1,
       }}
     >
@@ -355,11 +356,11 @@ export function CodeViewer({
                 key={lineNum}
                 data-line={lineNum}
                 sx={{
-                  bgcolor: isHighlighted ? 'rgba(255, 255, 0, 0.1)' : 'transparent',
+                  bgcolor: isHighlighted ? theme.palette.code.highlightBg : 'transparent',
                   '&:hover': {
                     bgcolor: isHighlighted
-                      ? 'rgba(255, 255, 0, 0.15)'
-                      : 'rgba(255, 255, 255, 0.05)',
+                      ? theme.palette.code.highlightHoverBg
+                      : theme.palette.code.hoverBg,
                   },
                 }}
               >
@@ -373,12 +374,14 @@ export function CodeViewer({
                     textAlign: 'right',
                     pr: 2,
                     pl: 1,
-                    color: isHighlighted ? '#ffeb3b' : '#6e7681',
+                    color: isHighlighted
+                      ? theme.palette.code.lineNumberHighlight
+                      : theme.palette.code.lineNumber,
                     userSelect: 'none',
                     cursor: 'pointer',
-                    borderRight: '1px solid #333',
+                    borderRight: `1px solid ${theme.palette.code.lineBorder}`,
                     '&:hover': {
-                      color: '#fff',
+                      color: theme.palette.code.lineNumberHover,
                     },
                   }}
                 >
@@ -392,7 +395,7 @@ export function CodeViewer({
                     pl: 2,
                     pr: 2,
                     whiteSpace: 'pre',
-                    color: '#d4d4d4',
+                    color: theme.palette.code.text,
                     textAlign: 'left',
                   }}
                 >

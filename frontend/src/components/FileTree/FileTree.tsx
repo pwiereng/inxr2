@@ -59,7 +59,7 @@ interface TreeNodeItemProps {
 }
 
 // Get file icon color based on language
-function getFileColor(language: string | null): string {
+function getFileColor(language: string | null): string | undefined {
   const colors: Record<string, string> = {
     python: '#3572A5',
     typescript: '#3178C6',
@@ -75,7 +75,7 @@ function getFileColor(language: string | null): string {
     java: '#B07219',
     csharp: '#239120',
   }
-  return language ? colors[language.toLowerCase()] || '#6e7681' : '#6e7681'
+  return language ? colors[language.toLowerCase()] || undefined : undefined
 }
 
 function TreeNodeItem({
@@ -89,7 +89,7 @@ function TreeNodeItem({
 }: TreeNodeItemProps) {
   const isExpanded = expandedPaths.has(node.path)
   const isDirectory = node.type === 'directory'
-  const isSelected = node.file_id === selectedFileId
+  const isSelected = node.file_id != null && node.file_id === selectedFileId
 
   const handleClick = () => {
     if (isDirectory) {

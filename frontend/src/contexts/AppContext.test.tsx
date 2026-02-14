@@ -17,7 +17,7 @@ describe('AppContext', () => {
         </AppProvider>
       )
 
-      expect(screen.getByText('Theme: light')).toBeInTheDocument()
+      expect(screen.getByText('Theme: dark')).toBeInTheDocument()
     })
 
     it('should allow injecting custom API client', () => {

@@ -1,11 +1,10 @@
 import { ReactElement } from 'react'
 import { render, RenderOptions } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
+import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
-
-// Create a default theme for testing
-const theme = createTheme()
+import { AppProvider } from '@/contexts/AppContext'
+import { darkTheme } from '@/theme'
 
 interface AllProvidersProps {
   children: React.ReactNode
@@ -17,10 +16,12 @@ interface AllProvidersProps {
 function AllProviders({ children }: AllProvidersProps) {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        {children}
-      </ThemeProvider>
+      <AppProvider>
+        <ThemeProvider theme={darkTheme}>
+          <CssBaseline />
+          {children}
+        </ThemeProvider>
+      </AppProvider>
     </BrowserRouter>
   )
 }

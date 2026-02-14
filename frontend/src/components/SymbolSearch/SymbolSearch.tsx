@@ -8,6 +8,7 @@ import {
   CircularProgress,
   InputAdornment,
 } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import SearchIcon from '@mui/icons-material/Search'
 import FunctionsIcon from '@mui/icons-material/Functions'
 import ClassIcon from '@mui/icons-material/Class'
@@ -24,21 +25,24 @@ interface SymbolSearchProps {
 }
 
 // Get icon for symbol kind
-function getSymbolIcon(kind: string) {
+function getSymbolIcon(
+  kind: string,
+  palette: { class: string; function: string; interface: string; variable: string }
+) {
   switch (kind.toLowerCase()) {
     case 'class':
-      return <ClassIcon fontSize="small" sx={{ color: '#4ec9b0' }} />
+      return <ClassIcon fontSize="small" sx={{ color: palette.class }} />
     case 'function':
     case 'method':
     case 'delegate':
-      return <FunctionsIcon fontSize="small" sx={{ color: '#dcdcaa' }} />
+      return <FunctionsIcon fontSize="small" sx={{ color: palette.function }} />
     case 'interface':
     case 'type':
-      return <CodeIcon fontSize="small" sx={{ color: '#4fc1ff' }} />
+      return <CodeIcon fontSize="small" sx={{ color: palette.interface }} />
     case 'event':
     case 'indexer':
     default:
-      return <CodeIcon fontSize="small" sx={{ color: '#9cdcfe' }} />
+      return <CodeIcon fontSize="small" sx={{ color: palette.variable }} />
   }
 }
 
@@ -74,6 +78,7 @@ export function SymbolSearch({
   const [internalValue, setInternalValue] = useState('')
   const [options, setOptions] = useState<Symbol[]>([])
   const [loading, setLoading] = useState(false)
+  const theme = useTheme()
 
   // Use external value if provided, otherwise use internal state
   const inputValue = value !== undefined ? value : internalValue
@@ -120,6 +125,8 @@ export function SymbolSearch({
     return () => clearTimeout(timer)
   }, [inputValue, searchDebounced])
 
+  const iconPalette = theme.palette.symbolIcon
+
   return (
     <Autocomplete
       freeSolo
@@ -154,7 +161,7 @@ export function SymbolSearch({
           {...props}
           sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}
         >
-          {getSymbolIcon(option.kind)}
+          {getSymbolIcon(option.kind, iconPalette)}
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Typography

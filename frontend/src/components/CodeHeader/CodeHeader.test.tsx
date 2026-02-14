@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
+import { render, screen, fireEvent, waitFor } from '@/test/utils'
 import { CodeHeader } from './CodeHeader'
 
 // Mock the API module
@@ -88,11 +87,7 @@ const defaultProps = {
   onTabChange: vi.fn(),
 }
 
-// Helper to render component with router
-const routerFuture = { v7_startTransition: true, v7_relativeSplatPath: true } as const
-const renderWithRouter = (ui: React.ReactElement) => {
-  return render(<BrowserRouter future={routerFuture}>{ui}</BrowserRouter>)
-}
+// render from @/test/utils already wraps with BrowserRouter + AppProvider + ThemeProvider
 
 // Setup mocks before each test
 beforeEach(async () => {
@@ -106,7 +101,7 @@ beforeEach(async () => {
 describe('CodeHeader', () => {
   describe('rendering', () => {
     it('should render home icon button', async () => {
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       // Wait for all data to load to avoid act() warnings
       await waitFor(() => {
@@ -117,7 +112,7 @@ describe('CodeHeader', () => {
     })
 
     it('should render all three tabs', async () => {
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         expect(screen.getByRole('tab', { name: /browse/i })).toBeInTheDocument()
@@ -127,7 +122,7 @@ describe('CodeHeader', () => {
     })
 
     it('should highlight the current tab', async () => {
-      renderWithRouter(<CodeHeader {...defaultProps} currentTab="search" />)
+      render(<CodeHeader {...defaultProps} currentTab="search" />)
 
       await waitFor(() => {
         const searchTab = screen.getByRole('tab', { name: /search/i })
@@ -143,7 +138,7 @@ describe('CodeHeader', () => {
       vi.mocked(api.getRepositoryBranches).mockReturnValue(new Promise(() => {}))
       vi.mocked(api.getCommits).mockReturnValue(new Promise(() => {}))
 
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       // At least one progress indicator should be shown
       expect(screen.getAllByRole('progressbar').length).toBeGreaterThan(0)
@@ -152,7 +147,7 @@ describe('CodeHeader', () => {
 
   describe('repository selector', () => {
     it('should display repository dropdown when multiple repositories exist', async () => {
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         // Should show the repo name - may have multiple comboboxes (repo, branch, commit)
@@ -165,7 +160,7 @@ describe('CodeHeader', () => {
       const api = await import('@/lib/api')
       vi.mocked(api.getRepositories).mockResolvedValue([mockRepositories[0]!])
 
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         expect(screen.getByText('test-repo')).toBeInTheDocument()
@@ -180,7 +175,7 @@ describe('CodeHeader', () => {
     it('should call onRepoChange when repository is changed', async () => {
       const onRepoChange = vi.fn()
 
-      renderWithRouter(<CodeHeader {...defaultProps} onRepoChange={onRepoChange} />)
+      render(<CodeHeader {...defaultProps} onRepoChange={onRepoChange} />)
 
       await waitFor(() => {
         expect(screen.getByText('test-repo')).toBeInTheDocument()
@@ -202,7 +197,7 @@ describe('CodeHeader', () => {
     it('should load branches for selected repository', async () => {
       const api = await import('@/lib/api')
 
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         expect(api.getRepositoryBranches).toHaveBeenCalledWith(1)
@@ -210,7 +205,7 @@ describe('CodeHeader', () => {
     })
 
     it('should display branch selector when repo is selected', async () => {
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         // Should show branch name
@@ -219,7 +214,7 @@ describe('CodeHeader', () => {
     })
 
     it('should not display branch selector when no repository is selected', async () => {
-      renderWithRouter(<CodeHeader {...defaultProps} repoName={null} />)
+      render(<CodeHeader {...defaultProps} repoName={null} />)
 
       await waitFor(() => {
         // Home button should be there
@@ -234,7 +229,7 @@ describe('CodeHeader', () => {
     it('should call onBranchChange when branch is changed', async () => {
       const onBranchChange = vi.fn()
 
-      renderWithRouter(<CodeHeader {...defaultProps} onBranchChange={onBranchChange} />)
+      render(<CodeHeader {...defaultProps} onBranchChange={onBranchChange} />)
 
       await waitFor(() => {
         expect(screen.getByText('main')).toBeInTheDocument()
@@ -257,7 +252,7 @@ describe('CodeHeader', () => {
     it('should load commits for selected repository and branch', async () => {
       const api = await import('@/lib/api')
 
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'main', 50)
@@ -265,7 +260,7 @@ describe('CodeHeader', () => {
     })
 
     it('should display short commit hash', async () => {
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         // Should show 7-char short hash
@@ -276,7 +271,7 @@ describe('CodeHeader', () => {
     it('should call onCommitChange when commit is changed', async () => {
       const onCommitChange = vi.fn()
 
-      renderWithRouter(<CodeHeader {...defaultProps} onCommitChange={onCommitChange} />)
+      render(<CodeHeader {...defaultProps} onCommitChange={onCommitChange} />)
 
       await waitFor(() => {
         expect(screen.getByText('abc123d')).toBeInTheDocument()
@@ -299,7 +294,7 @@ describe('CodeHeader', () => {
     it('should call onTabChange when tab is clicked', async () => {
       const onTabChange = vi.fn()
 
-      renderWithRouter(<CodeHeader {...defaultProps} onTabChange={onTabChange} />)
+      render(<CodeHeader {...defaultProps} onTabChange={onTabChange} />)
 
       await waitFor(() => {
         expect(screen.getByRole('tab', { name: /search/i })).toBeInTheDocument()
@@ -313,7 +308,7 @@ describe('CodeHeader', () => {
     it('should call onTabChange with history value', async () => {
       const onTabChange = vi.fn()
 
-      renderWithRouter(<CodeHeader {...defaultProps} onTabChange={onTabChange} />)
+      render(<CodeHeader {...defaultProps} onTabChange={onTabChange} />)
 
       await waitFor(() => {
         expect(screen.getByRole('tab', { name: /history/i })).toBeInTheDocument()
@@ -329,18 +324,14 @@ describe('CodeHeader', () => {
     it('should reload branches when repository changes', async () => {
       const api = await import('@/lib/api')
 
-      const { rerender } = renderWithRouter(<CodeHeader {...defaultProps} />)
+      const { rerender } = render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         expect(api.getRepositoryBranches).toHaveBeenCalledWith(1)
       })
 
       // Change repository
-      rerender(
-        <BrowserRouter future={routerFuture}>
-          <CodeHeader {...defaultProps} repoName="another-repo" />
-        </BrowserRouter>
-      )
+      rerender(<CodeHeader {...defaultProps} repoName="another-repo" />)
 
       await waitFor(() => {
         expect(api.getRepositoryBranches).toHaveBeenCalledWith(2)
@@ -350,18 +341,14 @@ describe('CodeHeader', () => {
     it('should reload commits when branch changes', async () => {
       const api = await import('@/lib/api')
 
-      const { rerender } = renderWithRouter(<CodeHeader {...defaultProps} />)
+      const { rerender } = render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'main', 50)
       })
 
       // Change branch
-      rerender(
-        <BrowserRouter future={routerFuture}>
-          <CodeHeader {...defaultProps} branch="feature-branch" />
-        </BrowserRouter>
-      )
+      rerender(<CodeHeader {...defaultProps} branch="feature-branch" />)
 
       await waitFor(() => {
         expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'feature-branch', 50)
@@ -376,7 +363,7 @@ describe('CodeHeader', () => {
 
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -394,7 +381,7 @@ describe('CodeHeader', () => {
 
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to load branches:', expect.any(Error))
@@ -409,7 +396,7 @@ describe('CodeHeader', () => {
 
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-      renderWithRouter(<CodeHeader {...defaultProps} />)
+      render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to load commits:', expect.any(Error))
