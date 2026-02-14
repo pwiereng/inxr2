@@ -1,5 +1,5 @@
 # Development Dockerfile for INXR2
-# This image includes Python, Node.js, PostgreSQL client, and all development tools
+# This image includes Python, Node.js, PostgreSQL server, and all development tools
 
 FROM python:3.11-slim
 
@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y \
     make \
     # Git
     git \
-    # PostgreSQL client
+    # PostgreSQL server + client (embedded, runs as devuser)
+    postgresql \
     postgresql-client \
     # Process utilities (pkill, pgrep, ps, top)
     procps \
@@ -59,6 +60,9 @@ USER $USERNAME
 # Ensure cache directories exist with proper permissions
 RUN mkdir -p /home/devuser/.cache /home/devuser/.cargo/bin
 
+# Create PostgreSQL data directory owned by devuser
+RUN mkdir -p /home/devuser/pgdata && chown devuser:devuser /home/devuser/pgdata
+
 # Install uv (modern, fast Python package installer)
 # Using official uv Docker image with SHA256 pinning for security and reproducibility
 # https://docs.astral.sh/uv/guides/integration/docker/
@@ -78,7 +82,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Expose ports
 # 8000 - FastAPI backend
 # 5173 - Vite frontend dev server
-# 5432 - PostgreSQL (will be in separate container)
+# 5432 - PostgreSQL (embedded, internal only)
 EXPOSE 8000 5173
 
 # Set entrypoint to handle dependency installation

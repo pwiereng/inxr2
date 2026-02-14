@@ -28,7 +28,7 @@ from .factories import CommitFactory, FileFactory, RepositoryFactory
 # PostgreSQL test database URL (auto-converted to asyncpg if needed)
 _raw_url = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql+asyncpg://inxr2_user:inxr2_dev_password@postgres:5432/inxr2_test",
+    "postgresql+asyncpg://inxr2_user:inxr2_dev_password@localhost:5432/inxr2_test",
 )
 if _raw_url.startswith("postgresql://"):
     TEST_DATABASE_URL = _raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)

@@ -388,7 +388,7 @@ const FILENAME_ICONS: Record<string, FileIconConfig> = {
   'setup.py': { label: 'SP', color: '#3572A5' },
   'setup.cfg': { label: 'SP', color: '#3572A5' },
   'requirements.txt': { label: 'RQ', color: '#3572A5' },
-  'pipfile': { label: 'PF', color: '#3572A5' },
+  pipfile: { label: 'PF', color: '#3572A5' },
   'poetry.lock': { label: 'PO', color: '#3572A5' },
   'cargo.toml': { label: 'CG', color: '#DEA584' },
   'cargo.lock': { label: 'CG', color: '#DEA584' },
@@ -428,10 +428,7 @@ const FILENAME_ICONS: Record<string, FileIconConfig> = {
  * Resolve icon config for a given filename and optional language.
  * Priority: exact filename match > language > extension > default.
  */
-function getFileIconConfig(
-  filename: string,
-  language: string | null,
-): FileIconConfig | null {
+function getFileIconConfig(filename: string, language: string | null): FileIconConfig | null {
   const lowerName = filename.toLowerCase()
 
   // 1. Exact filename match

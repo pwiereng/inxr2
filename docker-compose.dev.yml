@@ -1,31 +1,11 @@
 
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: inxr2-postgres-dev
-    env_file:
-      - .env.dev
-    # Note: env_file loads all variables, no need to redeclare
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - inxr2-network
-
-  # Development container (backend + frontend)
+  # Development container (backend + frontend + embedded PostgreSQL)
   dev:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: inxr2-dev
+    container_name: ${COMPOSE_CONTAINER_PREFIX:-inxr2}-dev
     working_dir: /workspace
     env_file:
       - .env.dev
@@ -38,15 +18,11 @@ services:
       - node_modules:/workspace/frontend/node_modules
       # Cache pip packages
       - pip_cache:/home/devuser/.cache/pip
+      # PostgreSQL data persistence
+      - pgdata:/home/devuser/pgdata
     ports:
-      - "8000:8000"  # FastAPI backend
-      - "5173:5173"  # Vite frontend dev server
-    # Note: env_file loads all variables defined in .env.dev
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - inxr2-network
+      - "${APP_PORT:-8000}:8000"        # FastAPI backend
+      - "${FRONTEND_PORT:-5173}:5173"   # Vite frontend dev server
     stdin_open: true
     tty: true
     command: /bin/bash
@@ -56,20 +32,14 @@ services:
     build:
       context: ./qa-agent
       dockerfile: Dockerfile
-    container_name: inxr2-playwright
+    container_name: ${COMPOSE_CONTAINER_PREFIX:-inxr2}-playwright
     ports:
-      - "9222:9222"
-    networks:
-      - inxr2-network
+      - "${PLAYWRIGHT_PORT:-9222}:9222"
     profiles:
       - qa  # Only start with --profile qa
 
-networks:
-  inxr2-network:
-    driver: bridge
-
 volumes:
-  postgres_data:
+  pgdata:
     driver: local
   pip_cache:
     driver: local

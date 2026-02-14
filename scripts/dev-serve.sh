@@ -5,7 +5,7 @@
 #   ./scripts/dev-serve.sh
 #
 # Or from host:
-#   docker exec -it inxr2-dev ./scripts/dev-serve.sh
+#   docker exec -it <container-name> ./scripts/dev-serve.sh
 
 set -e
 

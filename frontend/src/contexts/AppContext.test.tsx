@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { screen } from '@/test/utils'
-import {
-  render as rtlRender,
-  renderHook as rtlRenderHook,
-} from '@testing-library/react'
+import { render as rtlRender, renderHook as rtlRenderHook } from '@testing-library/react'
 import { AppProvider, useApp } from './AppContext'
 import { ApiClient } from '@/lib/api-client'
 
