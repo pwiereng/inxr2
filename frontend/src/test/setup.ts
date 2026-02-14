@@ -8,4 +8,7 @@ expect.extend(matchers)
 
 afterEach(() => {
   cleanup()
+  // Prevent theme state from leaking between tests
+  localStorage.removeItem('themeMode')
+  document.body.classList.remove('prism-dark', 'prism-light')
 })

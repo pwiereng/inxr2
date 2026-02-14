@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { screen } from '@/test/utils'
 import {
   render as rtlRender,
@@ -8,6 +8,10 @@ import { AppProvider, useApp } from './AppContext'
 import { ApiClient } from '@/lib/api-client'
 
 describe('AppContext', () => {
+  beforeEach(() => {
+    localStorage.removeItem('themeMode')
+  })
+
   describe('AppProvider', () => {
     it('should provide app context to children', () => {
       const TestComponent = () => {
