@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useLayoutEffect, ReactNode } from 'react'
 import { ApiClient, createApiClient } from '@/lib/api-client'
 
 /**
@@ -20,13 +20,20 @@ interface AppContextValue {
 }
 
 /**
- * Read initial theme from localStorage, falling back to system preference, then 'dark'
+ * Read initial theme from localStorage, falling back to system preference, then 'dark'.
+ * Guarded for non-browser environments (SSR, restricted storage).
  */
 function getInitialThemeMode(): ThemeMode {
-  const stored = localStorage.getItem('themeMode')
-  if (stored === 'light' || stored === 'dark') return stored
+  try {
+    if (typeof window === 'undefined') return 'dark'
 
-  if (window.matchMedia?.('(prefers-color-scheme: light)').matches) return 'light'
+    const stored = localStorage.getItem('themeMode')
+    if (stored === 'light' || stored === 'dark') return stored
+
+    if (window.matchMedia?.('(prefers-color-scheme: light)').matches) return 'light'
+  } catch {
+    // localStorage blocked or unavailable — fall through to default
+  }
 
   return 'dark'
 }
@@ -52,10 +59,16 @@ interface AppProviderProps {
 export function AppProvider({ children, apiClient }: AppProviderProps) {
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode)
 
-  // Persist to localStorage and sync body class for Prism CSS
-  useEffect(() => {
-    localStorage.setItem('themeMode', themeMode)
-    document.body.className = themeMode === 'dark' ? 'prism-dark' : 'prism-light'
+  // Persist to localStorage and sync body class for Prism CSS.
+  // useLayoutEffect runs before paint to avoid a flash of unstyled content.
+  useLayoutEffect(() => {
+    try {
+      localStorage.setItem('themeMode', themeMode)
+    } catch {
+      // localStorage blocked — ignore
+    }
+    document.body.classList.remove('prism-dark', 'prism-light')
+    document.body.classList.add(themeMode === 'dark' ? 'prism-dark' : 'prism-light')
   }, [themeMode])
 
   const toggleThemeMode = () => {

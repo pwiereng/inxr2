@@ -356,6 +356,32 @@ describe('CodeHeader', () => {
     })
   })
 
+  describe('theme toggle', () => {
+    it('should render the theme toggle button', async () => {
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /switch to light mode/i })).toBeInTheDocument()
+      })
+    })
+
+    it('should switch icon when toggle is clicked', async () => {
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /switch to light mode/i })).toBeInTheDocument()
+      })
+
+      // Click to switch to light mode
+      fireEvent.click(screen.getByRole('button', { name: /switch to light mode/i }))
+
+      // After toggle, button should now say "switch to dark mode"
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /switch to dark mode/i })).toBeInTheDocument()
+      })
+    })
+  })
+
   describe('error handling', () => {
     it('should handle repository loading error gracefully', async () => {
       const api = await import('@/lib/api')

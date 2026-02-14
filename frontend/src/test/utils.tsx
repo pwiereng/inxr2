@@ -3,11 +3,27 @@ import { render, RenderOptions } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
-import { AppProvider } from '@/contexts/AppContext'
-import { darkTheme } from '@/theme'
+import { AppProvider, useApp } from '@/contexts/AppContext'
+import { darkTheme, lightTheme } from '@/theme'
 
 interface AllProvidersProps {
   children: React.ReactNode
+}
+
+/**
+ * Inner wrapper that selects the MUI theme based on AppContext themeMode,
+ * mirroring the same pattern used in App.tsx (AppProvider > useApp > ThemeProvider).
+ */
+function ThemeWrapper({ children }: { children: React.ReactNode }) {
+  const { themeMode } = useApp()
+  const theme = themeMode === 'dark' ? darkTheme : lightTheme
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      {children}
+    </ThemeProvider>
+  )
 }
 
 /**
@@ -17,10 +33,7 @@ function AllProviders({ children }: AllProvidersProps) {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AppProvider>
-        <ThemeProvider theme={darkTheme}>
-          <CssBaseline />
-          {children}
-        </ThemeProvider>
+        <ThemeWrapper>{children}</ThemeWrapper>
       </AppProvider>
     </BrowserRouter>
   )

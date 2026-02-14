@@ -325,7 +325,13 @@ export function CodeHeader({
         <Box sx={{ flex: 1 }} />
 
         <Tooltip title={themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
-          <IconButton size="small" onClick={toggleThemeMode} sx={{ color: 'text.secondary' }}>
+          <IconButton
+            size="small"
+            onClick={toggleThemeMode}
+            sx={{ color: 'text.secondary' }}
+            aria-label={themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-pressed={themeMode === 'dark'}
+          >
             {themeMode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
           </IconButton>
         </Tooltip>
