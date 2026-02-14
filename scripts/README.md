@@ -1,190 +1,109 @@
 # INXR2 Scripts
 
-Utility scripts for development, building, testing, and deployment.
+Utility scripts for development and testing.
 
-## 🔨 Build & Clean Scripts
-
-### `clean.sh`
-Removes all Docker containers, volumes, images, and local packages.
+## Starting INXR2
 
 ```bash
-./scripts/clean.sh
+./scripts/dev-start.sh                                    # Start Docker environment
+docker exec -it inxr2-dev ./scripts/dev-serve.sh          # Start backend + frontend
 ```
 
-**What it removes:**
-- Docker containers (dev and postgres)
-- Docker volumes (postgres_data, pip_cache, node_modules)
-- Docker images
-- Local `frontend/node_modules/`
+Or start services separately:
+```bash
+docker exec -d inxr2-dev inxr2 serve --reload             # Backend on :8000
+docker exec -d inxr2-dev bash -c 'cd frontend && npm run dev'  # Frontend on :5173
+```
 
-### `build.sh`
-Builds Docker images and starts containers.
+## Monitoring Logs
 
 ```bash
-./scripts/build.sh                # Build with cache
-./scripts/build.sh --no-cache     # Clean build (no cache)
+docker logs -f inxr2-dev             # Backend access + error logs
+./scripts/dev-logs.sh                # All container logs
+./scripts/dev-logs.sh postgres       # PostgreSQL logs only
 ```
 
-**What it does:**
-- Builds Docker images
-- Starts containers
-- Verifies package installation
+## Scripts Reference
 
-### `clean-rebuild.sh`
-Combines clean + build for a complete rebuild.
+### Development
 
-```bash
-./scripts/clean-rebuild.sh
-```
+| Script | Run from | Purpose |
+|--------|----------|---------|
+| `dev-start.sh` | Host | Start Docker environment (`docker-compose up -d --build`) |
+| `dev-stop.sh` | Host | Stop Docker environment |
+| `dev-shell.sh` | Host | Open bash shell in dev container |
+| `dev-serve.sh` | Container | Start backend + frontend together (Ctrl+C to stop both) |
+| `dev-logs.sh` | Host | Tail container logs (optionally filter by service name) |
 
-**What it does:**
-1. Runs `clean.sh`
-2. Runs `build.sh --no-cache`
-3. Optionally runs `run-all-tests.sh`
+### Testing
 
-## 🧪 Testing Scripts
+| Script | Run from | Purpose |
+|--------|----------|---------|
+| `run-all-tests.sh` | Host or Container | Backend tests, frontend tests, linting, security audit |
 
-### `run-all-tests.sh`
-Runs complete test suite: backend tests, frontend tests, and code quality checks.
+### Other
 
-```bash
-./scripts/run-all-tests.sh
-```
+| File | Purpose |
+|------|---------|
+| `verify-setup.sh` | Check containers, env vars, DB connection, migrations, imports |
+| `docker-entrypoint.sh` | Container entrypoint — installs deps, fixes permissions |
+| `init-test-db.sql` | Creates `inxr2_test` database on first postgres boot |
 
-**What it tests:**
-- Backend: pytest with coverage
-- Frontend: vitest with coverage
-- Python: black, isort, ruff, mypy
-- TypeScript: eslint, prettier, tsc
-- Security: npm audit
-
-**Exit codes:**
-- `0` - All tests passed
-- `1` - One or more tests failed
-
-## 🛠️ Development Scripts
-
-### `dev-start.sh`
-Start the development environment.
-
-```bash
-./scripts/dev-start.sh
-```
-
-### `dev-stop.sh`
-Stop the development environment.
-
-```bash
-./scripts/dev-stop.sh
-```
-
-### `dev-shell.sh`
-Open a bash shell in the development container.
-
-```bash
-./scripts/dev-shell.sh
-```
-
-### `dev-logs.sh`
-View logs from the development container.
-
-```bash
-./scripts/dev-logs.sh
-```
-
-### `dev-reset-db.sh`
-Reset the PostgreSQL database.
-
-```bash
-./scripts/dev-reset-db.sh
-```
-
-⚠️ **Warning:** This deletes all database data!
-
-## 📋 Common Workflows
+## Common Workflows
 
 ### First Time Setup
 ```bash
-./scripts/build.sh
-./scripts/run-all-tests.sh
-```
-
-### Clean Rebuild (after major changes)
-```bash
-./scripts/clean-rebuild.sh
+./scripts/dev-start.sh
+docker exec inxr2-dev alembic upgrade head    # Apply migrations
+./scripts/run-all-tests.sh                    # Verify everything works
 ```
 
 ### Daily Development
 ```bash
-./scripts/dev-start.sh        # Start containers
-./scripts/dev-shell.sh        # Open shell
-
-# Inside container:
-inxr2 serve --reload          # Start backend
-cd frontend && npm run dev    # Start frontend
-
-# Run tests before committing:
-pytest --cov=src              # Backend tests
-cd frontend && npm test       # Frontend tests
+./scripts/dev-start.sh                                    # Start containers
+docker exec -it inxr2-dev ./scripts/dev-serve.sh          # Start servers
 ```
 
-### Before Pushing to Git
+### Clean Rebuild (fresh database)
 ```bash
-./scripts/run-all-tests.sh    # Ensure everything passes
+docker-compose -f docker-compose.dev.yml down -v          # Stop + delete volumes
+docker-compose -f docker-compose.dev.yml up -d --build    # Rebuild + start
+docker exec inxr2-dev alembic upgrade head                # Apply migrations
 ```
 
-### Troubleshooting
+### Before Committing
 ```bash
-./scripts/clean.sh            # Clean everything
-./scripts/build.sh --no-cache # Rebuild from scratch
-./scripts/dev-logs.sh         # Check logs for errors
+./scripts/run-all-tests.sh
 ```
 
-## 🐳 Docker Commands Reference
+## Docker Commands Reference
 
 ```bash
-# Manual container management
-docker-compose -f docker-compose.dev.yml up -d     # Start
-docker-compose -f docker-compose.dev.yml down      # Stop
-docker-compose -f docker-compose.dev.yml ps        # Status
-docker-compose -f docker-compose.dev.yml logs -f   # Follow logs
+# Container management
+docker-compose -f docker-compose.dev.yml up -d            # Start
+docker-compose -f docker-compose.dev.yml down             # Stop
+docker-compose -f docker-compose.dev.yml down -v          # Stop + delete volumes (DB reset)
+docker-compose -f docker-compose.dev.yml ps               # Status
 
 # Execute commands in container
-docker exec inxr2-dev <command>                    # Run command
-docker exec -it inxr2-dev bash                     # Interactive shell
+docker exec inxr2-dev <command>                           # Run command
+docker exec -it inxr2-dev bash                            # Interactive shell
 
-# Clean up
-docker system prune -a --volumes                   # Remove all unused
+# Indexing
+docker exec inxr2-dev inxr2 index --config config.yaml                # Index all repos
+docker exec inxr2-dev inxr2 index --config config.yaml --repo inxr2   # Index one repo
+docker exec inxr2-dev inxr2 index --config config.yaml --force        # Force re-index
 ```
 
-## 📦 Package Management
+## Package Management
 
-### Python (using uv)
-```bash
-docker exec inxr2-dev bash -c "cd /workspace && uv pip install <package>"
-docker exec inxr2-dev bash -c "cd /workspace && uv pip list --outdated"
-```
-
-### Node.js
-```bash
-docker exec inxr2-dev bash -c "cd /workspace/frontend && npm install <package>"
-docker exec inxr2-dev bash -c "cd /workspace/frontend && npm outdated"
-```
-
-## 🔐 CI/CD Integration
-
-For continuous integration, use:
+All package management must happen inside the container:
 
 ```bash
-# In CI pipeline
-./scripts/build.sh --no-cache
-./scripts/run-all-tests.sh
+# Python
+docker exec inxr2-dev uv pip install <package>
+docker exec inxr2-dev uv pip install -e '.[dev]'
 
-# Check exit code
-if [ $? -eq 0 ]; then
-  echo "All tests passed"
-else
-  echo "Tests failed"
-  exit 1
-fi
+# Node.js
+docker exec inxr2-dev bash -c 'cd frontend && npm install <package>'
 ```

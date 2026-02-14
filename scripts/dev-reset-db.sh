@@ -1,27 +1,14 @@
 #!/bin/bash
-# Reset the development database
+# Reset the development database (truncates all tables)
 
 set -e
 
-echo "⚠️  WARNING: This will delete all data in the development database!"
-read -p "Are you sure? (yes/no): " -r
-echo
+echo "Resetting INXR2 database..."
 
-if [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
-    echo "Cancelled."
-    exit 1
-fi
+# Kill any running indexing processes
+docker exec inxr2-dev bash -c "pkill -f 'inxr2 index'" 2>/dev/null || true
 
-echo "🗑️  Resetting development database..."
+# Truncate all tables
+docker exec inxr2-dev inxr2 db reset --yes
 
-# Stop the database container
-docker-compose -f docker-compose.dev.yml stop postgres
-
-# Remove the database volume
-docker volume rm inxr2_postgres_data || true
-
-# Restart the database
-docker-compose -f docker-compose.dev.yml up -d postgres
-
-echo "✅ Database reset complete!"
-echo "   The database will be recreated with a fresh schema."
+echo "Database reset complete."
