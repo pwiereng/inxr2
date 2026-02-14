@@ -56,10 +56,17 @@ if git worktree list | grep -q "$WORKTREE_DIR"; then
     echo "✅ Worktree removed"
 else
     echo "⚠️  Worktree not found in git worktree list"
-    # Clean up directory if it still exists
+    # Clean up directory if it still exists (validate path pattern first)
     if [ -d "$WORKTREE_DIR" ]; then
-        echo "   Removing leftover directory..."
-        rm -rf "$WORKTREE_DIR"
+        case "$WORKTREE_DIR" in
+            */wt-inxr2-*)
+                echo "   Removing leftover directory..."
+                rm -rf "$WORKTREE_DIR"
+                ;;
+            *)
+                echo "⚠️  Refusing to rm -rf unexpected path: $WORKTREE_DIR"
+                ;;
+        esac
     fi
 fi
 
@@ -68,8 +75,8 @@ fi
 if [ -f "$SLOTS_FILE" ]; then
     (
         flock -x 200 || die "Could not acquire lock on slots file"
-        # Anchored match: ^DIGIT(s):BRANCH: to avoid substring collisions
-        grep -v "^[0-9][0-9]*:${BRANCH}:" "$SLOTS_FILE" > "${SLOTS_FILE}.tmp" 2>/dev/null || true
+        # Fixed-string match to avoid . being treated as regex wildcard
+        grep -Fv ":${BRANCH}:" "$SLOTS_FILE" > "${SLOTS_FILE}.tmp" 2>/dev/null || true
         mv "${SLOTS_FILE}.tmp" "$SLOTS_FILE"
     ) 200>"${SLOTS_FILE}.lock"
     echo "✅ Slot freed"
