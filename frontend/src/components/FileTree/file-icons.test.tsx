@@ -80,7 +80,7 @@ describe('FileTypeIcon', () => {
     it('should handle Swift', () =>
       expect(renderLabel('main.swift', null)).toBe('SW'))
     it('should handle Kotlin', () => expect(renderLabel('Main.kt', null)).toBe('KT'))
-    it('should handle Dart', () => expect(renderLabel('main.dart', null)).toBe('DT'))
+    it('should handle Dart', () => expect(renderLabel('main.dart', null)).toBe('DA'))
   })
 
   describe('scripting languages', () => {

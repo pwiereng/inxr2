@@ -49,20 +49,20 @@ const LANGUAGE_ICONS: Record<string, FileIconConfig> = {
   rust: { label: 'RS', color: '#DEA584' },
   swift: { label: 'SW', color: '#FA7343' },
   kotlin: { label: 'KT', color: '#7F52FF' },
-  dart: { label: 'DT', color: '#00B4AB' },
-  scala: { label: 'SC', color: '#DC322F' },
+  dart: { label: 'DA', color: '#00B4AB' },
+  scala: { label: 'SCA', color: '#DC322F' },
 
   // Scripting
   ruby: { label: 'RB', color: '#CC342D' },
   php: { label: 'PHP', color: '#777BB4' },
   perl: { label: 'PL', color: '#39457E' },
-  lua: { label: 'LU', color: '#000080' },
+  lua: { label: 'LU', color: '#2C2D72' },
   r: { label: 'R', color: '#276DC3' },
   julia: { label: 'JL', color: '#9558B2' },
   elixir: { label: 'EX', color: '#6E4A7E' },
   erlang: { label: 'ER', color: '#B83998' },
   haskell: { label: 'HS', color: '#5E5086' },
-  clojure: { label: 'CJ', color: '#63B132' },
+  clojure: { label: 'CLJ', color: '#63B132' },
   fsharp: { label: 'F#', color: '#B845FC' },
   ocaml: { label: 'ML', color: '#EC6813' },
 
@@ -112,13 +112,13 @@ const LANGUAGE_ICONS: Record<string, FileIconConfig> = {
   'objective-cpp': { label: 'O+', color: '#438EFF' },
 
   // Other
-  groovy: { label: 'GR', color: '#4298B8' },
+  groovy: { label: 'GRV', color: '#4298B8' },
   pascal: { label: 'PA', color: '#E3F171', textColor: '#2C3E17' },
   fortran: { label: 'FN', color: '#4D41B1' },
   cobol: { label: 'CO', color: '#3D5A80' },
   lisp: { label: 'LI', color: '#3FB68B' },
   scheme: { label: 'SM', color: '#1E4AEC' },
-  prolog: { label: 'PG', color: '#74283C' },
+  prolog: { label: 'PRO', color: '#74283C' },
   vhdl: { label: 'VH', color: '#ADB2CB' },
   verilog: { label: 'VL', color: '#B2B7F8' },
   zig: { label: 'ZG', color: '#F7A41D', textColor: '#1B1B1B' },
@@ -126,7 +126,7 @@ const LANGUAGE_ICONS: Record<string, FileIconConfig> = {
   crystal: { label: 'CR', color: '#000100' },
   v: { label: 'V', color: '#5D87BF' },
   d: { label: 'D', color: '#B03931' },
-  ada: { label: 'AD', color: '#02F88C', textColor: '#1B2B1B' },
+  ada: { label: 'ADA', color: '#02F88C', textColor: '#1B2B1B' },
 }
 
 /**
@@ -141,7 +141,7 @@ const EXTENSION_ICONS: Record<string, FileIconConfig> = {
   js: { label: 'JS', color: '#F0DB4F', textColor: '#323330' },
   jsx: { label: 'JX', color: '#61DAFB', textColor: '#282C34' },
   mjs: { label: 'MJ', color: '#F0DB4F', textColor: '#323330' },
-  cjs: { label: 'CJ', color: '#F0DB4F', textColor: '#323330' },
+  cjs: { label: 'CJS', color: '#F0DB4F', textColor: '#323330' },
   mts: { label: 'MT', color: '#3178C6' },
   cts: { label: 'CT', color: '#3178C6' },
   'd.ts': { label: 'DT', color: '#3178C6' },
@@ -181,8 +181,8 @@ const EXTENSION_ICONS: Record<string, FileIconConfig> = {
   swift: { label: 'SW', color: '#FA7343' },
   kt: { label: 'KT', color: '#7F52FF' },
   kts: { label: 'KT', color: '#7F52FF' },
-  dart: { label: 'DT', color: '#00B4AB' },
-  scala: { label: 'SC', color: '#DC322F' },
+  dart: { label: 'DA', color: '#00B4AB' },
+  scala: { label: 'SCA', color: '#DC322F' },
   sbt: { label: 'SB', color: '#DC322F' },
 
   // Scripting
@@ -190,15 +190,15 @@ const EXTENSION_ICONS: Record<string, FileIconConfig> = {
   php: { label: 'PHP', color: '#777BB4' },
   pl: { label: 'PL', color: '#39457E' },
   pm: { label: 'PM', color: '#39457E' },
-  lua: { label: 'LU', color: '#000080' },
+  lua: { label: 'LU', color: '#2C2D72' },
   r: { label: 'R', color: '#276DC3' },
   jl: { label: 'JL', color: '#9558B2' },
   ex: { label: 'EX', color: '#6E4A7E' },
   exs: { label: 'EX', color: '#6E4A7E' },
   erl: { label: 'ER', color: '#B83998' },
   hs: { label: 'HS', color: '#5E5086' },
-  clj: { label: 'CJ', color: '#63B132' },
-  cljs: { label: 'CJ', color: '#63B132' },
+  clj: { label: 'CLJ', color: '#63B132' },
+  cljs: { label: 'CLJ', color: '#63B132' },
   fs: { label: 'F#', color: '#B845FC' },
   fsx: { label: 'F#', color: '#B845FC' },
   ml: { label: 'ML', color: '#EC6813' },
@@ -238,7 +238,7 @@ const EXTENSION_ICONS: Record<string, FileIconConfig> = {
   rst: { label: 'RST', color: '#141414' },
   txt: { label: 'TXT', color: '#6D8086' },
   tex: { label: 'TEX', color: '#008080' },
-  adoc: { label: 'AD', color: '#E40046' },
+  adoc: { label: 'ADC', color: '#E40046' },
 
   // Database
   sql: { label: 'SQL', color: '#E38C00' },
@@ -254,7 +254,7 @@ const EXTENSION_ICONS: Record<string, FileIconConfig> = {
   proto: { label: 'PB', color: '#4285F4' },
 
   // Build & project files
-  gradle: { label: 'GR', color: '#02303A' },
+  gradle: { label: 'GDL', color: '#02303A' },
   maven: { label: 'MV', color: '#C71A36' },
   cmake: { label: 'CM', color: '#064F8C' },
 
@@ -265,7 +265,7 @@ const EXTENSION_ICONS: Record<string, FileIconConfig> = {
   wat: { label: 'WAT', color: '#654FF0' },
 
   // Other languages
-  groovy: { label: 'GR', color: '#4298B8' },
+  groovy: { label: 'GRV', color: '#4298B8' },
   pas: { label: 'PA', color: '#E3F171', textColor: '#2C3E17' },
   f90: { label: 'FN', color: '#4D41B1' },
   f95: { label: 'FN', color: '#4D41B1' },
@@ -278,7 +278,7 @@ const EXTENSION_ICONS: Record<string, FileIconConfig> = {
   cr: { label: 'CR', color: '#000100' },
   v: { label: 'V', color: '#5D87BF' },
   d: { label: 'D', color: '#B03931' },
-  ada: { label: 'AD', color: '#02F88C', textColor: '#1B2B1B' },
+  ada: { label: 'ADA', color: '#02F88C', textColor: '#1B2B1B' },
   vhd: { label: 'VH', color: '#ADB2CB' },
   sv: { label: 'VL', color: '#B2B7F8' },
 
@@ -356,12 +356,12 @@ const FILENAME_ICONS: Record<string, FileIconConfig> = {
   'cmakelists.txt': { label: 'CM', color: '#064F8C' },
   rakefile: { label: 'RK', color: '#CC342D' },
   gemfile: { label: 'GM', color: '#CC342D' },
-  procfile: { label: 'PR', color: '#6E4A7E' },
+  procfile: { label: 'PC', color: '#6E4A7E' },
   vagrantfile: { label: 'VG', color: '#1868F2' },
   jenkinsfile: { label: 'JK', color: '#D24939' },
   '.gitignore': { label: 'GI', color: '#F05032' },
   '.gitattributes': { label: 'GA', color: '#F05032' },
-  '.gitmodules': { label: 'GM', color: '#F05032' },
+  '.gitmodules': { label: 'GS', color: '#F05032' },
   '.editorconfig': { label: 'EC', color: '#FEFEFE', textColor: '#333333' },
   '.eslintrc': { label: 'ES', color: '#4B32C3' },
   '.eslintrc.js': { label: 'ES', color: '#4B32C3' },
@@ -394,7 +394,7 @@ const FILENAME_ICONS: Record<string, FileIconConfig> = {
   'cargo.lock': { label: 'CG', color: '#DEA584' },
   'go.mod': { label: 'GO', color: '#00ADD8' },
   'go.sum': { label: 'GO', color: '#00ADD8' },
-  'build.gradle': { label: 'GR', color: '#02303A' },
+  'build.gradle': { label: 'GDL', color: '#02303A' },
   'pom.xml': { label: 'MV', color: '#C71A36' },
   license: { label: 'LIC', color: '#D4AF37' },
   'license.md': { label: 'LIC', color: '#D4AF37' },
@@ -414,7 +414,7 @@ const FILENAME_ICONS: Record<string, FileIconConfig> = {
   'alembic.ini': { label: 'AL', color: '#3572A5' },
   'pytest.ini': { label: 'PT', color: '#009FE3' },
   'conftest.py': { label: 'CF', color: '#009FE3' },
-  'tox.ini': { label: 'TX', color: '#009FE3' },
+  'tox.ini': { label: 'TOX', color: '#009FE3' },
   '.flake8': { label: 'F8', color: '#3572A5' },
   'mypy.ini': { label: 'MY', color: '#2A6DB2' },
   'ruff.toml': { label: 'RF', color: '#D7FF64', textColor: '#1A2B0A' },
