@@ -31,12 +31,15 @@ import {
   type CommitInfo,
 } from '@/lib/api'
 
+import { parseAsUTC } from '@/lib/dateUtils'
+
 /**
  * Format a commit date string as yyyy-mm-dd for display.
+ * Uses parseAsUTC to handle dates with or without timezone indicators.
  */
 export function formatCommitDate(dateStr: string): string {
   if (!dateStr) return ''
-  const date = new Date(dateStr)
+  const date = parseAsUTC(dateStr)
   if (isNaN(date.getTime())) return ''
   const y = date.getUTCFullYear()
   const m = String(date.getUTCMonth() + 1).padStart(2, '0')
@@ -299,7 +302,11 @@ export function CodeHeader({
                     return selectedCommitObj ? getShortHash(selectedCommitObj.hash) : 'latest'
                   }}
                 >
-                  {commits.map((commitInfo) => (
+                  {commits.map((commitInfo) => {
+                    const formattedDate = commitInfo.commit_date
+                      ? formatCommitDate(commitInfo.commit_date)
+                      : ''
+                    return (
                     <MenuItem key={commitInfo.hash} value={commitInfo.hash}>
                       <Tooltip title={commitInfo.message} placement="left">
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -312,8 +319,7 @@ export function CodeHeader({
                           >
                             {getShortHash(commitInfo.hash)}
                           </Box>
-                          {commitInfo.commit_date &&
-                            formatCommitDate(commitInfo.commit_date) && (
+                          {formattedDate && (
                               <Box
                                 component="span"
                                 sx={{
@@ -322,7 +328,7 @@ export function CodeHeader({
                                   whiteSpace: 'nowrap',
                                 }}
                               >
-                                {formatCommitDate(commitInfo.commit_date)}
+                                {formattedDate}
                               </Box>
                             )}
                           <Box
@@ -341,7 +347,8 @@ export function CodeHeader({
                         </Box>
                       </Tooltip>
                     </MenuItem>
-                  ))}
+                    )
+                  })}
                 </Select>
               </FormControl>
             ) : null}
