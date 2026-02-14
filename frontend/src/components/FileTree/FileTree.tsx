@@ -16,6 +16,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 
 import type { TreeNode } from '@/lib/api'
+import { FileTypeIcon } from './file-icons'
 
 // Find a file in the tree by its ID and return the path to it
 function findFilePathById(nodes: TreeNode[], fileId: number): string | null {
@@ -56,26 +57,6 @@ interface TreeNodeItemProps {
   expandedPaths: Set<string>
   toggleExpanded: (path: string) => void
   selectedRef?: React.RefObject<HTMLDivElement>
-}
-
-// Get file icon color based on language
-function getFileColor(language: string | null): string {
-  const colors: Record<string, string> = {
-    python: '#3572A5',
-    typescript: '#3178C6',
-    javascript: '#F7DF1E',
-    tsx: '#3178C6',
-    jsx: '#F7DF1E',
-    json: '#292929',
-    yaml: '#CB171E',
-    markdown: '#083FA1',
-    css: '#563D7C',
-    html: '#E34F26',
-    c: '#555555',
-    java: '#B07219',
-    csharp: '#239120',
-  }
-  return language ? colors[language.toLowerCase()] || '#6e7681' : '#6e7681'
 }
 
 function TreeNodeItem({
@@ -141,7 +122,14 @@ function TreeNodeItem({
               <FolderIcon fontSize="small" sx={{ color: '#dcb67a' }} />
             )
           ) : (
-            <InsertDriveFileIcon fontSize="small" sx={{ color: getFileColor(node.language) }} />
+            <FileTypeIcon
+              filename={node.name}
+              language={node.language}
+              fontSize="small"
+              fallback={
+                <InsertDriveFileIcon fontSize="small" sx={{ color: '#6e7681' }} />
+              }
+            />
           )}
         </ListItemIcon>
 
