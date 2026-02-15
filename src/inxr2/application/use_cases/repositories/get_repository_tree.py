@@ -129,16 +129,22 @@ class GetRepositoryTreeUseCase:
                         "changed_only requires git_service to determine changed files."
                     )
                 repo_path = Path(repository.url)
-                changed = self._git_service.get_changed_files_in_commit(
-                    repo_path, request.commit_hash
-                )
+                try:
+                    changed = self._git_service.get_changed_files_in_commit(
+                        repo_path, request.commit_hash
+                    )
+                except Exception as e:
+                    raise ValueError(f"Cannot determine changed files: {e}") from e
                 changed_paths = set(changed.added + changed.modified)
 
-                # Get full tree at this commit, then filter to changed paths
-                all_files = await self._file_repo.list_at_or_before_commit(
-                    repository_id, commit.id
-                )
-                files = [f for f in all_files if f.path in changed_paths]
+                if not changed_paths:
+                    files = []
+                else:
+                    # Get full tree at this commit, then filter to changed paths
+                    all_files = await self._file_repo.list_at_or_before_commit(
+                        repository_id, commit.id
+                    )
+                    files = [f for f in all_files if f.path in changed_paths]
             else:
                 # Get the latest version of each file at or before this commit
                 # This returns the full tree state, not just files changed at this commit

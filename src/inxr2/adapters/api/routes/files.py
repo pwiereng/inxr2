@@ -290,8 +290,11 @@ async def get_file_blame_by_path(
             commit_hash=resolved_commit.commit_hash.value,
             file_path=path,
         )
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"File '{path}' not found at this commit",
+        ) from None
 
     # Check which blame commits are indexed (batch hash lookup)
     repo_id = repository.id or 0
