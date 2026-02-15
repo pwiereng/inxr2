@@ -31,21 +31,7 @@ import {
   type CommitInfo,
 } from '@/lib/api'
 
-import { parseAsUTC } from '@/lib/dateUtils'
-
-/**
- * Format a commit date string as yyyy-mm-dd for display.
- * Uses parseAsUTC to handle dates with or without timezone indicators.
- */
-export function formatCommitDate(dateStr: string): string {
-  if (!dateStr) return ''
-  const date = parseAsUTC(dateStr)
-  if (isNaN(date.getTime())) return ''
-  const y = date.getUTCFullYear()
-  const m = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const d = String(date.getUTCDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
+import { formatDateYMD } from '@/lib/dateUtils'
 
 export type TabValue = 'browse' | 'search' | 'history'
 
@@ -304,22 +290,22 @@ export function CodeHeader({
                 >
                   {commits.map((commitInfo) => {
                     const formattedDate = commitInfo.commit_date
-                      ? formatCommitDate(commitInfo.commit_date)
+                      ? formatDateYMD(commitInfo.commit_date)
                       : ''
                     return (
-                    <MenuItem key={commitInfo.hash} value={commitInfo.hash}>
-                      <Tooltip title={commitInfo.message} placement="left">
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box
-                            component="span"
-                            sx={{
-                              fontFamily: 'monospace',
-                              fontSize: '0.8rem',
-                            }}
-                          >
-                            {getShortHash(commitInfo.hash)}
-                          </Box>
-                          {formattedDate && (
+                      <MenuItem key={commitInfo.hash} value={commitInfo.hash}>
+                        <Tooltip title={commitInfo.message} placement="left">
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box
+                              component="span"
+                              sx={{
+                                fontFamily: 'monospace',
+                                fontSize: '0.8rem',
+                              }}
+                            >
+                              {getShortHash(commitInfo.hash)}
+                            </Box>
+                            {formattedDate && (
                               <Box
                                 component="span"
                                 sx={{
@@ -331,22 +317,22 @@ export function CodeHeader({
                                 {formattedDate}
                               </Box>
                             )}
-                          <Box
-                            component="span"
-                            sx={{
-                              fontSize: '0.75rem',
-                              color: 'text.secondary',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              maxWidth: 200,
-                            }}
-                          >
-                            {commitInfo.message}
+                            <Box
+                              component="span"
+                              sx={{
+                                fontSize: '0.75rem',
+                                color: 'text.secondary',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                maxWidth: 200,
+                              }}
+                            >
+                              {commitInfo.message}
+                            </Box>
                           </Box>
-                        </Box>
-                      </Tooltip>
-                    </MenuItem>
+                        </Tooltip>
+                      </MenuItem>
                     )
                   })}
                 </Select>

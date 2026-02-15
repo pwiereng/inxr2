@@ -35,6 +35,21 @@ export function parseAsUTC(dateString: string): Date {
 }
 
 /**
+ * Format a date string as YYYY-MM-DD in UTC.
+ *
+ * Returns an empty string for empty or invalid inputs.
+ */
+export function formatDateYMD(dateString: string): string {
+  if (!dateString) return ''
+  const date = parseAsUTC(dateString)
+  if (isNaN(date.getTime())) return ''
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/**
  * Format a commit date for display.
  *
  * Returns a compact date string in the format:

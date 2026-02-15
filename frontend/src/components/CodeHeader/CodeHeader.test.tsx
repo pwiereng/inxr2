@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@/test/utils'
-import { CodeHeader, formatCommitDate } from './CodeHeader'
+import { CodeHeader } from './CodeHeader'
+import { formatDateYMD } from '@/lib/dateUtils'
 
 // Mock the API module
 vi.mock('@/lib/api', () => ({
@@ -403,25 +404,25 @@ describe('CodeHeader', () => {
     })
   })
 
-  describe('formatCommitDate', () => {
+  describe('formatDateYMD', () => {
     it('should format dates as yyyy-mm-dd', () => {
-      expect(formatCommitDate('2024-01-15')).toBe('2024-01-15')
+      expect(formatDateYMD('2024-01-15')).toBe('2024-01-15')
     })
 
     it('should return empty string for empty input', () => {
-      expect(formatCommitDate('')).toBe('')
+      expect(formatDateYMD('')).toBe('')
     })
 
     it('should return empty string for invalid date', () => {
-      expect(formatCommitDate('not-a-date')).toBe('')
+      expect(formatDateYMD('not-a-date')).toBe('')
     })
 
     it('should handle ISO timestamp with time component', () => {
-      expect(formatCommitDate('2025-01-15T10:30:00')).toBe('2025-01-15')
+      expect(formatDateYMD('2025-01-15T10:30:00')).toBe('2025-01-15')
     })
 
     it('should handle ISO timestamp with UTC suffix', () => {
-      expect(formatCommitDate('2025-01-15T10:30:00Z')).toBe('2025-01-15')
+      expect(formatDateYMD('2025-01-15T10:30:00Z')).toBe('2025-01-15')
     })
   })
 
