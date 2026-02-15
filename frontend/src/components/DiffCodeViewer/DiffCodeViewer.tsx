@@ -159,8 +159,11 @@ export function DiffCodeViewer({
   const prismLanguage = language ? languageMap[language.toLowerCase()] || 'text' : 'text'
   const langGrammar = Prism.languages[prismLanguage]
 
-  // Compute diff
-  const diffLines = computeSideBySideDiff(leftContent, rightContent)
+  // Compute diff (memoized to prevent re-renders from resetting navigation state)
+  const diffLines = useMemo(
+    () => computeSideBySideDiff(leftContent, rightContent),
+    [leftContent, rightContent]
+  )
 
   // Find all change indices (for navigation)
   const changeIndices = useMemo(() => {
