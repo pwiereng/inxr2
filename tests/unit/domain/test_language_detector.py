@@ -53,13 +53,18 @@ class TestLanguageDetector:
         language = LanguageDetector.detect("randomfile")
         assert language is None
 
+    def test_detect_svg(self) -> None:
+        """Test detecting SVG files as text (XML-based)."""
+        assert LanguageDetector.detect("icon.svg") == "svg"
+
+    def test_is_text_file_svg(self) -> None:
+        """Test that SVG files are identified as text (XML-based, not binary)."""
+        assert LanguageDetector.is_text_file("icon.svg") is True
+
     def test_is_text_file_image_files(self) -> None:
         """Test text file detection for image files."""
         assert LanguageDetector.is_text_file("image.png") is False
         assert LanguageDetector.is_text_file("photo.jpg") is False
-        assert (
-            LanguageDetector.is_text_file("icon.svg") is False
-        )  # SVG is in binary list
 
     def test_is_text_file_compiled_files(self) -> None:
         """Test text file detection for compiled files."""

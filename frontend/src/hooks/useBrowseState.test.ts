@@ -42,8 +42,14 @@ vi.mock('@/lib/api', () => ({
   getFileContentByPathAtCommit: vi.fn(),
   getFileSymbolsByPath: vi.fn(),
   getFileReferencesByPath: vi.fn(),
+  getFileRawContent: vi.fn(),
   getSymbol: vi.fn(),
   getFileHistory: vi.fn(),
+}))
+
+// Mock fileUtils
+vi.mock('@/lib/fileUtils', () => ({
+  isImageFile: vi.fn(() => false),
 }))
 
 const mockGetRepositories = vi.mocked(api.getRepositories)
@@ -218,6 +224,29 @@ describe('useBrowseState', () => {
       expect(result.current.urlState.selectedCommit).toBe('abc123')
       expect(result.current.urlState.selectedBranch).toBe('main')
     })
+
+    it('should parse viewMode raw from URL', async () => {
+      mockSearchParams = new URLSearchParams('view=raw')
+      const { result } = await renderBrowseStateHook()
+      expect(result.current.urlState.viewMode).toBe('raw')
+    })
+
+    it('should parse viewMode rendered from URL', async () => {
+      mockSearchParams = new URLSearchParams('view=rendered')
+      const { result } = await renderBrowseStateHook()
+      expect(result.current.urlState.viewMode).toBe('rendered')
+    })
+
+    it('should default viewMode to null when not in URL', async () => {
+      const { result } = await renderBrowseStateHook()
+      expect(result.current.urlState.viewMode).toBeNull()
+    })
+
+    it('should default viewMode to null for unknown values', async () => {
+      mockSearchParams = new URLSearchParams('view=invalid')
+      const { result } = await renderBrowseStateHook()
+      expect(result.current.urlState.viewMode).toBeNull()
+    })
   })
 
   describe('URL state updates', () => {
@@ -325,6 +354,27 @@ describe('useBrowseState', () => {
         result.current.actions.toggleChangedOnly()
       })
       expect(mockSearchParams.get('co')).toBeNull()
+    })
+
+    it('should set viewMode to raw in URL', async () => {
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.setViewMode('raw')
+      })
+
+      expect(mockSearchParams.get('view')).toBe('raw')
+    })
+
+    it('should clear viewMode from URL when set to null', async () => {
+      mockSearchParams = new URLSearchParams('view=raw')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.setViewMode(null)
+      })
+
+      expect(mockSearchParams.has('view')).toBe(false)
     })
   })
 

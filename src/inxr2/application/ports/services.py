@@ -171,6 +171,29 @@ class GitServicePort(ABC):
         self, repo_path: Path, commit_hash: str, file_path: str
     ) -> list[BlameLineInfo]: ...
 
+    @abstractmethod
+    def get_file_raw_content(
+        self, repo_path: Path, commit_hash: str, file_path: str
+    ) -> bytes:
+        """
+        Get the raw bytes of a file at a specific commit.
+
+        Unlike get_file_content() which decodes to str, this returns
+        raw bytes for binary files (images, etc.).
+
+        Args:
+            repo_path: Path to the git repository
+            commit_hash: Commit hash
+            file_path: Path to file (relative to repo root)
+
+        Returns:
+            Raw file content as bytes
+
+        Raises:
+            FileNotFoundError: If file doesn't exist at commit
+        """
+        ...
+
 
 class ConfigServicePort(ABC):
     """

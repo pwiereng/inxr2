@@ -20,10 +20,14 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
 import CloseIcon from '@mui/icons-material/Close'
 import HistoryToggleOffIcon from '@mui/icons-material/HistoryToggleOff'
+import CodeIcon from '@mui/icons-material/Code'
+import DescriptionIcon from '@mui/icons-material/Description'
 
 import { BranchSelector } from '@/components/BranchSelector'
 import { CodeViewer } from '@/components/CodeViewer'
 import { DiffCodeViewer } from '@/components/DiffCodeViewer'
+import { ImageViewer } from '@/components/ImageViewer'
+import { MarkdownViewer } from '@/components/MarkdownViewer'
 import { FileTree } from '@/components/FileTree'
 import { SymbolSearch } from '@/components/SymbolSearch'
 import { ReferencesPanel } from '@/components/ReferencesPanel'
@@ -31,6 +35,7 @@ import { VersionSelector } from '@/components/VersionSelector'
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { useBrowseState } from '@/hooks/useBrowseState'
 import { getFileBlame, type BlameLine } from '@/lib/api'
+import { isMarkdownFile, detectLanguage } from '@/lib/fileUtils'
 
 interface BrowseProps {
   /** Repository name (overrides URL param) */
@@ -50,7 +55,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
 
   const { repoName, filePath, highlightLine, diffMode, diffCommit, diffBranch, selectedBranch } =
     urlState
-  const { repository, treeNodes, fileContent, fileSymbols, fileReferences } = dataState
+  const { repository, treeNodes, fileContent, fileSymbols, fileReferences, rawContent } = dataState
   const { diffContent, diffSymbols, diffReferences, activePanel, treePanel, refPanel } = diffState
   const { drawerOpen, refsPanelOpen, loading, fileLoading, diffLoading, error } = uiState
   const { selectedSymbol, isDirectDefinition, searchByName } = refsState
@@ -219,7 +224,9 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
             >
               {fileContent.path}
             </Typography>
-            {fileContent.language && <Chip label={fileContent.language} size="small" />}
+            {detectLanguage(fileContent.path, fileContent.language) && (
+              <Chip label={detectLanguage(fileContent.path, fileContent.language)} size="small" />
+            )}
             <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
               {fileContent.line_count} lines
             </Typography>
@@ -227,6 +234,29 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
         )}
 
         <Box sx={{ flex: 1 }} />
+
+        {/* Markdown view toggle (only for markdown files, not in diff mode) */}
+        {repoName &&
+          filePath &&
+          fileContent &&
+          isMarkdownFile(fileContent.path, fileContent.language) &&
+          !diffMode && (
+            <Tooltip
+              title={urlState.viewMode === 'raw' ? 'Show rendered markdown' : 'Show raw source'}
+            >
+              <IconButton
+                size="small"
+                onClick={() => actions.setViewMode(urlState.viewMode === 'raw' ? null : 'raw')}
+                color={urlState.viewMode === 'raw' ? 'default' : 'primary'}
+              >
+                {urlState.viewMode === 'raw' ? (
+                  <DescriptionIcon fontSize="small" />
+                ) : (
+                  <CodeIcon fontSize="small" />
+                )}
+              </IconButton>
+            </Tooltip>
+          )}
 
         {/* Blame toggle (only when file is loaded and NOT in diff mode) */}
         {repoName && filePath && fileContent && !diffMode && (
@@ -363,6 +393,10 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
               <CircularProgress />
             </Box>
+          ) : rawContent ? (
+            <Box sx={{ flex: 1, overflow: 'auto', display: 'flex' }}>
+              <ImageViewer rawContent={rawContent} />
+            </Box>
           ) : fileContent ? (
             <>
               {/* Code Viewer or Diff Viewer */}
@@ -401,7 +435,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                         />
                       </Box>
                     }
-                    language={fileContent.language}
+                    language={detectLanguage(fileContent.path, fileContent.language)}
                     leftSymbols={fileSymbols}
                     rightSymbols={diffSymbols}
                     leftReferences={fileReferences}
@@ -462,7 +496,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                       <Box sx={{ flex: 1, overflow: 'auto' }}>
                         <CodeViewer
                           content={fileContent.content}
-                          language={fileContent.language}
+                          language={detectLanguage(fileContent.path, fileContent.language)}
                           symbols={fileSymbols}
                           references={fileReferences}
                           highlightLine={highlightLine}
@@ -557,6 +591,11 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                       Uncheck &quot;Changed files only&quot; to view the file at this revision.
                     </Typography>
                   </Box>
+                ) : isMarkdownFile(fileContent.path, fileContent.language) &&
+                  urlState.viewMode !== 'raw' ? (
+                  <Box sx={{ flex: 1, overflow: 'auto' }}>
+                    <MarkdownViewer content={fileContent.content} />
+                  </Box>
                 ) : (
                   <Box sx={{ flex: 1, overflow: 'auto' }}>
                     {blameLoading ? (
@@ -574,7 +613,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                     ) : (
                       <CodeViewer
                         content={fileContent.content}
-                        language={fileContent.language}
+                        language={detectLanguage(fileContent.path, fileContent.language)}
                         symbols={fileSymbols}
                         references={fileReferences}
                         blameData={blameEnabled ? blameData : undefined}

@@ -384,6 +384,28 @@ export async function getFileContentByPathAtCommit(
   return fetchApi<FileContent>(`/files/by-path?${params}`)
 }
 
+// Raw file content (for images)
+export interface RawFileContent {
+  path: string
+  language: string | null
+  content_type: string
+  encoding: string // "base64" or "utf-8"
+  data: string
+  size_bytes: number
+}
+
+export async function getFileRawContent(
+  repo: string,
+  path: string,
+  commit?: string,
+  branch?: string
+): Promise<RawFileContent> {
+  const params = new URLSearchParams({ repo, path })
+  if (commit) params.set('commit', commit)
+  if (branch) params.set('branch', branch)
+  return fetchApi<RawFileContent>(`/files/by-path/raw?${params}`)
+}
+
 // Blame
 export async function getFileBlame(
   repo: string,

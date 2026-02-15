@@ -207,10 +207,12 @@ export function FileTree({ nodes, selectedFileId, onFileSelect, loading = false 
         })
         // Scroll into view after a short delay to allow expansion animation
         setTimeout(() => {
-          selectedRef.current?.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-          })
+          if (typeof selectedRef.current?.scrollIntoView === 'function') {
+            selectedRef.current.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+            })
+          }
         }, 100)
       }
     }

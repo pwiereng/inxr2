@@ -89,11 +89,11 @@
 .prism-light .token.prolog,
 .prism-light .token.doctype,
 .prism-light .token.cdata {
-  color: slategray;
+  color: #848688;
 }
 
 .prism-light .token.punctuation {
-  color: #999;
+  color: #383a42;
 }
 
 .prism-light .token.namespace {
@@ -107,7 +107,7 @@
 .prism-light .token.constant,
 .prism-light .token.symbol,
 .prism-light .token.deleted {
-  color: #905;
+  color: #986801;
 }
 
 .prism-light .token.selector,
@@ -116,30 +116,30 @@
 .prism-light .token.char,
 .prism-light .token.builtin,
 .prism-light .token.inserted {
-  color: #690;
+  color: #50a14f;
 }
 
 .prism-light .token.operator,
 .prism-light .token.entity,
 .prism-light .token.url {
-  color: #9a6e3a;
+  color: #0184bc;
 }
 
 .prism-light .token.atrule,
 .prism-light .token.attr-value,
 .prism-light .token.keyword {
-  color: #07a;
+  color: #a626a4;
 }
 
 .prism-light .token.function,
 .prism-light .token.class-name {
-  color: #dd4a68;
+  color: #4078f2;
 }
 
 .prism-light .token.regex,
 .prism-light .token.important,
 .prism-light .token.variable {
-  color: #e90;
+  color: #e45649;
 }
 
 .prism-light .token.important,
