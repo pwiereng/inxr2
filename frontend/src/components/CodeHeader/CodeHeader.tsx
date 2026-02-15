@@ -160,8 +160,9 @@ export function CodeHeader({
 
   // Compute the date of the currently viewed commit
   const currentCommitObj = commit ? commits.find((c) => c.hash === commit) : commits[0]
-  const currentCommitDate =
-    currentCommitObj?.commit_date ? formatDateTimeUTC(currentCommitObj.commit_date) : ''
+  const currentCommitDate = currentCommitObj?.commit_date
+    ? formatDateTimeUTC(currentCommitObj.commit_date)
+    : ''
 
   return (
     <AppBar
@@ -296,7 +297,7 @@ export function CodeHeader({
                     return selectedCommitObj ? getShortHash(selectedCommitObj.hash) : 'latest'
                   }}
                 >
-                  {commits.map((commitInfo) => {
+                  {commits.map((commitInfo, index) => {
                     const formattedDate = commitInfo.commit_date
                       ? formatDateTimeUTC(commitInfo.commit_date)
                       : ''
@@ -338,6 +339,45 @@ export function CodeHeader({
                             >
                               {commitInfo.message}
                             </Box>
+                            {index === 0 && (
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                sx={{
+                                  ml: 0.5,
+                                  px: 0.5,
+                                  py: 0.125,
+                                  bgcolor: 'primary.main',
+                                  color: 'primary.contrastText',
+                                  borderRadius: 0.5,
+                                  fontSize: '0.65rem',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                HEAD
+                              </Typography>
+                            )}
+                            {commitInfo.tags?.map((tag) => (
+                              <Typography
+                                key={tag}
+                                component="span"
+                                variant="caption"
+                                sx={{
+                                  ml: 0.5,
+                                  px: 0.5,
+                                  py: 0.125,
+                                  bgcolor: 'warning.main',
+                                  color: 'warning.contrastText',
+                                  borderRadius: 0.5,
+                                  fontSize: '0.65rem',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {tag}
+                              </Typography>
+                            ))}
                           </Box>
                         </Tooltip>
                       </MenuItem>

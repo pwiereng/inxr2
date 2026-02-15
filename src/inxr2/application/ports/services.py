@@ -162,6 +162,11 @@ class GitServicePort(ABC):
     def list_branches(self, repo_path: Path) -> list[str]: ...
 
     @abstractmethod
+    def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
+        """Return mapping of commit_hash -> [tag_names]."""
+        ...
+
+    @abstractmethod
     def get_blame(
         self, repo_path: Path, commit_hash: str, file_path: str
     ) -> list[BlameLineInfo]: ...

@@ -420,9 +420,7 @@ export function CodeViewer({
                                   : theme.palette.blame.date,
                                 fontFamily: 'monospace',
                                 cursor: isClickable ? 'pointer' : 'default',
-                                '&:hover': isClickable
-                                  ? { textDecoration: 'underline' }
-                                  : {},
+                                '&:hover': isClickable ? { textDecoration: 'underline' } : {},
                               }}
                             >
                               {blame.short_hash}

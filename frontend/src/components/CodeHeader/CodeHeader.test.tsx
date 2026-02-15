@@ -61,6 +61,7 @@ const mockCommits = {
       author_email: 'test@example.com',
       commit_date: '2024-01-01T10:30:00Z',
       is_indexed: true,
+      tags: ['v1.0'],
     },
     {
       hash: 'def456ghi789',
@@ -70,6 +71,7 @@ const mockCommits = {
       author_email: 'test@example.com',
       commit_date: '2024-01-02T14:45:00Z',
       is_indexed: true,
+      tags: [],
     },
   ],
   total: 2,
@@ -428,6 +430,42 @@ describe('CodeHeader', () => {
 
       // No datetime indicator should be shown
       expect(screen.queryByText(/UTC/)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('commit badges', () => {
+    it('should show HEAD badge on the first commit in dropdown', async () => {
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('abc123d')).toBeInTheDocument()
+      })
+
+      // Open the commit selector dropdown
+      const comboboxes = screen.getAllByRole('combobox')
+      const commitSelect = comboboxes[2]!
+      fireEvent.mouseDown(commitSelect)
+
+      await waitFor(() => {
+        expect(screen.getByText('HEAD')).toBeInTheDocument()
+      })
+    })
+
+    it('should show tag badges in commit dropdown', async () => {
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('abc123d')).toBeInTheDocument()
+      })
+
+      // Open the commit selector dropdown
+      const comboboxes = screen.getAllByRole('combobox')
+      const commitSelect = comboboxes[2]!
+      fireEvent.mouseDown(commitSelect)
+
+      await waitFor(() => {
+        expect(screen.getByText('v1.0')).toBeInTheDocument()
+      })
     })
   })
 
