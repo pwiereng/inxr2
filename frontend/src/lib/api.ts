@@ -146,6 +146,7 @@ export interface CommitInfo {
   author_email: string
   commit_date: string
   is_indexed: boolean
+  tags: string[]
 }
 
 export interface CommitListResponse {

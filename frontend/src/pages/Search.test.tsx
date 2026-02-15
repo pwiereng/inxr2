@@ -59,6 +59,7 @@ describe('Search', () => {
           author_email: 'test@test.com',
           commit_date: '2024-01-01T00:00:00Z',
           is_indexed: true,
+          tags: [],
         },
       ],
       total: 1,

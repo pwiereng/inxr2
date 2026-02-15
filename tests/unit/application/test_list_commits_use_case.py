@@ -49,11 +49,15 @@ class StubGitListCommitsService:
     def __init__(self) -> None:
         # Map (repo_path, branch) -> list of CommitInfo (oldest first)
         self._commits: dict[tuple[str, str], list[CommitInfo]] = {}
+        self._tags: dict[str, list[str]] = {}
 
     def set_commits(
         self, repo_path: str, branch: str, commits: list[CommitInfo]
     ) -> None:
         self._commits[(repo_path, branch)] = commits
+
+    def set_tags(self, tags: dict[str, list[str]]) -> None:
+        self._tags = tags
 
     def list_commits(
         self,
@@ -68,6 +72,9 @@ class StubGitListCommitsService:
             # Mirror real git: iter_commits(max_count=N) returns the N newest
             return all_commits[-max_count:]
         return list(all_commits)
+
+    def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
+        return self._tags
 
 
 class TestListCommitsUseCase:
@@ -267,3 +274,39 @@ class TestListCommitsUseCase:
         request = ListCommitsRequest(repository_name="test-repo")
         result = await use_case.execute(request)
         assert len(result.commits[0].message) == 300
+
+    # === Tag Tests ===
+
+    @pytest.mark.asyncio
+    async def test_populates_tags_from_git(
+        self,
+        git_service: StubGitListCommitsService,
+        use_case: ListCommitsUseCase,
+    ) -> None:
+        """Should attach matching git tags to each commit."""
+        git_service.set_tags(
+            {
+                "abc123def456": ["v1.0"],
+                "def456ghi789": ["v1.1", "release-2025"],
+            }
+        )
+
+        request = ListCommitsRequest(repository_name="test-repo")
+        result = await use_case.execute(request)
+
+        by_hash = {c.hash: c for c in result.commits}
+        assert by_hash["abc123def456"].tags == ["v1.0"]
+        assert sorted(by_hash["def456ghi789"].tags) == ["release-2025", "v1.1"]
+        assert by_hash["ghi789jkl012"].tags == []
+
+    @pytest.mark.asyncio
+    async def test_empty_tags_when_no_tags(
+        self,
+        use_case: ListCommitsUseCase,
+    ) -> None:
+        """Should return empty tags when repo has no tags."""
+        request = ListCommitsRequest(repository_name="test-repo")
+        result = await use_case.execute(request)
+
+        for c in result.commits:
+            assert c.tags == []

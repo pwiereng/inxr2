@@ -30,6 +30,8 @@ class GitListCommitsProtocol(Protocol):
         since_days: int | None = None,
     ) -> list[CommitInfo]: ...
 
+    def get_tags(self, repo_path: Path) -> dict[str, list[str]]: ...
+
 
 @dataclass
 class CommitWithMetadata:
@@ -46,6 +48,7 @@ class CommitWithMetadata:
     author_email: str
     commit_date: str
     is_indexed: bool
+    tags: list[str]
 
 
 @dataclass
@@ -143,6 +146,17 @@ class ListCommitsUseCase:
             commit_hashes=git_hashes,
         )
 
+        # Fetch tags (commit_hash -> [tag_names])
+        try:
+            tags_map = self._git_service.get_tags(repo_path)
+        except Exception:
+            logger.warning(
+                "Failed to get tags for %s",
+                repo_path,
+                exc_info=True,
+            )
+            tags_map = {}
+
         # Build response
         result = [
             CommitWithMetadata(
@@ -153,6 +167,7 @@ class ListCommitsUseCase:
                 author_email=ci.author_email,
                 commit_date=ci.commit_date.isoformat(),
                 is_indexed=ci.hash in indexed_hashes,
+                tags=tags_map.get(ci.hash, []),
             )
             for ci in git_commits
         ]

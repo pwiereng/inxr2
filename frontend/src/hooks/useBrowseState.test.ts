@@ -1564,7 +1564,14 @@ describe('useBrowseState', () => {
       // Return a tree that does NOT contain the current file (src/main.py)
       mockGetRepositoryTreeByName.mockResolvedValue({
         root: [
-          { name: 'changed.py', path: 'src/changed.py', type: 'file', file_id: 1, language: 'python', children: null },
+          {
+            name: 'changed.py',
+            path: 'src/changed.py',
+            type: 'file',
+            file_id: 1,
+            language: 'python',
+            children: null,
+          },
         ],
         repository_id: 1,
         repository_name: 'test-repo',
@@ -1601,8 +1608,22 @@ describe('useBrowseState', () => {
       // Return a tree that DOES contain the current file (src/main.py)
       mockGetRepositoryTreeByName.mockResolvedValue({
         root: [
-          { name: 'main.py', path: 'src/main.py', type: 'file', file_id: 1, language: 'python', children: null },
-          { name: 'other.py', path: 'src/other.py', type: 'file', file_id: 2, language: 'python', children: null },
+          {
+            name: 'main.py',
+            path: 'src/main.py',
+            type: 'file',
+            file_id: 1,
+            language: 'python',
+            children: null,
+          },
+          {
+            name: 'other.py',
+            path: 'src/other.py',
+            type: 'file',
+            file_id: 2,
+            language: 'python',
+            children: null,
+          },
         ],
         repository_id: 1,
         repository_name: 'test-repo',
@@ -1640,7 +1661,14 @@ describe('useBrowseState', () => {
       // Return a tree that does NOT contain the current file
       mockGetRepositoryTreeByName.mockResolvedValue({
         root: [
-          { name: 'changed.py', path: 'src/changed.py', type: 'file', file_id: 1, language: 'python', children: null },
+          {
+            name: 'changed.py',
+            path: 'src/changed.py',
+            type: 'file',
+            file_id: 1,
+            language: 'python',
+            children: null,
+          },
         ],
         repository_id: 1,
         repository_name: 'test-repo',
@@ -1682,7 +1710,14 @@ describe('useBrowseState', () => {
             file_id: null,
             language: null,
             children: [
-              { name: 'main.py', path: 'src/main.py', type: 'file', file_id: 1, language: 'python', children: null },
+              {
+                name: 'main.py',
+                path: 'src/main.py',
+                type: 'file',
+                file_id: 1,
+                language: 'python',
+                children: null,
+              },
             ],
           },
         ],

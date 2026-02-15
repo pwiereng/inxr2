@@ -59,8 +59,9 @@ const mockCommits = {
       message: 'Initial commit',
       author_name: 'Test Author',
       author_email: 'test@example.com',
-      commit_date: '2024-01-01',
+      commit_date: '2024-01-01T10:30:00Z',
       is_indexed: true,
+      tags: ['v1.0'],
     },
     {
       hash: 'def456ghi789',
@@ -68,8 +69,9 @@ const mockCommits = {
       message: 'Second commit',
       author_name: 'Test Author',
       author_email: 'test@example.com',
-      commit_date: '2024-01-02',
+      commit_date: '2024-01-02T14:45:00Z',
       is_indexed: true,
+      tags: [],
     },
   ],
   total: 2,
@@ -382,7 +384,7 @@ describe('CodeHeader', () => {
   })
 
   describe('commit date display', () => {
-    it('should display commit dates in dropdown items', async () => {
+    it('should display commit dates with UTC in dropdown items', async () => {
       render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
@@ -394,10 +396,75 @@ describe('CodeHeader', () => {
       const commitSelect = comboboxes[2]!
       fireEvent.mouseDown(commitSelect)
 
-      // Both formatted dates should appear in the dropdown
+      // Both formatted dates should appear in dropdown with UTC
       await waitFor(() => {
-        expect(screen.getByText('2024-01-01')).toBeInTheDocument()
-        expect(screen.getByText('2024-01-02')).toBeInTheDocument()
+        // First commit date appears in both the indicator and dropdown
+        expect(screen.getAllByText('2024-01-01 10:30 UTC').length).toBeGreaterThanOrEqual(1)
+        expect(screen.getByText('2024-01-02 14:45 UTC')).toBeInTheDocument()
+      })
+    })
+
+    it('should show datetime indicator for latest commit when no commit is selected', async () => {
+      render(<CodeHeader {...defaultProps} commit={null} />)
+
+      // The date indicator should show the first commit's datetime with UTC
+      await waitFor(() => {
+        expect(screen.getByText('2024-01-01 10:30 UTC')).toBeInTheDocument()
+      })
+    })
+
+    it('should show datetime indicator for a specific selected commit', async () => {
+      render(<CodeHeader {...defaultProps} commit="def456ghi789" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('2024-01-02 14:45 UTC')).toBeInTheDocument()
+      })
+    })
+
+    it('should not show date indicator when no repo is selected', async () => {
+      render(<CodeHeader {...defaultProps} repoName={null} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: /browse/i })).toBeInTheDocument()
+      })
+
+      // No datetime indicator should be shown
+      expect(screen.queryByText(/UTC/)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('commit badges', () => {
+    it('should show HEAD badge on the first commit in dropdown', async () => {
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('abc123d')).toBeInTheDocument()
+      })
+
+      // Open the commit selector dropdown
+      const comboboxes = screen.getAllByRole('combobox')
+      const commitSelect = comboboxes[2]!
+      fireEvent.mouseDown(commitSelect)
+
+      await waitFor(() => {
+        expect(screen.getByText('HEAD')).toBeInTheDocument()
+      })
+    })
+
+    it('should show tag badges in commit dropdown', async () => {
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('abc123d')).toBeInTheDocument()
+      })
+
+      // Open the commit selector dropdown
+      const comboboxes = screen.getAllByRole('combobox')
+      const commitSelect = comboboxes[2]!
+      fireEvent.mouseDown(commitSelect)
+
+      await waitFor(() => {
+        expect(screen.getByText('v1.0')).toBeInTheDocument()
       })
     })
   })

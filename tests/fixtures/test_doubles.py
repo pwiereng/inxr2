@@ -2127,6 +2127,7 @@ class FakeGitService(GitServicePort):
             ),
         }
         self._file_contents: dict[tuple[str, str, str], str] = {}
+        self._tags: dict[str, list[str]] = {}
         # Tracking for test verification
         self._list_branch_commits_called = False
         self._list_branch_commits_args: dict[str, str] = {}
@@ -2204,6 +2205,9 @@ class FakeGitService(GitServicePort):
 
     def list_branches(self, repo_path: Path) -> list[str]:
         return ["main"]
+
+    def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
+        return self._tags
 
     def get_blame(
         self, repo_path: Path, commit_hash: str, file_path: str

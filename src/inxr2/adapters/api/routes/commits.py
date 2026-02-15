@@ -38,6 +38,7 @@ class CommitResponse(BaseModel):
     author_email: str
     commit_date: str
     is_indexed: bool
+    tags: list[str] = []
 
 
 class CommitListResponse(BaseModel):
@@ -106,6 +107,7 @@ async def list_commits(
                 author_email=c.author_email or "",
                 commit_date=c.commit_date,
                 is_indexed=c.is_indexed,
+                tags=c.tags,
             )
             for c in result.commits
         ],

@@ -696,6 +696,15 @@ class GitService(GitServicePort):
 
         return sorted_branches
 
+    def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
+        """Return mapping of commit_hash -> [tag_names]."""
+        repo = Repo(repo_path)
+        result: dict[str, list[str]] = {}
+        for tag in repo.tags:
+            commit_hash = tag.commit.hexsha
+            result.setdefault(commit_hash, []).append(tag.name)
+        return result
+
     def get_blame(
         self,
         repo_path: Path,

@@ -453,12 +453,16 @@ export function useBrowseState(repoNameProp?: string) {
     if (treeNodes.length > 0 && !fileInTree(treeNodes, urlState.filePath)) {
       // File not in the changed-files tree — clear selection
       const params = new URLSearchParams(searchParams)
-      navigate(
-        `/browse/${encodeURIComponent(urlState.repoName)}?${params}`,
-        { replace: true }
-      )
+      navigate(`/browse/${encodeURIComponent(urlState.repoName)}?${params}`, { replace: true })
     }
-  }, [urlState.changedOnly, urlState.filePath, urlState.repoName, treeNodes, navigate, searchParams])
+  }, [
+    urlState.changedOnly,
+    urlState.filePath,
+    urlState.repoName,
+    treeNodes,
+    navigate,
+    searchParams,
+  ])
 
   // Load file versions
   useEffect(() => {

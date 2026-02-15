@@ -19,6 +19,7 @@ import 'prismjs/components/prism-java'
 import 'prismjs/components/prism-csharp'
 
 import type { FileSymbol, FileReference, BlameLine } from '@/lib/api'
+import { formatDateYMD } from '@/lib/dateUtils'
 
 interface CodeViewerProps {
   content: string
@@ -419,15 +420,13 @@ export function CodeViewer({
                                   : theme.palette.blame.date,
                                 fontFamily: 'monospace',
                                 cursor: isClickable ? 'pointer' : 'default',
-                                '&:hover': isClickable
-                                  ? { textDecoration: 'underline' }
-                                  : {},
+                                '&:hover': isClickable ? { textDecoration: 'underline' } : {},
                               }}
                             >
                               {blame.short_hash}
                             </Box>
                             <Box component="span" sx={{ color: theme.palette.blame.date }}>
-                              {blame.commit_date.substring(0, 10)}
+                              {formatDateYMD(blame.commit_date)}
                             </Box>
                             <Box
                               component="span"

@@ -11,7 +11,7 @@ import {
 import HistoryIcon from '@mui/icons-material/History'
 import EditIcon from '@mui/icons-material/Edit'
 import { getFileHistory, type FileVersion } from '@/lib/api'
-import { formatCommitDate } from '@/lib/dateUtils'
+import { formatDateTimeUTC } from '@/lib/dateUtils'
 
 interface VersionSelectorProps {
   repoName: string
@@ -83,7 +83,6 @@ export function VersionSelector({
   }
 
   const latestHash = versions[0]?.commit_hash
-  const allDates = versions.map((v) => v.commit_date)
 
   // Check if selectedCommit exists in the versions list
   const selectedExists = selectedCommit
@@ -190,7 +189,7 @@ export function VersionSelector({
                     {version.short_hash}
                   </Typography>
                   <Typography component="span" variant="caption" color="text.secondary">
-                    {formatCommitDate(version.commit_date, allDates)}
+                    {formatDateTimeUTC(version.commit_date)}
                   </Typography>
                   {/* Show HEAD badge for the latest commit */}
                   {index === 0 && (
