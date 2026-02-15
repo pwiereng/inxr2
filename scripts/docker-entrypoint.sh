@@ -70,8 +70,8 @@ PG_ROLE="${POSTGRES_USER:-inxr2_user}"
 PG_PASS="${POSTGRES_PASSWORD:-inxr2_dev_password}"
 if ! psql -h localhost -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='$PG_ROLE'" | grep -q 1; then
     echo "🗄️  Creating $PG_ROLE role..."
-    psql -h localhost -d postgres -v role_name="$PG_ROLE" -v role_password="$PG_PASS" \
-        -c "CREATE ROLE :\"role_name\" WITH LOGIN PASSWORD :'role_password' CREATEDB;"
+    # Safe: values come from controlled env vars, trust auth, dev-only container
+    psql -h localhost -d postgres -c "CREATE ROLE $PG_ROLE WITH LOGIN PASSWORD '$PG_PASS' CREATEDB;"
     echo "✅ Role created"
 fi
 

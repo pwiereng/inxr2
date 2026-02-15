@@ -23,15 +23,35 @@ export function hasTimezoneIndicator(dateString: string): boolean {
 /**
  * Parse a date string as UTC.
  *
- * If the date string has no timezone indicator, it is treated as UTC
- * by appending 'Z'. This is the expected behavior for git commit dates
- * which are stored in UTC.
+ * - Date-only strings (YYYY-MM-DD) are already UTC per ECMAScript spec.
+ * - Datetime strings without a timezone get 'Z' appended to force UTC.
+ * - Strings with a timezone indicator are parsed as-is.
  */
 export function parseAsUTC(dateString: string): Date {
-  if (!hasTimezoneIndicator(dateString)) {
-    return new Date(dateString + 'Z')
+  if (hasTimezoneIndicator(dateString)) {
+    return new Date(dateString)
   }
-  return new Date(dateString)
+  // Date-only strings (no 'T') are already UTC per spec — don't append 'Z'
+  if (!dateString.includes('T')) {
+    return new Date(dateString)
+  }
+  // Datetime without TZ — append 'Z' to treat as UTC
+  return new Date(dateString + 'Z')
+}
+
+/**
+ * Format a date string as YYYY-MM-DD in UTC.
+ *
+ * Returns an empty string for empty or invalid inputs.
+ */
+export function formatDateYMD(dateString: string): string {
+  if (!dateString) return ''
+  const date = parseAsUTC(dateString)
+  if (isNaN(date.getTime())) return ''
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 /**

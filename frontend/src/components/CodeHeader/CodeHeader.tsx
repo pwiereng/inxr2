@@ -31,6 +31,8 @@ import {
   type CommitInfo,
 } from '@/lib/api'
 
+import { formatDateYMD } from '@/lib/dateUtils'
+
 export type TabValue = 'browse' | 'search' | 'history'
 
 interface CodeHeaderProps {
@@ -286,36 +288,53 @@ export function CodeHeader({
                     return selectedCommitObj ? getShortHash(selectedCommitObj.hash) : 'latest'
                   }}
                 >
-                  {commits.map((commitInfo) => (
-                    <MenuItem key={commitInfo.hash} value={commitInfo.hash}>
-                      <Tooltip title={commitInfo.message} placement="left">
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box
-                            component="span"
-                            sx={{
-                              fontFamily: 'monospace',
-                              fontSize: '0.8rem',
-                            }}
-                          >
-                            {getShortHash(commitInfo.hash)}
+                  {commits.map((commitInfo) => {
+                    const formattedDate = commitInfo.commit_date
+                      ? formatDateYMD(commitInfo.commit_date)
+                      : ''
+                    return (
+                      <MenuItem key={commitInfo.hash} value={commitInfo.hash}>
+                        <Tooltip title={commitInfo.message} placement="left">
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box
+                              component="span"
+                              sx={{
+                                fontFamily: 'monospace',
+                                fontSize: '0.8rem',
+                              }}
+                            >
+                              {getShortHash(commitInfo.hash)}
+                            </Box>
+                            {formattedDate && (
+                              <Box
+                                component="span"
+                                sx={{
+                                  fontSize: '0.75rem',
+                                  color: 'text.secondary',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {formattedDate}
+                              </Box>
+                            )}
+                            <Box
+                              component="span"
+                              sx={{
+                                fontSize: '0.75rem',
+                                color: 'text.secondary',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                maxWidth: 200,
+                              }}
+                            >
+                              {commitInfo.message}
+                            </Box>
                           </Box>
-                          <Box
-                            component="span"
-                            sx={{
-                              fontSize: '0.75rem',
-                              color: 'text.secondary',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              maxWidth: 200,
-                            }}
-                          >
-                            {commitInfo.message}
-                          </Box>
-                        </Box>
-                      </Tooltip>
-                    </MenuItem>
-                  ))}
+                        </Tooltip>
+                      </MenuItem>
+                    )
+                  })}
                 </Select>
               </FormControl>
             ) : null}
