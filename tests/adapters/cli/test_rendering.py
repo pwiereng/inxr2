@@ -142,44 +142,20 @@ class TestPrintSummary:
         assert "DB Queries" in output
         assert "Selects" in output
 
-    def test_incremental_title(self) -> None:
-        """is_incremental=True should show 'Incremental' in the title."""
-        console, buf = _capture_console()
-        renderer = IndexingProgressRenderer(console)
-        renderer.print_summary(IndexingStats(), is_incremental=True)
-        output = buf.getvalue()
-        assert "Incremental" in output
-
-    def test_full_title_by_default(self) -> None:
-        """Default should show 'Full' in the title."""
+    def test_title_always_shows_index_complete(self) -> None:
+        """Title should always show 'Index Complete'."""
         console, buf = _capture_console()
         renderer = IndexingProgressRenderer(console)
         renderer.print_summary(IndexingStats())
         output = buf.getvalue()
-        assert "Full" in output
+        assert "Index Complete" in output
 
-    def test_shows_since_days_range(self) -> None:
+    def test_shows_days_range(self) -> None:
         console, buf = _capture_console()
         renderer = IndexingProgressRenderer(console)
-        renderer.print_summary(IndexingStats(), since_days=7)
+        renderer.print_summary(IndexingStats(), days=7)
         output = buf.getvalue()
         assert "last 7 days" in output
-
-    def test_shows_max_history_range(self) -> None:
-        console, buf = _capture_console()
-        renderer = IndexingProgressRenderer(console)
-        renderer.print_summary(IndexingStats(), max_history=50)
-        output = buf.getvalue()
-        assert "last 50 commits" in output
-
-    def test_since_days_takes_precedence_over_max_history(self) -> None:
-        """When both since_days and max_history are set, since_days wins."""
-        console, buf = _capture_console()
-        renderer = IndexingProgressRenderer(console)
-        renderer.print_summary(IndexingStats(), since_days=7, max_history=50)
-        output = buf.getvalue()
-        assert "last 7 days" in output
-        assert "50 commits" not in output
 
     def test_shows_text_content_stats(self) -> None:
         console, buf = _capture_console()

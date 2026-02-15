@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from inxr2.application.ports.services import ChangedFiles, CommitInfo
+from inxr2.application.ports.services import CommitInfo
 from inxr2.application.use_cases.indexing.optimize_file_indexing import (
     OptimizeFileIndexingUseCase,
 )
@@ -173,7 +173,6 @@ class TestProcessCommitUseCase:
             repo_path=Path("/repos/test-repo"),
             branch="main",
             content_hash_cache={},
-            is_head_commit=True,
         )
 
         result = await use_case.execute(request)
@@ -207,7 +206,6 @@ class TestProcessCommitUseCase:
             repo_path=Path("/repos/test-repo"),
             branch="main",
             content_hash_cache={},
-            is_head_commit=True,
         )
         await use_case.execute(request1)
 
@@ -221,7 +219,6 @@ class TestProcessCommitUseCase:
             repo_path=Path("/repos/test-repo"),
             branch="feature",
             content_hash_cache={},
-            is_head_commit=True,
         )
         await use_case.execute(request2)
 
@@ -235,24 +232,23 @@ class TestProcessCommitUseCase:
         assert "feature" in branches
 
     @pytest.mark.asyncio
-    async def test_head_commit_processes_all_files(
+    async def test_new_commit_processes_all_files(
         self,
         use_case: ProcessCommitUseCase,
         git_service: FakeGitService,
     ) -> None:
-        """Test that HEAD commit processes ALL files, not just changed ones."""
+        """Test that every new commit processes ALL files (full snapshot)."""
         request = ProcessCommitRequest(
             repository_id=1,
             commit_data=_make_commit(),
             repo_path=Path("/repos/test-repo"),
             branch="main",
             content_hash_cache={},
-            is_head_commit=True,
         )
 
         result = await use_case.execute(request)
 
-        # HEAD processes all files in commit (default fake has 3: main.py, utils.py, new_file.py)
+        # Full snapshot: processes all files in commit
         all_files = git_service.list_files(
             repo_path=Path("/repos/test-repo"),
             commit_hash="abc123",
@@ -263,32 +259,37 @@ class TestProcessCommitUseCase:
         )
 
     @pytest.mark.asyncio
-    async def test_non_head_uses_delta_indexing(
+    async def test_existing_commit_skips_file_processing(
         self,
         use_case: ProcessCommitUseCase,
-        git_service: FakeGitService,
+        commit_repo: InMemoryCommitRepository,
     ) -> None:
-        """Test that non-HEAD commit uses delta indexing (only changed files)."""
-        # Set up specific changed files for this commit
-        git_service.changed_files_in_commit["abc123"] = ChangedFiles(
-            added=["new.py"], modified=[], deleted=[]
-        )
+        """Test that existing commit links branch but skips file processing."""
+        commit_data = _make_commit()
 
-        request = ProcessCommitRequest(
+        # Process once on main
+        request1 = ProcessCommitRequest(
             repository_id=1,
-            commit_data=_make_commit(),
+            commit_data=commit_data,
             repo_path=Path("/repos/test-repo"),
             branch="main",
             content_hash_cache={},
-            is_head_commit=False,
         )
+        result1 = await use_case.execute(request1)
+        assert result1.files_processed > 0
 
-        result = await use_case.execute(request)
-
-        # Only 1 file processed (new.py from changed files)
-        assert result.files_processed == 1
-        # Should track unchanged files
-        assert result.files_unchanged > 0
+        # Process again on feature — should skip files entirely
+        request2 = ProcessCommitRequest(
+            repository_id=1,
+            commit_data=commit_data,
+            repo_path=Path("/repos/test-repo"),
+            branch="feature",
+            content_hash_cache={},
+        )
+        result2 = await use_case.execute(request2)
+        assert (
+            result2.files_processed == 0
+        ), "Existing commit should skip file processing"
 
     @pytest.mark.asyncio
     async def test_commit_message_always_indexed(
@@ -303,7 +304,6 @@ class TestProcessCommitUseCase:
             repo_path=Path("/repos/test-repo"),
             branch="main",
             content_hash_cache={},
-            is_head_commit=True,
         )
 
         result = await use_case.execute(request)
@@ -326,7 +326,6 @@ class TestProcessCommitUseCase:
             repo_path=Path("/repos/test-repo"),
             branch="main",
             content_hash_cache={},
-            is_head_commit=True,
         )
 
         result = await use_case.execute(request)
@@ -355,7 +354,6 @@ class TestProcessCommitUseCase:
             repo_path=Path("/repos/test-repo"),
             branch="main",
             content_hash_cache={},
-            is_head_commit=True,
         )
         await use_case.execute(request)
         await use_case.execute(request)

@@ -188,23 +188,19 @@ class IndexingProgressRenderer:
     def print_summary(
         self,
         stats: IndexingStats,
-        is_incremental: bool = False,
         commits_indexed: int | None = None,
         elapsed_seconds: float | None = None,
         indexing_seconds: float | None = None,
         resolving_seconds: float | None = None,
         repo_name: str | None = None,
         branch: str | None = None,
-        max_history: int | None = None,
-        since_days: int | None = None,
+        days: int | None = None,
     ) -> None:
         """Print indexing summary as a Rich panel with a table."""
         console = self._console
         console.print()
 
-        index_type = "Incremental" if is_incremental else "Full"
-
-        table = Table(title=f"{index_type} Index Complete", show_header=False, box=None)
+        table = Table(title="Index Complete", show_header=False, box=None)
         table.add_column("Metric", style="dim")
         table.add_column("Value", justify="right")
 
@@ -212,10 +208,8 @@ class IndexingProgressRenderer:
             table.add_row("Repository", f"[bold]{repo_name}[/bold]")
         if branch:
             table.add_row("Branch", f"[cyan]{branch}[/cyan]")
-        if since_days is not None:
-            table.add_row("Range", f"[dim]last {since_days} days[/dim]")
-        elif max_history is not None:
-            table.add_row("Range", f"[dim]last {max_history} commits[/dim]")
+        if days is not None:
+            table.add_row("Range", f"[dim]last {days} days[/dim]")
 
         if repo_name or branch:
             table.add_row("", "")
@@ -227,8 +221,6 @@ class IndexingProgressRenderer:
         if stats.lines_indexed > 0:
             table.add_row("Lines Indexed", f"[cyan]{stats.lines_indexed:,}[/cyan]")
         table.add_row("Files Processed", f"[green]{stats.files_succeeded}[/green]")
-        if stats.files_unchanged > 0:
-            table.add_row("Files Unchanged", f"[dim]{stats.files_unchanged}[/dim]")
         if stats.files_skipped > 0:
             table.add_row("Files Skipped", f"[dim]{stats.files_skipped}[/dim]")
         if stats.files_failed > 0:
@@ -298,6 +290,17 @@ class IndexingProgressRenderer:
                 table.add_row("  Updates", f"[dim]{db.updates}[/dim]")
             if db.deletes > 0:
                 table.add_row("  Deletes", f"[dim]{db.deletes}[/dim]")
+
+        if stats.db_size_bytes > 0:
+            table.add_row("", "")
+            size_mb = stats.db_size_bytes / 1_048_576
+            table.add_row("DB Size", f"[blue]{size_mb:.1f} MB[/blue]")
+            if stats.db_size_added_bytes > 0:
+                added_mb = stats.db_size_added_bytes / 1_048_576
+                table.add_row("  Added", f"[dim]+{added_mb:.1f} MB[/dim]")
+            elif stats.db_size_added_bytes < 0:
+                freed_mb = abs(stats.db_size_added_bytes) / 1_048_576
+                table.add_row("  Freed", f"[dim]-{freed_mb:.1f} MB[/dim]")
 
         console.print(Panel(table, border_style="green"))
 

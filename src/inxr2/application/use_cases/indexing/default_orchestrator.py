@@ -163,26 +163,11 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             branch=branch,
         )
 
-        # Already up to date — return early (skip when forcing re-index)
-        if last_indexed_hash == current_head and not request.force:
-            return IndexRepositoryResponse(
-                repository_id=repo_id,
-                repository_name=repo_name,
-                branch=branch,
-                commits_indexed=0,
-                files_total=0,
-                files_processed=0,
-                files_skipped=0,
-                files_failed=0,
-                elapsed_seconds=time.monotonic() - start_time,
-                db_stats=db_stats,
-            )
-
-        # Step 3: Commit selection
-        commits_data = self._select_commits(request, branch, last_indexed_hash)
-
-        # Reverse for HEAD-first indexing
-        commits_data = list(reversed(commits_data))
+        # Step 3: Commit selection (full snapshot: no early return,
+        # existing commits are skipped cheaply in the processing loop)
+        commits_data = self._select_commits(
+            request, branch, last_indexed_hash, current_head
+        )
         newest_commit = commits_data[0] if commits_data else None
         oldest_commit = commits_data[-1] if commits_data else None
 
@@ -192,23 +177,17 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         )
         db_stats.selects += 1
 
-        # Step 5: Count total files for progress
+        # Step 5: Count total files for progress (full snapshot: all files per commit)
         total_files = 0
         files_at_head = 0
         for i, commit_data in enumerate(commits_data):
+            file_paths = self._git_service.list_files(
+                repo_path=request.repository_path,
+                commit_hash=commit_data.hash,
+            )
+            total_files += len(file_paths)
             if i == 0:
-                file_paths = self._git_service.list_files(
-                    repo_path=request.repository_path,
-                    commit_hash=commit_data.hash,
-                )
-                total_files += len(file_paths)
                 files_at_head = len(file_paths)
-            else:
-                changed = self._git_service.get_changed_files_in_commit(
-                    repo_path=request.repository_path,
-                    commit_hash=commit_data.hash,
-                )
-                total_files += len(changed.added) + len(changed.modified)
 
         if progress_callback:
             progress_callback(
@@ -226,14 +205,12 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         all_errors: list[str] = []
 
         for i, commit_data in enumerate(commits_data):
-            is_head = i == 0
             commit_request = ProcessCommitRequest(
                 repository_id=repo_id,
                 commit_data=commit_data,
                 repo_path=request.repository_path,
                 branch=branch,
                 content_hash_cache=content_hash_cache,
-                is_head_commit=is_head,
             )
 
             def on_file_progress(cr: ProcessCommitResult) -> None:
@@ -309,7 +286,6 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             files_processed=agg.files_processed,
             files_skipped=agg.files_skipped,
             files_failed=agg.files_failed,
-            files_unchanged=agg.files_unchanged,
             files_at_head=files_at_head,
             lines_indexed=agg.lines_indexed,
             symbols_found=agg.symbols_found,
@@ -350,56 +326,79 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         request: IndexRepositoryRequest,
         branch: str,
         last_indexed_hash: str | None,
+        current_head: str,
     ) -> list[CommitInfo]:
-        """Select which commits to process based on request parameters."""
-        if last_indexed_hash and not request.force:
-            # Incremental mode
-            commits_data = self._git_service.list_commits(
+        """Select which commits to process based on request parameters.
+
+        Full snapshot commit selection logic:
+        1. Always: forward fill from last_indexed_hash to HEAD
+           (fresh + no --days: just HEAD)
+        2. If --days N: also include commits from N days ago to today
+        3. Union & deduplicate (preserve newest-first order)
+        4. Existing commits are skipped cheaply in the processing loop
+        """
+        seen_hashes: set[str] = set()
+        result: list[CommitInfo] = []
+
+        def _add_unique(commits: list[CommitInfo]) -> None:
+            for c in commits:
+                if c.hash not in seen_hashes:
+                    seen_hashes.add(c.hash)
+                    result.append(c)
+
+        # Part 1: Forward fill from last_indexed_hash to HEAD
+        if last_indexed_hash:
+            all_commits = self._git_service.list_commits(
                 repo_path=request.repository_path,
                 branch=branch,
                 max_count=None,
             )
-            found = False
-            result: list[CommitInfo] = []
-            for c in commits_data:
+            # Commits are newest-first; collect until we hit last_indexed_hash
+            forward_fill: list[CommitInfo] = []
+            for c in all_commits:
                 if c.hash == last_indexed_hash:
-                    found = True
-                    continue
-                if not found:
-                    continue
-                result.append(c)
-            if not found and commits_data:
-                result = list(commits_data)
-            commits_data = result
-        elif request.base_branch and request.base_branch != branch:
-            commits_data = self._git_service.list_branch_commits(
+                    break
+                forward_fill.append(c)
+            else:
+                # last_indexed_hash not found in history — treat as fresh
+                forward_fill = all_commits
+            _add_unique(forward_fill)
+        elif not request.days:
+            # Fresh repo with no --days: just HEAD
+            head_info = self._git_service.get_commit_info(
                 repo_path=request.repository_path,
-                branch=branch,
-                base_branch=request.base_branch,
-                max_count=request.max_history,
-                since_days=request.since_days,
+                commit_hash=current_head,
             )
-        else:
-            commits_data = self._git_service.list_commits(
-                repo_path=request.repository_path,
-                branch=branch,
-                max_count=request.max_history,
-                since_days=request.since_days,
-            )
+            _add_unique([head_info])
 
-        # Fall back to HEAD if no commits matched
-        if not commits_data:
-            head_hash = self._git_service.get_current_commit(
-                repo_path=request.repository_path,
-                branch=request.branch or "main",
-            )
-            commits_data = [
-                self._git_service.get_commit_info(
+        # Part 2: If --days, also include commits from N days ago
+        if request.days:
+            if request.base_branch and request.base_branch != branch:
+                day_commits = self._git_service.list_branch_commits(
                     repo_path=request.repository_path,
-                    commit_hash=head_hash,
+                    branch=branch,
+                    base_branch=request.base_branch,
+                    max_count=None,
+                    since_days=request.days,
                 )
-            ]
-        return commits_data
+            else:
+                day_commits = self._git_service.list_commits(
+                    repo_path=request.repository_path,
+                    branch=branch,
+                    max_count=None,
+                    since_days=request.days,
+                )
+            _add_unique(day_commits)
+
+        # Fall back to HEAD if nothing selected
+        if not result:
+            head_info = self._git_service.get_commit_info(
+                repo_path=request.repository_path,
+                commit_hash=current_head,
+            )
+            result = [head_info]
+
+        return result
 
     @staticmethod
     def _merge_commit_result(agg: ProcessCommitResult, cr: ProcessCommitResult) -> None:
@@ -407,7 +406,6 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         agg.files_processed += cr.files_processed
         agg.files_skipped += cr.files_skipped
         agg.files_failed += cr.files_failed
-        agg.files_unchanged += cr.files_unchanged
         agg.symbols_found += cr.symbols_found
         agg.references_found += cr.references_found
         agg.files_reused += cr.files_reused

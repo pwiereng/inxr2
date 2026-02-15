@@ -114,6 +114,7 @@ class TestIndexingStats:
         assert stats.files_processed == 0
         assert stats.files_skipped == 0
         assert stats.files_failed == 0
+        assert stats.files_at_head == 0
         assert stats.symbols_found == 0
         assert stats.references_found == 0
         assert stats.references_resolved == 0
@@ -526,7 +527,7 @@ class TestWriteCsvLog:
         rows = list(csv.reader(log.open()))
         assert len(rows) == 2
         assert rows[0][0] == "timestamp"
-        assert rows[0][-1] == "lines_indexed"
+        assert rows[0][-1] == "db_size_added_mb"
         assert rows[1][1] == "test-repo"
         assert rows[1][2] == "main"
 
@@ -599,13 +600,13 @@ class TestWriteCsvLog:
         # Should not raise
         _write_csv_log(_FakeResponse())
 
-    def test_has_15_columns(
+    def test_has_17_columns(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """CSV should have exactly 15 columns."""
+        """CSV should have exactly 17 columns (including db_size_mb, db_size_added_mb)."""
         monkeypatch.chdir(tmp_path)
         _write_csv_log(_FakeResponse())
 
         rows = list(csv.reader((tmp_path / "index.log").open()))
-        assert len(rows[0]) == 15
-        assert len(rows[1]) == 15
+        assert len(rows[0]) == 17
+        assert len(rows[1]) == 17

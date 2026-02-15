@@ -43,16 +43,16 @@ class IndexRepositoryRequest:
     """
     Request to index a repository.
 
-    Indexing is always incremental - it indexes commits not yet in the database.
+    Uses full snapshot indexing — every indexed commit stores the complete file tree.
+    Indexing is idempotent: existing commits are skipped after a single DB lookup.
+
     For a full re-index, use `inxr2 db reset` first to clear the database.
 
     Attributes:
         repository_path: Path to the git repository
         branch: Branch to index (None = current branch)
         languages: List of programming languages to parse
-        max_history: Maximum number of commits to index on initial index (None = all)
-        since_days: Only index commits from last N days (overrides max_history)
-        force: If True, ignore last indexed commit and re-process all commits
+        days: Index commits from last N days (None = forward fill only)
         base_branch: Base branch to compare against for feature branch indexing.
                      When set, only commits unique to this branch (after merge-base)
                      will be indexed. If None, all reachable commits are indexed.
@@ -61,9 +61,7 @@ class IndexRepositoryRequest:
     repository_path: Path
     branch: str | None = None
     languages: list[str] | None = None
-    max_history: int | None = 100
-    since_days: int | None = None
-    force: bool = False
+    days: int | None = None
     base_branch: str | None = None
 
 
@@ -83,7 +81,6 @@ class IndexRepositoryResponse:
         files_processed: Files successfully processed
         files_skipped: Files skipped (wrong language, too large, etc.)
         files_failed: Files that failed to process
-        files_unchanged: Files not processed because they didn't change from parent commit
         files_at_head: Number of files at HEAD commit (total in repo)
         lines_indexed: Approximate lines of code indexed
         symbols_found: Total symbols extracted
@@ -109,7 +106,6 @@ class IndexRepositoryResponse:
     files_processed: int
     files_skipped: int
     files_failed: int
-    files_unchanged: int = 0
     files_at_head: int = 0
     lines_indexed: int = 0
     symbols_found: int = 0

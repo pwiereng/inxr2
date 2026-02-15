@@ -27,7 +27,6 @@ class ProcessCommitRequest:
     repo_path: Path
     branch: str
     content_hash_cache: dict[str, int]
-    is_head_commit: bool
 
 
 @dataclass
@@ -37,7 +36,6 @@ class ProcessCommitResult:
     files_processed: int = 0
     files_skipped: int = 0
     files_failed: int = 0
-    files_unchanged: int = 0
     symbols_found: int = 0
     references_found: int = 0
     files_reused: int = 0
@@ -65,7 +63,7 @@ class ProcessCommitUseCase:
     - Saving commit to database (or reusing existing)
     - Linking commit to branch
     - Indexing commit message as text content
-    - Determining files to process (all for HEAD, delta for older)
+    - Full snapshot: always processes ALL files in the commit
     - Delegating file processing to ProcessFileUseCase
     """
 
@@ -102,37 +100,46 @@ class ProcessCommitUseCase:
         if existing_commit is not None:
             commit_id = existing_commit.id
             assert commit_id is not None
-        else:
-            # Save new commit to database
-            author_date: datetime | None = request.commit_data.author_date
-            commit_date: datetime | None = request.commit_data.commit_date
 
-            if isinstance(author_date, str):
-                author_date = datetime.fromisoformat(author_date.replace("Z", "+00:00"))
-            if isinstance(commit_date, str):
-                commit_date = datetime.fromisoformat(commit_date.replace("Z", "+00:00"))
-
-            if author_date is None:
-                author_date = datetime.now(UTC)
-            if commit_date is None:
-                commit_date = datetime.now(UTC)
-
-            if author_date.tzinfo is not None:
-                author_date = author_date.astimezone(UTC).replace(tzinfo=None)
-            if commit_date.tzinfo is not None:
-                commit_date = commit_date.astimezone(UTC).replace(tzinfo=None)
-
-            commit = Commit(
-                id=None,
+            # Link existing commit to branch and return early
+            await self._commit_repo.link_commit_to_branch(
                 repository_id=request.repository_id,
-                commit_hash=CommitHash(commit_hash_str),
-                author_date=author_date,
-                commit_date=commit_date,
+                commit_id=commit_id,
+                branch=request.branch,
             )
-            db_commit = await self._commit_repo.save(commit)
             result.db_inserts += 1
-            commit_id = db_commit.id
-            assert commit_id is not None, "Commit must have an ID after save"
+            return result
+
+        # Save new commit to database
+        author_date: datetime | None = request.commit_data.author_date
+        commit_date: datetime | None = request.commit_data.commit_date
+
+        if isinstance(author_date, str):
+            author_date = datetime.fromisoformat(author_date.replace("Z", "+00:00"))
+        if isinstance(commit_date, str):
+            commit_date = datetime.fromisoformat(commit_date.replace("Z", "+00:00"))
+
+        if author_date is None:
+            author_date = datetime.now(UTC)
+        if commit_date is None:
+            commit_date = datetime.now(UTC)
+
+        if author_date.tzinfo is not None:
+            author_date = author_date.astimezone(UTC).replace(tzinfo=None)
+        if commit_date.tzinfo is not None:
+            commit_date = commit_date.astimezone(UTC).replace(tzinfo=None)
+
+        commit = Commit(
+            id=None,
+            repository_id=request.repository_id,
+            commit_hash=CommitHash(commit_hash_str),
+            author_date=author_date,
+            commit_date=commit_date,
+        )
+        db_commit = await self._commit_repo.save(commit)
+        result.db_inserts += 1
+        commit_id = db_commit.id
+        assert commit_id is not None, "Commit must have an ID after save"
 
         # Link commit to branch
         await self._commit_repo.link_commit_to_branch(
@@ -142,37 +149,19 @@ class ProcessCommitUseCase:
         )
         result.db_inserts += 1
 
-        # Index commit message (skip if commit already exists)
-        if existing_commit is None:
-            await self._index_commit_message(
-                repository_id=request.repository_id,
-                commit_id=commit_id,
-                commit_data=request.commit_data,
-                result=result,
-            )
+        # Index commit message
+        await self._index_commit_message(
+            repository_id=request.repository_id,
+            commit_id=commit_id,
+            commit_data=request.commit_data,
+            result=result,
+        )
 
-        # Determine files to process
-        if request.is_head_commit:
-            files_to_process = self._git_service.list_files(
-                repo_path=request.repo_path,
-                commit_hash=request.commit_data.hash,
-            )
-        else:
-            changed = self._git_service.get_changed_files_in_commit(
-                repo_path=request.repo_path,
-                commit_hash=request.commit_data.hash,
-            )
-            files_to_process = changed.added + changed.modified
-
-            # Track unchanged files
-            all_files = self._git_service.list_files(
-                repo_path=request.repo_path,
-                commit_hash=request.commit_data.hash,
-            )
-            unchanged_count = (
-                len(all_files) - len(files_to_process) - len(changed.deleted)
-            )
-            result.files_unchanged = max(0, unchanged_count)
+        # Full snapshot: always process ALL files in this commit
+        files_to_process = self._git_service.list_files(
+            repo_path=request.repo_path,
+            commit_hash=request.commit_data.hash,
+        )
 
         # Process each file
         for file_path_str in files_to_process:
