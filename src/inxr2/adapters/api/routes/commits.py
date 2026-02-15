@@ -31,13 +31,13 @@ class CommitResponse(BaseModel):
     in the branch_commits junction table, not on the commit itself.
     """
 
-    id: int
     hash: str
     short_hash: str
     message: str
     author_name: str
     author_email: str
     commit_date: str
+    is_indexed: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -103,15 +103,13 @@ async def list_commits(
     return CommitListResponse(
         commits=[
             CommitResponse(
-                id=c.commit.id or 0,
-                hash=c.commit.commit_hash.value,
-                short_hash=c.commit.short_hash,
-                message=c.message[:200] if c.message else "",
+                hash=c.hash,
+                short_hash=c.short_hash,
+                message=c.message or "",
                 author_name=c.author_name or "",
                 author_email=c.author_email or "",
-                commit_date=(
-                    c.commit.commit_date.isoformat() if c.commit.commit_date else ""
-                ),
+                commit_date=c.commit_date,
+                is_indexed=c.is_indexed,
             )
             for c in result.commits
         ],

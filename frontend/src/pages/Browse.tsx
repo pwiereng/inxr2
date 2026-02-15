@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -18,6 +19,7 @@ import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
 import CloseIcon from '@mui/icons-material/Close'
+import HistoryToggleOffIcon from '@mui/icons-material/HistoryToggleOff'
 
 import { BranchSelector } from '@/components/BranchSelector'
 import { CodeViewer } from '@/components/CodeViewer'
@@ -28,6 +30,7 @@ import { ReferencesPanel } from '@/components/ReferencesPanel'
 import { VersionSelector } from '@/components/VersionSelector'
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { useBrowseState } from '@/hooks/useBrowseState'
+import { getFileBlame, type BlameLine } from '@/lib/api'
 
 interface BrowseProps {
   /** Repository name (overrides URL param) */
@@ -40,6 +43,11 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
     useBrowseState(repoNameProp)
 
   // Destructure for convenience
+  // Blame state
+  const [blameEnabled, setBlameEnabled] = useState(false)
+  const [blameData, setBlameData] = useState<BlameLine[]>([])
+  const [blameLoading, setBlameLoading] = useState(false)
+
   const { repoName, filePath, highlightLine, diffMode, diffCommit, diffBranch, selectedBranch } =
     urlState
   const { repository, treeNodes, fileContent, fileSymbols, fileReferences } = dataState
@@ -47,6 +55,34 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
   const { drawerOpen, refsPanelOpen, loading, fileLoading, diffLoading, error } = uiState
   const { selectedSymbol, isDirectDefinition, searchByName } = refsState
   const { leftCommit, rightCommit, fileChangedInCommit } = computedState
+
+  // Fetch blame data when enabled and file is loaded
+  useEffect(() => {
+    if (!blameEnabled || !repoName || !filePath || !fileContent) {
+      setBlameData([])
+      return
+    }
+
+    const loadBlame = async () => {
+      setBlameLoading(true)
+      try {
+        const result = await getFileBlame(
+          repoName,
+          filePath,
+          urlState.selectedCommit || undefined,
+          selectedBranch || undefined
+        )
+        setBlameData(result.lines)
+      } catch (err) {
+        console.error('Failed to load blame:', err)
+        setBlameData([])
+      } finally {
+        setBlameLoading(false)
+      }
+    }
+
+    loadBlame()
+  }, [blameEnabled, repoName, filePath, fileContent, urlState.selectedCommit, selectedBranch])
 
   // Get short hash for display
   const getShortHash = (hash: string | null | undefined) => {
@@ -95,6 +131,14 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
         navigate(`/history?${params.toString()}`)
         break
     }
+  }
+
+  const handleBlameCommitClick = (commitHash: string) => {
+    const params = new URLSearchParams()
+    if (repoName) params.set('repo', repoName)
+    if (selectedBranch) params.set('branch', selectedBranch)
+    params.set('commit', commitHash)
+    navigate(`/history?${params.toString()}`)
   }
 
   if (loading) {
@@ -185,6 +229,19 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
         )}
 
         <Box sx={{ flex: 1 }} />
+
+        {/* Blame toggle (only when file is loaded and NOT in diff mode) */}
+        {repoName && filePath && fileContent && !diffMode && (
+          <Tooltip title={blameEnabled ? 'Hide blame annotations' : 'Show blame annotations'}>
+            <IconButton
+              size="small"
+              onClick={() => setBlameEnabled(!blameEnabled)}
+              color={blameEnabled ? 'primary' : 'default'}
+            >
+              <HistoryToggleOffIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
 
         {/* Compare button (only when file is loaded and NOT in diff mode) */}
         {repoName && filePath && repository && fileContent && !diffMode && (
@@ -504,16 +561,32 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                   </Box>
                 ) : (
                   <Box sx={{ flex: 1, overflow: 'auto' }}>
-                    <CodeViewer
-                      content={fileContent.content}
-                      language={fileContent.language}
-                      symbols={fileSymbols}
-                      references={fileReferences}
-                      highlightLine={highlightLine}
-                      onSymbolClick={actions.handleSymbolClick}
-                      onReferenceClick={actions.handleCodeReferenceClick}
-                      onLineClick={actions.navigateToLine}
-                    />
+                    {blameLoading ? (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          flex: 1,
+                          p: 4,
+                        }}
+                      >
+                        <CircularProgress size={24} />
+                      </Box>
+                    ) : (
+                      <CodeViewer
+                        content={fileContent.content}
+                        language={fileContent.language}
+                        symbols={fileSymbols}
+                        references={fileReferences}
+                        blameData={blameEnabled ? blameData : undefined}
+                        highlightLine={highlightLine}
+                        onSymbolClick={actions.handleSymbolClick}
+                        onReferenceClick={actions.handleCodeReferenceClick}
+                        onLineClick={actions.navigateToLine}
+                        onBlameCommitClick={handleBlameCommitClick}
+                      />
+                    )}
                   </Box>
                 )}
               </Box>

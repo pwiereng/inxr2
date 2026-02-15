@@ -12,6 +12,7 @@ from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
 from ...application.ports.services import (
+    BlameLineInfo,
     ChangedFiles,
     CommitInfo,
     GitServicePort,
@@ -694,6 +695,54 @@ class GitService(GitServicePort):
         )
 
         return sorted_branches
+
+    def get_blame(
+        self,
+        repo_path: Path,
+        commit_hash: str,
+        file_path: str,
+    ) -> list[BlameLineInfo]:
+        """Get blame information for each line of a file at a specific commit."""
+        from datetime import UTC, datetime
+
+        repo = Repo(repo_path)
+        commit = repo.commit(commit_hash)
+
+        try:
+            blame_entries: Any = repo.blame(commit, file_path)
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Cannot blame {file_path} at {commit_hash[:8]}: {e}"
+            ) from e
+
+        result: list[BlameLineInfo] = []
+        line_number = 1
+        for entry in blame_entries:
+            blame_commit = entry[0]
+            lines = entry[1]
+            author_name = str(blame_commit.author.name or "")
+            committed_date = datetime.fromtimestamp(blame_commit.committed_date, tz=UTC)
+            short_hash: str = blame_commit.hexsha[:7]
+            raw_message = blame_commit.message
+            message = (
+                raw_message.decode("utf-8", errors="replace")
+                if isinstance(raw_message, bytes)
+                else str(raw_message or "")
+            ).strip()
+            for _ in lines:
+                result.append(
+                    BlameLineInfo(
+                        line_number=line_number,
+                        commit_hash=blame_commit.hexsha,
+                        short_hash=short_hash,
+                        author_name=author_name,
+                        commit_date=committed_date,
+                        message=message,
+                    )
+                )
+                line_number += 1
+
+        return result
 
     def get_changed_files_in_commit(
         self,

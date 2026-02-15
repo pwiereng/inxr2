@@ -18,18 +18,20 @@ import 'prismjs/components/prism-c'
 import 'prismjs/components/prism-java'
 import 'prismjs/components/prism-csharp'
 
-import type { FileSymbol, FileReference } from '@/lib/api'
+import type { FileSymbol, FileReference, BlameLine } from '@/lib/api'
 
 interface CodeViewerProps {
   content: string
   language: string | null
   symbols?: FileSymbol[]
   references?: FileReference[]
+  blameData?: BlameLine[]
   highlightLine?: number
   highlightRange?: [number, number]
   onSymbolClick?: (symbol: FileSymbol) => void
   onReferenceClick?: (reference: FileReference) => void
   onLineClick?: (line: number) => void
+  onBlameCommitClick?: (commitHash: string) => void
 }
 
 // Map our language names to Prism language names
@@ -68,11 +70,13 @@ export function CodeViewer({
   language,
   symbols = [],
   references = [],
+  blameData,
   highlightLine,
   highlightRange,
   onSymbolClick,
   onReferenceClick,
   onLineClick,
+  onBlameCommitClick,
 }: CodeViewerProps) {
   const codeRef = useRef<HTMLElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -364,6 +368,71 @@ export function CodeViewer({
                   },
                 }}
               >
+                {/* Blame annotation */}
+                {blameData &&
+                  blameData.length > 0 &&
+                  (() => {
+                    const blame = blameData[index]
+                    if (!blame) return <Box component="td" />
+                    // Only show blame info on first line of a consecutive block from the same commit
+                    const prevBlame = index > 0 ? blameData[index - 1] : null
+                    const isNewBlock = !prevBlame || prevBlame.commit_hash !== blame.commit_hash
+                    return (
+                      <Box
+                        component="td"
+                        sx={{
+                          whiteSpace: 'nowrap',
+                          pr: 1.5,
+                          pl: 1,
+                          fontSize: '11px',
+                          color: theme.palette.blame.date,
+                          userSelect: 'none',
+                          borderRight: `1px solid ${theme.palette.blame.border}`,
+                          maxWidth: 220,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {isNewBlock && (
+                          <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
+                            <Box
+                              component="span"
+                              onClick={(e: React.MouseEvent) => {
+                                if (onBlameCommitClick) {
+                                  e.stopPropagation()
+                                  onBlameCommitClick(blame.commit_hash)
+                                }
+                              }}
+                              sx={{
+                                color: theme.palette.blame.hash,
+                                fontFamily: 'monospace',
+                                cursor: onBlameCommitClick ? 'pointer' : 'default',
+                                '&:hover': onBlameCommitClick
+                                  ? { textDecoration: 'underline' }
+                                  : {},
+                              }}
+                            >
+                              {blame.short_hash}
+                            </Box>
+                            <Box component="span" sx={{ color: theme.palette.blame.date }}>
+                              {blame.commit_date.substring(0, 10)}
+                            </Box>
+                            <Box
+                              component="span"
+                              sx={{
+                                color: theme.palette.blame.author,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {blame.author_name}
+                            </Box>
+                          </Box>
+                        )}
+                      </Box>
+                    )
+                  })()}
+
                 {/* Line number */}
                 <Box
                   component="td"

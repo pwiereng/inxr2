@@ -49,6 +49,7 @@ from inxr2.application.ports.repositories import (
     TextContentRepositoryPort,
 )
 from inxr2.application.ports.services import (
+    BlameLineInfo,
     ChangedFiles,
     CommitInfo,
     FileStat,
@@ -2190,6 +2191,27 @@ class FakeGitService(GitServicePort):
 
     def list_branches(self, repo_path: Path) -> list[str]:
         return ["main"]
+
+    def get_blame(
+        self, repo_path: Path, commit_hash: str, file_path: str
+    ) -> list[BlameLineInfo]:
+        from datetime import UTC, datetime
+
+        # Generate blame from stored file content
+        key = (str(repo_path), commit_hash, file_path)
+        content = self._file_contents.get(key, "")
+        lines = content.split("\n") if content else []
+        return [
+            BlameLineInfo(
+                line_number=i + 1,
+                commit_hash=commit_hash,
+                short_hash=commit_hash[:7],
+                author_name="Test Author",
+                commit_date=datetime(2024, 1, 1, tzinfo=UTC),
+                message="Test commit message",
+            )
+            for i in range(len(lines))
+        ]
 
     # Test helper methods
     def set_file_content(

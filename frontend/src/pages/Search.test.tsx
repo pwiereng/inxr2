@@ -52,14 +52,13 @@ describe('Search', () => {
     mockGetCommits.mockResolvedValue({
       commits: [
         {
-          id: 1,
           hash: 'abc123',
           short_hash: 'abc123',
           message: 'Test commit',
           author_name: 'Test',
           author_email: 'test@test.com',
           commit_date: '2024-01-01T00:00:00Z',
-          branch: 'main',
+          is_indexed: true,
         },
       ],
       total: 1,

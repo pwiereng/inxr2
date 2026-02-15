@@ -54,24 +54,22 @@ const mockBranches = {
 const mockCommits = {
   commits: [
     {
-      id: 1,
       hash: 'abc123def456',
       short_hash: 'abc123d',
-      branch: 'main',
       message: 'Initial commit',
       author_name: 'Test Author',
       author_email: 'test@example.com',
       commit_date: '2024-01-01',
+      is_indexed: true,
     },
     {
-      id: 2,
       hash: 'def456ghi789',
       short_hash: 'def456g',
-      branch: 'main',
       message: 'Second commit',
       author_name: 'Test Author',
       author_email: 'test@example.com',
       commit_date: '2024-01-02',
+      is_indexed: true,
     },
   ],
   total: 2,

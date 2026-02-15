@@ -1,49 +1,48 @@
 """List commits use case.
 
-Retrieves commits from the database and hydrates with git metadata.
+Retrieves commits from git and marks which are indexed in the database.
 """
 
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from ....domain.entities import Commit
 from ....domain.exceptions import RepositoryNotFound
 from ...ports.repositories import CommitRepositoryPort, RepositoryPort
 from ...ports.services import CommitInfo
 
 
-class GitCommitInfoProtocol(Protocol):
-    """Protocol for git commit info operations.
+class GitListCommitsProtocol(Protocol):
+    """Protocol for git commit listing operations.
 
     This protocol defines the minimal interface needed by this use case.
     The concrete GitService class implements these methods.
     """
 
-    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
-        """Get commit information including message and author.
-
-        Args:
-            repo_path: Path to the git repository
-            commit_hash: The commit hash to look up
-
-        Returns:
-            CommitInfo with commit metadata
-        """
-        ...
+    def list_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        max_count: int | None = 1000,
+        since_days: int | None = None,
+    ) -> list[CommitInfo]: ...
 
 
 @dataclass
 class CommitWithMetadata:
-    """Commit enriched with git metadata.
+    """Commit from git history with indexed status.
 
-    Contains DB commit data plus author/message info from git.
+    Contains git commit metadata and whether the commit is indexed
+    (has files browseable in the database).
     """
 
-    commit: Commit
+    hash: str
+    short_hash: str
     message: str
     author_name: str
     author_email: str
+    commit_date: str
+    is_indexed: bool
 
 
 @dataclass
@@ -66,7 +65,7 @@ class ListCommitsResponse:
     """Response containing commits with metadata.
 
     Args:
-        commits: List of commits with hydrated metadata
+        commits: List of commits from git history
         total: Total number of commits returned
     """
 
@@ -75,31 +74,23 @@ class ListCommitsResponse:
 
 
 class ListCommitsUseCase:
-    """Use case for listing commits with git metadata hydration.
+    """Use case for listing commits from git with indexed status.
 
-    Fetches commits from the database and hydrates each with author
-    and message information from the git repository.
+    Fetches commits directly from the git repository and cross-references
+    with the database to determine which are indexed (browseable).
 
     Handles:
     - Repository resolution
-    - Commit listing with branch filter
-    - Batch git metadata hydration
-    - Graceful handling of git lookup failures
+    - Full git history listing for a branch
+    - Cross-referencing with indexed commits in DB
     """
 
     def __init__(
         self,
         repository_repo: RepositoryPort,
         commit_repo: CommitRepositoryPort,
-        git_service: GitCommitInfoProtocol,
+        git_service: GitListCommitsProtocol,
     ) -> None:
-        """Initialize use case with dependencies.
-
-        Args:
-            repository_repo: Repository for accessing repositories
-            commit_repo: Repository for accessing commits
-            git_service: Git service for hydrating commit metadata
-        """
         self._repository_repo = repository_repo
         self._commit_repo = commit_repo
         self._git_service = git_service
@@ -111,7 +102,7 @@ class ListCommitsUseCase:
             request: Request parameters
 
         Returns:
-            ListCommitsResponse with hydrated commits
+            ListCommitsResponse with git commits and indexed status
 
         Raises:
             RepositoryNotFound: If repository doesn't exist
@@ -122,57 +113,44 @@ class ListCommitsUseCase:
             raise RepositoryNotFound(request.repository_name)
 
         repository_id = repository.id if repository.id is not None else 0
+        repo_path = Path(repository.url)
+        branch = request.branch or repository.default_branch
 
-        # Get commits from DB
-        commits = await self._commit_repo.list_by_repository(
+        # Get commits from git (newest first — list_commits returns oldest first)
+        # Git may fail if the repo path is invalid (e.g. remote URL, deleted clone)
+        try:
+            git_commits = self._git_service.list_commits(
+                repo_path=repo_path,
+                branch=branch,
+                max_count=request.limit,
+            )
+            git_commits.reverse()
+        except Exception:
+            git_commits = []
+
+        # Get indexed commit hashes from DB for cross-referencing
+        indexed_commits = await self._commit_repo.list_by_repository(
             repository_id=repository_id,
             branch=request.branch,
-            limit=request.limit,
+            limit=10000,
         )
+        indexed_hashes = {c.commit_hash.value for c in indexed_commits}
 
-        # Hydrate with git metadata
-        repo_path = Path(repository.url)
-        enriched_commits = self._hydrate_commits(commits, repo_path)
+        # Build response
+        result = [
+            CommitWithMetadata(
+                hash=ci.hash,
+                short_hash=ci.short_hash,
+                message=ci.message,
+                author_name=ci.author_name,
+                author_email=ci.author_email,
+                commit_date=ci.commit_date.isoformat(),
+                is_indexed=ci.hash in indexed_hashes,
+            )
+            for ci in git_commits
+        ]
 
         return ListCommitsResponse(
-            commits=enriched_commits,
-            total=len(enriched_commits),
+            commits=result,
+            total=len(result),
         )
-
-    def _hydrate_commits(
-        self, commits: list[Commit], repo_path: Path
-    ) -> list[CommitWithMetadata]:
-        """Hydrate commits with git metadata.
-
-        Args:
-            commits: List of commits from database
-            repo_path: Path to git repository
-
-        Returns:
-            List of commits with metadata
-        """
-        result = []
-        for commit in commits:
-            try:
-                info = self._git_service.get_commit_info(
-                    repo_path, commit.commit_hash.value
-                )
-                message = info.message[:200]  # Truncate for list view
-                author_name = info.author_name
-                author_email = info.author_email
-            except Exception:
-                # Git query failed - use empty values
-                message = ""
-                author_name = ""
-                author_email = ""
-
-            result.append(
-                CommitWithMetadata(
-                    commit=commit,
-                    message=message,
-                    author_name=author_name,
-                    author_email=author_email,
-                )
-            )
-
-        return result
