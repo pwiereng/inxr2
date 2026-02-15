@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Box, Typography, Tooltip } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import Prism from 'prismjs'
@@ -18,18 +18,20 @@ import 'prismjs/components/prism-c'
 import 'prismjs/components/prism-java'
 import 'prismjs/components/prism-csharp'
 
-import type { FileSymbol, FileReference } from '@/lib/api'
+import type { FileSymbol, FileReference, BlameLine } from '@/lib/api'
 
 interface CodeViewerProps {
   content: string
   language: string | null
   symbols?: FileSymbol[]
   references?: FileReference[]
+  blameData?: BlameLine[]
   highlightLine?: number
   highlightRange?: [number, number]
   onSymbolClick?: (symbol: FileSymbol) => void
   onReferenceClick?: (reference: FileReference) => void
   onLineClick?: (line: number) => void
+  onBlameCommitClick?: (commitHash: string) => void
 }
 
 // Map our language names to Prism language names
@@ -68,11 +70,13 @@ export function CodeViewer({
   language,
   symbols = [],
   references = [],
+  blameData,
   highlightLine,
   highlightRange,
   onSymbolClick,
   onReferenceClick,
   onLineClick,
+  onBlameCommitClick,
 }: CodeViewerProps) {
   const codeRef = useRef<HTMLElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -107,6 +111,16 @@ export function CodeViewer({
     if (highlightRange && lineNum >= highlightRange[0] && lineNum <= highlightRange[1]) return true
     return false
   }
+
+  // Build blame lookup by line number for O(1) access
+  const blameMap = useMemo(() => {
+    if (!blameData || blameData.length === 0) return null
+    const map = new Map<number, BlameLine>()
+    for (const bl of blameData) {
+      map.set(bl.line_number, bl)
+    }
+    return map
+  }, [blameData])
 
   // Get symbols that START on this line (definitions)
   const getSymbolDefinitionsOnLine = (lineNum: number): FileSymbol[] => {
@@ -364,6 +378,73 @@ export function CodeViewer({
                   },
                 }}
               >
+                {/* Blame annotation */}
+                {blameMap &&
+                  (() => {
+                    const blame = blameMap.get(lineNum)
+                    if (!blame) return <Box component="td" />
+                    // Only show blame info on first line of a consecutive block from the same commit
+                    const prevBlame = blameMap.get(lineNum - 1)
+                    const isNewBlock = !prevBlame || prevBlame.commit_hash !== blame.commit_hash
+                    const isClickable = onBlameCommitClick && blame.is_indexed
+                    return (
+                      <Box
+                        component="td"
+                        sx={{
+                          whiteSpace: 'nowrap',
+                          pr: 1.5,
+                          pl: 1,
+                          fontSize: '11px',
+                          color: theme.palette.blame.date,
+                          userSelect: 'none',
+                          borderRight: `1px solid ${theme.palette.blame.border}`,
+                          maxWidth: 220,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {isNewBlock && (
+                          <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
+                            <Box
+                              component="span"
+                              onClick={(e: React.MouseEvent) => {
+                                if (isClickable) {
+                                  e.stopPropagation()
+                                  onBlameCommitClick(blame.commit_hash)
+                                }
+                              }}
+                              sx={{
+                                color: blame.is_indexed
+                                  ? theme.palette.blame.hash
+                                  : theme.palette.blame.date,
+                                fontFamily: 'monospace',
+                                cursor: isClickable ? 'pointer' : 'default',
+                                '&:hover': isClickable
+                                  ? { textDecoration: 'underline' }
+                                  : {},
+                              }}
+                            >
+                              {blame.short_hash}
+                            </Box>
+                            <Box component="span" sx={{ color: theme.palette.blame.date }}>
+                              {blame.commit_date.substring(0, 10)}
+                            </Box>
+                            <Box
+                              component="span"
+                              sx={{
+                                color: theme.palette.blame.author,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {blame.author_name}
+                            </Box>
+                          </Box>
+                        )}
+                      </Box>
+                    )
+                  })()}
+
                 {/* Line number */}
                 <Box
                   component="td"

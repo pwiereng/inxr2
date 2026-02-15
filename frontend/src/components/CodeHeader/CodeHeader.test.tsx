@@ -54,24 +54,22 @@ const mockBranches = {
 const mockCommits = {
   commits: [
     {
-      id: 1,
       hash: 'abc123def456',
       short_hash: 'abc123d',
-      branch: 'main',
       message: 'Initial commit',
       author_name: 'Test Author',
       author_email: 'test@example.com',
       commit_date: '2024-01-01',
+      is_indexed: true,
     },
     {
-      id: 2,
       hash: 'def456ghi789',
       short_hash: 'def456g',
-      branch: 'main',
       message: 'Second commit',
       author_name: 'Test Author',
       author_email: 'test@example.com',
       commit_date: '2024-01-02',
+      is_indexed: true,
     },
   ],
   total: 2,
@@ -256,7 +254,7 @@ describe('CodeHeader', () => {
       render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
-        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'main', 50)
+        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'main', 500)
       })
     })
 
@@ -345,14 +343,14 @@ describe('CodeHeader', () => {
       const { rerender } = render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
-        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'main', 50)
+        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'main', 500)
       })
 
       // Change branch
       rerender(<CodeHeader {...defaultProps} branch="feature-branch" />)
 
       await waitFor(() => {
-        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'feature-branch', 50)
+        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'feature-branch', 500)
       })
     })
   })

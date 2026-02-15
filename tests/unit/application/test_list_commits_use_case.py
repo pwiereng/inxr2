@@ -18,47 +18,56 @@ from tests.fixtures.test_doubles import (
     InMemoryRepositoryRepository,
 )
 
-# Default CommitInfo for tests that don't need specific values
-_DEFAULT_COMMIT_INFO = CommitInfo(
-    hash="",
-    short_hash="",
-    author_name="",
-    author_email="",
-    author_date=datetime(2025, 1, 1),
-    committer_name="",
-    committer_email="",
-    commit_date=datetime(2025, 1, 1),
-    message="",
-    parent_hashes=[],
-)
+
+def _make_commit_info(
+    hash: str,
+    short_hash: str,
+    author_name: str = "Alice",
+    author_email: str = "alice@example.com",
+    commit_date: datetime | None = None,
+    message: str = "",
+) -> CommitInfo:
+    """Helper to create CommitInfo with defaults."""
+    dt = commit_date or datetime(2025, 1, 1)
+    return CommitInfo(
+        hash=hash,
+        short_hash=short_hash,
+        author_name=author_name,
+        author_email=author_email,
+        author_date=dt,
+        committer_name=author_name,
+        committer_email=author_email,
+        commit_date=dt,
+        message=message,
+        parent_hashes=[],
+    )
 
 
-class StubGitCommitInfoService:
-    """Stub git service for testing commit info hydration."""
+class StubGitListCommitsService:
+    """Stub git service that returns predefined commits for list_commits."""
 
     def __init__(self) -> None:
-        """Initialize with empty commit info map."""
-        self._commit_info: dict[tuple[str, str], CommitInfo] = {}
-        self._fail_on: set[tuple[str, str]] = set()
+        # Map (repo_path, branch) -> list of CommitInfo (oldest first)
+        self._commits: dict[tuple[str, str], list[CommitInfo]] = {}
 
-    def set_commit_info(
-        self, repo_path: str, commit_hash: str, info: CommitInfo
+    def set_commits(
+        self, repo_path: str, branch: str, commits: list[CommitInfo]
     ) -> None:
-        """Set commit info to return for a commit."""
-        key = (repo_path, commit_hash)
-        self._commit_info[key] = info
+        self._commits[(repo_path, branch)] = commits
 
-    def set_fail(self, repo_path: str, commit_hash: str) -> None:
-        """Mark a commit to fail on lookup."""
-        key = (repo_path, commit_hash)
-        self._fail_on.add(key)
-
-    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
-        """Return predefined commit info or raise error."""
-        key = (str(repo_path), commit_hash)
-        if key in self._fail_on:
-            raise RuntimeError("Git lookup failed")
-        return self._commit_info.get(key, _DEFAULT_COMMIT_INFO)
+    def list_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        max_count: int | None = 1000,
+        since_days: int | None = None,
+    ) -> list[CommitInfo]:
+        key = (str(repo_path), branch)
+        all_commits = self._commits.get(key, [])
+        if max_count is not None:
+            # Mirror real git: iter_commits(max_count=N) returns the N newest
+            return all_commits[-max_count:]
+        return list(all_commits)
 
 
 class TestListCommitsUseCase:
@@ -66,10 +75,8 @@ class TestListCommitsUseCase:
 
     @pytest.fixture
     def repository_repo(self, tmp_path: Path) -> InMemoryRepositoryRepository:
-        """Create repository with test data."""
         repo_path = tmp_path / "test-repo"
         repo_path.mkdir()
-
         repo = InMemoryRepositoryRepository()
         repo.add(
             Repository(
@@ -83,9 +90,9 @@ class TestListCommitsUseCase:
 
     @pytest.fixture
     def commit_repo(self) -> InMemoryCommitRepository:
-        """Create commit repository with test data."""
+        """Create commit repository with indexed commits."""
         repo = InMemoryCommitRepository()
-
+        # Only commits 1 and 2 are indexed
         commit1 = Commit(
             id=1,
             repository_id=1,
@@ -100,78 +107,46 @@ class TestListCommitsUseCase:
             author_date=datetime(2025, 1, 2, 12, 0, 0),
             commit_date=datetime(2025, 1, 2, 12, 0, 0),
         )
-        commit3 = Commit(
-            id=3,
-            repository_id=1,
-            commit_hash=CommitHash("ghi789jkl012"),
-            author_date=datetime(2025, 1, 3, 12, 0, 0),
-            commit_date=datetime(2025, 1, 3, 12, 0, 0),
-        )
-
         repo._commits[1] = commit1
         repo._commits[2] = commit2
-        repo._commits[3] = commit3
-
         repo._branch_commits[(1, "main", 1)] = True
         repo._branch_commits[(1, "main", 2)] = True
-        repo._branch_commits[(1, "main", 3)] = True
-        repo._branch_commits[(1, "feature", 2)] = True
-        repo._branch_commits[(1, "feature", 3)] = True
-
         return repo
 
     @pytest.fixture
-    def git_service(self, tmp_path: Path) -> StubGitCommitInfoService:
-        """Create stub git service with test commit info."""
+    def git_service(self, tmp_path: Path) -> StubGitListCommitsService:
+        """Create stub git service with 3 commits (oldest first)."""
         repo_path = tmp_path / "test-repo"
-        service = StubGitCommitInfoService()
-        service.set_commit_info(
+        service = StubGitListCommitsService()
+        service.set_commits(
             str(repo_path),
-            "abc123def456",
-            CommitInfo(
-                hash="abc123def456",
-                short_hash="abc123d",
-                author_name="Alice",
-                author_email="alice@example.com",
-                author_date=datetime(2025, 1, 1),
-                committer_name="Alice",
-                committer_email="alice@example.com",
-                commit_date=datetime(2025, 1, 1),
-                message="Initial commit",
-                parent_hashes=[],
-            ),
-        )
-        service.set_commit_info(
-            str(repo_path),
-            "def456ghi789",
-            CommitInfo(
-                hash="def456ghi789",
-                short_hash="def456g",
-                author_name="Bob",
-                author_email="bob@example.com",
-                author_date=datetime(2025, 1, 2),
-                committer_name="Bob",
-                committer_email="bob@example.com",
-                commit_date=datetime(2025, 1, 2),
-                message="Add feature X",
-                parent_hashes=[],
-            ),
-        )
-        service.set_commit_info(
-            str(repo_path),
-            "ghi789jkl012",
-            CommitInfo(
-                hash="ghi789jkl012",
-                short_hash="ghi789j",
-                author_name="Alice",
-                author_email="alice@example.com",
-                author_date=datetime(2025, 1, 3),
-                committer_name="Alice",
-                committer_email="alice@example.com",
-                commit_date=datetime(2025, 1, 3),
-                message="Fix bug in feature X",
-                parent_hashes=[],
-            ),
+            "main",
+            [
+                _make_commit_info(
+                    "abc123def456",
+                    "abc123d",
+                    "Alice",
+                    "alice@example.com",
+                    datetime(2025, 1, 1),
+                    "Initial commit",
+                ),
+                _make_commit_info(
+                    "def456ghi789",
+                    "def456g",
+                    "Bob",
+                    "bob@example.com",
+                    datetime(2025, 1, 2),
+                    "Add feature X",
+                ),
+                _make_commit_info(
+                    "ghi789jkl012",
+                    "ghi789j",
+                    "Alice",
+                    "alice@example.com",
+                    datetime(2025, 1, 3),
+                    "Fix bug in feature X",
+                ),
+            ],
         )
         return service
 
@@ -180,9 +155,8 @@ class TestListCommitsUseCase:
         self,
         repository_repo: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
-        git_service: StubGitCommitInfoService,
+        git_service: StubGitListCommitsService,
     ) -> ListCommitsUseCase:
-        """Create use case with test dependencies."""
         return ListCommitsUseCase(
             repository_repo=repository_repo,
             commit_repo=commit_repo,
@@ -193,43 +167,51 @@ class TestListCommitsUseCase:
 
     @pytest.mark.asyncio
     async def test_list_commits_returns_all(self, use_case: ListCommitsUseCase) -> None:
-        """Should return all commits for repository."""
+        """Should return all git commits for the branch."""
         request = ListCommitsRequest(repository_name="test-repo")
-
         result = await use_case.execute(request)
-
         assert result.total == 3
 
     @pytest.mark.asyncio
-    async def test_list_commits_hydrates_metadata(
+    async def test_list_commits_newest_first(
         self, use_case: ListCommitsUseCase
     ) -> None:
-        """Should hydrate commits with git metadata."""
+        """Should return commits newest first."""
         request = ListCommitsRequest(repository_name="test-repo")
+        result = await use_case.execute(request)
+        assert result.commits[0].short_hash == "ghi789j"
+        assert result.commits[2].short_hash == "abc123d"
 
+    @pytest.mark.asyncio
+    async def test_list_commits_has_metadata(
+        self, use_case: ListCommitsUseCase
+    ) -> None:
+        """Should include commit metadata from git."""
+        request = ListCommitsRequest(repository_name="test-repo")
         result = await use_case.execute(request)
 
-        # Check that metadata is hydrated
         messages = {c.message for c in result.commits}
         assert "Initial commit" in messages
         assert "Add feature X" in messages
-        assert "Fix bug in feature X" in messages
 
         authors = {c.author_name for c in result.commits}
         assert "Alice" in authors
         assert "Bob" in authors
 
-    # === Branch Filtering Tests ===
+    # === Indexed Status Tests ===
 
     @pytest.mark.asyncio
-    async def test_filter_by_branch(self, use_case: ListCommitsUseCase) -> None:
-        """Should filter commits by branch."""
-        request = ListCommitsRequest(repository_name="test-repo", branch="feature")
-
+    async def test_marks_indexed_commits(self, use_case: ListCommitsUseCase) -> None:
+        """Should mark commits that exist in DB as indexed."""
+        request = ListCommitsRequest(repository_name="test-repo")
         result = await use_case.execute(request)
 
-        # Feature branch has commits 2 and 3
-        assert result.total == 2
+        by_hash = {c.hash: c for c in result.commits}
+        # Commits 1 and 2 are in the DB
+        assert by_hash["abc123def456"].is_indexed is True
+        assert by_hash["def456ghi789"].is_indexed is True
+        # Commit 3 is not indexed
+        assert by_hash["ghi789jkl012"].is_indexed is False
 
     # === Limit Tests ===
 
@@ -237,9 +219,7 @@ class TestListCommitsUseCase:
     async def test_respects_limit(self, use_case: ListCommitsUseCase) -> None:
         """Should respect limit parameter."""
         request = ListCommitsRequest(repository_name="test-repo", limit=2)
-
         result = await use_case.execute(request)
-
         assert result.total == 2
 
     # === Error Handling Tests ===
@@ -250,67 +230,32 @@ class TestListCommitsUseCase:
     ) -> None:
         """Should raise RepositoryNotFound for unknown repository."""
         request = ListCommitsRequest(repository_name="unknown-repo")
-
         with pytest.raises(RepositoryNotFound):
             await use_case.execute(request)
 
+    # === Full Message Tests ===
+
     @pytest.mark.asyncio
-    async def test_handles_git_lookup_failure_gracefully(
+    async def test_preserves_full_messages(
         self,
         repository_repo: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
         tmp_path: Path,
     ) -> None:
-        """Should return empty metadata when git lookup fails."""
+        """Should preserve full commit messages without truncation."""
         repo_path = tmp_path / "test-repo"
-        git_service = StubGitCommitInfoService()
-        git_service.set_fail(str(repo_path), "abc123def456")
-
-        use_case = ListCommitsUseCase(
-            repository_repo=repository_repo,
-            commit_repo=commit_repo,
-            git_service=git_service,
-        )
-
-        request = ListCommitsRequest(repository_name="test-repo")
-        result = await use_case.execute(request)
-
-        # Find the commit that should have failed
-        failed_commit = next(
-            c for c in result.commits if c.commit.commit_hash.value == "abc123def456"
-        )
-        assert failed_commit.message == ""
-        assert failed_commit.author_name == ""
-        assert failed_commit.author_email == ""
-
-    # === Message Truncation Tests ===
-
-    @pytest.mark.asyncio
-    async def test_truncates_long_messages(
-        self,
-        repository_repo: InMemoryRepositoryRepository,
-        commit_repo: InMemoryCommitRepository,
-        tmp_path: Path,
-    ) -> None:
-        """Should truncate commit messages to 200 characters."""
-        repo_path = tmp_path / "test-repo"
-        git_service = StubGitCommitInfoService()
+        git_service = StubGitListCommitsService()
         long_message = "x" * 300
-        git_service.set_commit_info(
+        git_service.set_commits(
             str(repo_path),
-            "abc123def456",
-            CommitInfo(
-                hash="abc123def456",
-                short_hash="abc123d",
-                author_name="Alice",
-                author_email="alice@example.com",
-                author_date=datetime(2025, 1, 1),
-                committer_name="Alice",
-                committer_email="alice@example.com",
-                commit_date=datetime(2025, 1, 1),
-                message=long_message,
-                parent_hashes=[],
-            ),
+            "main",
+            [
+                _make_commit_info(
+                    "abc123def456",
+                    "abc123d",
+                    message=long_message,
+                ),
+            ],
         )
 
         use_case = ListCommitsUseCase(
@@ -321,8 +266,4 @@ class TestListCommitsUseCase:
 
         request = ListCommitsRequest(repository_name="test-repo")
         result = await use_case.execute(request)
-
-        commit = next(
-            c for c in result.commits if c.commit.commit_hash.value == "abc123def456"
-        )
-        assert len(commit.message) == 200
+        assert len(result.commits[0].message) == 300

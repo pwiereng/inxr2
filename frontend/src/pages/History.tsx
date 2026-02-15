@@ -1,15 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import {
-  Box,
-  Container,
-  Typography,
-  List,
-  ListItem,
-  ListItemText,
-  Paper,
-  CircularProgress,
-} from '@mui/material'
+import { Box, Container, Typography, List, ListItem, Paper, CircularProgress } from '@mui/material'
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { getCommits, type CommitInfo } from '@/lib/api'
 
@@ -26,6 +17,7 @@ export function History() {
   const [commits, setCommits] = useState<CommitInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const focusedCommitRef = useRef<HTMLLIElement>(null)
 
   // Load commits when repo/branch changes
   useEffect(() => {
@@ -38,7 +30,7 @@ export function History() {
       setLoading(true)
       setError(null)
       try {
-        const response = await getCommits(repoName, branch || undefined, 100)
+        const response = await getCommits(repoName, branch || undefined, 500)
         setCommits(response.commits)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load commits')
@@ -50,6 +42,13 @@ export function History() {
 
     loadCommits()
   }, [repoName, branch])
+
+  // Scroll to focused commit when commits load
+  useEffect(() => {
+    if (commit && commits.length > 0 && focusedCommitRef.current) {
+      focusedCommitRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [commit, commits])
 
   // Header handlers
   const handleRepoChange = (newRepo: string) => {
@@ -90,17 +89,15 @@ export function History() {
     }
   }
 
-  const handleCommitClick = (commitHash: string) => {
-    // Navigate to browse at this commit with changedOnly=true by default
-    // This shows only files changed in that commit, which is typically what
-    // users want when exploring a specific commit from history
-    if (repoName) {
-      const params = new URLSearchParams()
-      if (branch) params.set('branch', branch)
-      params.set('commit', commitHash)
-      params.set('co', '1') // Show only changed files by default
-      navigate(`/browse/${repoName}?${params.toString()}`)
-    }
+  const handleCommitClick = (commitInfo: CommitInfo) => {
+    // Only navigate to browse for indexed commits (files are browseable)
+    if (!commitInfo.is_indexed || !repoName) return
+
+    const params = new URLSearchParams()
+    if (branch) params.set('branch', branch)
+    params.set('commit', commitInfo.hash)
+    params.set('co', '1') // Show only changed files by default
+    navigate(`/browse/${repoName}?${params.toString()}`)
   }
 
   // Format date for display
@@ -149,64 +146,99 @@ export function History() {
           </Paper>
         ) : (
           <Paper>
-            <List>
-              {commits.map((commitInfo, index) => (
-                <ListItem
-                  key={commitInfo.hash}
-                  divider={index < commits.length - 1}
-                  sx={{
-                    cursor: 'pointer',
-                    '&:hover': { bgcolor: 'action.hover' },
-                  }}
-                  onClick={() => handleCommitClick(commitInfo.hash)}
-                >
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Typography
-                          component="span"
-                          sx={{
-                            fontFamily: 'monospace',
-                            fontSize: '0.875rem',
-                            color: 'primary.main',
-                            fontWeight: 500,
-                          }}
-                        >
-                          {commitInfo.short_hash}
-                        </Typography>
-                        <Typography
-                          component="span"
-                          sx={{
-                            flex: 1,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {commitInfo.message}
-                        </Typography>
-                      </Box>
-                    }
-                    secondary={
-                      <Box
+            <List disablePadding>
+              {commits.map((commitInfo, index) => {
+                const isFocused = commit === commitInfo.hash
+                const messageParts = commitInfo.message.split('\n')
+                const summary = messageParts[0] || ''
+                const body = messageParts.slice(1).join('\n').trim()
+                return (
+                  <ListItem
+                    key={commitInfo.hash}
+                    ref={isFocused ? focusedCommitRef : undefined}
+                    divider={index < commits.length - 1}
+                    sx={{
+                      display: 'block',
+                      cursor: commitInfo.is_indexed ? 'pointer' : 'default',
+                      py: 2,
+                      px: 3,
+                      '&:hover': commitInfo.is_indexed ? { bgcolor: 'action.hover' } : {},
+                      ...(isFocused && {
+                        bgcolor: 'action.selected',
+                        borderLeft: 3,
+                        borderColor: 'primary.main',
+                      }),
+                    }}
+                    onClick={() => handleCommitClick(commitInfo)}
+                  >
+                    {/* Summary line */}
+                    <Typography
+                      sx={{
+                        fontWeight: 600,
+                        fontSize: '0.95rem',
+                        mb: 0.5,
+                      }}
+                    >
+                      {summary}
+                    </Typography>
+
+                    {/* Metadata: hash, author, date */}
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 2,
+                        mb: body ? 1.5 : 0,
+                      }}
+                    >
+                      <Typography
+                        component="span"
                         sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 2,
-                          mt: 0.5,
+                          fontFamily: 'monospace',
+                          fontSize: '0.8rem',
+                          color: commitInfo.is_indexed ? 'primary.main' : 'text.disabled',
+                          fontWeight: 500,
                         }}
                       >
-                        <Typography component="span" variant="body2" color="text.secondary">
-                          {commitInfo.author_name}
-                        </Typography>
-                        <Typography component="span" variant="body2" color="text.secondary">
-                          {formatDate(commitInfo.commit_date)}
-                        </Typography>
-                      </Box>
-                    }
-                  />
-                </ListItem>
-              ))}
+                        {commitInfo.short_hash}
+                        {!commitInfo.is_indexed && (
+                          <Typography
+                            component="span"
+                            sx={{ fontSize: '0.7rem', color: 'text.disabled', ml: 0.5 }}
+                          >
+                            (not indexed)
+                          </Typography>
+                        )}
+                      </Typography>
+                      <Typography component="span" variant="body2" color="text.secondary">
+                        {commitInfo.author_name}
+                      </Typography>
+                      <Typography component="span" variant="body2" color="text.secondary">
+                        {formatDate(commitInfo.commit_date)}
+                      </Typography>
+                    </Box>
+
+                    {/* Full commit body */}
+                    {body && (
+                      <Typography
+                        component="pre"
+                        sx={{
+                          fontFamily: 'inherit',
+                          fontSize: '0.825rem',
+                          color: 'text.secondary',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          m: 0,
+                          pl: 0,
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {body}
+                      </Typography>
+                    )}
+                  </ListItem>
+                )
+              })}
             </List>
           </Paper>
         )}

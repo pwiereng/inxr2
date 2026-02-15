@@ -68,15 +68,28 @@ fi
 # Create role if it doesn't exist (uses POSTGRES_PASSWORD from env, or default)
 PG_ROLE="${POSTGRES_USER:-inxr2_user}"
 PG_PASS="${POSTGRES_PASSWORD:-inxr2_dev_password}"
+# Validate role/password don't contain shell metacharacters (dev-only safety)
+if echo "$PG_ROLE" | grep -qE "[^a-zA-Z0-9_]" || echo "$PG_ROLE" | grep -qE "^[0-9]"; then
+    echo "❌ POSTGRES_USER must start with a letter or underscore, and contain only alphanumeric and _"
+    exit 1
+fi
+if echo "$PG_PASS" | grep -qE "['\\\";]"; then
+    echo "❌ POSTGRES_PASSWORD contains invalid characters (no quotes, backslashes, or semicolons)"
+    exit 1
+fi
+PG_DB="${POSTGRES_DB:-inxr2_dev}"
+if echo "$PG_DB" | grep -qE "[^a-zA-Z0-9_]" || echo "$PG_DB" | grep -qE "^[0-9]"; then
+    echo "❌ POSTGRES_DB must start with a letter or underscore, and contain only alphanumeric and _"
+    exit 1
+fi
 if ! psql -h localhost -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='$PG_ROLE'" | grep -q 1; then
     echo "🗄️  Creating $PG_ROLE role..."
-    # Safe: values come from controlled env vars, trust auth, dev-only container
     psql -h localhost -d postgres -c "CREATE ROLE $PG_ROLE WITH LOGIN PASSWORD '$PG_PASS' CREATEDB;"
     echo "✅ Role created"
 fi
 
 # Create databases if they don't exist
-for db in "${POSTGRES_DB:-inxr2_dev}" inxr2_test; do
+for db in "$PG_DB" inxr2_test; do
     if ! psql -h localhost -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" | grep -q 1; then
         echo "🗄️  Creating database $db..."
         psql -h localhost -d postgres -c "CREATE DATABASE $db OWNER $PG_ROLE;"

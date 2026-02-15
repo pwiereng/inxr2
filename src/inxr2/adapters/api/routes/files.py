@@ -108,6 +108,27 @@ class FileHistoryResponse(BaseModel):
     total: int
 
 
+class BlameLineResponse(BaseModel):
+    """Blame info for a single line."""
+
+    line_number: int
+    commit_hash: str
+    short_hash: str
+    author_name: str
+    commit_date: str
+    message: str
+    is_indexed: bool
+
+
+class FileBlameResponse(BaseModel):
+    """Blame annotations for a file."""
+
+    path: str
+    repository_name: str
+    lines: list[BlameLineResponse]
+    total: int
+
+
 @router.get("/by-path", response_model=FileContentResponse)
 async def get_file_content_by_path(
     repo: str,
@@ -215,6 +236,94 @@ async def get_file_history(
             for v in result.versions
         ],
         total=result.total,
+    )
+
+
+@router.get("/by-path/blame", response_model=FileBlameResponse)
+async def get_file_blame_by_path(
+    repo: str,
+    path: str,
+    resolve_file_use_case: ResolveFileUseCaseDep,
+    git_service: GitServiceDep,
+    commit_adapter: CommitAdapter,
+    commit: str | None = None,
+    branch: str | None = None,
+) -> FileBlameResponse:
+    """
+    Get git blame annotations for a file.
+
+    Query parameters:
+    - repo: Repository name
+    - path: File path within the repository
+    - commit: Commit hash (optional)
+    - branch: Branch name (optional)
+    """
+    repo = validate_repo_name(repo)
+    path = validate_path(path)
+
+    try:
+        resolved = await resolve_file_use_case.execute(
+            ResolveFileRequest(
+                repository_name=repo,
+                file_path=path,
+                commit_hash=commit,
+                branch=branch,
+            )
+        )
+    except RepositoryNotFound as e:
+        raise HTTPException(status_code=404, detail="Repository not found") from e
+    except FileNotFound as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+    except CommitNotFound as e:
+        raise HTTPException(status_code=404, detail="Commit not found") from e
+
+    repository = resolved.repository
+    resolved_commit = resolved.commit
+
+    repo_path = Path(repository.url)
+    if not repo_path.exists():
+        raise HTTPException(status_code=404, detail="Repository path not found")
+
+    try:
+        blame_lines = git_service.get_blame(
+            repo_path=repo_path,
+            commit_hash=resolved_commit.commit_hash.value,
+            file_path=path,
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"File '{path}' not found at this commit",
+        ) from None
+    except ValueError:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to access repository for blame data",
+        ) from None
+
+    # Check which blame commits are indexed (batch hash lookup)
+    repo_id = repository.id or 0
+    unique_blame_hashes = list({bl.commit_hash for bl in blame_lines})
+    indexed_hashes = await commit_adapter.find_indexed_hashes(
+        repository_id=repo_id, commit_hashes=unique_blame_hashes
+    )
+
+    return FileBlameResponse(
+        path=path,
+        repository_name=repo,
+        lines=[
+            BlameLineResponse(
+                line_number=bl.line_number,
+                commit_hash=bl.commit_hash,
+                short_hash=bl.short_hash,
+                author_name=bl.author_name,
+                commit_date=bl.commit_date.isoformat(),
+                message=bl.message,
+                is_indexed=bl.commit_hash in indexed_hashes,
+            )
+            for bl in blame_lines
+        ],
+        total=len(blame_lines),
     )
 
 

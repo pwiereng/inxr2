@@ -93,6 +93,18 @@ class RepositoryInfo:
     is_bare: bool
 
 
+@dataclass(frozen=True)
+class BlameLineInfo:
+    """Blame information for a single line of a file."""
+
+    line_number: int
+    commit_hash: str
+    short_hash: str
+    author_name: str
+    commit_date: datetime
+    message: str
+
+
 class GitServicePort(ABC):
     """Port for git operations.
 
@@ -148,6 +160,11 @@ class GitServicePort(ABC):
 
     @abstractmethod
     def list_branches(self, repo_path: Path) -> list[str]: ...
+
+    @abstractmethod
+    def get_blame(
+        self, repo_path: Path, commit_hash: str, file_path: str
+    ) -> list[BlameLineInfo]: ...
 
 
 class ConfigServicePort(ABC):

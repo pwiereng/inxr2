@@ -8,7 +8,7 @@ See ARCHITECTURAL_REVIEW.md for rationale.
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from ....application.use_cases.commits import ListCommitsRequest
 from ....domain.exceptions import RepositoryNotFound
@@ -31,15 +31,13 @@ class CommitResponse(BaseModel):
     in the branch_commits junction table, not on the commit itself.
     """
 
-    id: int
     hash: str
     short_hash: str
     message: str
     author_name: str
     author_email: str
     commit_date: str
-
-    model_config = ConfigDict(from_attributes=True)
+    is_indexed: bool
 
 
 class CommitListResponse(BaseModel):
@@ -68,8 +66,6 @@ class CommitDetailResponse(BaseModel):
     commit_date: str
     parent_hashes: list[str]
 
-    model_config = ConfigDict(from_attributes=True)
-
 
 @router.get("", response_model=CommitListResponse)
 async def list_commits(
@@ -83,7 +79,7 @@ async def list_commits(
 
     Query parameters:
     - repo: Repository name (required)
-    - branch: Branch name (optional, returns all branches if not specified)
+    - branch: Branch name (optional, defaults to repository's default branch)
     - limit: Maximum number of commits to return (default: 50, max: 500)
     """
     # Validate inputs
@@ -103,15 +99,13 @@ async def list_commits(
     return CommitListResponse(
         commits=[
             CommitResponse(
-                id=c.commit.id or 0,
-                hash=c.commit.commit_hash.value,
-                short_hash=c.commit.short_hash,
-                message=c.message[:200] if c.message else "",
+                hash=c.hash,
+                short_hash=c.short_hash,
+                message=c.message or "",
                 author_name=c.author_name or "",
                 author_email=c.author_email or "",
-                commit_date=(
-                    c.commit.commit_date.isoformat() if c.commit.commit_date else ""
-                ),
+                commit_date=c.commit_date,
+                is_indexed=c.is_indexed,
             )
             for c in result.commits
         ],

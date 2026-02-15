@@ -49,6 +49,7 @@ from inxr2.application.ports.repositories import (
     TextContentRepositoryPort,
 )
 from inxr2.application.ports.services import (
+    BlameLineInfo,
     ChangedFiles,
     CommitInfo,
     FileStat,
@@ -1168,6 +1169,19 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         commits.sort(key=lambda c: c.commit_date, reverse=True)
         return commits[:limit]
 
+    async def find_indexed_hashes(
+        self, repository_id: int, commit_hashes: list[str]
+    ) -> set[str]:
+        """Check which commit hashes exist in the in-memory store."""
+        if not commit_hashes:
+            return set()
+        stored_hashes = {
+            c.commit_hash.value
+            for c in self._commits.values()
+            if c.repository_id == repository_id
+        }
+        return stored_hashes & set(commit_hashes)
+
     async def find_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> Commit | None:
@@ -2190,6 +2204,27 @@ class FakeGitService(GitServicePort):
 
     def list_branches(self, repo_path: Path) -> list[str]:
         return ["main"]
+
+    def get_blame(
+        self, repo_path: Path, commit_hash: str, file_path: str
+    ) -> list[BlameLineInfo]:
+        from datetime import UTC, datetime
+
+        # Generate blame from stored file content
+        key = (str(repo_path), commit_hash, file_path)
+        content = self._file_contents.get(key, "")
+        lines = content.split("\n") if content else []
+        return [
+            BlameLineInfo(
+                line_number=i + 1,
+                commit_hash=commit_hash,
+                short_hash=commit_hash[:7],
+                author_name="Test Author",
+                commit_date=datetime(2024, 1, 1, tzinfo=UTC),
+                message="Test commit message",
+            )
+            for i in range(len(lines))
+        ]
 
     # Test helper methods
     def set_file_content(

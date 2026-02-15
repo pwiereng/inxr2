@@ -205,8 +205,12 @@ class TestUseCaseProviders:
         mock_commit_adapter: MagicMock,
     ) -> None:
         """get_repository_tree_use_case should return GetRepositoryTreeUseCase."""
+        mock_git_service = MagicMock()
         use_case = get_repository_tree_use_case(
-            mock_repository_adapter, mock_file_adapter, mock_commit_adapter
+            mock_repository_adapter,
+            mock_file_adapter,
+            mock_commit_adapter,
+            mock_git_service,
         )
         assert isinstance(use_case, GetRepositoryTreeUseCase)
 
@@ -244,11 +248,15 @@ class TestUseCaseDependencyWiring:
         assert use_case._filesystem is mock_filesystem
 
     def test_repository_tree_has_all_repos(self) -> None:
-        """GetRepositoryTreeUseCase should receive all three adapters."""
+        """GetRepositoryTreeUseCase should receive all adapters and git service."""
         mock_repo = MagicMock()
         mock_file = MagicMock()
         mock_commit = MagicMock()
-        use_case = get_repository_tree_use_case(mock_repo, mock_file, mock_commit)
+        mock_git = MagicMock()
+        use_case = get_repository_tree_use_case(
+            mock_repo, mock_file, mock_commit, mock_git
+        )
         assert use_case._repository_repo is mock_repo
         assert use_case._file_repo is mock_file
         assert use_case._commit_repo is mock_commit
+        assert use_case._git_service is mock_git

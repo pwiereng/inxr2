@@ -125,8 +125,9 @@ export function CodeHeader({
     const loadCommits = async () => {
       setLoadingCommits(true)
       try {
-        const response = await getCommits(repoName, branch || undefined, 50)
-        setCommits(response.commits)
+        const response = await getCommits(repoName, branch || undefined, 500)
+        // Only show indexed commits in the version dropdown (browseable)
+        setCommits(response.commits.filter((c) => c.is_indexed))
       } catch (error) {
         console.error('Failed to load commits:', error)
         setCommits([])

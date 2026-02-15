@@ -139,14 +139,13 @@ export interface RepositoryStats {
 
 // Time Travel types
 export interface CommitInfo {
-  id: number
   hash: string
   short_hash: string
-  branch: string | null
   message: string
   author_name: string
   author_email: string
   commit_date: string
+  is_indexed: boolean
 }
 
 export interface CommitListResponse {
@@ -179,6 +178,24 @@ export interface FileHistoryResponse {
   path: string
   repository_name: string
   versions: FileVersion[]
+  total: number
+}
+
+// Blame types
+export interface BlameLine {
+  line_number: number
+  commit_hash: string
+  short_hash: string
+  author_name: string
+  commit_date: string
+  message: string
+  is_indexed: boolean
+}
+
+export interface FileBlameResponse {
+  path: string
+  repository_name: string
+  lines: BlameLine[]
   total: number
 }
 
@@ -364,6 +381,19 @@ export async function getFileContentByPathAtCommit(
   if (commit) params.set('commit', commit)
   if (branch) params.set('branch', branch)
   return fetchApi<FileContent>(`/files/by-path?${params}`)
+}
+
+// Blame
+export async function getFileBlame(
+  repo: string,
+  path: string,
+  commit?: string,
+  branch?: string
+): Promise<FileBlameResponse> {
+  const params = new URLSearchParams({ repo, path })
+  if (commit) params.set('commit', commit)
+  if (branch) params.set('branch', branch)
+  return fetchApi<FileBlameResponse>(`/files/by-path/blame?${params}`)
 }
 
 // Text Search types and functions

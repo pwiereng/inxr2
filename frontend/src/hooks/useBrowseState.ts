@@ -18,6 +18,7 @@ import {
   getRepositories,
   getRepositoryByName,
   getRepositoryTreeByName,
+  getCommits,
   getFileContentByPathAtCommit,
   getFileSymbolsByPath,
   getFileReferencesByPath,
@@ -298,6 +299,9 @@ export function useBrowseState(repoNameProp?: string) {
   const [fileReferences, setFileReferences] = useState<FileReference[]>([])
   const [fileVersions, setFileVersions] = useState<FileVersion[]>([])
 
+  // Latest commit hash for the current branch (HEAD fallback for changedOnly)
+  const [latestBranchCommit, setLatestBranchCommit] = useState<string | null>(null)
+
   // ========== Diff state ==========
   const [diffContent, setDiffContent] = useState<FileContent | null>(null)
   const [diffSymbols, setDiffSymbols] = useState<FileSymbol[]>([])
@@ -326,7 +330,7 @@ export function useBrowseState(repoNameProp?: string) {
       ? urlState.treePanel === 'left'
         ? leftCommit
         : rightCommit
-      : urlState.selectedCommit
+      : urlState.selectedCommit || latestBranchCommit
     const refCommit = urlState.diffMode
       ? urlState.refPanel === 'left'
         ? leftCommit
@@ -334,12 +338,16 @@ export function useBrowseState(repoNameProp?: string) {
       : urlState.selectedCommit
     const currentCommitHash = urlState.selectedCommit || fileVersions[0]?.commit_hash
 
-    // Check if file was changed at the selected commit
-    // If selectedCommit is set, check if it appears in file versions
-    // If no selectedCommit (viewing latest), the file is considered "changed" (it exists)
-    const fileChangedInCommit = urlState.selectedCommit
-      ? fileVersions.some((v) => v.commit_hash === urlState.selectedCommit)
-      : true
+    // Check if file was changed at the selected commit.
+    // When changedOnly is on, trust the tree — if the file appears in the
+    // changed-files tree, git confirmed it changed (even for merge commits
+    // where the file's indexed version is from the original branch commit).
+    // Otherwise, check if the selected commit appears in file versions.
+    const fileChangedInCommit = urlState.changedOnly
+      ? true // tree already filtered to changed files
+      : urlState.selectedCommit
+        ? fileVersions.some((v) => v.commit_hash === urlState.selectedCommit)
+        : true
 
     return {
       leftCommit,
@@ -349,7 +357,7 @@ export function useBrowseState(repoNameProp?: string) {
       currentCommitHash,
       fileChangedInCommit,
     }
-  }, [urlState, fileVersions, diffFileVersions])
+  }, [urlState, fileVersions, diffFileVersions, latestBranchCommit])
 
   // ========== Data Loading Effects ==========
 
@@ -377,6 +385,20 @@ export function useBrowseState(repoNameProp?: string) {
 
     loadRepository()
   }, [urlState.repoName])
+
+  // Fetch latest commit for the current branch (used as HEAD fallback)
+  useEffect(() => {
+    if (!urlState.repoName) return
+
+    const branch = urlState.selectedBranch || repository?.default_branch
+    getCommits(urlState.repoName, branch || undefined, 500)
+      .then((res) => {
+        // Find the newest indexed commit (commits are newest-first)
+        const latest = res.commits.find((c) => c.is_indexed)
+        setLatestBranchCommit(latest?.hash ?? null)
+      })
+      .catch(() => setLatestBranchCommit(null))
+  }, [urlState.repoName, urlState.selectedBranch, repository?.default_branch])
 
   // Load tree
   useEffect(() => {
@@ -415,6 +437,28 @@ export function useBrowseState(repoNameProp?: string) {
     urlState.treePanel,
     urlState.changedOnly,
   ])
+
+  // Clear selected file if it's not in the changed-files tree
+  useEffect(() => {
+    if (!urlState.changedOnly || !urlState.filePath || !urlState.repoName) return
+
+    // Recursively check if a file path exists in the tree
+    const fileInTree = (nodes: TreeNode[], path: string): boolean =>
+      nodes.some(
+        (n) =>
+          (n.type === 'file' && n.path === path) ||
+          (n.children != null && fileInTree(n.children, path))
+      )
+
+    if (treeNodes.length > 0 && !fileInTree(treeNodes, urlState.filePath)) {
+      // File not in the changed-files tree — clear selection
+      const params = new URLSearchParams(searchParams)
+      navigate(
+        `/browse/${encodeURIComponent(urlState.repoName)}?${params}`,
+        { replace: true }
+      )
+    }
+  }, [urlState.changedOnly, urlState.filePath, urlState.repoName, treeNodes, navigate, searchParams])
 
   // Load file versions
   useEffect(() => {
@@ -606,8 +650,9 @@ export function useBrowseState(repoNameProp?: string) {
       if (!urlState.drawerOpen) params.set('drawer', '0')
       // Don't preserve refs, searchQuery - new file means new context
       // Exit diff mode when navigating to a new file (don't preserve diff, tp, rp, ap params)
-      // Preserve branch state
+      // Preserve branch and changed-files-only state
       if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
+      if (urlState.changedOnly) params.set('co', '1')
       const query = params.toString()
       navigate(
         `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(path)}${query ? `?${query}` : ''}`
@@ -768,26 +813,29 @@ export function useBrowseState(repoNameProp?: string) {
 
   const changeVersion = useCallback(
     (commitHash: string | null) => {
-      if (urlState.filePath) {
-        resetRefsPanel()
-        const params = new URLSearchParams()
-        if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
-        if (commitHash) params.set('commit', commitHash)
-        if (urlState.diffCommit) params.set('diff', urlState.diffCommit)
-        // Preserve drawer state only - version change means new context, clear search and refs
-        if (!urlState.drawerOpen) params.set('drawer', '0')
-        // Don't preserve searchQuery - version change invalidates search context
-        // Preserve diff mode panel states
-        if (urlState.treePanel === 'right') params.set('tp', 'r')
-        if (urlState.refPanel === 'right') params.set('rp', 'r')
-        if (urlState.activePanel === 'right') params.set('ap', 'r')
-        // Preserve branch state
-        if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
-        if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
-        navigate(
-          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
-        )
-      }
+      if (!urlState.repoName) return
+      resetRefsPanel()
+      const params = new URLSearchParams()
+      if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
+      if (commitHash) params.set('commit', commitHash)
+      if (urlState.diffCommit) params.set('diff', urlState.diffCommit)
+      // Preserve drawer state only - version change means new context, clear search and refs
+      if (!urlState.drawerOpen) params.set('drawer', '0')
+      // Don't preserve searchQuery - version change invalidates search context
+      // Preserve diff mode panel states
+      if (urlState.treePanel === 'right') params.set('tp', 'r')
+      if (urlState.refPanel === 'right') params.set('rp', 'r')
+      if (urlState.activePanel === 'right') params.set('ap', 'r')
+      // Preserve branch state
+      if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
+      if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
+      // Preserve changedOnly state
+      if (urlState.changedOnly) params.set('co', '1')
+      const basePath = urlState.filePath
+        ? `/browse/${encodeURIComponent(urlState.repoName)}/${encodeFilePath(urlState.filePath)}`
+        : `/browse/${encodeURIComponent(urlState.repoName)}`
+      const query = params.toString()
+      navigate(`${basePath}${query ? `?${query}` : ''}`)
     },
     [navigate, urlState, resetRefsPanel]
   )

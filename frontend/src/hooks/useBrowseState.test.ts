@@ -38,6 +38,7 @@ vi.mock('@/lib/api', () => ({
   getRepositories: vi.fn(),
   getRepositoryByName: vi.fn(),
   getRepositoryTreeByName: vi.fn(),
+  getCommits: vi.fn(),
   getFileContentByPathAtCommit: vi.fn(),
   getFileSymbolsByPath: vi.fn(),
   getFileReferencesByPath: vi.fn(),
@@ -48,6 +49,7 @@ vi.mock('@/lib/api', () => ({
 const mockGetRepositories = vi.mocked(api.getRepositories)
 const mockGetRepositoryByName = vi.mocked(api.getRepositoryByName)
 const mockGetRepositoryTreeByName = vi.mocked(api.getRepositoryTreeByName)
+const mockGetCommits = vi.mocked(api.getCommits)
 const mockGetFileHistory = vi.mocked(api.getFileHistory)
 const mockGetFileContentByPathAtCommit = vi.mocked(api.getFileContentByPathAtCommit)
 const mockGetFileSymbolsByPath = vi.mocked(api.getFileSymbolsByPath)
@@ -83,6 +85,7 @@ describe('useBrowseState', () => {
       total_files: 0,
       total_directories: 0,
     })
+    mockGetCommits.mockResolvedValue({ commits: [], total: 0 })
     mockGetFileHistory.mockResolvedValue({ versions: [], path: '', repository_name: '', total: 0 })
     mockGetFileContentByPathAtCommit.mockResolvedValue({
       id: 1,
@@ -1525,6 +1528,189 @@ describe('useBrowseState', () => {
 
       // No selectedCommit means viewing latest, so file is considered "changed"
       expect(result.current.computedState.fileChangedInCommit).toBe(true)
+    })
+  })
+
+  describe('changedOnly preservation', () => {
+    it('should preserve co=1 in URL when navigating to a file with changedOnly enabled', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123&co=1&branch=main')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.navigateToFile('src/other.py')
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).toContain('co=1')
+      expect(navigatedUrl).toContain('commit=abc123')
+      expect(navigatedUrl).toContain('branch=main')
+    })
+
+    it('should not include co param when changedOnly is false', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.navigateToFile('src/other.py')
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).not.toContain('co=')
+    })
+
+    it('should clear file selection when changedOnly is on and file is not in tree', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123&co=1')
+
+      // Return a tree that does NOT contain the current file (src/main.py)
+      mockGetRepositoryTreeByName.mockResolvedValue({
+        root: [
+          { name: 'changed.py', path: 'src/changed.py', type: 'file', file_id: 1, language: 'python', children: null },
+        ],
+        repository_id: 1,
+        repository_name: 'test-repo',
+        total_files: 1,
+        total_directories: 0,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      // Wait for tree to load
+      await vi.waitFor(() => {
+        expect(result.current.dataState.treeNodes.length).toBe(1)
+      })
+
+      // The useEffect should have called navigate to clear the file path
+      await vi.waitFor(() => {
+        const navCalls = mockNavigate.mock.calls
+        const clearCall = navCalls.find(
+          (call) => typeof call[0] === 'string' && !call[0].includes('src/main.py')
+        )
+        expect(clearCall).toBeDefined()
+      })
+
+      // The clearing navigation should go to the repo root (no file path)
+      const clearCall = mockNavigate.mock.calls.find(
+        (call) => typeof call[0] === 'string' && !call[0].includes('src/main.py')
+      )
+      expect(clearCall![0]).toContain('/browse/test-repo')
+    })
+
+    it('should not clear file selection when file is in the changed-files tree', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123&co=1')
+
+      // Return a tree that DOES contain the current file (src/main.py)
+      mockGetRepositoryTreeByName.mockResolvedValue({
+        root: [
+          { name: 'main.py', path: 'src/main.py', type: 'file', file_id: 1, language: 'python', children: null },
+          { name: 'other.py', path: 'src/other.py', type: 'file', file_id: 2, language: 'python', children: null },
+        ],
+        repository_id: 1,
+        repository_name: 'test-repo',
+        total_files: 2,
+        total_directories: 0,
+      })
+
+      mockNavigate.mockClear()
+      const { result } = await renderBrowseStateHook()
+
+      // Wait for tree to load
+      await vi.waitFor(() => {
+        expect(result.current.dataState.treeNodes.length).toBe(2)
+      })
+
+      // Give time for effects to settle
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      // Navigate should NOT have been called to clear the file
+      // (it may have been called for other reasons during init, so check
+      // that no call removes the file path)
+      const clearCalls = mockNavigate.mock.calls.filter(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('/browse/test-repo') &&
+          !call[0].includes('src/main.py')
+      )
+      expect(clearCalls.length).toBe(0)
+    })
+
+    it('should not clear file selection when changedOnly is off', async () => {
+      // No co=1 param — changedOnly is false
+      mockSearchParams = new URLSearchParams('commit=abc123')
+
+      // Return a tree that does NOT contain the current file
+      mockGetRepositoryTreeByName.mockResolvedValue({
+        root: [
+          { name: 'changed.py', path: 'src/changed.py', type: 'file', file_id: 1, language: 'python', children: null },
+        ],
+        repository_id: 1,
+        repository_name: 'test-repo',
+        total_files: 1,
+        total_directories: 0,
+      })
+
+      mockNavigate.mockClear()
+      const { result } = await renderBrowseStateHook()
+
+      // Wait for tree to load
+      await vi.waitFor(() => {
+        expect(result.current.dataState.treeNodes.length).toBe(1)
+      })
+
+      // Give time for effects to settle
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      // Navigate should NOT have been called to clear the file since changedOnly is off
+      const clearCalls = mockNavigate.mock.calls.filter(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('/browse/test-repo') &&
+          !call[0].includes('src/main.py')
+      )
+      expect(clearCalls.length).toBe(0)
+    })
+
+    it('should find files in nested tree directories', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123&co=1')
+
+      // Return a nested tree where the file is inside a directory
+      mockGetRepositoryTreeByName.mockResolvedValue({
+        root: [
+          {
+            name: 'src',
+            path: 'src',
+            type: 'directory',
+            file_id: null,
+            language: null,
+            children: [
+              { name: 'main.py', path: 'src/main.py', type: 'file', file_id: 1, language: 'python', children: null },
+            ],
+          },
+        ],
+        repository_id: 1,
+        repository_name: 'test-repo',
+        total_files: 1,
+        total_directories: 1,
+      })
+
+      mockNavigate.mockClear()
+      const { result } = await renderBrowseStateHook()
+
+      // Wait for tree to load
+      await vi.waitFor(() => {
+        expect(result.current.dataState.treeNodes.length).toBe(1)
+      })
+
+      // Give time for effects to settle
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      // Navigate should NOT have been called to clear the file since it IS in the tree (nested)
+      const clearCalls = mockNavigate.mock.calls.filter(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('/browse/test-repo') &&
+          !call[0].includes('src/main.py')
+      )
+      expect(clearCalls.length).toBe(0)
     })
   })
 })

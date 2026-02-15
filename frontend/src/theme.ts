@@ -34,6 +34,13 @@ declare module '@mui/material/styles' {
       folder: string
       defaultFile: string
     }
+    blame: {
+      hash: string
+      author: string
+      date: string
+      border: string
+      hoverBg: string
+    }
   }
   interface PaletteOptions {
     code?: {
@@ -66,6 +73,13 @@ declare module '@mui/material/styles' {
     fileTree?: {
       folder?: string
       defaultFile?: string
+    }
+    blame?: {
+      hash?: string
+      author?: string
+      date?: string
+      border?: string
+      hoverBg?: string
     }
   }
 }
@@ -104,6 +118,13 @@ export const darkTheme = createTheme({
       folder: '#dcb67a',
       defaultFile: '#6e7681',
     },
+    blame: {
+      hash: '#569cd6',
+      author: '#9cdcfe',
+      date: '#6e7681',
+      border: '#333',
+      hoverBg: 'rgba(255, 255, 255, 0.08)',
+    },
   },
 })
 
@@ -140,6 +161,13 @@ export const lightTheme = createTheme({
     fileTree: {
       folder: '#b08d57',
       defaultFile: '#6a737d',
+    },
+    blame: {
+      hash: '#0366d6',
+      author: '#24292e',
+      date: '#959da5',
+      border: '#e1e4e8',
+      hoverBg: 'rgba(0, 0, 0, 0.04)',
     },
   },
 })
