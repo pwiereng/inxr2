@@ -338,12 +338,16 @@ export function useBrowseState(repoNameProp?: string) {
       : urlState.selectedCommit
     const currentCommitHash = urlState.selectedCommit || fileVersions[0]?.commit_hash
 
-    // Check if file was changed at the selected commit
-    // If selectedCommit is set, check if it appears in file versions
-    // If no selectedCommit (viewing latest), the file is considered "changed" (it exists)
-    const fileChangedInCommit = urlState.selectedCommit
-      ? fileVersions.some((v) => v.commit_hash === urlState.selectedCommit)
-      : true
+    // Check if file was changed at the selected commit.
+    // When changedOnly is on, trust the tree — if the file appears in the
+    // changed-files tree, git confirmed it changed (even for merge commits
+    // where the file's indexed version is from the original branch commit).
+    // Otherwise, check if the selected commit appears in file versions.
+    const fileChangedInCommit = urlState.changedOnly
+      ? true // tree already filtered to changed files
+      : urlState.selectedCommit
+        ? fileVersions.some((v) => v.commit_hash === urlState.selectedCommit)
+        : true
 
     return {
       leftCommit,
