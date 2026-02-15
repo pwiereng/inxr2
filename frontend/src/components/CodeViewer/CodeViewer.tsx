@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Box, Typography, Tooltip } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import Prism from 'prismjs'
@@ -111,6 +111,16 @@ export function CodeViewer({
     if (highlightRange && lineNum >= highlightRange[0] && lineNum <= highlightRange[1]) return true
     return false
   }
+
+  // Build blame lookup by line number for O(1) access
+  const blameMap = useMemo(() => {
+    if (!blameData || blameData.length === 0) return null
+    const map = new Map<number, BlameLine>()
+    for (const bl of blameData) {
+      map.set(bl.line_number, bl)
+    }
+    return map
+  }, [blameData])
 
   // Get symbols that START on this line (definitions)
   const getSymbolDefinitionsOnLine = (lineNum: number): FileSymbol[] => {
@@ -369,14 +379,14 @@ export function CodeViewer({
                 }}
               >
                 {/* Blame annotation */}
-                {blameData &&
-                  blameData.length > 0 &&
+                {blameMap &&
                   (() => {
-                    const blame = blameData[index]
+                    const blame = blameMap.get(lineNum)
                     if (!blame) return <Box component="td" />
                     // Only show blame info on first line of a consecutive block from the same commit
-                    const prevBlame = index > 0 ? blameData[index - 1] : null
+                    const prevBlame = blameMap.get(lineNum - 1)
                     const isNewBlock = !prevBlame || prevBlame.commit_hash !== blame.commit_hash
+                    const isClickable = onBlameCommitClick && blame.is_indexed
                     return (
                       <Box
                         component="td"
@@ -398,16 +408,18 @@ export function CodeViewer({
                             <Box
                               component="span"
                               onClick={(e: React.MouseEvent) => {
-                                if (onBlameCommitClick) {
+                                if (isClickable) {
                                   e.stopPropagation()
                                   onBlameCommitClick(blame.commit_hash)
                                 }
                               }}
                               sx={{
-                                color: theme.palette.blame.hash,
+                                color: blame.is_indexed
+                                  ? theme.palette.blame.hash
+                                  : theme.palette.blame.date,
                                 fontFamily: 'monospace',
-                                cursor: onBlameCommitClick ? 'pointer' : 'default',
-                                '&:hover': onBlameCommitClick
+                                cursor: isClickable ? 'pointer' : 'default',
+                                '&:hover': isClickable
                                   ? { textDecoration: 'underline' }
                                   : {},
                               }}

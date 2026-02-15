@@ -295,6 +295,11 @@ async def get_file_blame_by_path(
             status_code=404,
             detail=f"File '{path}' not found at this commit",
         ) from None
+    except ValueError:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to access repository for blame data",
+        ) from None
 
     # Check which blame commits are indexed (batch hash lookup)
     repo_id = repository.id or 0

@@ -709,15 +709,15 @@ class GitService(GitServicePort):
             repo = Repo(repo_path)
             commit = repo.commit(commit_hash)
         except Exception as e:
-            raise FileNotFoundError(
-                f"Cannot access repository or commit {commit_hash[:8]}: {e}"
+            raise ValueError(
+                f"Cannot access repository or commit {commit_hash[:8]}"
             ) from e
 
         try:
             blame_entries: Any = repo.blame(commit, file_path)
         except Exception as e:
             raise FileNotFoundError(
-                f"Cannot blame {file_path} at {commit_hash[:8]}: {e}"
+                f"File not found at commit {commit_hash[:8]}"
             ) from e
 
         result: list[BlameLineInfo] = []

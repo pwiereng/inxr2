@@ -134,7 +134,9 @@ class GetRepositoryTreeUseCase:
                         repo_path, request.commit_hash
                     )
                 except Exception as e:
-                    raise ValueError(f"Cannot determine changed files: {e}") from e
+                    raise ValueError(
+                        "Cannot determine changed files for this commit"
+                    ) from e
                 changed_paths = set(changed.added + changed.modified)
 
                 if not changed_paths:
