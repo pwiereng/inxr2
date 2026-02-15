@@ -39,8 +39,6 @@ class CommitResponse(BaseModel):
     commit_date: str
     is_indexed: bool
 
-    model_config = ConfigDict(from_attributes=True)
-
 
 class CommitListResponse(BaseModel):
     """List of commits response."""

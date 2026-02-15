@@ -56,6 +56,7 @@ def _create_git_repo_with_commits(
             cwd=str(repo_path),
             capture_output=True,
             text=True,
+            check=True,
             env={**env, "PATH": "/usr/bin:/bin:/usr/local/bin"},
         )
         return result.stdout.strip()

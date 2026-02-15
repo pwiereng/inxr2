@@ -125,13 +125,20 @@ class ListCommitsUseCase:
                 max_count=request.limit,
             )
             git_commits.reverse()
-        except Exception:
+        except Exception as exc:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Failed to list git commits for %s: %s", repo_path, exc
+            )
             git_commits = []
 
         # Get indexed commit hashes from DB for cross-referencing
+        # Use branch=None to get all indexed commits — a commit is "indexed"
+        # if it exists in the DB regardless of which branch it's on.
         indexed_commits = await self._commit_repo.list_by_repository(
             repository_id=repository_id,
-            branch=request.branch,
+            branch=None,
             limit=10000,
         )
         indexed_hashes = {c.commit_hash.value for c in indexed_commits}

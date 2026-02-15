@@ -293,14 +293,12 @@ async def get_file_blame_by_path(
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
-    # Check which blame commits are indexed
-    unique_hashes = {bl.commit_hash for bl in blame_lines}
-    indexed_hashes: set[str] = set()
+    # Check which blame commits are indexed (single batch query)
     repo_id = repository.id or 0
-    for h in unique_hashes:
-        found = await commit_adapter.find_by_hash(repo_id, h)
-        if found is not None:
-            indexed_hashes.add(h)
+    all_indexed = await commit_adapter.list_by_repository(
+        repository_id=repo_id, limit=10000
+    )
+    indexed_hashes = {c.commit_hash.value for c in all_indexed}
 
     return FileBlameResponse(
         path=path,

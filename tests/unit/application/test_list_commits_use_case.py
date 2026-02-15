@@ -65,8 +65,7 @@ class StubGitListCommitsService:
         key = (str(repo_path), branch)
         all_commits = self._commits.get(key, [])
         if max_count is not None:
-            # list_commits returns oldest first, but max_count limits from newest
-            # So return the last max_count items
+            # Mirrors real git: newest N commits, returned oldest-first
             return all_commits[-max_count:]
         return list(all_commits)
 
