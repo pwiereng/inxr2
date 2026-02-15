@@ -391,7 +391,7 @@ export function useBrowseState(repoNameProp?: string) {
     if (!urlState.repoName) return
 
     const branch = urlState.selectedBranch || repository?.default_branch
-    getCommits(urlState.repoName, branch || undefined, 50)
+    getCommits(urlState.repoName, branch || undefined, 500)
       .then((res) => {
         // Find the newest indexed commit (commits are newest-first)
         const latest = res.commits.find((c) => c.is_indexed)

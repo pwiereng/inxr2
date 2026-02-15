@@ -69,8 +69,8 @@ fi
 PG_ROLE="${POSTGRES_USER:-inxr2_user}"
 PG_PASS="${POSTGRES_PASSWORD:-inxr2_dev_password}"
 # Validate role/password don't contain shell metacharacters (dev-only safety)
-if echo "$PG_ROLE" | grep -qE "[^a-zA-Z0-9_]"; then
-    echo "❌ POSTGRES_USER contains invalid characters (alphanumeric and _ only)"
+if echo "$PG_ROLE" | grep -qE "[^a-zA-Z0-9_]" || echo "$PG_ROLE" | grep -qE "^[0-9]"; then
+    echo "❌ POSTGRES_USER must start with a letter or underscore, and contain only alphanumeric and _"
     exit 1
 fi
 if echo "$PG_PASS" | grep -qE "['\\\";]"; then

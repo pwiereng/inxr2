@@ -254,7 +254,7 @@ describe('CodeHeader', () => {
       render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
-        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'main', 50)
+        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'main', 500)
       })
     })
 
@@ -343,14 +343,14 @@ describe('CodeHeader', () => {
       const { rerender } = render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
-        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'main', 50)
+        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'main', 500)
       })
 
       // Change branch
       rerender(<CodeHeader {...defaultProps} branch="feature-branch" />)
 
       await waitFor(() => {
-        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'feature-branch', 50)
+        expect(api.getCommits).toHaveBeenCalledWith('test-repo', 'feature-branch', 500)
       })
     })
   })
