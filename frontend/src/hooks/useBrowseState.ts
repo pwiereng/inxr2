@@ -22,6 +22,7 @@ import {
   getFileContentByPathAtCommit,
   getFileSymbolsByPath,
   getFileReferencesByPath,
+  getFileRawContent,
   getSymbol,
   getFileHistory,
   type Repository,
@@ -31,7 +32,9 @@ import {
   type FileReference,
   type Symbol,
   type FileVersion,
+  type RawFileContent,
 } from '@/lib/api'
+import { isImageFile } from '@/lib/fileUtils'
 
 // ============================================================================
 // Helpers
@@ -56,7 +59,7 @@ function encodeFilePath(path: string): string {
 /**
  * State derived from URL parameters for bookmarkability.
  *
- * URL params: line, commit, diff, q, drawer, refs, tp, rp, ap, branch, diffBranch
+ * URL params: line, commit, diff, q, drawer, refs, tp, rp, ap, branch, diffBranch, view
  *
  * Note: We use `q` (search query) for refs panel state instead of symbol IDs
  * because symbol IDs can change between indexing runs, making name-based
@@ -72,7 +75,7 @@ export interface BrowseUrlState {
   // Branch state (branch, diffBranch params)
   selectedBranch: string | null // branch param - primary branch for browsing
   diffBranch: string | null // diffBranch param - branch for diff comparison
-  // URL-persisted UI state (q, drawer, refs, tp, rp, ap, co)
+  // URL-persisted UI state (q, drawer, refs, tp, rp, ap, co, view)
   searchQuery: string // q param - used for both search and refs panel restoration
   drawerOpen: boolean // drawer param (0 = closed, absent = open)
   refsPanelOpen: boolean // refs param (1 = open, absent = closed)
@@ -80,6 +83,7 @@ export interface BrowseUrlState {
   refPanel: 'left' | 'right' // rp param (r = right, absent = left)
   activePanel: 'left' | 'right' // ap param (r = right, absent = left)
   changedOnly: boolean // co param (1 = show only files changed in commit, absent = full tree)
+  viewMode: 'rendered' | 'raw' | null // view param (raw = raw source, absent = default per file type)
 }
 
 export interface BrowseDataState {
@@ -90,6 +94,7 @@ export interface BrowseDataState {
   fileSymbols: FileSymbol[]
   fileReferences: FileReference[]
   fileVersions: FileVersion[]
+  rawContent: RawFileContent | null
 }
 
 export interface BrowseDiffState {
@@ -152,6 +157,9 @@ export interface BrowseActions {
   setRefPanel: (panel: 'left' | 'right') => void
   handleRefPanelChange: (panel: 'left' | 'right') => void
 
+  // View mode
+  setViewMode: (mode: 'rendered' | 'raw' | null) => void
+
   // Search
   setSearchQuery: (query: string) => void
 
@@ -208,6 +216,8 @@ export function useBrowseState(repoNameProp?: string) {
     const refPanel = searchParams.get('rp') === 'r' ? 'right' : 'left'
     const activePanel = searchParams.get('ap') === 'r' ? 'right' : 'left'
     const changedOnly = searchParams.get('co') === '1' // default false (show full tree)
+    const viewParam = searchParams.get('view')
+    const viewMode = viewParam === 'raw' ? 'raw' : viewParam === 'rendered' ? 'rendered' : null
 
     return {
       repoName,
@@ -225,6 +235,7 @@ export function useBrowseState(repoNameProp?: string) {
       refPanel,
       activePanel,
       changedOnly,
+      viewMode,
     }
   }, [repoName, splatPath, searchParams])
 
@@ -290,6 +301,11 @@ export function useBrowseState(repoNameProp?: string) {
     [updateUrlParams, urlState.changedOnly]
   )
 
+  const setViewMode = useCallback(
+    (mode: 'rendered' | 'raw' | null) => updateUrlParams({ view: mode }),
+    [updateUrlParams]
+  )
+
   // ========== Data state ==========
   const [allRepositories, setAllRepositories] = useState<Repository[]>([])
   const [repository, setRepository] = useState<Repository | null>(null)
@@ -298,6 +314,7 @@ export function useBrowseState(repoNameProp?: string) {
   const [fileSymbols, setFileSymbols] = useState<FileSymbol[]>([])
   const [fileReferences, setFileReferences] = useState<FileReference[]>([])
   const [fileVersions, setFileVersions] = useState<FileVersion[]>([])
+  const [rawContent, setRawContent] = useState<RawFileContent | null>(null)
 
   // Latest commit hash for the current branch (HEAD fallback for changedOnly)
   const [latestBranchCommit, setLatestBranchCommit] = useState<string | null>(null)
@@ -496,9 +513,9 @@ export function useBrowseState(repoNameProp?: string) {
     urlState.selectedBranch,
   ])
 
-  // Load file content
+  // Load file content (skip for image files — they use raw content)
   useEffect(() => {
-    if (!urlState.filePath || !urlState.repoName) {
+    if (!urlState.filePath || !urlState.repoName || isImageFile(urlState.filePath)) {
       setFileContent(null)
       setFileSymbols([])
       setFileReferences([])
@@ -540,6 +557,35 @@ export function useBrowseState(repoNameProp?: string) {
     }
 
     loadFile()
+  }, [urlState.repoName, urlState.filePath, urlState.selectedCommit, urlState.selectedBranch])
+
+  // Load raw content for image files
+  useEffect(() => {
+    if (!urlState.filePath || !urlState.repoName || !isImageFile(urlState.filePath)) {
+      setRawContent(null)
+      return
+    }
+
+    const loadRawContent = async () => {
+      setFileLoading(true)
+      try {
+        const content = await getFileRawContent(
+          urlState.repoName!,
+          urlState.filePath!,
+          urlState.selectedCommit || undefined,
+          urlState.selectedBranch || undefined
+        )
+        setRawContent(content)
+        setError(null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load file')
+        setRawContent(null)
+      } finally {
+        setFileLoading(false)
+      }
+    }
+
+    loadRawContent()
   }, [urlState.repoName, urlState.filePath, urlState.selectedCommit, urlState.selectedBranch])
 
   // Load diff content
@@ -1158,6 +1204,7 @@ export function useBrowseState(repoNameProp?: string) {
     fileSymbols,
     fileReferences,
     fileVersions,
+    rawContent,
   }
 
   const diffState: BrowseDiffState = {
@@ -1212,6 +1259,7 @@ export function useBrowseState(repoNameProp?: string) {
     setDrawerOpen,
     toggleChangedOnly,
     setChangedOnly,
+    setViewMode,
 
     // References panel
     openRefsPanel,

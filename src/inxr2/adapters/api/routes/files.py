@@ -1,5 +1,6 @@
 """File API endpoints for code browsing."""
 
+import base64
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -127,6 +128,121 @@ class FileBlameResponse(BaseModel):
     repository_name: str
     lines: list[BlameLineResponse]
     total: int
+
+
+class RawFileContentResponse(BaseModel):
+    """Raw file content response (for binary files like images)."""
+
+    path: str
+    language: str | None
+    content_type: str
+    encoding: str  # "base64" or "utf-8"
+    data: str
+    size_bytes: int
+
+
+# MIME type map for image files
+_IMAGE_CONTENT_TYPES: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+}
+
+
+@router.get("/by-path/raw", response_model=RawFileContentResponse)
+async def get_file_raw_content_by_path(
+    repo: str,
+    path: str,
+    resolve_file_use_case: ResolveFileUseCaseDep,
+    git_service: GitServiceDep,
+    commit: str | None = None,
+    branch: str | None = None,
+) -> RawFileContentResponse:
+    """
+    Get raw file content by repository name and file path.
+
+    Returns base64-encoded data for binary files (images) and
+    UTF-8 text for text-based files (SVG).
+
+    Query parameters:
+    - repo: Repository name
+    - path: File path within the repository
+    - commit: Commit hash (optional)
+    - branch: Branch name (optional)
+    """
+    repo = validate_repo_name(repo)
+    path = validate_path(path)
+
+    try:
+        resolved = await resolve_file_use_case.execute(
+            ResolveFileRequest(
+                repository_name=repo,
+                file_path=path,
+                commit_hash=commit,
+                branch=branch,
+            )
+        )
+    except RepositoryNotFound as e:
+        raise HTTPException(status_code=404, detail="Repository not found") from e
+    except FileNotFound as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+    except CommitNotFound as e:
+        raise HTTPException(status_code=404, detail="Commit not found") from e
+
+    repository = resolved.repository
+    resolved_commit = resolved.commit
+    file = resolved.file
+
+    repo_path = Path(repository.url)
+    if not repo_path.exists():
+        raise HTTPException(status_code=404, detail="Repository path not found")
+
+    # Determine content type from file extension
+    ext = Path(path).suffix.lower()
+    content_type = _IMAGE_CONTENT_TYPES.get(ext)
+    if not content_type:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type for raw content: {ext}",
+        )
+
+    try:
+        raw_bytes = git_service.get_file_raw_content(
+            repo_path=repo_path,
+            commit_hash=resolved_commit.commit_hash.value,
+            file_path=path,
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"File '{path}' not found at this commit",
+        ) from None
+
+    # SVG is text-based XML, return as UTF-8
+    if ext == ".svg":
+        try:
+            data = raw_bytes.decode("utf-8")
+            encoding = "utf-8"
+        except UnicodeDecodeError:
+            data = base64.b64encode(raw_bytes).decode("ascii")
+            encoding = "base64"
+    else:
+        data = base64.b64encode(raw_bytes).decode("ascii")
+        encoding = "base64"
+
+    return RawFileContentResponse(
+        path=path,
+        language=file.language,
+        content_type=content_type,
+        encoding=encoding,
+        data=data,
+        size_bytes=len(raw_bytes),
+    )
 
 
 @router.get("/by-path", response_model=FileContentResponse)

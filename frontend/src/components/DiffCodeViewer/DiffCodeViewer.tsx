@@ -6,20 +6,7 @@ import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import Prism from 'prismjs'
 import * as Diff from 'diff'
-import 'prismjs/components/prism-python'
-import 'prismjs/components/prism-typescript'
-import 'prismjs/components/prism-javascript'
-import 'prismjs/components/prism-jsx'
-import 'prismjs/components/prism-tsx'
-import 'prismjs/components/prism-json'
-import 'prismjs/components/prism-yaml'
-import 'prismjs/components/prism-bash'
-import 'prismjs/components/prism-markdown'
-import 'prismjs/components/prism-css'
-import 'prismjs/components/prism-sql'
-import 'prismjs/components/prism-c'
-import 'prismjs/components/prism-java'
-import 'prismjs/components/prism-csharp'
+import { getPrismLanguage } from '@/lib/prismLanguages'
 
 import type { FileSymbol, FileReference } from '@/lib/api'
 
@@ -40,28 +27,6 @@ interface DiffCodeViewerProps {
   onReferenceClick?: (reference: FileReference, panel: 'left' | 'right') => void
   onLineClick?: (line: number, panel: 'left' | 'right') => void
   onClosePanel: (panel: 'left' | 'right') => void
-}
-
-// Map our language names to Prism language names
-const languageMap: Record<string, string> = {
-  python: 'python',
-  typescript: 'typescript',
-  javascript: 'javascript',
-  tsx: 'tsx',
-  jsx: 'jsx',
-  json: 'json',
-  yaml: 'yaml',
-  yml: 'yaml',
-  bash: 'bash',
-  sh: 'bash',
-  markdown: 'markdown',
-  md: 'markdown',
-  css: 'css',
-  sql: 'sql',
-  c: 'c',
-  java: 'java',
-  csharp: 'csharp',
-  cs: 'csharp',
 }
 
 interface DiffLine {
@@ -156,7 +121,7 @@ export function DiffCodeViewer({
   const [syncScroll] = useState(true)
   const theme = useTheme()
 
-  const prismLanguage = language ? languageMap[language.toLowerCase()] || 'text' : 'text'
+  const prismLanguage = getPrismLanguage(language)
   const langGrammar = Prism.languages[prismLanguage]
 
   // Compute diff (memoized to prevent re-renders from resetting navigation state)

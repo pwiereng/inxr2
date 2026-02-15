@@ -2,21 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Box, Typography, Tooltip } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import Prism from 'prismjs'
-// Import common languages
-import 'prismjs/components/prism-python'
-import 'prismjs/components/prism-typescript'
-import 'prismjs/components/prism-javascript'
-import 'prismjs/components/prism-jsx'
-import 'prismjs/components/prism-tsx'
-import 'prismjs/components/prism-json'
-import 'prismjs/components/prism-yaml'
-import 'prismjs/components/prism-bash'
-import 'prismjs/components/prism-markdown'
-import 'prismjs/components/prism-css'
-import 'prismjs/components/prism-sql'
-import 'prismjs/components/prism-c'
-import 'prismjs/components/prism-java'
-import 'prismjs/components/prism-csharp'
+import { getPrismLanguage } from '@/lib/prismLanguages'
 
 import type { FileSymbol, FileReference, BlameLine } from '@/lib/api'
 import { formatDateYMD } from '@/lib/dateUtils'
@@ -33,28 +19,6 @@ interface CodeViewerProps {
   onReferenceClick?: (reference: FileReference) => void
   onLineClick?: (line: number) => void
   onBlameCommitClick?: (commitHash: string) => void
-}
-
-// Map our language names to Prism language names
-const languageMap: Record<string, string> = {
-  python: 'python',
-  typescript: 'typescript',
-  javascript: 'javascript',
-  tsx: 'tsx',
-  jsx: 'jsx',
-  json: 'json',
-  yaml: 'yaml',
-  yml: 'yaml',
-  bash: 'bash',
-  sh: 'bash',
-  markdown: 'markdown',
-  md: 'markdown',
-  css: 'css',
-  sql: 'sql',
-  c: 'c',
-  java: 'java',
-  csharp: 'csharp',
-  cs: 'csharp',
 }
 
 // Represents a clickable segment in a line
@@ -84,7 +48,7 @@ export function CodeViewer({
   const theme = useTheme()
 
   // Map language to Prism language
-  const prismLanguage = language ? languageMap[language.toLowerCase()] || 'text' : 'text'
+  const prismLanguage = getPrismLanguage(language)
 
   // Highlight code on mount and when content/language changes
   useEffect(() => {

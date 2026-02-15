@@ -2230,6 +2230,14 @@ class FakeGitService(GitServicePort):
             for i in range(len(lines))
         ]
 
+    def get_file_raw_content(
+        self, repo_path: Path, commit_hash: str, file_path: str
+    ) -> bytes:
+        key = (str(repo_path), commit_hash, file_path)
+        if key in self._file_contents:
+            return self._file_contents[key].encode()
+        return f"# Content of {file_path} at {commit_hash}\nprint('hello')".encode()
+
     # Test helper methods
     def set_file_content(
         self, repo_path: str, commit_hash: str, file_path: str, content: str
