@@ -18,6 +18,7 @@ import {
   getRepositories,
   getRepositoryByName,
   getRepositoryTreeByName,
+  getCommits,
   getFileContentByPathAtCommit,
   getFileSymbolsByPath,
   getFileReferencesByPath,
@@ -298,6 +299,9 @@ export function useBrowseState(repoNameProp?: string) {
   const [fileReferences, setFileReferences] = useState<FileReference[]>([])
   const [fileVersions, setFileVersions] = useState<FileVersion[]>([])
 
+  // Latest commit hash for the current branch (HEAD fallback for changedOnly)
+  const [latestBranchCommit, setLatestBranchCommit] = useState<string | null>(null)
+
   // ========== Diff state ==========
   const [diffContent, setDiffContent] = useState<FileContent | null>(null)
   const [diffSymbols, setDiffSymbols] = useState<FileSymbol[]>([])
@@ -326,7 +330,7 @@ export function useBrowseState(repoNameProp?: string) {
       ? urlState.treePanel === 'left'
         ? leftCommit
         : rightCommit
-      : urlState.selectedCommit
+      : urlState.selectedCommit || latestBranchCommit
     const refCommit = urlState.diffMode
       ? urlState.refPanel === 'left'
         ? leftCommit
@@ -349,7 +353,7 @@ export function useBrowseState(repoNameProp?: string) {
       currentCommitHash,
       fileChangedInCommit,
     }
-  }, [urlState, fileVersions, diffFileVersions])
+  }, [urlState, fileVersions, diffFileVersions, latestBranchCommit])
 
   // ========== Data Loading Effects ==========
 
@@ -377,6 +381,19 @@ export function useBrowseState(repoNameProp?: string) {
 
     loadRepository()
   }, [urlState.repoName])
+
+  // Fetch latest commit for the current branch (used as HEAD fallback)
+  useEffect(() => {
+    if (!urlState.repoName) return
+
+    const branch = urlState.selectedBranch || repository?.default_branch
+    getCommits(urlState.repoName, branch || undefined, 1)
+      .then((res) => {
+        const latest = res.commits.find((c) => c.is_indexed)
+        setLatestBranchCommit(latest?.hash ?? null)
+      })
+      .catch(() => setLatestBranchCommit(null))
+  }, [urlState.repoName, urlState.selectedBranch, repository?.default_branch])
 
   // Load tree
   useEffect(() => {

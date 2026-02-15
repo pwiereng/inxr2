@@ -38,6 +38,7 @@ vi.mock('@/lib/api', () => ({
   getRepositories: vi.fn(),
   getRepositoryByName: vi.fn(),
   getRepositoryTreeByName: vi.fn(),
+  getCommits: vi.fn(),
   getFileContentByPathAtCommit: vi.fn(),
   getFileSymbolsByPath: vi.fn(),
   getFileReferencesByPath: vi.fn(),
@@ -48,6 +49,7 @@ vi.mock('@/lib/api', () => ({
 const mockGetRepositories = vi.mocked(api.getRepositories)
 const mockGetRepositoryByName = vi.mocked(api.getRepositoryByName)
 const mockGetRepositoryTreeByName = vi.mocked(api.getRepositoryTreeByName)
+const mockGetCommits = vi.mocked(api.getCommits)
 const mockGetFileHistory = vi.mocked(api.getFileHistory)
 const mockGetFileContentByPathAtCommit = vi.mocked(api.getFileContentByPathAtCommit)
 const mockGetFileSymbolsByPath = vi.mocked(api.getFileSymbolsByPath)
@@ -83,6 +85,7 @@ describe('useBrowseState', () => {
       total_files: 0,
       total_directories: 0,
     })
+    mockGetCommits.mockResolvedValue({ commits: [], total: 0 })
     mockGetFileHistory.mockResolvedValue({ versions: [], path: '', repository_name: '', total: 0 })
     mockGetFileContentByPathAtCommit.mockResolvedValue({
       id: 1,
