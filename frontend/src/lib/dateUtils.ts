@@ -55,6 +55,23 @@ export function formatDateYMD(dateString: string): string {
 }
 
 /**
+ * Format a date string as "YYYY-MM-DD HH:MM UTC".
+ *
+ * Returns an empty string for empty or invalid inputs.
+ */
+export function formatDateTimeUTC(dateString: string): string {
+  if (!dateString) return ''
+  const date = parseAsUTC(dateString)
+  if (isNaN(date.getTime())) return ''
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  const hours = String(date.getUTCHours()).padStart(2, '0')
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes} UTC`
+}
+
+/**
  * Format a commit date for display.
  *
  * Returns a compact date string in the format:

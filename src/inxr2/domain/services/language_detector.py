@@ -79,6 +79,8 @@ class LanguageDetector:
         ".md": "markdown",
         ".rst": "restructuredtext",
         ".txt": "text",
+        # SVG (XML-based text format)
+        ".svg": "svg",
         # SQL
         ".sql": "sql",
         # Docker
@@ -152,7 +154,6 @@ class LanguageDetector:
             ".gif",
             ".bmp",
             ".ico",
-            ".svg",
             ".pdf",
             ".zip",
             ".tar",

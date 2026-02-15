@@ -307,6 +307,37 @@ class GitService(GitServicePort):
                 f"File not found at commit {commit_hash[:8]}: {file_path}"
             ) from e
 
+    def get_file_raw_content(
+        self,
+        repo_path: Path,
+        commit_hash: str,
+        file_path: str,
+    ) -> bytes:
+        """
+        Get the raw bytes of a file at a specific commit.
+
+        Args:
+            repo_path: Path to the git repository
+            commit_hash: Commit hash
+            file_path: Path to file (relative to repo root)
+
+        Returns:
+            Raw file content as bytes
+
+        Raises:
+            FileNotFoundError: If file doesn't exist at commit
+        """
+        repo = Repo(repo_path)
+        commit = repo.commit(commit_hash)
+
+        try:
+            blob = commit.tree / file_path
+            return bytes(blob.data_stream.read())
+        except KeyError as e:
+            raise FileNotFoundError(
+                f"File not found at commit {commit_hash[:8]}: {file_path}"
+            ) from e
+
     def is_binary_file(self, repo_path: Path, commit_hash: str, file_path: str) -> bool:
         """
         Check if a file is binary.
@@ -695,6 +726,15 @@ class GitService(GitServicePort):
         )
 
         return sorted_branches
+
+    def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
+        """Return mapping of commit_hash -> [tag_names]."""
+        repo = Repo(repo_path)
+        result: dict[str, list[str]] = {}
+        for tag in repo.tags:
+            commit_hash = tag.commit.hexsha
+            result.setdefault(commit_hash, []).append(tag.name)
+        return result
 
     def get_blame(
         self,
