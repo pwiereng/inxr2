@@ -4,6 +4,7 @@ from datetime import datetime
 
 import pytest
 
+from inxr2.application.ports.services import ChangedFiles
 from inxr2.application.use_cases.repositories.get_repository_files import (
     GetRepositoryFilesRequest,
     GetRepositoryFilesUseCase,
@@ -18,6 +19,7 @@ from inxr2.application.use_cases.repositories.list_repositories import (
 from inxr2.domain.entities import Commit, File, Repository
 from inxr2.domain.value_objects import CommitHash
 from tests.fixtures.test_doubles import (
+    FakeGitService,
     InMemoryCommitRepository,
     InMemoryFileRepository,
     InMemoryRepositoryRepository,
@@ -738,10 +740,19 @@ class TestGetRepositoryTreeUseCase:
             )
         )
 
+        # Git service reports utils.py as added at commit2
+        git_service = FakeGitService()
+        git_service.changed_files_in_commit["bbb222" + "0" * 34] = ChangedFiles(
+            added=["utils.py"],
+            modified=[],
+            deleted=[],
+        )
+
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
             commit_repo=commit_repository,
+            git_service=git_service,
         )
 
         # changed_only=True at commit2: should only show utils.py (changed at commit2)

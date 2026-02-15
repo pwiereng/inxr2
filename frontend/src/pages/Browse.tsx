@@ -186,25 +186,23 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
           {drawerOpen ? <ChevronLeftIcon fontSize="small" /> : <MenuIcon fontSize="small" />}
         </IconButton>
 
-        {/* Changed Only toggle - visible when viewing a specific commit */}
-        {urlState.selectedCommit && (
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={urlState.changedOnly}
-                onChange={actions.toggleChangedOnly}
-                size="small"
-              />
-            }
-            label="Changed files only"
-            sx={{
-              ml: 0,
-              '& .MuiFormControlLabel-label': {
-                fontSize: '0.875rem',
-              },
-            }}
-          />
-        )}
+        {/* Changed Only toggle */}
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={urlState.changedOnly}
+              onChange={actions.toggleChangedOnly}
+              size="small"
+            />
+          }
+          label="Changed files only"
+          sx={{
+            ml: 0,
+            '& .MuiFormControlLabel-label': {
+              fontSize: '0.875rem',
+            },
+          }}
+        />
 
         {/* File path and info */}
         {fileContent && (

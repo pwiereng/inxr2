@@ -416,6 +416,28 @@ export function useBrowseState(repoNameProp?: string) {
     urlState.changedOnly,
   ])
 
+  // Clear selected file if it's not in the changed-files tree
+  useEffect(() => {
+    if (!urlState.changedOnly || !urlState.filePath || !urlState.repoName) return
+
+    // Recursively check if a file path exists in the tree
+    const fileInTree = (nodes: TreeNode[], path: string): boolean =>
+      nodes.some(
+        (n) =>
+          (n.type === 'file' && n.path === path) ||
+          (n.children != null && fileInTree(n.children, path))
+      )
+
+    if (treeNodes.length > 0 && !fileInTree(treeNodes, urlState.filePath)) {
+      // File not in the changed-files tree — clear selection
+      const params = new URLSearchParams(searchParams)
+      navigate(
+        `/browse/${encodeURIComponent(urlState.repoName)}?${params}`,
+        { replace: true }
+      )
+    }
+  }, [urlState.changedOnly, urlState.filePath, urlState.repoName, treeNodes, navigate, searchParams])
+
   // Load file versions
   useEffect(() => {
     if (!urlState.filePath || !urlState.repoName) {
@@ -606,8 +628,9 @@ export function useBrowseState(repoNameProp?: string) {
       if (!urlState.drawerOpen) params.set('drawer', '0')
       // Don't preserve refs, searchQuery - new file means new context
       // Exit diff mode when navigating to a new file (don't preserve diff, tp, rp, ap params)
-      // Preserve branch state
+      // Preserve branch and changed-files-only state
       if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
+      if (urlState.changedOnly) params.set('co', '1')
       const query = params.toString()
       navigate(
         `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(path)}${query ? `?${query}` : ''}`
@@ -768,26 +791,29 @@ export function useBrowseState(repoNameProp?: string) {
 
   const changeVersion = useCallback(
     (commitHash: string | null) => {
-      if (urlState.filePath) {
-        resetRefsPanel()
-        const params = new URLSearchParams()
-        if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
-        if (commitHash) params.set('commit', commitHash)
-        if (urlState.diffCommit) params.set('diff', urlState.diffCommit)
-        // Preserve drawer state only - version change means new context, clear search and refs
-        if (!urlState.drawerOpen) params.set('drawer', '0')
-        // Don't preserve searchQuery - version change invalidates search context
-        // Preserve diff mode panel states
-        if (urlState.treePanel === 'right') params.set('tp', 'r')
-        if (urlState.refPanel === 'right') params.set('rp', 'r')
-        if (urlState.activePanel === 'right') params.set('ap', 'r')
-        // Preserve branch state
-        if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
-        if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
-        navigate(
-          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
-        )
-      }
+      if (!urlState.repoName) return
+      resetRefsPanel()
+      const params = new URLSearchParams()
+      if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
+      if (commitHash) params.set('commit', commitHash)
+      if (urlState.diffCommit) params.set('diff', urlState.diffCommit)
+      // Preserve drawer state only - version change means new context, clear search and refs
+      if (!urlState.drawerOpen) params.set('drawer', '0')
+      // Don't preserve searchQuery - version change invalidates search context
+      // Preserve diff mode panel states
+      if (urlState.treePanel === 'right') params.set('tp', 'r')
+      if (urlState.refPanel === 'right') params.set('rp', 'r')
+      if (urlState.activePanel === 'right') params.set('ap', 'r')
+      // Preserve branch state
+      if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
+      if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
+      // Preserve changedOnly state
+      if (urlState.changedOnly) params.set('co', '1')
+      const basePath = urlState.filePath
+        ? `/browse/${encodeURIComponent(urlState.repoName)}/${encodeFilePath(urlState.filePath)}`
+        : `/browse/${encodeURIComponent(urlState.repoName)}`
+      const query = params.toString()
+      navigate(`${basePath}${query ? `?${query}` : ''}`)
     },
     [navigate, urlState, resetRefsPanel]
   )

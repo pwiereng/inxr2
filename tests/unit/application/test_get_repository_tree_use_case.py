@@ -4,6 +4,7 @@ from datetime import datetime
 
 import pytest
 
+from inxr2.application.ports.services import ChangedFiles
 from inxr2.application.use_cases.repositories.get_repository_tree import (
     GetRepositoryTreeRequest,
     GetRepositoryTreeUseCase,
@@ -11,6 +12,7 @@ from inxr2.application.use_cases.repositories.get_repository_tree import (
 from inxr2.domain.entities import Commit, File, Repository
 from inxr2.domain.value_objects import CommitHash
 from tests.fixtures.test_doubles import (
+    FakeGitService,
     InMemoryCommitRepository,
     InMemoryFileRepository,
     InMemoryRepositoryRepository,
@@ -20,11 +22,9 @@ from tests.fixtures.test_doubles import (
 class TestGetRepositoryTreeUseCaseChangedOnly:
     """Tests for changed_only filtering in GetRepositoryTreeUseCase.
 
-    The changed_only=True parameter should return ONLY files that were
-    actually modified at the specified commit, not all files at that commit.
-
-    This requires comparing content_hash between the target commit and
-    previous commits to detect actual changes.
+    The changed_only=True parameter uses git to determine which files were
+    actually changed at a commit (comparing against first parent), then
+    filters the indexed tree to only show those files.
     """
 
     @pytest.fixture
@@ -79,25 +79,14 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
         """Create files across two commits.
 
         At commit1 (older):
-        - file_a.py (content_hash: hash_a_v1)
-        - file_b.py (content_hash: hash_b_v1)
-        - file_c.py (content_hash: hash_c_v1)
+        - file_a.py, file_b.py, file_c.py
 
         At commit2 (newer):
-        - file_a.py (content_hash: hash_a_v2) <- CHANGED
-        - file_b.py (content_hash: hash_b_v1) <- UNCHANGED (same hash)
-        - file_c.py (content_hash: hash_c_v1) <- UNCHANGED (same hash)
-        - file_d.py (content_hash: hash_d_v1) <- NEW FILE
+        - file_a.py (CHANGED), file_b.py (unchanged), file_c.py (unchanged),
+          file_d.py (NEW)
 
-        When querying commit2 with changed_only=True, should return:
-        - file_a.py (changed)
-        - file_d.py (new)
-
-        Should NOT return:
-        - file_b.py (unchanged)
-        - file_c.py (unchanged)
+        Git will report file_a.py as modified and file_d.py as added.
         """
-        # Pass commit_repo so list_changed_at_commit can compare commit dates
         repo = InMemoryFileRepository(commit_repo=commit_repo)
 
         # Files at commit1 (older)
@@ -153,7 +142,7 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
                 repository_id=1,
                 commit_id=2,
                 path="file_b.py",
-                content_hash="hash_b_v1",  # UNCHANGED - same content_hash
+                content_hash="hash_b_v1",  # UNCHANGED
                 size_bytes=100,
                 language="python",
             )
@@ -164,7 +153,7 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
                 repository_id=1,
                 commit_id=2,
                 path="file_c.py",
-                content_hash="hash_c_v1",  # UNCHANGED - same content_hash
+                content_hash="hash_c_v1",  # UNCHANGED
                 size_bytes=100,
                 language="python",
             )
@@ -183,25 +172,40 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
 
         return repo
 
+    @pytest.fixture
+    def git_service(self) -> FakeGitService:
+        """Create git service with changed files data."""
+        service = FakeGitService()
+        # commit2: file_a.py modified, file_d.py added
+        service.changed_files_in_commit["b" * 40] = ChangedFiles(
+            added=["file_d.py"],
+            modified=["file_a.py"],
+            deleted=[],
+        )
+        # commit1 (initial): all files are new
+        service.changed_files_in_commit["a" * 40] = ChangedFiles(
+            added=["file_a.py", "file_b.py", "file_c.py"],
+            modified=[],
+            deleted=[],
+        )
+        return service
+
     @pytest.mark.asyncio
     async def test_changed_only_returns_only_changed_files(
         self,
         repository_repo: InMemoryRepositoryRepository,
         file_repo: InMemoryFileRepository,
         commit_repo: InMemoryCommitRepository,
+        git_service: FakeGitService,
     ) -> None:
-        """Test that changed_only=True returns only actually changed files.
-
-        This is a regression test for the bug where changed_only returned
-        ALL files at the commit instead of detecting actual changes.
-        """
+        """Test that changed_only=True returns only files git reports as changed."""
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
             commit_repo=commit_repo,
+            git_service=git_service,
         )
 
-        # Request tree at commit2 with changed_only=True
         request = GetRepositoryTreeRequest(
             repository_id=1,
             commit_hash="b" * 40,
@@ -210,23 +214,17 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
 
         result = await use_case.execute(request)
 
-        # Should only return 2 files: file_a.py (changed) and file_d.py (new)
+        # Should only return 2 files: file_a.py (modified) and file_d.py (added)
         assert result.total_files == 2, (
             f"Expected 2 changed files, got {result.total_files}. "
-            "The changed_only filter should only return files with different "
-            "content_hash compared to previous commit, plus new files."
+            "The changed_only filter should use git to determine changed files."
         )
 
-        # Verify the returned files are the correct ones
         file_paths = self._extract_file_paths(result.root)
-        assert "file_a.py" in file_paths, "file_a.py should be included (changed)"
-        assert "file_d.py" in file_paths, "file_d.py should be included (new)"
-        assert (
-            "file_b.py" not in file_paths
-        ), "file_b.py should NOT be included (unchanged)"
-        assert (
-            "file_c.py" not in file_paths
-        ), "file_c.py should NOT be included (unchanged)"
+        assert "file_a.py" in file_paths, "file_a.py should be included (modified)"
+        assert "file_d.py" in file_paths, "file_d.py should be included (added)"
+        assert "file_b.py" not in file_paths, "file_b.py should NOT be included"
+        assert "file_c.py" not in file_paths, "file_c.py should NOT be included"
 
     @pytest.mark.asyncio
     async def test_changed_only_false_returns_all_files(
@@ -234,15 +232,16 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
         repository_repo: InMemoryRepositoryRepository,
         file_repo: InMemoryFileRepository,
         commit_repo: InMemoryCommitRepository,
+        git_service: FakeGitService,
     ) -> None:
         """Test that changed_only=False returns all files at the commit."""
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
             commit_repo=commit_repo,
+            git_service=git_service,
         )
 
-        # Request tree at commit2 WITHOUT changed_only
         request = GetRepositoryTreeRequest(
             repository_id=1,
             commit_hash="b" * 40,
@@ -262,15 +261,16 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
         repository_repo: InMemoryRepositoryRepository,
         file_repo: InMemoryFileRepository,
         commit_repo: InMemoryCommitRepository,
+        git_service: FakeGitService,
     ) -> None:
         """Test that changed_only on first commit returns all files (all are new)."""
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
             commit_repo=commit_repo,
+            git_service=git_service,
         )
 
-        # Request tree at commit1 (first commit) with changed_only=True
         request = GetRepositoryTreeRequest(
             repository_id=1,
             commit_hash="a" * 40,
@@ -279,10 +279,34 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
 
         result = await use_case.execute(request)
 
-        # First commit - all files are "new", so all should be returned
+        # First commit - git reports all files as added
         assert (
             result.total_files == 3
         ), f"Expected 3 files (all new at first commit), got {result.total_files}"
+
+    @pytest.mark.asyncio
+    async def test_changed_only_without_git_service_raises(
+        self,
+        repository_repo: InMemoryRepositoryRepository,
+        file_repo: InMemoryFileRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> None:
+        """Test that changed_only=True without git_service raises ValueError."""
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repository_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+            # No git_service
+        )
+
+        request = GetRepositoryTreeRequest(
+            repository_id=1,
+            commit_hash="b" * 40,
+            changed_only=True,
+        )
+
+        with pytest.raises(ValueError, match="git_service"):
+            await use_case.execute(request)
 
     def _extract_file_paths(self, nodes: list) -> set[str]:
         """Recursively extract all file paths from tree nodes."""
