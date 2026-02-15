@@ -68,9 +68,17 @@ fi
 # Create role if it doesn't exist (uses POSTGRES_PASSWORD from env, or default)
 PG_ROLE="${POSTGRES_USER:-inxr2_user}"
 PG_PASS="${POSTGRES_PASSWORD:-inxr2_dev_password}"
+# Validate role/password don't contain shell metacharacters (dev-only safety)
+if echo "$PG_ROLE" | grep -qE "[^a-zA-Z0-9_]"; then
+    echo "❌ POSTGRES_USER contains invalid characters (alphanumeric and _ only)"
+    exit 1
+fi
+if echo "$PG_PASS" | grep -qE "['\\\";]"; then
+    echo "❌ POSTGRES_PASSWORD contains invalid characters (no quotes, backslashes, or semicolons)"
+    exit 1
+fi
 if ! psql -h localhost -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='$PG_ROLE'" | grep -q 1; then
     echo "🗄️  Creating $PG_ROLE role..."
-    # Safe: values come from controlled env vars, trust auth, dev-only container
     psql -h localhost -d postgres -c "CREATE ROLE $PG_ROLE WITH LOGIN PASSWORD '$PG_PASS' CREATEDB;"
     echo "✅ Role created"
 fi

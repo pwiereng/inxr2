@@ -705,8 +705,13 @@ class GitService(GitServicePort):
         """Get blame information for each line of a file at a specific commit."""
         from datetime import UTC, datetime
 
-        repo = Repo(repo_path)
-        commit = repo.commit(commit_hash)
+        try:
+            repo = Repo(repo_path)
+            commit = repo.commit(commit_hash)
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Cannot access repository or commit {commit_hash[:8]}: {e}"
+            ) from e
 
         try:
             blame_entries: Any = repo.blame(commit, file_path)

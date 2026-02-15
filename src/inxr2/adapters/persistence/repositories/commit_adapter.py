@@ -256,6 +256,21 @@ class PostgresCommitRepository(CommitRepositoryPort):
 
         return [self.mapper.to_domain(model) for model in models]
 
+    async def find_indexed_hashes(
+        self, repository_id: int, commit_hashes: list[str]
+    ) -> set[str]:
+        """Check which commit hashes exist in the database."""
+        if not commit_hashes:
+            return set()
+
+        result = await self.session.execute(
+            select(CommitModel.commit_hash).where(
+                CommitModel.repository_id == repository_id,
+                CommitModel.commit_hash.in_(commit_hashes),
+            )
+        )
+        return {row[0].strip() for row in result.all()}
+
     async def find_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> Commit | None:

@@ -3,6 +3,7 @@
 Retrieves commits from git and marks which are indexed in the database.
 """
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -10,6 +11,8 @@ from typing import Protocol
 from ....domain.exceptions import RepositoryNotFound
 from ...ports.repositories import CommitRepositoryPort, RepositoryPort
 from ...ports.services import CommitInfo
+
+logger = logging.getLogger(__name__)
 
 
 class GitListCommitsProtocol(Protocol):
@@ -125,23 +128,20 @@ class ListCommitsUseCase:
                 max_count=request.limit,
             )
             git_commits.reverse()
-        except Exception as exc:
-            import logging
-
-            logging.getLogger(__name__).warning(
-                "Failed to list git commits for %s: %s", repo_path, exc
+        except Exception:
+            logger.warning(
+                "Failed to list git commits for %s",
+                repo_path,
+                exc_info=True,
             )
             git_commits = []
 
-        # Get indexed commit hashes from DB for cross-referencing
-        # Use branch=None to get all indexed commits — a commit is "indexed"
-        # if it exists in the DB regardless of which branch it's on.
-        indexed_commits = await self._commit_repo.list_by_repository(
+        # Check which of the returned git commits are indexed in the DB
+        git_hashes = [ci.hash for ci in git_commits]
+        indexed_hashes = await self._commit_repo.find_indexed_hashes(
             repository_id=repository_id,
-            branch=None,
-            limit=10000,
+            commit_hashes=git_hashes,
         )
-        indexed_hashes = {c.commit_hash.value for c in indexed_commits}
 
         # Build response
         result = [

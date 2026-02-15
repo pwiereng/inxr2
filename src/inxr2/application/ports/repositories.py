@@ -203,6 +203,24 @@ class CommitRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def find_indexed_hashes(
+        self, repository_id: int, commit_hashes: list[str]
+    ) -> set[str]:
+        """Check which commit hashes exist in the database.
+
+        Efficiently determines indexed status for a batch of commit hashes
+        using a single IN query, rather than fetching full commit objects.
+
+        Args:
+            repository_id: The repository ID
+            commit_hashes: List of commit hashes to check
+
+        Returns:
+            Set of commit hashes that exist in the database
+        """
+        pass
+
+    @abstractmethod
     async def find_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> Commit | None:

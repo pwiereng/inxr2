@@ -8,7 +8,7 @@ See ARCHITECTURAL_REVIEW.md for rationale.
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from ....application.use_cases.commits import ListCommitsRequest
 from ....domain.exceptions import RepositoryNotFound
@@ -66,8 +66,6 @@ class CommitDetailResponse(BaseModel):
     commit_date: str
     parent_hashes: list[str]
 
-    model_config = ConfigDict(from_attributes=True)
-
 
 @router.get("", response_model=CommitListResponse)
 async def list_commits(
@@ -81,7 +79,7 @@ async def list_commits(
 
     Query parameters:
     - repo: Repository name (required)
-    - branch: Branch name (optional, returns all branches if not specified)
+    - branch: Branch name (optional, defaults to repository's default branch)
     - limit: Maximum number of commits to return (default: 50, max: 500)
     """
     # Validate inputs

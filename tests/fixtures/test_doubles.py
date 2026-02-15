@@ -1169,6 +1169,19 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         commits.sort(key=lambda c: c.commit_date, reverse=True)
         return commits[:limit]
 
+    async def find_indexed_hashes(
+        self, repository_id: int, commit_hashes: list[str]
+    ) -> set[str]:
+        """Check which commit hashes exist in the in-memory store."""
+        if not commit_hashes:
+            return set()
+        stored_hashes = {
+            c.commit_hash.value
+            for c in self._commits.values()
+            if c.repository_id == repository_id
+        }
+        return stored_hashes & set(commit_hashes)
+
     async def find_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> Commit | None:

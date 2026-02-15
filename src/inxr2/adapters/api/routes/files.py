@@ -282,7 +282,7 @@ async def get_file_blame_by_path(
 
     repo_path = Path(repository.url)
     if not repo_path.exists():
-        raise HTTPException(status_code=500, detail="Repository path not found")
+        raise HTTPException(status_code=404, detail="Repository path not found")
 
     try:
         blame_lines = git_service.get_blame(
@@ -293,12 +293,12 @@ async def get_file_blame_by_path(
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
-    # Check which blame commits are indexed (single batch query)
+    # Check which blame commits are indexed (batch hash lookup)
     repo_id = repository.id or 0
-    all_indexed = await commit_adapter.list_by_repository(
-        repository_id=repo_id, limit=10000
+    unique_blame_hashes = list({bl.commit_hash for bl in blame_lines})
+    indexed_hashes = await commit_adapter.find_indexed_hashes(
+        repository_id=repo_id, commit_hashes=unique_blame_hashes
     )
-    indexed_hashes = {c.commit_hash.value for c in all_indexed}
 
     return FileBlameResponse(
         path=path,
