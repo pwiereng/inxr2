@@ -15,6 +15,7 @@ import {
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CodeIcon from '@mui/icons-material/Code'
+import { formatDateYMD } from '@/lib/dateUtils'
 
 interface Repository {
   id: number
@@ -114,7 +115,7 @@ export default function Repositories() {
                           <Chip
                             size="small"
                             icon={<AccessTimeIcon />}
-                            label={`Indexed ${new Date(repo.created_at).toLocaleDateString()}`}
+                            label={`Indexed ${formatDateYMD(repo.created_at)}`}
                             variant="outlined"
                           />
                         )}

@@ -200,7 +200,7 @@ describe('VersionSelector', () => {
   })
 
   describe('date formatting', () => {
-    it('should format dates as yyyymmdd', async () => {
+    it('should format dates as YYYY-MM-DD HH:MM UTC', async () => {
       mockGetFileHistory.mockResolvedValue({
         path: 'src/main.py',
         repository_name: 'test-repo',
@@ -217,7 +217,7 @@ describe('VersionSelector', () => {
             commit_id: 1,
             commit_hash: 'aaa1234567890abcdef1234567890abcdef123456',
             short_hash: 'aaa1234',
-            commit_date: '2025-01-05T10:30:00Z',
+            commit_date: '2025-01-05T14:45:00Z',
             message: 'First commit',
             content_hash: 'hash1',
           },
@@ -238,14 +238,13 @@ describe('VersionSelector', () => {
         expect(screen.getByRole('listbox')).toBeInTheDocument()
       })
 
-      // Dates should be in yyyymmdd format (local timezone varies, so check pattern)
-      // The exact date depends on timezone, but format should be 8 digits
-      const listbox = screen.getByRole('listbox')
-      const datePattern = /\d{8}/
-      expect(listbox.textContent).toMatch(datePattern)
+      // All dates should show full datetime with UTC
+      // The selected commit's date may appear both in the combobox and the dropdown item
+      expect(screen.getAllByText('2025-03-15 10:30 UTC').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getByText('2025-01-05 14:45 UTC')).toBeInTheDocument()
     })
 
-    it('should add time for same-day commits', async () => {
+    it('should always show time and UTC even for same-day commits', async () => {
       mockGetFileHistory.mockResolvedValue({
         path: 'src/main.py',
         repository_name: 'test-repo',
@@ -283,10 +282,10 @@ describe('VersionSelector', () => {
         expect(screen.getByRole('listbox')).toBeInTheDocument()
       })
 
-      // Same-day commits should include time (hh:mm format)
-      const listbox = screen.getByRole('listbox')
-      const timePattern = /\d{2}:\d{2}/
-      expect(listbox.textContent).toMatch(timePattern)
+      // Both same-day commits should show full datetime with UTC
+      // The selected commit's date may appear both in the combobox and the dropdown item
+      expect(screen.getAllByText('2025-01-15 14:30 UTC').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getByText('2025-01-15 10:30 UTC')).toBeInTheDocument()
     })
   })
 

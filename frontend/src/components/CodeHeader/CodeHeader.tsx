@@ -10,6 +10,7 @@ import {
   FormControl,
   IconButton,
   Tooltip,
+  Typography,
   CircularProgress,
 } from '@mui/material'
 import HomeIcon from '@mui/icons-material/Home'
@@ -18,6 +19,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import HistoryIcon from '@mui/icons-material/History'
 import FolderIcon from '@mui/icons-material/Folder'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import { useNavigate } from 'react-router-dom'
@@ -31,7 +33,7 @@ import {
   type CommitInfo,
 } from '@/lib/api'
 
-import { formatDateYMD } from '@/lib/dateUtils'
+import { formatDateTimeUTC } from '@/lib/dateUtils'
 
 export type TabValue = 'browse' | 'search' | 'history'
 
@@ -155,6 +157,11 @@ export function CodeHeader({
 
   // Find commit display value
   const commitDisplayValue = commit || (commits[0]?.hash ?? '')
+
+  // Compute the date of the currently viewed commit
+  const currentCommitObj = commit ? commits.find((c) => c.hash === commit) : commits[0]
+  const currentCommitDate =
+    currentCommitObj?.commit_date ? formatDateTimeUTC(currentCommitObj.commit_date) : ''
 
   return (
     <AppBar
@@ -291,7 +298,7 @@ export function CodeHeader({
                 >
                   {commits.map((commitInfo) => {
                     const formattedDate = commitInfo.commit_date
-                      ? formatDateYMD(commitInfo.commit_date)
+                      ? formatDateTimeUTC(commitInfo.commit_date)
                       : ''
                     return (
                       <MenuItem key={commitInfo.hash} value={commitInfo.hash}>
@@ -340,6 +347,33 @@ export function CodeHeader({
               </FormControl>
             ) : null}
           </>
+        )}
+
+        {/* Current commit date indicator */}
+        {repoName && !loadingCommits && currentCommitDate && (
+          <Tooltip title={`Browsing code as of ${currentCommitDate}`}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                color: 'text.secondary',
+                ml: 0.5,
+              }}
+            >
+              <CalendarTodayIcon sx={{ fontSize: '0.95rem' }} />
+              <Typography
+                variant="body2"
+                sx={{
+                  fontSize: '0.85rem',
+                  fontVariantNumeric: 'tabular-nums',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {currentCommitDate}
+              </Typography>
+            </Box>
+          </Tooltip>
         )}
 
         <Box sx={{ flex: 1 }} />

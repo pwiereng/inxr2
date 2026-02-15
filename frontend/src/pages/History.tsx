@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Box, Container, Typography, List, ListItem, Paper, CircularProgress } from '@mui/material'
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { getCommits, type CommitInfo } from '@/lib/api'
+import { formatDateTimeUTC } from '@/lib/dateUtils'
 
 export function History() {
   const [searchParams] = useSearchParams()
@@ -100,17 +101,8 @@ export function History() {
     navigate(`/browse/${repoName}?${params.toString()}`)
   }
 
-  // Format date for display
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+  // Format date for display (always UTC)
+  const formatDate = (dateStr: string) => formatDateTimeUTC(dateStr)
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
