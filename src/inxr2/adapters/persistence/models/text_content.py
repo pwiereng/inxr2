@@ -36,8 +36,8 @@ class TextContentModel(Base):
     repository_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
     )
-    commit_id: Mapped[int] = mapped_column(
-        BIGINT, ForeignKey("commits.id", ondelete="CASCADE"), nullable=False
+    commit_id: Mapped[int | None] = mapped_column(
+        BIGINT, ForeignKey("commits.id", ondelete="CASCADE"), nullable=True
     )
 
     # Source information

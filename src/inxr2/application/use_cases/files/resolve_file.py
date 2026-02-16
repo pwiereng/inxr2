@@ -102,8 +102,8 @@ class ResolveFileUseCase:
 
         repository_id = repository.id if repository.id is not None else 0
 
-        # 2. Resolve file based on priority: commit > branch > default
-        file = await self._resolve_file(
+        # 2. Resolve file and commit based on priority: commit > branch > default
+        file, commit = await self._resolve_file_and_commit(
             repository_id=repository_id,
             repository=repository,
             path=request.file_path,
@@ -111,27 +111,25 @@ class ResolveFileUseCase:
             branch=request.branch,
         )
 
-        # 3. Get commit record for the resolved file
-        commit = await self._commit_repo.find_by_id(file.commit_id)
-        if not commit:
-            # This shouldn't happen - indicates data integrity issue
-            raise CommitNotFound(commit_id=file.commit_id)
-
         return ResolveFileResponse(
             file=file,
             commit=commit,
             repository=repository,
         )
 
-    async def _resolve_file(
+    async def _resolve_file_and_commit(
         self,
         repository_id: int,
         repository: Repository,
         path: str,
         commit_hash: str | None,
         branch: str | None,
-    ) -> File:
-        """Resolve file with priority: commit > branch > default.
+    ) -> tuple[File, Commit]:
+        """Resolve file and its commit with priority: commit > branch > default.
+
+        In the content-addressable model, files don't carry commit context.
+        The commit is determined from the resolution path (commit_hash, branch,
+        or latest on default branch).
 
         Args:
             repository_id: Repository database ID
@@ -141,10 +139,11 @@ class ResolveFileUseCase:
             branch: Optional branch for branch-specific resolution
 
         Returns:
-            Resolved File entity
+            Tuple of (File, Commit)
 
         Raises:
             FileNotFound: If file doesn't exist at specified location
+            CommitNotFound: If commit record is missing
         """
         if commit_hash:
             # Time travel mode: get file at specific commit
@@ -157,26 +156,83 @@ class ResolveFileUseCase:
                     repository_name=repository.name,
                     commit_hash=commit_hash,
                 )
-            return file
+            commit = await self._commit_repo.find_by_hash(repository_id, commit_hash)
+            if not commit:
+                raise CommitNotFound(commit_hash=commit_hash)
+            return file, commit
 
         if branch:
-            # Branch mode: get latest version of file on this branch
+            # Branch mode: resolve commit first, then find file at that commit
+            commit = await self._commit_repo.find_latest_by_branch(
+                repository_id, branch
+            )
+            if not commit:
+                raise CommitNotFound(commit_hash=f"(no commits on branch {branch})")
+
+            # Find file at this commit (guaranteed to be linked)
+            if commit.id is not None:
+                file = await self._file_repo.find_by_path(
+                    repository_id, commit.id, path
+                )
+                if file:
+                    return file, commit
+
+            # Fallback: use list_versions_by_path + find linked commit
             versions = await self._file_repo.list_versions_by_path(
                 repository_id, path, branch
             )
-            if versions:
-                return versions[0]  # Most recent version on this branch
+            if not versions:
+                raise FileNotFound(
+                    path=path,
+                    repository_name=repository.name,
+                    branch=branch,
+                )
+            file = versions[0]
+            commit = await self._find_linked_commit(file, commit)
+            return file, commit
 
-            # Branch has no indexed data for this file
-            raise FileNotFound(
-                path=path,
-                repository_name=repository.name,
-                branch=branch,
+        # Default: resolve HEAD commit on default branch first
+        default_branch = repository.default_branch or "main"
+        commit = await self._commit_repo.find_latest_by_branch(
+            repository_id, default_branch
+        )
+
+        # Primary: find file at HEAD commit (correct regardless of ID ordering)
+        if commit and commit.id is not None:
+            file = await self._file_repo.find_by_path(
+                repository_id, commit.id, path
             )
+            if file:
+                return file, commit
 
-        # Default: get latest version across all branches
+        # Fallback: find by repository and path + find linked commit
         file = await self._file_repo.find_by_repository_and_path(repository_id, path)
         if not file:
             raise FileNotFound(path=path, repository_name=repository.name)
 
-        return file
+        commit = await self._find_linked_commit(file, commit)
+        return file, commit
+
+    async def _find_linked_commit(
+        self, file: File, fallback_commit: Commit | None
+    ) -> Commit:
+        """Find a commit actually linked to a file version.
+
+        Uses get_commit_ids_for_files (ordered by commit_date descending)
+        to find the most recent commit that contains this file version.
+        Falls back to the provided commit or raises CommitNotFound.
+        """
+        if file.id is not None:
+            file_commit_ids = await self._file_repo.get_commit_ids_for_files(
+                [file.id]
+            )
+            linked_ids = file_commit_ids.get(file.id, [])
+            if linked_ids:
+                commit = await self._commit_repo.find_by_id(linked_ids[0])
+                if commit:
+                    return commit
+
+        if fallback_commit:
+            return fallback_commit
+
+        raise CommitNotFound(commit_hash="(no linked commit found)")

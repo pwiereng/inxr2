@@ -67,30 +67,35 @@ class TestPostgresFileRepositoryVersions:
         await commit_adapter.link_commit_to_branch(repo.id, commit3.id, "main")
 
         # Create file at each commit
-        await file_adapter.save(
+        f1 = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commit1.id,
                 path="src/test.py",
                 content_hash="h1" + "0" * 38,
             )
         )
-        await file_adapter.save(
+        assert f1.id is not None
+        await file_adapter.link_file_to_commit(f1.id, commit1.id)
+
+        f2 = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commit2.id,
                 path="src/test.py",
                 content_hash="h2" + "0" * 38,
             )
         )
-        await file_adapter.save(
+        assert f2.id is not None
+        await file_adapter.link_file_to_commit(f2.id, commit2.id)
+
+        f3 = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commit3.id,
                 path="src/test.py",
                 content_hash="h3" + "0" * 38,
             )
         )
+        assert f3.id is not None
+        await file_adapter.link_file_to_commit(f3.id, commit3.id)
 
         # List all versions
         versions = await file_adapter.list_versions_by_path(repo.id, "src/test.py")
@@ -139,22 +144,25 @@ class TestPostgresFileRepositoryVersions:
         )
 
         # Create same file on both branches
-        await file_adapter.save(
+        main_file = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=main_commit.id,
                 path="src/app.py",
                 content_hash="main" + "0" * 36,
             )
         )
-        await file_adapter.save(
+        assert main_file.id is not None
+        await file_adapter.link_file_to_commit(main_file.id, main_commit.id)
+
+        feat_file = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=feature_commit.id,
                 path="src/app.py",
                 content_hash="feat" + "0" * 36,
             )
         )
+        assert feat_file.id is not None
+        await file_adapter.link_file_to_commit(feat_file.id, feature_commit.id)
 
         # List all versions (no branch filter)
         all_versions = await file_adapter.list_versions_by_path(repo.id, "src/app.py")
@@ -196,13 +204,14 @@ class TestPostgresFileRepositoryVersions:
         assert commit.id is not None
         await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
 
-        await file_adapter.save(
+        file = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/file.py",
             )
         )
+        assert file.id is not None
+        await file_adapter.link_file_to_commit(file.id, commit.id)
 
         # Filter by non-existent branch
         versions = await file_adapter.list_versions_by_path(
@@ -248,30 +257,35 @@ class TestPostgresFileRepositoryVersions:
         assert commit1_id is not None
         assert commit2_id is not None
 
-        await file_adapter.save(
+        fv2 = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commit1_id,
                 path="src/order.py",
                 content_hash="v2" + "0" * 38,
             )
         )
-        await file_adapter.save(
+        assert fv2.id is not None
+        await file_adapter.link_file_to_commit(fv2.id, commit1_id)
+
+        fv1 = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commit0_id,
                 path="src/order.py",
                 content_hash="v1" + "0" * 38,
             )
         )
-        await file_adapter.save(
+        assert fv1.id is not None
+        await file_adapter.link_file_to_commit(fv1.id, commit0_id)
+
+        fv3 = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commit2_id,
                 path="src/order.py",
                 content_hash="v3" + "0" * 38,
             )
         )
+        assert fv3.id is not None
+        await file_adapter.link_file_to_commit(fv3.id, commit2_id)
 
         # Versions should be ordered by commit date (newest first)
         versions = await file_adapter.list_versions_by_path(
@@ -325,32 +339,38 @@ class TestPostgresFileRepositoryLatestByBranch:
         await commit_adapter.link_commit_to_branch(repo.id, new_commit.id, "main")
 
         # Create file.py at both commits (file modified)
-        await file_adapter.save(
+        old_file = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=old_commit.id,
                 path="src/file.py",
                 content_hash="old_content" + "0" * 29,
             )
         )
-        await file_adapter.save(
+        assert old_file.id is not None
+        await file_adapter.link_file_to_commit(old_file.id, old_commit.id)
+
+        new_file = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=new_commit.id,
                 path="src/file.py",
                 content_hash="new_content" + "0" * 29,
             )
         )
+        assert new_file.id is not None
+        await file_adapter.link_file_to_commit(new_file.id, new_commit.id)
 
-        # Create another_file.py only at old commit (file not modified)
-        await file_adapter.save(
+        # Create another_file.py at both commits (unchanged across commits)
+        # In full-snapshot indexing, every commit links to all files in the tree
+        another_file = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=old_commit.id,
                 path="src/another_file.py",
                 content_hash="unchanged" + "0" * 31,
             )
         )
+        assert another_file.id is not None
+        await file_adapter.link_file_to_commit(another_file.id, old_commit.id)
+        await file_adapter.link_file_to_commit(another_file.id, new_commit.id)
 
         # Get latest files on main branch
         files = await file_adapter.list_latest_by_branch(repo.id, "main")
@@ -409,20 +429,25 @@ class TestPostgresFileRepositoryLatestByBranch:
         )
 
         # Create files on each branch
-        await file_adapter.save(
+        main_file = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=main_commit.id,
                 path="src/main_only.py",
+                content_hash="main_only" + "0" * 31,
             )
         )
-        await file_adapter.save(
+        assert main_file.id is not None
+        await file_adapter.link_file_to_commit(main_file.id, main_commit.id)
+
+        feature_file = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=feature_commit.id,
                 path="src/feature_only.py",
+                content_hash="feat_only" + "0" * 31,
             )
         )
+        assert feature_file.id is not None
+        await file_adapter.link_file_to_commit(feature_file.id, feature_commit.id)
 
         # Get files on main branch
         main_files = await file_adapter.list_latest_by_branch(repo.id, "main")
@@ -456,13 +481,15 @@ class TestPostgresFileRepositoryLatestByBranch:
         assert commit.id is not None
         await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
 
-        await file_adapter.save(
+        file = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/test.py",
+                content_hash="unknown_br" + "0" * 30,
             )
         )
+        assert file.id is not None
+        await file_adapter.link_file_to_commit(file.id, commit.id)
 
         # Get files on non-existent branch
         files = await file_adapter.list_latest_by_branch(repo.id, "nonexistent")
@@ -496,13 +523,15 @@ class TestPostgresFileRepositoryLatestByBranch:
         await commit_adapter.link_commit_to_branch(repo.id, shared_commit.id, "feature")
 
         # Create a file at the shared commit
-        await file_adapter.save(
+        shared_file = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=shared_commit.id,
                 path="src/shared.py",
+                content_hash="shared_f" + "0" * 32,
             )
         )
+        assert shared_file.id is not None
+        await file_adapter.link_file_to_commit(shared_file.id, shared_commit.id)
 
         # Both branches should see the file
         main_files = await file_adapter.list_latest_by_branch(repo.id, "main")
@@ -534,27 +563,18 @@ class TestPostgresFileRepositorySearchByName:
         )
         assert commit.id is not None
 
-        # Create various files
-        await file_adapter.save(
-            FileFactory.create(
-                repository_id=repo.id, commit_id=commit.id, path="src/utils.py"
+        # Create various files and link to commit
+        for path, chash in [
+            ("src/utils.py", "srch_utils_" + "0" * 29),
+            ("src/main.py", "srch_main0" + "0" * 30),
+            ("tests/test_utils.py", "srch_tutil" + "0" * 30),
+            ("README.md", "srch_readm" + "0" * 30),
+        ]:
+            f = await file_adapter.save(
+                FileFactory.create(repository_id=repo.id, path=path, content_hash=chash)
             )
-        )
-        await file_adapter.save(
-            FileFactory.create(
-                repository_id=repo.id, commit_id=commit.id, path="src/main.py"
-            )
-        )
-        await file_adapter.save(
-            FileFactory.create(
-                repository_id=repo.id, commit_id=commit.id, path="tests/test_utils.py"
-            )
-        )
-        await file_adapter.save(
-            FileFactory.create(
-                repository_id=repo.id, commit_id=commit.id, path="README.md"
-            )
-        )
+            assert f.id is not None
+            await file_adapter.link_file_to_commit(f.id, commit.id)
 
         # Search for "utils"
         results = await file_adapter.search_by_name("utils")
@@ -582,11 +602,15 @@ class TestPostgresFileRepositorySearchByName:
         )
         assert commit.id is not None
 
-        await file_adapter.save(
+        f = await file_adapter.save(
             FileFactory.create(
-                repository_id=repo.id, commit_id=commit.id, path="src/MyClass.py"
+                repository_id=repo.id,
+                path="src/MyClass.py",
+                content_hash="case_ins0" + "0" * 31,
             )
         )
+        assert f.id is not None
+        await file_adapter.link_file_to_commit(f.id, commit.id)
 
         # Search with different cases
         results_lower = await file_adapter.search_by_name("myclass")
@@ -619,16 +643,25 @@ class TestPostgresFileRepositorySearchByName:
         assert commit1.id is not None
         assert commit2.id is not None
 
-        await file_adapter.save(
+        f1 = await file_adapter.save(
             FileFactory.create(
-                repository_id=repo1.id, commit_id=commit1.id, path="src/config.py"
+                repository_id=repo1.id,
+                path="src/config.py",
+                content_hash="repo1_cfg" + "0" * 31,
             )
         )
-        await file_adapter.save(
+        assert f1.id is not None
+        await file_adapter.link_file_to_commit(f1.id, commit1.id)
+
+        f2 = await file_adapter.save(
             FileFactory.create(
-                repository_id=repo2.id, commit_id=commit2.id, path="src/config.py"
+                repository_id=repo2.id,
+                path="src/config.py",
+                content_hash="repo2_cfg" + "0" * 31,
             )
         )
+        assert f2.id is not None
+        await file_adapter.link_file_to_commit(f2.id, commit2.id)
 
         # Search within repo1 only
         results = await file_adapter.search_by_name("config", repository_id=repo1.id)
@@ -658,22 +691,31 @@ class TestPostgresFileRepositorySearchByName:
         assert commit1.id is not None
         assert commit2.id is not None
 
-        await file_adapter.save(
+        f1 = await file_adapter.save(
             FileFactory.create(
-                repository_id=repo.id, commit_id=commit1.id, path="src/app.py"
+                repository_id=repo.id,
+                path="src/app.py",
+                content_hash="commit1ap" + "0" * 31,
             )
         )
-        await file_adapter.save(
+        assert f1.id is not None
+        await file_adapter.link_file_to_commit(f1.id, commit1.id)
+
+        f2 = await file_adapter.save(
             FileFactory.create(
-                repository_id=repo.id, commit_id=commit2.id, path="src/app.py"
+                repository_id=repo.id,
+                path="src/app.py",
+                content_hash="commit2ap" + "0" * 31,
             )
         )
+        assert f2.id is not None
+        await file_adapter.link_file_to_commit(f2.id, commit2.id)
 
         # Search within commit1 only
         results = await file_adapter.search_by_name("app", commit_id=commit1.id)
 
         assert len(results) == 1
-        assert results[0].commit_id == commit1.id
+        assert results[0].id == f1.id
 
     async def test_search_by_name_filters_by_language(
         self, db_session: AsyncSession
@@ -693,22 +735,27 @@ class TestPostgresFileRepositorySearchByName:
         )
         assert commit.id is not None
 
-        await file_adapter.save(
+        f_py = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/utils.py",
+                content_hash="lang_py00" + "0" * 31,
                 language="python",
             )
         )
-        await file_adapter.save(
+        assert f_py.id is not None
+        await file_adapter.link_file_to_commit(f_py.id, commit.id)
+
+        f_ts = await file_adapter.save(
             FileFactory.create(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/utils.ts",
+                content_hash="lang_ts00" + "0" * 31,
                 language="typescript",
             )
         )
+        assert f_ts.id is not None
+        await file_adapter.link_file_to_commit(f_ts.id, commit.id)
 
         # Search for Python files only
         results = await file_adapter.search_by_name("utils", language="python")
@@ -736,13 +783,15 @@ class TestPostgresFileRepositorySearchByName:
 
         # Create many files
         for i in range(10):
-            await file_adapter.save(
+            f = await file_adapter.save(
                 FileFactory.create(
                     repository_id=repo.id,
-                    commit_id=commit.id,
                     path=f"src/test_{i}.py",
+                    content_hash=f"limit_{i:04d}" + "0" * 30,
                 )
             )
+            assert f.id is not None
+            await file_adapter.link_file_to_commit(f.id, commit.id)
 
         # Search with limit of 5
         results = await file_adapter.search_by_name("test", limit=5)
@@ -769,27 +818,20 @@ class TestPostgresFileRepositorySearchByName:
 
         # Create files with different matching patterns
         # Relevance scoring uses PostgreSQL regex (func.substring with pattern).
-        await file_adapter.save(
-            FileFactory.create(
-                repository_id=repo.id,
-                commit_id=commit.id,
-                path="src/helpers/config_utils.py",  # Contains 'config'
+        for path, chash in [
+            ("src/helpers/config_utils.py", "rel_cfgu0" + "0" * 31),
+            ("src/config.py", "rel_cfg00" + "0" * 31),
+            ("src/configuration.py", "rel_cfgn0" + "0" * 31),
+        ]:
+            f = await file_adapter.save(
+                FileFactory.create(
+                    repository_id=repo.id,
+                    path=path,
+                    content_hash=chash,
+                )
             )
-        )
-        await file_adapter.save(
-            FileFactory.create(
-                repository_id=repo.id,
-                commit_id=commit.id,
-                path="src/config.py",  # Exact filename match
-            )
-        )
-        await file_adapter.save(
-            FileFactory.create(
-                repository_id=repo.id,
-                commit_id=commit.id,
-                path="src/configuration.py",  # Prefix match
-            )
-        )
+            assert f.id is not None
+            await file_adapter.link_file_to_commit(f.id, commit.id)
 
         results = await file_adapter.search_by_name("config")
 
@@ -817,11 +859,15 @@ class TestPostgresFileRepositorySearchByName:
         )
         assert commit.id is not None
 
-        await file_adapter.save(
+        f = await file_adapter.save(
             FileFactory.create(
-                repository_id=repo.id, commit_id=commit.id, path="src/main.py"
+                repository_id=repo.id,
+                path="src/main.py",
+                content_hash="no_match0" + "0" * 31,
             )
         )
+        assert f.id is not None
+        await file_adapter.link_file_to_commit(f.id, commit.id)
 
         results = await file_adapter.search_by_name("nonexistent")
 
@@ -849,17 +895,26 @@ class TestPostgresFileRepositorySearchByName:
         assert commit1.id is not None
         assert commit2.id is not None
 
-        # Same file in two commits
-        await file_adapter.save(
+        # Same file in two commits (different content versions)
+        f1 = await file_adapter.save(
             FileFactory.create(
-                repository_id=repo.id, commit_id=commit1.id, path="src/service.py"
+                repository_id=repo.id,
+                path="src/service.py",
+                content_hash="dedup_v10" + "0" * 31,
             )
         )
-        await file_adapter.save(
+        assert f1.id is not None
+        await file_adapter.link_file_to_commit(f1.id, commit1.id)
+
+        f2 = await file_adapter.save(
             FileFactory.create(
-                repository_id=repo.id, commit_id=commit2.id, path="src/service.py"
+                repository_id=repo.id,
+                path="src/service.py",
+                content_hash="dedup_v20" + "0" * 31,
             )
         )
+        assert f2.id is not None
+        await file_adapter.link_file_to_commit(f2.id, commit2.id)
 
         # Search without commit filter - should deduplicate
         results = await file_adapter.search_by_name("service", repository_id=repo.id)
@@ -901,16 +956,25 @@ class TestPostgresFileRepositorySearchByName:
         assert commit2.id is not None
 
         # Create files with identical paths in both repos
-        await file_adapter.save(
+        f1 = await file_adapter.save(
             FileFactory.create(
-                repository_id=repo1.id, commit_id=commit1.id, path="src/main.py"
+                repository_id=repo1.id,
+                path="src/main.py",
+                content_hash="cross_r10" + "0" * 31,
             )
         )
-        await file_adapter.save(
+        assert f1.id is not None
+        await file_adapter.link_file_to_commit(f1.id, commit1.id)
+
+        f2 = await file_adapter.save(
             FileFactory.create(
-                repository_id=repo2.id, commit_id=commit2.id, path="src/main.py"
+                repository_id=repo2.id,
+                path="src/main.py",
+                content_hash="cross_r20" + "0" * 31,
             )
         )
+        assert f2.id is not None
+        await file_adapter.link_file_to_commit(f2.id, commit2.id)
 
         # Search globally (no repository filter) - should return both files
         results = await file_adapter.search_by_name("main")

@@ -149,6 +149,19 @@ class GitServicePort(ABC):
     ) -> list[str]: ...
 
     @abstractmethod
+    def list_files_with_hashes(
+        self,
+        repo_path: Path,
+        commit_hash: str,
+    ) -> dict[str, str]:
+        """List all files with their git blob hashes at a specific commit.
+
+        Returns:
+            Dict mapping file path to git blob SHA hash.
+        """
+        ...
+
+    @abstractmethod
     def get_changed_files_in_commit(
         self, repo_path: Path, commit_hash: str
     ) -> ChangedFiles: ...

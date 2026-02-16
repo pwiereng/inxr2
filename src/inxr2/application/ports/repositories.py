@@ -6,7 +6,6 @@ mechanisms like PostgreSQL.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 
 from ...domain.entities import (
     Commit,
@@ -17,14 +16,6 @@ from ...domain.entities import (
     Symbol,
     TextContent,
 )
-
-
-@dataclass(frozen=True)
-class CopySymbolsResult:
-    """Result of copying symbols, including ID mapping for reference remapping."""
-
-    count: int
-    id_mapping: dict[int, int]  # old_symbol_id -> new_symbol_id
 
 
 class RepositoryPort(ABC):
@@ -271,15 +262,79 @@ class FileRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def find_or_create_version(
+        self,
+        repository_id: int,
+        path: str,
+        content_hash: str,
+        size_bytes: int,
+        language: str | None = None,
+        encoding: str = "utf-8",
+        is_binary: bool = False,
+        line_count: int | None = None,
+    ) -> tuple[File, bool]:
+        """Find existing file version or create a new one.
+
+        Atomically looks up a file version by (repository_id, path, content_hash).
+        If found, returns it. If not, creates it with the provided attributes.
+
+        Args:
+            repository_id: Repository this file belongs to
+            path: File path relative to repository root
+            content_hash: SHA-1 hash of file content
+            size_bytes: File size in bytes
+            language: Detected programming language
+            encoding: File encoding
+            is_binary: Whether file is binary
+            line_count: Number of lines
+
+        Returns:
+            Tuple of (File, created) where created is True if a new file
+            version was created, False if existing was returned.
+        """
+        pass
+
+    @abstractmethod
+    async def link_file_to_commit(self, file_id: int, commit_id: int) -> None:
+        """Link a file version to a commit via commit_files junction table.
+
+        Idempotent - if the link already exists, does nothing.
+
+        Args:
+            file_id: The file version ID
+            commit_id: The commit ID
+        """
+        pass
+
+    @abstractmethod
+    async def link_files_to_commit(self, file_ids: list[int], commit_id: int) -> None:
+        """Bulk link file versions to a commit.
+
+        Idempotent - existing links are ignored.
+
+        Args:
+            file_ids: List of file version IDs
+            commit_id: The commit ID
+        """
+        pass
+
+    @abstractmethod
     async def find_by_path(
         self, repository_id: int, commit_id: int, path: str
     ) -> File | None:
-        """Find file by repository, commit, and path (temporal query)."""
+        """Find file by repository, commit, and path.
+
+        Joins through commit_files to find the file version linked to the
+        given commit with the given path.
+        """
         pass
 
     @abstractmethod
     async def list_by_commit(self, commit_id: int) -> list[File]:
-        """List all files at a specific commit."""
+        """List all files at a specific commit.
+
+        Joins through commit_files junction table.
+        """
         pass
 
     @abstractmethod
@@ -288,12 +343,8 @@ class FileRepositoryPort(ABC):
     ) -> list[File]:
         """List only files that actually changed at a specific commit.
 
-        Returns files where either:
-        - The file is new (no prior version exists), OR
-        - The file's content_hash differs from the most recent prior version
-
-        This is used for the "changed files only" tree view, showing only
-        files that were modified at the target commit, not the full tree.
+        Compares the commit's file set with its parent commit's file set
+        to find files that are new or have a different content_hash.
 
         Args:
             repository_id: The repository ID
@@ -310,14 +361,13 @@ class FileRepositoryPort(ABC):
     ) -> list[File]:
         """List the latest version of each file at or before a specific commit.
 
-        This returns the full file tree state as it existed at the given commit,
-        including files that weren't modified at that commit but existed from
-        earlier commits. For delta-indexed repositories, this aggregates across
-        all commits up to and including the target.
+        With full snapshot indexing via commit_files, this is equivalent
+        to list_by_commit since every commit has its complete file tree.
+        Falls back to window function for delta-indexed commits.
 
         Args:
             repository_id: The repository ID
-            commit_id: The target commit ID (must exist in the database)
+            commit_id: The target commit ID
 
         Returns:
             List of files representing the complete tree state at that commit
@@ -347,8 +397,8 @@ class FileRepositoryPort(ABC):
     ) -> list[File]:
         """List all versions of a file across commits (for time travel).
 
-        Returns files with this path from different commits, ordered by
-        commit date descending (newest first).
+        Returns distinct file versions (unique content_hash) for this path,
+        ordered by newest first.
 
         Args:
             repository_id: The repository ID
@@ -373,8 +423,8 @@ class FileRepositoryPort(ABC):
     ) -> list[File]:
         """List the latest version of each file on a branch.
 
-        For delta-indexed repositories, this aggregates files across all commits
-        on the branch, returning only the most recent version of each unique path.
+        Gets the latest commit on the branch, then returns all files
+        linked to that commit via commit_files.
 
         Args:
             repository_id: The repository ID
@@ -382,43 +432,6 @@ class FileRepositoryPort(ABC):
 
         Returns:
             List of files (latest version of each unique path on the branch)
-        """
-        pass
-
-    @abstractmethod
-    async def find_one_by_content_hash_in_repo(
-        self, repository_id: int, content_hash: str
-    ) -> File | None:
-        """Find first file with matching content hash within a repository.
-
-        Used for content-hash based symbol/reference reuse optimization.
-        When indexing multiple commits, files with identical content can
-        reuse symbols/references from a previously indexed version.
-
-        Args:
-            repository_id: The repository to search within
-            content_hash: The content hash to match
-
-        Returns:
-            The first matching file, or None if no match found
-        """
-        pass
-
-    @abstractmethod
-    async def get_content_hash_to_file_id_map(
-        self, repository_id: int
-    ) -> dict[str, int]:
-        """Load all content hashes for a repository into memory.
-
-        Returns a mapping of content_hash -> file_id for fast in-memory lookup
-        during indexing. This avoids per-file database queries when checking
-        for donor files with matching content.
-
-        Args:
-            repository_id: The repository to load hashes for
-
-        Returns:
-            Dict mapping content_hash to file_id
         """
         pass
 
@@ -437,10 +450,11 @@ class FileRepositoryPort(ABC):
         Results are ordered by relevance (exact match first, then prefix, then contains).
 
         Version selection semantics:
-        - If ``commit_id`` is provided, search is scoped to files at that commit.
+        - If ``commit_id`` is provided, search is scoped to files at that commit
+          via commit_files junction.
         - If ``commit_id`` is ``None``, results are deduplicated such that only
           the latest indexed version of each unique (repository_id, path) pair
-          is returned. Callers will see at most one File per repo/path.
+          is returned.
 
         Args:
             query: The search pattern to match against file names/paths
@@ -451,8 +465,25 @@ class FileRepositoryPort(ABC):
             limit: Maximum number of results (default 20)
 
         Returns:
-            List of matching files, ordered by relevance. When commit_id is None,
-            contains at most one File per unique (repository_id, path).
+            List of matching files, ordered by relevance.
+        """
+        pass
+
+    @abstractmethod
+    async def get_commit_ids_for_files(
+        self, file_ids: list[int]
+    ) -> dict[int, list[int]]:
+        """Get commit IDs linked to file versions via commit_files junction.
+
+        For each file_id, returns the list of commit IDs that include it,
+        ordered by most recent first (by commit_date descending).
+
+        Args:
+            file_ids: List of file version IDs to look up
+
+        Returns:
+            Dict mapping file_id to list of commit_ids.
+            Files with no linked commits are omitted.
         """
         pass
 
@@ -510,7 +541,7 @@ class SymbolRepositoryPort(ABC):
         Args:
             name: The exact symbol name to match
             repository_id: Filter by repository (optional)
-            commit_id: Filter by specific commit for time travel (optional)
+            commit_id: Filter by specific commit via commit_files (optional)
         """
         pass
 
@@ -522,33 +553,6 @@ class SymbolRepositoryPort(ABC):
     @abstractmethod
     async def delete_by_file(self, file_id: int) -> int:
         """Delete all symbols for a file (for re-indexing). Returns count deleted."""
-        pass
-
-    @abstractmethod
-    async def copy_symbols_to_file(
-        self,
-        source_file_id: int,
-        target_file_id: int,
-        target_commit_id: int,
-        target_repository_id: int,
-    ) -> CopySymbolsResult:
-        """Copy all symbols from source file to target file.
-
-        Used for content-hash based symbol reuse optimization.
-        Creates new symbol records with the target file/commit IDs while
-        preserving all other symbol attributes.
-
-        Parent symbol IDs are remapped to point to the newly created symbols.
-
-        Args:
-            source_file_id: The file ID to copy symbols from
-            target_file_id: The file ID to copy symbols to
-            target_commit_id: The commit ID for the new symbols
-            target_repository_id: The repository ID for the new symbols
-
-        Returns:
-            CopySymbolsResult with count and old->new symbol ID mapping
-        """
         pass
 
 
@@ -583,7 +587,7 @@ class ReferenceRepositoryPort(ABC):
         Args:
             symbol_id: The target symbol ID
             limit: Maximum number of results
-            commit_id: Filter by specific commit for time travel (optional).
+            commit_id: Filter by specific commit via commit_files (optional).
                        If None, returns from latest version of each file.
             branch: Filter by branch name (only show refs from files on this branch).
         """
@@ -609,7 +613,7 @@ class ReferenceRepositoryPort(ABC):
             text: The reference text to match
             repository_id: Filter by repository
             limit: Maximum number of results
-            commit_id: Filter by specific commit for time travel (optional).
+            commit_id: Filter by specific commit via commit_files (optional).
                        If None, returns from latest version of each file.
             branch: Filter by branch name (only show refs from files on this branch).
         """
@@ -638,19 +642,17 @@ class ReferenceRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    async def resolve_unlinked_references(
-        self, repository_id: int, commit_aware: bool = False
-    ) -> int:
+    async def resolve_unlinked_references(self, repository_id: int) -> int:
         """Resolve references to their target symbols.
 
         After indexing, this method matches reference_text to symbol names
         and updates the target_symbol_id for each reference.
 
+        With content-addressable file versions, symbols are unique per file version
+        (no commit_id ambiguity), so commit-aware mode is no longer needed.
+
         Args:
             repository_id: The repository ID to resolve references for
-            commit_aware: If True, only match references to symbols from the
-                         same commit (for time travel consistency). If False,
-                         match across all commits in the repository.
 
         Returns:
             Number of references resolved
@@ -662,7 +664,6 @@ class ReferenceRepositoryPort(ABC):
         self,
         repository_id: int,
         batch_size: int = 1000,
-        commit_aware: bool = False,
     ) -> int:
         """Resolve a batch of unlinked references.
 
@@ -672,43 +673,9 @@ class ReferenceRepositoryPort(ABC):
         Args:
             repository_id: The repository ID to resolve references for
             batch_size: Maximum references to resolve in this batch
-            commit_aware: If True, only match to symbols from same commit
 
         Returns:
             Number of references resolved in this batch
-        """
-        pass
-
-    @abstractmethod
-    async def copy_references_to_file(
-        self,
-        source_file_id: int,
-        target_file_id: int,
-        target_commit_id: int,
-        target_repository_id: int,
-        symbol_id_mapping: dict[int, int] | None = None,
-    ) -> int:
-        """Copy all references from source file to target file.
-
-        Used for content-hash based reference reuse optimization.
-        Creates new reference records with the target file/commit IDs while
-        preserving all other reference attributes.
-
-        When symbol_id_mapping is provided, already-resolved target_symbol_id
-        values are remapped via the mapping. This avoids expensive re-resolution
-        for references that were already resolved on the source file.
-
-        Args:
-            source_file_id: The file ID to copy references from
-            target_file_id: The file ID to copy references to
-            target_commit_id: The commit ID for the new references
-            target_repository_id: The repository ID for the new references
-            symbol_id_mapping: Optional old->new symbol ID mapping from
-                copy_symbols_to_file. When provided, resolved target_symbol_id
-                values are remapped instead of being set to NULL.
-
-        Returns:
-            Number of references copied
         """
         pass
 

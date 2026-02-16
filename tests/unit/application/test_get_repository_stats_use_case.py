@@ -1,15 +1,18 @@
 """Tests for GetRepositoryStatsUseCase using dependency injection."""
 
+from datetime import datetime
+
 import pytest
 
 from inxr2.application.use_cases.repositories import (
     GetRepositoryStatsRequest,
     GetRepositoryStatsUseCase,
 )
-from inxr2.domain.entities import File, Reference, Repository, Symbol
+from inxr2.domain.entities import Commit, File, Reference, Repository, Symbol
 from inxr2.domain.exceptions import RepositoryNotFound
-from inxr2.domain.value_objects import ReferenceType, SymbolKind
+from inxr2.domain.value_objects import CommitHash, ReferenceType, SymbolKind
 from tests.fixtures.test_doubles import (
+    InMemoryCommitRepository,
     InMemoryFileRepository,
     InMemoryReferenceRepository,
     InMemoryRepositoryRepository,
@@ -51,7 +54,6 @@ class TestGetRepositoryStatsUseCase:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -62,7 +64,6 @@ class TestGetRepositoryStatsUseCase:
             File(
                 id=2,
                 repository_id=1,
-                commit_id=1,
                 path="src/utils.py",
                 content_hash="hash2",
                 size_bytes=200,
@@ -73,7 +74,6 @@ class TestGetRepositoryStatsUseCase:
             File(
                 id=3,
                 repository_id=1,
-                commit_id=1,
                 path="src/app.ts",
                 content_hash="hash3",
                 size_bytes=300,
@@ -84,7 +84,6 @@ class TestGetRepositoryStatsUseCase:
             File(
                 id=4,
                 repository_id=1,
-                commit_id=1,
                 path="README.md",
                 content_hash="hash4",
                 size_bytes=50,
@@ -96,7 +95,6 @@ class TestGetRepositoryStatsUseCase:
             File(
                 id=5,
                 repository_id=2,
-                commit_id=2,
                 path="index.js",
                 content_hash="hash5",
                 size_bytes=150,
@@ -115,7 +113,6 @@ class TestGetRepositoryStatsUseCase:
                 id=1,
                 file_id=1,
                 repository_id=1,
-                commit_id=1,
                 name="main",
                 kind=SymbolKind.FUNCTION,
                 start_line=1,
@@ -129,7 +126,6 @@ class TestGetRepositoryStatsUseCase:
                 id=2,
                 file_id=1,
                 repository_id=1,
-                commit_id=1,
                 name="Helper",
                 kind=SymbolKind.CLASS,
                 start_line=12,
@@ -143,7 +139,6 @@ class TestGetRepositoryStatsUseCase:
                 id=3,
                 file_id=2,
                 repository_id=1,
-                commit_id=1,
                 name="utility",
                 kind=SymbolKind.FUNCTION,
                 start_line=1,
@@ -158,7 +153,6 @@ class TestGetRepositoryStatsUseCase:
                 id=4,
                 file_id=5,
                 repository_id=2,
-                commit_id=2,
                 name="init",
                 kind=SymbolKind.FUNCTION,
                 start_line=1,
@@ -178,7 +172,6 @@ class TestGetRepositoryStatsUseCase:
             Reference(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 source_file_id=1,
                 source_line=5,
                 source_column=10,
@@ -191,7 +184,6 @@ class TestGetRepositoryStatsUseCase:
             Reference(
                 id=2,
                 repository_id=1,
-                commit_id=1,
                 source_file_id=1,
                 source_line=8,
                 source_column=4,
@@ -205,7 +197,6 @@ class TestGetRepositoryStatsUseCase:
             Reference(
                 id=3,
                 repository_id=2,
-                commit_id=2,
                 source_file_id=5,
                 source_line=3,
                 source_column=0,
@@ -406,7 +397,6 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 path="a.py",
                 content_hash="h1",
                 size_bytes=100,
@@ -417,7 +407,6 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
             File(
                 id=2,
                 repository_id=1,
-                commit_id=1,
                 path="b.py",
                 content_hash="h2",
                 size_bytes=100,
@@ -428,7 +417,6 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
             File(
                 id=3,
                 repository_id=1,
-                commit_id=1,
                 path="c.py",
                 content_hash="h3",
                 size_bytes=100,
@@ -447,3 +435,83 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
         stats = await use_case.execute(request)
 
         assert stats.language_distribution == {"Python": 3}
+
+    @pytest.mark.asyncio
+    async def test_uses_head_commit_files_when_commit_repo_provided(self) -> None:
+        """Should use list_by_commit for HEAD instead of deduplication.
+
+        Regression test: with HEAD-first indexing, the HEAD commit may have
+        a lower auto-increment ID than older commits. Using file.id for
+        deduplication would pick the wrong version. Using list_by_commit
+        on the HEAD commit gives the correct file set.
+        """
+        repository_repo = InMemoryRepositoryRepository()
+        repository_repo.add(
+            Repository(
+                id=1, name="test-repo", url="/path", default_branch="main"
+            )
+        )
+
+        commit_repo = InMemoryCommitRepository()
+        # HEAD commit (indexed first, gets lower ID)
+        head_commit = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("aaaa"),
+            author_date=datetime(2025, 1, 10),
+            commit_date=datetime(2025, 1, 10),
+        )
+        commit_repo.add(head_commit)
+        commit_repo._branch_commits[(1, "main", 1)] = True
+
+        # Older commit (indexed second, gets higher ID)
+        old_commit = Commit(
+            id=2,
+            repository_id=1,
+            commit_hash=CommitHash("bbbb"),
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+        )
+        commit_repo.add(old_commit)
+        commit_repo._branch_commits[(1, "main", 2)] = True
+
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        # HEAD version of file (lower ID)
+        file_repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/main.py",
+                content_hash="head_hash",
+                size_bytes=100,
+                language="Python",
+            )
+        )
+        file_repo._commit_files.add((1, 1))  # linked to HEAD
+
+        # Old version of file (higher ID)
+        file_repo.add(
+            File(
+                id=2,
+                repository_id=1,
+                path="src/main.py",
+                content_hash="old_hash",
+                size_bytes=80,
+                language="Python",
+            )
+        )
+        file_repo._commit_files.add((2, 2))  # linked to old commit
+
+        use_case = GetRepositoryStatsUseCase(
+            repository_repo=repository_repo,
+            file_repo=file_repo,
+            symbol_repo=InMemorySymbolRepository(),
+            reference_repo=InMemoryReferenceRepository(),
+            commit_repo=commit_repo,
+        )
+
+        request = GetRepositoryStatsRequest(repository_id=1)
+        stats = await use_case.execute(request)
+
+        # Should count 1 file (from HEAD commit), not 2
+        assert stats.total_files == 1

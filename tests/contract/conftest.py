@@ -193,20 +193,20 @@ async def create_test_file(
     path: str,
     content_hash: str,
 ) -> int:
-    """Create a test file and return its ID."""
-    from inxr2.domain.entities import File
+    """Create (or reuse) a test file version, link it to the commit, and return its ID.
 
-    file = await repos.file.save(
-        File(
-            repository_id=repo_id,
-            commit_id=commit_id,
-            path=path,
-            content_hash=content_hash,
-            size_bytes=100,
-            language="python",
-        )
+    Uses find_or_create_version so that the same (repo_id, path, content_hash)
+    can be linked to multiple commits without violating the unique constraint.
+    """
+    file, _created = await repos.file.find_or_create_version(
+        repository_id=repo_id,
+        path=path,
+        content_hash=content_hash,
+        size_bytes=100,
+        language="python",
     )
     assert file.id is not None
+    await repos.file.link_file_to_commit(file.id, commit_id)
     return file.id
 
 
@@ -226,7 +226,6 @@ async def create_test_symbol(
         Symbol(
             file_id=file_id,
             repository_id=repo_id,
-            commit_id=commit_id,
             name=name,
             kind=SymbolKind.FUNCTION,
             start_line=1,
@@ -255,7 +254,6 @@ async def create_test_reference(
     ref = await repos.reference.save(
         Reference(
             repository_id=repo_id,
-            commit_id=commit_id,
             source_file_id=source_file_id,
             source_line=5,
             source_column=0,

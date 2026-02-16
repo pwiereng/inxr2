@@ -26,13 +26,13 @@ class FakeIndexingOrchestrator(IndexingOrchestratorPort):
         request: IndexRepositoryRequest,
         progress_callback: ProgressCallback | None = None,
     ) -> IndexRepositoryResponse:
-        """Simulate repository indexing (always incremental)."""
+        """Simulate repository indexing."""
         # Record the indexing request
         self.indexed_repositories.append(
             {
                 "repository_path": request.repository_path,
                 "branch": request.branch,
-                "force": request.force,
+                "days": request.days,
             }
         )
 
@@ -49,9 +49,8 @@ class FakeIndexingOrchestrator(IndexingOrchestratorPort):
             symbols_found=400,
             references_found=500,
             references_resolved=450,
-            files_reused=0,
-            symbols_reused=0,
-            references_reused=0,
+            file_versions_new=95,
+            file_versions_cached=0,
             errors=[],
             elapsed_seconds=1.5,
         )
@@ -75,8 +74,6 @@ class TestIndexingOrchestratorPort:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python", "typescript"],
-            max_history=100,
-            force=False,
         )
 
         # Act
@@ -98,17 +95,16 @@ class TestIndexingOrchestratorPort:
         )
 
     @pytest.mark.asyncio
-    async def test_index_repository_with_force(
+    async def test_index_repository_with_days(
         self, orchestrator: FakeIndexingOrchestrator
     ) -> None:
-        """Test indexing with force flag ignores last indexed commit."""
+        """Test indexing with --days extends history backward."""
         # Arrange
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="develop",
             languages=["java"],
-            max_history=50,
-            force=True,  # Force re-process all commits
+            days=30,
         )
 
         # Act
@@ -116,21 +112,19 @@ class TestIndexingOrchestratorPort:
 
         # Assert
         assert response.branch == "develop"
-        assert orchestrator.indexed_repositories[0]["force"] is True
+        assert orchestrator.indexed_repositories[0]["days"] == 30
 
     @pytest.mark.asyncio
     async def test_index_repository_with_time_limit(
         self, orchestrator: FakeIndexingOrchestrator
     ) -> None:
-        """Test indexing with since_days time limit."""
+        """Test indexing with days time limit."""
         # Arrange
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            max_history=None,  # No commit limit
-            since_days=30,  # Only last 30 days
-            force=False,
+            days=30,
         )
 
         # Act
@@ -167,9 +161,8 @@ class TestIndexingOrchestratorPort:
                     symbols_found=350,
                     references_found=400,
                     references_resolved=380,
-                    files_reused=0,
-                    symbols_reused=0,
-                    references_reused=0,
+                    file_versions_new=90,
+                    file_versions_cached=0,
                     errors=[
                         "Failed to parse invalid_file.py: SyntaxError",
                         "Failed to read binary_file.bin: UnicodeDecodeError",
@@ -221,9 +214,8 @@ class TestIndexingOrchestratorPort:
         assert isinstance(response.symbols_found, int)
         assert isinstance(response.references_found, int)
         assert isinstance(response.references_resolved, int)
-        assert isinstance(response.files_reused, int)
-        assert isinstance(response.symbols_reused, int)
-        assert isinstance(response.references_reused, int)
+        assert isinstance(response.file_versions_new, int)
+        assert isinstance(response.file_versions_cached, int)
         assert isinstance(response.errors, list)
         assert isinstance(response.elapsed_seconds, float)
 

@@ -241,65 +241,47 @@ pre-commit install
 
 For detailed development workflows and troubleshooting, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
-### Database Reset and Re-indexing
+### Indexing
 
-If you need to rebuild the database from scratch or re-index a repository:
+INXR2 uses **full snapshot indexing** — every indexed commit stores the complete file tree. This makes indexing idempotent and ensures correct time-travel at any indexed commit.
 
-**Complete Fresh Start (reset DB + full index):**
+**How it works:**
+
+| Command | Behavior |
+|---------|----------|
+| `inxr2 index` | **First run**: indexes HEAD only. **Subsequent**: indexes all new commits since last run (forward fill). |
+| `inxr2 index --days 30` | Indexes all commits from the last 30 days. Already-indexed commits are skipped. |
+| `inxr2 db reset --yes` | Wipes all data. Follow with `inxr2 index` to start fresh. |
+
+**Key properties:**
+
+- **Idempotent**: Running the same command twice produces the same result. No `--force` needed.
+- **No gaps**: Forward fill always runs, ensuring contiguous coverage from the oldest indexed commit to HEAD.
+- **Backfill with `--days`**: Extend history backward at any time. `--days 10` today, `--days 100` tomorrow — equivalent to `--days 100` from scratch.
+- **Content-hash reuse**: Files unchanged between commits skip parsing. Watch for "File Versions (new)" and "File Versions (cached)" in output.
+
+**Examples:**
 ```bash
-# From your host machine - reset database then index all repos:
-docker exec inxr2-dev inxr2 db reset --yes
+# Index HEAD of all configured repos
 docker exec inxr2-dev inxr2 index --config config.yaml
 
-# Or as a single command:
-docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index --config config.yaml"
-
-# Index a specific repo only:
-docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index --config config.yaml --repo inxr2"
-
-# Limit commit history for faster indexing (e.g., last 10 commits):
-docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index --config config.yaml --history 10"
-```
-
-**Reset Database Only (clears all data):**
-```bash
-docker exec inxr2-dev inxr2 db reset --yes
-
-# Or using the helper script
-./scripts/dev-reset-db.sh
-```
-
-**Index Commands:**
-```bash
-# Index all repositories in config
-docker exec inxr2-dev inxr2 index --config config.yaml
-
-# Index a specific repository from config
-docker exec inxr2-dev inxr2 index --config config.yaml --repo myrepo
-
-# Force re-index a single repo (clears its existing data first)
-docker exec inxr2-dev inxr2 index --config config.yaml --repo myrepo --force
-
-# Limit commit history (useful for large repos)
-docker exec inxr2-dev inxr2 index --config config.yaml --history 50
-
-# Index only commits from last 30 days
+# Index last 30 days of history
 docker exec inxr2-dev inxr2 index --config config.yaml --days 30
 
-# With verbose output
-docker exec inxr2-dev inxr2 index --config config.yaml --verbose
+# Index a specific repo
+docker exec inxr2-dev inxr2 index --config config.yaml --repo myrepo
+
+# Full reset + re-index
+docker exec inxr2-dev bash -c "inxr2 db reset --yes && inxr2 index --config config.yaml --days 30"
+
+# Check what's indexed
+docker exec inxr2-dev inxr2 index status --config config.yaml
 ```
 
-**Branch Indexing Behavior:**
+**Branch behavior with `--days`:**
+- **Primary branch** (first in config): Always indexed — at minimum HEAD, or N days if specified.
+- **Other branches**: Only indexed if they have commits within the `--days` window.
 
-When using `--days` to filter by date, the indexer applies these rules:
-
-- **Primary branch** (first branch listed in config): Always indexed. If it has commits within the `--days` window, those are indexed; otherwise falls back to HEAD only
-- **Other branches**: Only indexed if they have commits within the `--days` window; skipped entirely otherwise
-
-This ensures your main branch is always current while stale feature branches are automatically skipped.
-
-Example with multiple branches:
 ```yaml
 repositories:
   - name: myrepo
@@ -307,14 +289,6 @@ repositories:
       - main        # Primary - always indexed (at least HEAD)
       - feature-a   # Only indexed if has commits within --days
       - feature-b   # Only indexed if has commits within --days
-```
-
-**Note on Incremental Indexing:**
-Indexing is always incremental - it only indexes commits not yet in the database. For a complete reindex, first reset the database.
-
-**Check Index Status:**
-```bash
-docker exec inxr2-dev inxr2 index status --config config.yaml
 ```
 
 **Interactive Shell (alternative):**
@@ -326,10 +300,6 @@ docker exec -it inxr2-dev bash
 inxr2 db reset --yes
 inxr2 index --config config.yaml
 ```
-
-**Performance Note:** The indexer uses content-hash based reuse - files with identical content
-across commits are not re-parsed. This can provide up to ~5x speedup for repositories where most
-files don't change between commits. Watch for "Files Reused" in the summary output.
 
 ### Indexing External Repositories
 

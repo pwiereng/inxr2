@@ -119,35 +119,42 @@ class IndexingProgressRenderer:
         out = output or sys.stdout
         console = self._console
 
+        _SPINNER = "|/-\\"
+
         class _State:
             pcts: set[int] = set()
             phase: str = ""
             shown_start: bool = False
+            tick: int = 0
+            last_pct: int = 0
 
         state = _State()
 
         def on_progress(p: IndexingProgress) -> None:
             if not state.shown_start and p.files_total > 0:
                 state.shown_start = True
-                console.print(
-                    f"  [dim]Files to process: {p.files_total} | "
-                    f"Cache size: {p.cache_size}[/dim]"
-                )
+                console.print(f"  [dim]Files to process: {p.files_total}[/dim]")
 
             if p.phase == "files" and p.files_total > 0:
                 pct = int((p.files_processed / p.files_total) * 100)
+                state.tick += 1
+                spinner = _SPINNER[state.tick % len(_SPINNER)]
                 if pct in _MILESTONES and pct not in state.pcts:
                     state.pcts.add(pct)
-                    out.write(
-                        f"\r  {pct}% ({p.files_processed}/{p.files_total}) | "
-                        f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
-                        f"Cache: {p.cache_size}    "
-                    )
-                    out.flush()
+                    state.last_pct = pct
+                # Always update the line with current spinner
+                out.write(
+                    f"\r  {spinner} {state.last_pct}% "
+                    f"({p.files_processed}/{p.files_total}) | "
+                    f"Symbols: {p.symbols_found} | Refs: {p.references_found}    "
+                )
+                out.flush()
             elif p.phase == "resolving":
                 if state.phase != "resolving":
                     state.phase = "resolving"
                     state.pcts = set()
+                    state.tick = 0
+                    state.last_pct = 0
                     out.write("\n")
                     if p.refs_total > 0:
                         console.print(
@@ -158,13 +165,16 @@ class IndexingProgressRenderer:
                         console.print("  [cyan]Resolving references...[/cyan]")
                 if p.refs_total > 0:
                     pct = int((p.refs_resolved / p.refs_total) * 100)
+                    state.tick += 1
+                    spinner = _SPINNER[state.tick % len(_SPINNER)]
                     if pct in _MILESTONES and pct not in state.pcts:
                         state.pcts.add(pct)
-                        out.write(
-                            f"\r  Resolving: {pct}% "
-                            f"({p.refs_resolved}/{p.refs_total})    "
-                        )
-                        out.flush()
+                        state.last_pct = pct
+                    out.write(
+                        f"\r  {spinner} Resolving: {state.last_pct}% "
+                        f"({p.refs_resolved}/{p.refs_total})    "
+                    )
+                    out.flush()
 
         return on_progress
 
@@ -188,23 +198,19 @@ class IndexingProgressRenderer:
     def print_summary(
         self,
         stats: IndexingStats,
-        is_incremental: bool = False,
         commits_indexed: int | None = None,
         elapsed_seconds: float | None = None,
         indexing_seconds: float | None = None,
         resolving_seconds: float | None = None,
         repo_name: str | None = None,
         branch: str | None = None,
-        max_history: int | None = None,
-        since_days: int | None = None,
+        days: int | None = None,
     ) -> None:
         """Print indexing summary as a Rich panel with a table."""
         console = self._console
         console.print()
 
-        index_type = "Incremental" if is_incremental else "Full"
-
-        table = Table(title=f"{index_type} Index Complete", show_header=False, box=None)
+        table = Table(title="Index Complete", show_header=False, box=None)
         table.add_column("Metric", style="dim")
         table.add_column("Value", justify="right")
 
@@ -212,10 +218,8 @@ class IndexingProgressRenderer:
             table.add_row("Repository", f"[bold]{repo_name}[/bold]")
         if branch:
             table.add_row("Branch", f"[cyan]{branch}[/cyan]")
-        if since_days is not None:
-            table.add_row("Range", f"[dim]last {since_days} days[/dim]")
-        elif max_history is not None:
-            table.add_row("Range", f"[dim]last {max_history} commits[/dim]")
+        if days is not None:
+            table.add_row("Range", f"[dim]last {days} days[/dim]")
 
         if repo_name or branch:
             table.add_row("", "")
@@ -227,8 +231,6 @@ class IndexingProgressRenderer:
         if stats.lines_indexed > 0:
             table.add_row("Lines Indexed", f"[cyan]{stats.lines_indexed:,}[/cyan]")
         table.add_row("Files Processed", f"[green]{stats.files_succeeded}[/green]")
-        if stats.files_unchanged > 0:
-            table.add_row("Files Unchanged", f"[dim]{stats.files_unchanged}[/dim]")
         if stats.files_skipped > 0:
             table.add_row("Files Skipped", f"[dim]{stats.files_skipped}[/dim]")
         if stats.files_failed > 0:
@@ -262,13 +264,15 @@ class IndexingProgressRenderer:
                 f"[dim]{stats.commit_messages_indexed:,}[/dim]",
             )
 
-        if stats.files_reused > 0:
+        if stats.file_versions_new > 0 or stats.file_versions_cached > 0:
             table.add_row("", "")
-            table.add_row("Files Reused", f"[yellow]{stats.files_reused}[/yellow]")
-            table.add_row("Symbols Reused", f"[yellow]{stats.symbols_reused}[/yellow]")
             table.add_row(
-                "References Reused",
-                f"[yellow]{stats.references_reused}[/yellow]",
+                "File Versions (new)",
+                f"[green]{stats.file_versions_new}[/green]",
+            )
+            table.add_row(
+                "File Versions (cached)",
+                f"[yellow]{stats.file_versions_cached}[/yellow]",
             )
 
         if elapsed_seconds is not None:
@@ -298,6 +302,17 @@ class IndexingProgressRenderer:
                 table.add_row("  Updates", f"[dim]{db.updates}[/dim]")
             if db.deletes > 0:
                 table.add_row("  Deletes", f"[dim]{db.deletes}[/dim]")
+
+        if stats.db_size_bytes > 0:
+            table.add_row("", "")
+            size_mb = stats.db_size_bytes / 1_048_576
+            table.add_row("DB Size", f"[blue]{size_mb:.1f} MB[/blue]")
+            if stats.db_size_added_bytes > 0:
+                added_mb = stats.db_size_added_bytes / 1_048_576
+                table.add_row("  Added", f"[dim]+{added_mb:.1f} MB[/dim]")
+            elif stats.db_size_added_bytes < 0:
+                freed_mb = abs(stats.db_size_added_bytes) / 1_048_576
+                table.add_row("  Freed", f"[dim]-{freed_mb:.1f} MB[/dim]")
 
         console.print(Panel(table, border_style="green"))
 

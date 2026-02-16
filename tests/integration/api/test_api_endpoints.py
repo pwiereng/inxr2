@@ -198,7 +198,6 @@ class TestRepositoriesAPI:
         files = [
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path=f"src/api_file{i}.py",
                 content_hash=f"hash{i}",
                 size_bytes=100 * (i + 1),
@@ -302,7 +301,6 @@ class TestRepositoriesAPI:
         files = [
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -310,7 +308,6 @@ class TestRepositoriesAPI:
             ),
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="src/utils/helper.py",
                 content_hash="hash2",
                 size_bytes=200,
@@ -318,7 +315,6 @@ class TestRepositoriesAPI:
             ),
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="tests/test_main.py",
                 content_hash="hash3",
                 size_bytes=150,
@@ -416,7 +412,6 @@ class TestRepositoriesAPI:
         files = [
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -424,7 +419,6 @@ class TestRepositoriesAPI:
             ),
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="tests/test_main.py",
                 content_hash="hash2",
                 size_bytes=150,
@@ -489,7 +483,6 @@ class TestRepositoriesAPI:
         files = [
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="main.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -497,7 +490,6 @@ class TestRepositoriesAPI:
             ),
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="app.ts",
                 content_hash="hash2",
                 size_bytes=200,
@@ -505,7 +497,6 @@ class TestRepositoriesAPI:
             ),
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="helper.py",
                 content_hash="hash3",
                 size_bytes=150,
@@ -560,7 +551,6 @@ class TestSymbolsAPI:
         file_adapter = PostgresFileRepository(db_session)
         file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="src/main.py",
             content_hash="hash1",
             size_bytes=100,
@@ -568,6 +558,9 @@ class TestSymbolsAPI:
         )
         saved_file = await file_adapter.save(file)
         assert saved_file.id is not None
+
+        # Link file to commit via commit_files junction
+        await file_adapter.link_file_to_commit(saved_file.id, saved_commit.id)
 
         return saved_repo, saved_commit, saved_file
 
@@ -606,7 +599,6 @@ class TestSymbolsAPI:
             Symbol(
                 file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 name="MyClass",
                 qualified_name="src.main.MyClass",
                 kind=SymbolKind.CLASS,
@@ -618,7 +610,6 @@ class TestSymbolsAPI:
             Symbol(
                 file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 name="my_function",
                 qualified_name="src.main.my_function",
                 kind=SymbolKind.FUNCTION,
@@ -665,7 +656,6 @@ class TestSymbolsAPI:
             Symbol(
                 file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 name="TestClass",
                 kind=SymbolKind.CLASS,
                 start_line=1,
@@ -676,7 +666,6 @@ class TestSymbolsAPI:
             Symbol(
                 file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 name="test_function",
                 kind=SymbolKind.FUNCTION,
                 start_line=12,
@@ -720,7 +709,6 @@ class TestSymbolsAPI:
         symbol = Symbol(
             file_id=saved_file.id,
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             name="UniqueSymbol",
             qualified_name="src.main.UniqueSymbol",
             kind=SymbolKind.CLASS,
@@ -783,7 +771,6 @@ class TestSymbolsAPI:
         symbol = Symbol(
             file_id=saved_file.id,
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             name="TargetSymbol",
             kind=SymbolKind.CLASS,
             start_line=1,
@@ -799,7 +786,6 @@ class TestSymbolsAPI:
             Reference(
                 source_file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 source_line=15,
                 source_column=4,
                 source_end_column=16,
@@ -810,7 +796,6 @@ class TestSymbolsAPI:
             Reference(
                 source_file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 source_line=20,
                 source_column=8,
                 source_end_column=20,
@@ -870,7 +855,6 @@ class TestSymbolsAPI:
         file_adapter = PostgresFileRepository(db_session)
         file2 = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="src/other.py",
             content_hash="hash2",
             size_bytes=100,
@@ -878,13 +862,13 @@ class TestSymbolsAPI:
         )
         saved_file2 = await file_adapter.save(file2)
         assert saved_file2.id is not None
+        await file_adapter.link_file_to_commit(saved_file2.id, saved_commit.id)
 
         symbol_adapter = PostgresSymbolRepository(db_session)
         symbols = [
             Symbol(
                 file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 name="save",
                 qualified_name="FileRepository.save",
                 kind=SymbolKind.METHOD,
@@ -896,7 +880,6 @@ class TestSymbolsAPI:
             Symbol(
                 file_id=saved_file2.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 name="save",
                 qualified_name="CommitRepository.save",
                 kind=SymbolKind.METHOD,
@@ -950,7 +933,6 @@ class TestSymbolsAPI:
         symbol = Symbol(
             file_id=saved_file.id,
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             name="save",
             qualified_name="Repository.save",
             kind=SymbolKind.METHOD,
@@ -968,7 +950,6 @@ class TestSymbolsAPI:
             Reference(
                 source_file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 source_line=30,
                 source_column=8,
                 source_end_column=12,
@@ -979,7 +960,6 @@ class TestSymbolsAPI:
             Reference(
                 source_file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 source_line=40,
                 source_column=8,
                 source_end_column=12,
@@ -1039,7 +1019,6 @@ class TestFilesAPI:
         file_adapter = PostgresFileRepository(db_session)
         file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="src/module.py",
             content_hash="hash1",
             size_bytes=100,
@@ -1053,7 +1032,6 @@ class TestFilesAPI:
             Symbol(
                 file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 name="FileClass",
                 kind=SymbolKind.CLASS,
                 start_line=1,
@@ -1064,7 +1042,6 @@ class TestFilesAPI:
             Symbol(
                 file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 name="file_function",
                 kind=SymbolKind.FUNCTION,
                 start_line=12,
@@ -1140,7 +1117,6 @@ class TestFilesAPI:
         file_adapter = PostgresFileRepository(db_session)
         file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="src/caller.py",
             content_hash="hash1",
             size_bytes=100,
@@ -1154,7 +1130,6 @@ class TestFilesAPI:
         target_symbol = Symbol(
             file_id=saved_file.id,
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             name="target_function",
             kind=SymbolKind.FUNCTION,
             start_line=50,
@@ -1170,7 +1145,6 @@ class TestFilesAPI:
             Reference(
                 source_file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 source_line=10,
                 source_column=4,
                 source_end_column=19,
@@ -1181,7 +1155,6 @@ class TestFilesAPI:
             Reference(
                 source_file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 source_line=1,
                 source_column=0,
                 source_end_column=20,
@@ -1192,7 +1165,6 @@ class TestFilesAPI:
             Reference(
                 source_file_id=saved_file.id,
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 source_line=25,
                 source_column=8,
                 source_end_column=23,
@@ -1274,7 +1246,6 @@ class TestFilesAPI:
         file_adapter = PostgresFileRepository(db_session)
         file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="src/utils/helper.py",
             content_hash="hash1",
             size_bytes=100,
@@ -1283,11 +1254,18 @@ class TestFilesAPI:
         saved_file = await file_adapter.save(file)
         assert saved_file.id is not None
 
+        # Link file to commit and commit to branch for resolve_file
+        await file_adapter.link_file_to_commit(saved_file.id, saved_commit.id)
+        await commit_adapter.link_commit_to_branch(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            branch="main",
+        )
+
         symbol_adapter = PostgresSymbolRepository(db_session)
         symbol = Symbol(
             file_id=saved_file.id,
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             name="helper_function",
             kind=SymbolKind.FUNCTION,
             start_line=1,
@@ -1357,7 +1335,6 @@ class TestFilesAPI:
         file_adapter = PostgresFileRepository(db_session)
         file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="src/main.py",
             content_hash="hash1",
             size_bytes=100,
@@ -1366,11 +1343,18 @@ class TestFilesAPI:
         saved_file = await file_adapter.save(file)
         assert saved_file.id is not None
 
+        # Link file to commit and commit to branch for resolve_file
+        await file_adapter.link_file_to_commit(saved_file.id, saved_commit.id)
+        await commit_adapter.link_commit_to_branch(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            branch="main",
+        )
+
         reference_adapter = PostgresReferenceRepository(db_session)
         reference = Reference(
             source_file_id=saved_file.id,
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             source_line=5,
             source_column=0,
             source_end_column=10,
@@ -1787,7 +1771,6 @@ class TestFileHistoryAPI:
         files = [
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit1.id,
                 path="src/main.py",
                 content_hash="hash_v1",
                 size_bytes=100,
@@ -1795,14 +1778,17 @@ class TestFileHistoryAPI:
             ),
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit2.id,
                 path="src/main.py",
                 content_hash="hash_v2",  # Different hash = file changed
                 size_bytes=150,
                 language="python",
             ),
         ]
-        await file_adapter.save_many(files)
+        saved_files = await file_adapter.save_many(files)
+        assert saved_files[0].id is not None
+        assert saved_files[1].id is not None
+        await file_adapter.link_file_to_commit(saved_files[0].id, saved_commit1.id)
+        await file_adapter.link_file_to_commit(saved_files[1].id, saved_commit2.id)
 
         # Act
         async with AsyncClient(
@@ -1892,7 +1878,6 @@ class TestFileSearchAPI:
         files = [
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="src/utils.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -1900,7 +1885,6 @@ class TestFileSearchAPI:
             ),
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="src/main.py",
                 content_hash="hash2",
                 size_bytes=150,
@@ -1908,7 +1892,6 @@ class TestFileSearchAPI:
             ),
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="tests/test_utils.py",
                 content_hash="hash3",
                 size_bytes=200,
@@ -1976,7 +1959,6 @@ class TestFileSearchAPI:
         await file_adapter.save(
             File(
                 repository_id=saved_repo1.id,
-                commit_id=saved_commit1.id,
                 path="src/config.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -1986,7 +1968,6 @@ class TestFileSearchAPI:
         await file_adapter.save(
             File(
                 repository_id=saved_repo2.id,
-                commit_id=saved_commit2.id,
                 path="src/config.py",
                 content_hash="hash2",
                 size_bytes=100,
@@ -2036,7 +2017,6 @@ class TestFileSearchAPI:
         await file_adapter.save(
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="src/utils.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -2046,7 +2026,6 @@ class TestFileSearchAPI:
         await file_adapter.save(
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="src/utils.ts",
                 content_hash="hash2",
                 size_bytes=100,
@@ -2097,7 +2076,6 @@ class TestFileSearchAPI:
         await file_adapter.save(
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="src/module/helper.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -2166,7 +2144,6 @@ class TestFileSearchAPI:
         await file_adapter.save(
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,

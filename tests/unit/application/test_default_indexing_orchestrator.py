@@ -209,17 +209,18 @@ class TestDefaultIndexingOrchestrator:
         assert repos[0].name == "test-repo"
 
     @pytest.mark.asyncio
-    async def test_index_repository_full_indexes_commits(
+    async def test_index_repository_with_days_indexes_all_commits(
         self,
         orchestrator: DefaultIndexingOrchestrator,
         commit_repo: InMemoryCommitRepository,
     ) -> None:
-        """Test that full indexing creates commit records."""
+        """Test that indexing with --days indexes all matching commits."""
         # Arrange
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
+            days=30,  # Include all commits in last 30 days
         )
 
         # Act
@@ -278,74 +279,89 @@ class TestDefaultIndexingOrchestrator:
         assert len(all_symbols) > 0
 
     @pytest.mark.asyncio
-    async def test_index_repository_with_max_history_limit(
+    async def test_index_repository_fresh_no_days_indexes_head_only(
         self,
         orchestrator: DefaultIndexingOrchestrator,
         commit_repo: InMemoryCommitRepository,
     ) -> None:
-        """Test that max_history limits number of commits indexed."""
+        """Test that fresh repo with no --days indexes only HEAD."""
         # Arrange
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            max_history=1,  # Only index 1 commit
         )
 
         # Act
         response = await orchestrator.index_repository(request)
 
-        # Assert
-        assert response.commits_indexed == 1  # Limited to 1
+        # Assert — fresh + no days = just HEAD
+        assert response.commits_indexed == 1
 
     @pytest.mark.asyncio
-    async def test_second_index_only_processes_new_commits(
+    async def test_forward_fill_indexes_new_commits(
         self,
         orchestrator: DefaultIndexingOrchestrator,
         repository_adapter: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
         index_status_repo: InMemoryIndexStatusRepository,
         text_content_repo: InMemoryTextContentRepository,
+        git_service: FakeGitService,
     ) -> None:
-        """Test that second index call only processes new commits (incremental behavior)."""
-        # Arrange - first do an initial index with limited history
+        """Test that forward fill indexes commits between last indexed and HEAD."""
+        from datetime import datetime
+
+        # First index — fresh, no days → just HEAD
         first_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            max_history=1,  # Only index first commit
         )
-        await orchestrator.index_repository(first_request)
+        response1 = await orchestrator.index_repository(first_request)
+        assert response1.commits_indexed == 1  # Just HEAD
 
-        # Get repository ID
-        repo = await repository_adapter.find_by_name("test-repo")
-        assert repo is not None
-        assert repo.id is not None
+        # Now add a new commit after HEAD
+        new_commit = CommitInfo(
+            hash="ghi789",
+            short_hash="ghi789",
+            author_name="Test User",
+            author_email="test@example.com",
+            author_date=datetime(2024, 1, 3, 0, 0, 0),
+            committer_name="Test User",
+            committer_email="test@example.com",
+            commit_date=datetime(2024, 1, 3, 0, 0, 0),
+            message="New commit",
+            parent_hashes=["def456"],
+        )
+        git_service.commits.append(new_commit)
+        git_service.files_in_commit["ghi789"] = [
+            "src/main.py",
+            "src/utils.py",
+            "src/new_file.py",
+        ]
 
-        # Now do another index - should automatically be incremental
+        # Second index — forward fill should pick up the new commit
         second_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
         )
+        response2 = await orchestrator.index_repository(second_request)
 
-        # Act
-        response = await orchestrator.index_repository(second_request)
-
-        # Assert
-        # Should only index the second commit (incremental behavior)
-        assert response.commits_indexed == 1
+        # Should index the new commit (existing one is skipped via early return)
+        assert response2.commits_indexed == 1
 
     @pytest.mark.asyncio
     async def test_index_repository_calculates_statistics(
         self, orchestrator: DefaultIndexingOrchestrator
     ) -> None:
         """Test that response contains accurate statistics."""
-        # Arrange
+        # Arrange — use days to get more than one commit for richer stats
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
+            days=30,
         )
 
         # Act
@@ -368,7 +384,6 @@ class TestDefaultIndexingOrchestrator:
         self,
         orchestrator: DefaultIndexingOrchestrator,
         index_status_repo: InMemoryIndexStatusRepository,
-        text_content_repo: InMemoryTextContentRepository,
     ) -> None:
         """Test that indexing updates index status."""
         # Arrange
@@ -452,8 +467,7 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            max_history=100,
-            since_days=15,
+            days=15,
         )
 
         # Act
@@ -462,7 +476,6 @@ class TestGitServiceIntegration:
         # Assert - verify list_commits was called with correct arguments
         assert spy_git.list_commits_called, "list_commits should be called"
         assert spy_git.list_commits_args["branch"] == "main"
-        assert spy_git.list_commits_args["max_count"] == 100
         assert spy_git.list_commits_args["since_days"] == 15
 
     @pytest.mark.asyncio
@@ -508,12 +521,12 @@ class TestGitServiceIntegration:
             plaintext_parser=FakePlaintextParser(),
         )
 
-        # Test with since_days=30
+        # Test with days=30
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            since_days=30,
+            days=30,
         )
 
         await orchestrator.index_repository(request)
@@ -592,13 +605,13 @@ class TestGitServiceIntegration:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
-            since_days=15,  # No commits in last 15 days
+            days=15,  # No commits in last 15 days
         )
 
         # Act
         response = await orchestrator.index_repository(request)
 
-        # Assert - should still index HEAD commit
+        # Assert - should still index HEAD commit (fall back)
         assert (
             empty_git.get_commit_info_called
         ), "get_commit_info should be called for HEAD"
@@ -1027,7 +1040,7 @@ class TestGitServiceIntegration:
         assert ReferenceType.USAGE in ref_types, "Should have USAGE reference"
 
     @pytest.mark.asyncio
-    async def test_orchestrator_skips_existing_commits_on_reindex(
+    async def test_orchestrator_idempotent_reindex(
         self,
         repository_adapter: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
@@ -1040,11 +1053,10 @@ class TestGitServiceIntegration:
         parser_service: FakeParserService,
     ) -> None:
         """
-        Regression test: Re-indexing should not fail on duplicate commits.
+        Test idempotent re-indexing with full snapshot model.
 
-        When re-running indexing without resetting the database, commits that
-        already exist should be skipped (reused) rather than causing a
-        UniqueViolation error on the uq_repo_commit_hash constraint.
+        When re-running indexing without resetting the database, existing commits
+        are skipped cheaply (link branch, skip files). No duplicates are created.
         """
         orchestrator = DefaultIndexingOrchestrator(
             repository_repo=repository_adapter,
@@ -1065,21 +1077,18 @@ class TestGitServiceIntegration:
             languages=["python"],
         )
 
-        # First indexing run
+        # First indexing run — fresh, indexes HEAD only
         response1 = await orchestrator.index_repository(request)
-        assert response1.commits_indexed == 2
+        assert response1.commits_indexed == 1
+        assert response1.files_processed > 0
 
         # Count commits after first run
         commits_after_first = await commit_repo.list_by_repository(repository_id=1)
         first_commit_count = len(commits_after_first)
 
-        # Second indexing run - should detect HEAD already indexed and return early
+        # Second indexing run — same state, forward fill finds nothing new
+        # The already-indexed HEAD commit is skipped via early return in ProcessCommitUseCase
         response2 = await orchestrator.index_repository(request)
-
-        # Should report 0 commits because HEAD hasn't changed (incremental detection)
-        assert (
-            response2.commits_indexed == 0
-        ), "Second run should skip indexing when HEAD unchanged"
 
         # Commits should not be duplicated
         commits_after_second = await commit_repo.list_by_repository(repository_id=1)
@@ -1087,19 +1096,23 @@ class TestGitServiceIntegration:
             len(commits_after_second) == first_commit_count
         ), "Commits should not be duplicated on re-index"
 
+        # Files should not be re-processed (existing commit skips files)
+        assert (
+            response2.files_processed == 0
+        ), "Existing commits should skip file processing"
 
-class TestHeadFirstIndexing:
-    """Tests for HEAD-first indexing optimization.
 
-    HEAD-first indexing ensures:
-    1. HEAD (newest commit) is processed first with ALL files
-    2. Older commits use delta indexing (only changed files)
+class TestFullSnapshotIndexing:
+    """Tests for full snapshot indexing semantics.
 
-    This guarantees complete file coverage at HEAD for time-travel queries.
+    Full snapshot indexing ensures:
+    1. Every indexed commit stores the complete file tree
+    2. Existing commits are skipped cheaply (link branch, no file processing)
+    3. Fresh + no --days = just HEAD
     """
 
     @pytest.mark.asyncio
-    async def test_head_first_processes_all_files_at_head(
+    async def test_full_snapshot_processes_all_files_per_commit(
         self,
         repository_adapter: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
@@ -1111,13 +1124,9 @@ class TestHeadFirstIndexing:
         parser_service: FakeParserService,
     ) -> None:
         """
-        Test that HEAD commit processes ALL files, not just changed ones.
+        Test that every commit processes ALL files (full snapshot).
 
-        With HEAD-first indexing:
-        - HEAD (def456): Processes ALL files (main.py, utils.py, new_file.py)
-        - Older (abc123): Only processes changed files (main.py, utils.py - added)
-
-        Total: 5 files processed (3 at HEAD + 2 at older commit)
+        With --days, multiple commits are indexed. Each commit gets ALL its files.
         """
 
         class TrackingGitService(FakeGitService):
@@ -1130,7 +1139,6 @@ class TestHeadFirstIndexing:
             def get_file_content(
                 self, repo_path: Path, commit_hash: str, file_path: str
             ) -> str:
-                # Track which files were actually processed
                 if commit_hash not in self.files_processed_per_commit:
                     self.files_processed_per_commit[commit_hash] = []
                 self.files_processed_per_commit[commit_hash].append(file_path)
@@ -1150,33 +1158,34 @@ class TestHeadFirstIndexing:
             plaintext_parser=FakePlaintextParser(),
         )
 
+        # Use --days to index both commits
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
+            days=30,
         )
 
         # Act
         response = await orchestrator.index_repository(request)
 
-        # Assert - HEAD (def456) processes ALL files
+        # Assert - each commit processes ALL its files (full snapshot)
+        assert sorted(tracking_git.files_processed_per_commit.get("abc123", [])) == [
+            "src/main.py",
+            "src/utils.py",
+        ], "First commit should process ALL its files"
+
         assert sorted(tracking_git.files_processed_per_commit.get("def456", [])) == [
             "src/main.py",
             "src/new_file.py",
             "src/utils.py",
-        ], "HEAD commit should process ALL files"
+        ], "Second commit should process ALL its files"
 
-        # Older commit (abc123) processes only changed files (both added in initial)
-        assert sorted(tracking_git.files_processed_per_commit.get("abc123", [])) == [
-            "src/main.py",
-            "src/utils.py",
-        ], "Older commit should process only changed files"
-
-        # Total: 3 at HEAD + 2 at older = 5 files
+        # Total: 2 + 3 = 5 files processed
         assert response.files_processed == 5, "Should process 5 files total"
 
     @pytest.mark.asyncio
-    async def test_head_first_delta_for_older_commits(
+    async def test_full_snapshot_single_commit_processes_all(
         self,
         repository_adapter: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
@@ -1187,109 +1196,7 @@ class TestHeadFirstIndexing:
         text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
-        """Test that older commits use delta indexing (only changed files)."""
-        from datetime import datetime
-
-        # Create a git service with 3 commits
-        three_commit_git = FakeGitService(
-            commits=[
-                CommitInfo(
-                    hash="commit1",
-                    short_hash="commit1",
-                    author_name="Test User",
-                    author_email="test@example.com",
-                    author_date=datetime(2024, 1, 1, 0, 0, 0),
-                    committer_name="Test User",
-                    committer_email="test@example.com",
-                    commit_date=datetime(2024, 1, 1, 0, 0, 0),
-                    message="Initial",
-                    parent_hashes=[],
-                ),
-                CommitInfo(
-                    hash="commit2",
-                    short_hash="commit2",
-                    author_name="Test User",
-                    author_email="test@example.com",
-                    author_date=datetime(2024, 1, 2, 0, 0, 0),
-                    committer_name="Test User",
-                    committer_email="test@example.com",
-                    commit_date=datetime(2024, 1, 2, 0, 0, 0),
-                    message="Add file",
-                    parent_hashes=["commit1"],
-                ),
-                CommitInfo(
-                    hash="commit3",
-                    short_hash="commit3",
-                    author_name="Test User",
-                    author_email="test@example.com",
-                    author_date=datetime(2024, 1, 3, 0, 0, 0),
-                    committer_name="Test User",
-                    committer_email="test@example.com",
-                    commit_date=datetime(2024, 1, 3, 0, 0, 0),
-                    message="HEAD",
-                    parent_hashes=["commit2"],
-                ),
-            ]
-        )
-        three_commit_git.files_in_commit = {
-            "commit1": ["a.py"],
-            "commit2": ["a.py", "b.py"],
-            "commit3": ["a.py", "b.py", "c.py"],
-        }
-        three_commit_git.changed_files_in_commit = {
-            "commit1": ChangedFiles(added=["a.py"], modified=[], deleted=[]),
-            "commit2": ChangedFiles(added=["b.py"], modified=[], deleted=[]),
-            "commit3": ChangedFiles(added=["c.py"], modified=[], deleted=[]),
-        }
-
-        orchestrator = DefaultIndexingOrchestrator(
-            repository_repo=repository_adapter,
-            commit_repo=commit_repo,
-            file_repo=file_repo,
-            symbol_repo=symbol_repo,
-            reference_repo=reference_repo,
-            index_status_repo=index_status_repo,
-            text_content_repo=text_content_repo,
-            git_service=three_commit_git,
-            parser_service=parser_service,
-            plaintext_parser=FakePlaintextParser(),
-        )
-
-        request = IndexRepositoryRequest(
-            repository_path=Path("/repos/test-repo"),
-            branch="main",
-            languages=["python"],
-        )
-
-        # Act
-        response = await orchestrator.index_repository(request)
-
-        # Assert
-        # HEAD (commit3): ALL files → 3 processed
-        # commit2: only b.py (added) → 1 processed
-        # commit1: only a.py (added) → 1 processed
-        # Total: 5 files processed
-        assert response.files_processed == 5, "Should process 5 files"
-
-        # Unchanged files:
-        # HEAD: 0 (we process all)
-        # commit2: 1 unchanged (a.py)
-        # commit1: 0 (all files are "added")
-        assert response.files_unchanged == 1, "Should have 1 unchanged file"
-
-    @pytest.mark.asyncio
-    async def test_head_first_single_commit_processes_all(
-        self,
-        repository_adapter: InMemoryRepositoryRepository,
-        commit_repo: InMemoryCommitRepository,
-        file_repo: InMemoryFileRepository,
-        symbol_repo: InMemorySymbolRepository,
-        reference_repo: InMemoryReferenceRepository,
-        index_status_repo: InMemoryIndexStatusRepository,
-        text_content_repo: InMemoryTextContentRepository,
-        parser_service: FakeParserService,
-    ) -> None:
-        """Test that a single commit (HEAD only) processes all files."""
+        """Test that a single commit (fresh, no days) processes all files."""
         from datetime import datetime
 
         single_commit_git = FakeGitService(
@@ -1310,11 +1217,6 @@ class TestHeadFirstIndexing:
         )
         single_commit_git.files_in_commit = {
             "only": ["a.py", "b.py", "c.py"],
-        }
-        single_commit_git.changed_files_in_commit = {
-            "only": ChangedFiles(
-                added=["a.py", "b.py", "c.py"], modified=[], deleted=[]
-            ),
         }
 
         orchestrator = DefaultIndexingOrchestrator(
@@ -1341,7 +1243,6 @@ class TestHeadFirstIndexing:
 
         # Assert - single commit processes all files
         assert response.files_processed == 3, "Should process all 3 files"
-        assert response.files_unchanged == 0, "No unchanged files for single commit"
 
 
 class TestBranchCommitsPopulation:
@@ -1556,12 +1457,13 @@ class TestBranchIndexingOptimization:
             plaintext_parser=FakePlaintextParser(),
         )
 
-        # Request with base_branch different from branch
+        # Request with base_branch different from branch (needs days to activate)
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="feature",
             languages=["python"],
             base_branch="main",  # Different from branch
+            days=30,
         )
 
         await orchestrator.index_repository(request)
@@ -1607,6 +1509,7 @@ class TestBranchIndexingOptimization:
             branch="main",
             languages=["python"],
             base_branch="main",  # Same as branch
+            days=30,
         )
 
         await orchestrator.index_repository(request)
@@ -1650,6 +1553,7 @@ class TestBranchIndexingOptimization:
             branch="feature",
             languages=["python"],
             base_branch=None,  # No base branch
+            days=30,
         )
 
         await orchestrator.index_repository(request)
@@ -1689,12 +1593,13 @@ class TestBranchIndexingOptimization:
             plaintext_parser=FakePlaintextParser(),
         )
 
-        # Index with optimization (base_branch set)
+        # Index with optimization (base_branch set + days to activate branch commits)
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="feature",
             languages=["python"],
             base_branch="main",
+            days=30,
         )
 
         response = await orchestrator.index_repository(request)
@@ -1732,6 +1637,7 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
+            days=30,  # Index all commits to get more content
         )
 
         # Act
@@ -1778,6 +1684,7 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
+            days=30,  # Index all commits to get both commit messages
         )
 
         # Act
@@ -1829,6 +1736,7 @@ class TestBranchIndexingOptimization:
             repository_path=Path("/repos/test-repo"),
             branch="main",
             languages=["python"],
+            days=30,  # Index all commits
         )
 
         # Act: Index once

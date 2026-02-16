@@ -112,7 +112,6 @@ class TestGetFileContentUseCase:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,

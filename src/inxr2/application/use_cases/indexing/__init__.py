@@ -5,11 +5,6 @@ from .get_index_status import (
     GetIndexStatusResponse,
     GetIndexStatusUseCase,
 )
-from .optimize_file_indexing import (
-    OptimizationResult,
-    OptimizeFileIndexingRequest,
-    OptimizeFileIndexingUseCase,
-)
 from .orchestrator import (
     IndexRepositoryRequest,
     IndexRepositoryResponse,
@@ -36,9 +31,6 @@ __all__ = [
     "GetIndexStatusUseCase",
     "IndexRepositoryRequest",
     "IndexRepositoryResponse",
-    "OptimizationResult",
-    "OptimizeFileIndexingRequest",
-    "OptimizeFileIndexingUseCase",
     "ProcessCommitRequest",
     "ProcessCommitResult",
     "ProcessCommitUseCase",

@@ -35,13 +35,9 @@ class ResolveReferencesRequest:
 
     Args:
         repository_id: The repository ID to resolve references for
-        commit_aware: If True, only match references to symbols from the
-                     same commit (for time travel consistency). If False,
-                     match across all commits in the repository.
     """
 
     repository_id: int
-    commit_aware: bool = False
 
 
 @dataclass
@@ -62,37 +58,21 @@ class ResolveReferencesUseCase:
     and updates the target_symbol_id for each reference. This enables
     "find usages" and "go to definition" functionality.
 
-    Two modes are supported:
-    - commit_aware=False: Match references to any symbol in the repository
-      (useful for incremental indexing where symbols may exist in other commits)
-    - commit_aware=True: Only match references to symbols from the same commit
-      (ensures time travel navigation stays within a consistent version)
+    With content-addressable file versions, symbols are unique per file
+    version (no commit_id ambiguity), so commit-aware mode is not needed.
 
     Dependencies are injected via constructor.
     """
 
     def __init__(self, reference_repository: ReferenceRepositoryPort) -> None:
-        """Initialize use case.
-
-        Args:
-            reference_repository: Repository for accessing references
-        """
         self._reference_repository = reference_repository
 
     async def execute(
         self, request: ResolveReferencesRequest
     ) -> ResolveReferencesResponse:
-        """Execute reference resolution.
-
-        Args:
-            request: Resolution request parameters
-
-        Returns:
-            Resolution results with count of resolved references
-        """
+        """Execute reference resolution."""
         resolved_count = await self._reference_repository.resolve_unlinked_references(
             repository_id=request.repository_id,
-            commit_aware=request.commit_aware,
         )
 
         return ResolveReferencesResponse(resolved_count=resolved_count)
@@ -107,14 +87,6 @@ class ResolveReferencesUseCase:
 
         Resolves references in batches, calling the progress callback
         after each batch to report progress.
-
-        Args:
-            request: Resolution request parameters
-            progress_callback: Optional callback for progress updates
-            batch_size: Number of references to process per batch
-
-        Returns:
-            Resolution results with count of resolved references
         """
         # Get total count of unresolved references
         total_unresolved = await self._reference_repository.count_unresolved_references(
@@ -136,7 +108,6 @@ class ResolveReferencesUseCase:
             batch_resolved = await self._reference_repository.resolve_references_batch(
                 repository_id=request.repository_id,
                 batch_size=batch_size,
-                commit_aware=request.commit_aware,
             )
 
             if batch_resolved == 0:

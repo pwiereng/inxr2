@@ -259,7 +259,6 @@ class TestPostgresFileRepository:
         file_adapter = PostgresFileRepository(db_session)
         file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="src/main.py",
             content_hash="a" * 40,
             size_bytes=1024,
@@ -301,7 +300,6 @@ class TestPostgresFileRepository:
         files = [
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path=f"file{i}.py",
                 content_hash=f"hash{i}",
                 size_bytes=100 * i,
@@ -341,7 +339,6 @@ class TestPostgresFileRepository:
         files = [
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path=f"src/file{i}.py",
                 content_hash=f"hash{i}",
                 size_bytes=100,
@@ -380,12 +377,15 @@ class TestPostgresFileRepository:
         file_adapter = PostgresFileRepository(db_session)
         file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="unique/path.py",
             content_hash="b" * 40,
             size_bytes=100,
         )
-        await file_adapter.save(file)
+        saved_file = await file_adapter.save(file)
+        assert saved_file.id is not None
+
+        # Link file to the commit via junction table
+        await file_adapter.link_file_to_commit(saved_file.id, saved_commit.id)
 
         # Act
         found = await file_adapter.find_by_path(
@@ -418,14 +418,17 @@ class TestPostgresFileRepository:
         files = [
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path=f"file{i}.py",
                 content_hash=f"hash{i}",
                 size_bytes=100,
             )
             for i in range(3)
         ]
-        await file_adapter.save_many(files)
+        saved_files = await file_adapter.save_many(files)
+
+        # Link files to the commit via junction table
+        file_ids = [f.id for f in saved_files if f.id is not None]
+        await file_adapter.link_files_to_commit(file_ids, saved_commit.id)
 
         # Act
         found_files = await file_adapter.list_by_commit(saved_commit.id)
@@ -457,7 +460,6 @@ class TestPostgresFileRepository:
         files = [
             File(
                 repository_id=saved_repo.id,
-                commit_id=saved_commit.id,
                 path=f"duplicate{i}.py",
                 content_hash="c" * 40,
                 size_bytes=100,
@@ -495,7 +497,6 @@ class TestPostgresFileRepository:
         file_adapter = PostgresFileRepository(db_session)
         file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="src/utils/helper.py",
             content_hash="d" * 40,
             size_bytes=200,
@@ -533,13 +534,12 @@ class TestPostgresFileRepository:
         # Assert
         assert found is None
 
-    async def test_find_by_repository_and_path_returns_latest_version(
+    async def test_find_by_repository_and_path_returns_file(
         self, db_session: AsyncSession
     ) -> None:
-        """Test that find_by_repository_and_path returns the latest file version.
+        """Test that find_by_repository_and_path returns the file.
 
-        When multiple versions of the same file exist (from different commits),
-        the method should return the one with the highest commit_id.
+        With content-addressable files, (repo, path, content_hash) is unique.
         """
         # Arrange
         repo_adapter = PostgresRepositoryAdapter(db_session)
@@ -549,63 +549,28 @@ class TestPostgresFileRepository:
         saved_repo = await repo_adapter.save(repository)
         assert saved_repo.id is not None
 
-        commit_adapter = PostgresCommitRepository(db_session)
-
-        # Create an older commit
-        old_commit = Commit(
-            repository_id=saved_repo.id,
-            commit_hash=CommitHash("oldcommit" + "0" * 31),
-            author_date=datetime(2025, 1, 1),
-            commit_date=datetime(2025, 1, 1),
-        )
-        saved_old_commit = await commit_adapter.save(old_commit)
-        assert saved_old_commit.id is not None
-
-        # Create a newer commit
-        new_commit = Commit(
-            repository_id=saved_repo.id,
-            commit_hash=CommitHash("newcommit" + "0" * 31),
-            author_date=datetime(2025, 1, 2),
-            commit_date=datetime(2025, 1, 2),
-        )
-        saved_new_commit = await commit_adapter.save(new_commit)
-        assert saved_new_commit.id is not None
-
         file_adapter = PostgresFileRepository(db_session)
 
-        # Create old version of file (smaller size to distinguish)
-        old_file = File(
+        # Create a file
+        file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_old_commit.id,
             path="src/app.py",
             content_hash="e" * 40,
             size_bytes=100,
             language="python",
         )
-        await file_adapter.save(old_file)
-
-        # Create new version of same file (larger size)
-        new_file = File(
-            repository_id=saved_repo.id,
-            commit_id=saved_new_commit.id,
-            path="src/app.py",
-            content_hash="f" * 40,
-            size_bytes=200,
-            language="python",
-        )
-        saved_new_file = await file_adapter.save(new_file)
+        saved_file = await file_adapter.save(file)
 
         # Act
         found = await file_adapter.find_by_repository_and_path(
             saved_repo.id, "src/app.py"
         )
 
-        # Assert - should return the latest version (from new_commit)
+        # Assert
         assert found is not None
-        assert found.id == saved_new_file.id
-        assert found.commit_id == saved_new_commit.id
-        assert found.content_hash == "f" * 40
-        assert found.size_bytes == 200
+        assert found.id == saved_file.id
+        assert found.content_hash == "e" * 40
+        assert found.size_bytes == 100
 
 
 @pytest.mark.asyncio
@@ -634,20 +599,25 @@ class TestPostgresSymbolRepository:
         file_adapter = PostgresFileRepository(db_session)
         file1 = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="src/repo1.py",
             content_hash="1" * 40,
             size_bytes=100,
         )
         file2 = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="src/repo2.py",
             content_hash="2" * 40,
             size_bytes=100,
         )
         saved_file1 = await file_adapter.save(file1)
         saved_file2 = await file_adapter.save(file2)
+
+        # Link files to commit via commit_files junction
+        assert saved_file1.id is not None
+        assert saved_file2.id is not None
+        assert saved_commit.id is not None
+        await file_adapter.link_file_to_commit(saved_file1.id, saved_commit.id)
+        await file_adapter.link_file_to_commit(saved_file2.id, saved_commit.id)
 
         return saved_repo, saved_commit, saved_file1, saved_file2
 
@@ -668,7 +638,6 @@ class TestPostgresSymbolRepository:
             Symbol(
                 file_id=file1.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="save",
                 qualified_name="FileRepository.save",
                 kind=SymbolKind.METHOD,
@@ -680,7 +649,6 @@ class TestPostgresSymbolRepository:
             Symbol(
                 file_id=file2.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="save",
                 qualified_name="CommitRepository.save",
                 kind=SymbolKind.METHOD,
@@ -692,7 +660,6 @@ class TestPostgresSymbolRepository:
             Symbol(
                 file_id=file1.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="delete",  # Different name
                 qualified_name="FileRepository.delete",
                 kind=SymbolKind.METHOD,
@@ -725,7 +692,6 @@ class TestPostgresSymbolRepository:
         symbol = Symbol(
             file_id=file1.id,
             repository_id=repo.id,
-            commit_id=commit.id,
             name="existing",
             kind=SymbolKind.FUNCTION,
             start_line=1,
@@ -768,12 +734,16 @@ class TestPostgresReferenceRepository:
         file_adapter = PostgresFileRepository(db_session)
         file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_commit.id,
             path="src/caller.py",
             content_hash="1" * 40,
             size_bytes=100,
         )
         saved_file = await file_adapter.save(file)
+
+        # Link file to commit via commit_files junction
+        assert saved_file.id is not None
+        assert saved_commit.id is not None
+        await file_adapter.link_file_to_commit(saved_file.id, saved_commit.id)
 
         return saved_repo, saved_commit, saved_file
 
@@ -791,7 +761,6 @@ class TestPostgresReferenceRepository:
             Reference(
                 source_file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 source_line=10,
                 source_column=4,
                 source_end_column=8,
@@ -802,7 +771,6 @@ class TestPostgresReferenceRepository:
             Reference(
                 source_file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 source_line=20,
                 source_column=4,
                 source_end_column=8,
@@ -813,7 +781,6 @@ class TestPostgresReferenceRepository:
             Reference(
                 source_file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 source_line=30,
                 source_column=4,
                 source_end_column=10,
@@ -846,7 +813,6 @@ class TestPostgresReferenceRepository:
         reference = Reference(
             source_file_id=file.id,
             repository_id=repo.id,
-            commit_id=commit.id,
             source_line=10,
             source_column=4,
             source_end_column=8,
@@ -861,14 +827,14 @@ class TestPostgresReferenceRepository:
         # Assert
         assert len(found) == 0
 
-    async def test_find_references_by_text_only_returns_latest_file_version(
+    async def test_find_references_by_text_with_commit_filter(
         self, db_session: AsyncSession
     ) -> None:
-        """Test that find_references_by_text only returns references from latest files.
+        """Test that find_references_by_text with commit_id filters correctly.
 
-        When the same file is indexed multiple times (different commits),
-        only references from the latest version should be returned to avoid
-        duplicate results.
+        With content-addressable files, each file version has its own references.
+        When commit_id is provided, only references from files linked to that
+        commit are returned.
         """
         # Arrange - create repository
         repo_adapter = PostgresRepositoryAdapter(db_session)
@@ -892,10 +858,9 @@ class TestPostgresReferenceRepository:
         saved_old_commit = await commit_adapter.save(old_commit)
         assert saved_old_commit.id is not None
 
-        # Create file in old commit
+        # Create file for old commit
         old_file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_old_commit.id,
             path="src/caller.py",
             content_hash="e" * 40,
             size_bytes=100,
@@ -903,11 +868,13 @@ class TestPostgresReferenceRepository:
         saved_old_file = await file_adapter.save(old_file)
         assert saved_old_file.id is not None
 
+        # Link old file to old commit
+        await file_adapter.link_file_to_commit(saved_old_file.id, saved_old_commit.id)
+
         # Create reference in old file
         old_ref = Reference(
             source_file_id=saved_old_file.id,
             repository_id=saved_repo.id,
-            commit_id=saved_old_commit.id,
             source_line=10,
             source_column=4,
             source_end_column=14,
@@ -926,10 +893,9 @@ class TestPostgresReferenceRepository:
         saved_new_commit = await commit_adapter.save(new_commit)
         assert saved_new_commit.id is not None
 
-        # Create file in new commit (same path, newer version)
+        # Create file for new commit (same path, newer version)
         new_file = File(
             repository_id=saved_repo.id,
-            commit_id=saved_new_commit.id,
             path="src/caller.py",  # Same path as old file
             content_hash="f" * 40,
             size_bytes=150,
@@ -937,11 +903,13 @@ class TestPostgresReferenceRepository:
         saved_new_file = await file_adapter.save(new_file)
         assert saved_new_file.id is not None
 
+        # Link new file to new commit
+        await file_adapter.link_file_to_commit(saved_new_file.id, saved_new_commit.id)
+
         # Create reference in new file (same text, different line)
         new_ref = Reference(
             source_file_id=saved_new_file.id,
             repository_id=saved_repo.id,
-            commit_id=saved_new_commit.id,
             source_line=15,  # Different line in new version
             source_column=4,
             source_end_column=14,
@@ -950,12 +918,12 @@ class TestPostgresReferenceRepository:
         )
         await reference_adapter.save(new_ref)
 
-        # Act - find references by text
+        # Act - find references by text with commit_id filter
         found = await reference_adapter.find_references_by_text(
-            "my_function", saved_repo.id
+            "my_function", saved_repo.id, commit_id=saved_new_commit.id
         )
 
-        # Assert - should only return the reference from the latest file version
+        # Assert - should only return the reference from the new commit's file
         assert len(found) == 1
         assert found[0].source_file_id == saved_new_file.id
         assert found[0].source_line == 15  # From new version

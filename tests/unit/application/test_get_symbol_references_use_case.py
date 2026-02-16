@@ -46,7 +46,6 @@ class TestGetSymbolReferencesUseCase:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -57,7 +56,6 @@ class TestGetSymbolReferencesUseCase:
             File(
                 id=2,
                 repository_id=1,
-                commit_id=1,
                 path="src/utils.py",
                 content_hash="hash2",
                 size_bytes=200,
@@ -75,7 +73,6 @@ class TestGetSymbolReferencesUseCase:
                 id=1,
                 repository_id=1,
                 file_id=1,
-                commit_id=1,
                 name="save",
                 qualified_name="Repository.save",
                 kind=SymbolKind.METHOD,
@@ -90,7 +87,6 @@ class TestGetSymbolReferencesUseCase:
                 id=2,
                 repository_id=1,
                 file_id=2,
-                commit_id=1,
                 name="save",  # Same name, different class
                 qualified_name="Service.save",
                 kind=SymbolKind.METHOD,
@@ -118,7 +114,6 @@ class TestGetSymbolReferencesUseCase:
                 source_line=30,
                 source_column=8,
                 source_end_column=12,
-                commit_id=1,
             )
         )
         repo.add(
@@ -132,7 +127,6 @@ class TestGetSymbolReferencesUseCase:
                 source_line=50,
                 source_column=12,
                 source_end_column=16,
-                commit_id=1,
             )
         )
         repo.add(
@@ -146,7 +140,6 @@ class TestGetSymbolReferencesUseCase:
                 source_line=35,
                 source_column=4,
                 source_end_column=8,
-                commit_id=1,
             )
         )
         return repo
@@ -292,25 +285,25 @@ class TestGetSymbolReferencesWithBranchFiltering:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=1,  # main branch commit
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,
                 language="Python",
             )
         )
+        repo._commit_files.add((1, 1))  # Link file 1 to commit 1
         # File on feature branch (commit 2)
         repo.add(
             File(
                 id=2,
                 repository_id=1,
-                commit_id=2,  # feature branch commit
                 path="src/feature.py",
                 content_hash="hash2",
                 size_bytes=200,
                 language="Python",
             )
         )
+        repo._commit_files.add((2, 2))  # Link file 2 to commit 2
         return repo
 
     @pytest.fixture
@@ -322,7 +315,6 @@ class TestGetSymbolReferencesWithBranchFiltering:
                 id=1,
                 repository_id=1,
                 file_id=1,
-                commit_id=1,
                 name="save",
                 qualified_name="Repository.save",
                 kind=SymbolKind.METHOD,
@@ -359,7 +351,6 @@ class TestGetSymbolReferencesWithBranchFiltering:
                 source_line=30,
                 source_column=8,
                 source_end_column=12,
-                commit_id=1,
             )
         )
         # Reference from feature branch file
@@ -374,7 +365,6 @@ class TestGetSymbolReferencesWithBranchFiltering:
                 source_line=50,
                 source_column=12,
                 source_end_column=16,
-                commit_id=2,
             )
         )
         return repo

@@ -68,7 +68,7 @@ class TestResolveFileUseCase:
     def file_repo(
         self, commit_repo: InMemoryCommitRepository
     ) -> InMemoryFileRepository:
-        """Create file repository with test data."""
+        """Create file repository with test data linked to commits."""
         repo = InMemoryFileRepository(commit_repo=commit_repo)
 
         # File on main branch (commit 1)
@@ -76,39 +76,39 @@ class TestResolveFileUseCase:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,
                 language="Python",
             )
         )
+        repo._commit_files.add((1, 1))  # Link file 1 to commit 1
 
         # Same file on feature branch (commit 2) with different content
         repo.add(
             File(
                 id=2,
                 repository_id=1,
-                commit_id=2,
                 path="src/main.py",
                 content_hash="hash2",
                 size_bytes=150,
                 language="Python",
             )
         )
+        repo._commit_files.add((2, 2))  # Link file 2 to commit 2
 
         # File only on feature branch
         repo.add(
             File(
                 id=3,
                 repository_id=1,
-                commit_id=2,
                 path="src/feature.py",
                 content_hash="hash3",
                 size_bytes=200,
                 language="Python",
             )
         )
+        repo._commit_files.add((2, 3))  # Link file 3 to commit 2
 
         return repo
 
@@ -192,7 +192,7 @@ class TestResolveFileUseCase:
         response = await use_case.execute(request)
 
         assert response.file.path == "src/main.py"
-        assert response.file.commit_id == 1
+        assert response.file.content_hash == "hash1"
         assert response.commit.commit_hash.value == "abc123def456"
 
     @pytest.mark.asyncio
@@ -252,7 +252,7 @@ class TestResolveFileUseCase:
         response = await use_case.execute(request)
 
         assert response.file.path == "src/main.py"
-        assert response.file.commit_id == 2  # Feature branch commit
+        assert response.file.content_hash == "hash2"  # Feature branch version
         assert response.commit.commit_hash.value == "def789ghi012"
 
     @pytest.mark.asyncio
@@ -269,7 +269,7 @@ class TestResolveFileUseCase:
         response = await use_case.execute(request)
 
         assert response.file.path == "src/feature.py"
-        assert response.file.commit_id == 2
+        assert response.file.content_hash == "hash3"
 
     @pytest.mark.asyncio
     async def test_raises_file_not_found_on_branch(
@@ -304,7 +304,7 @@ class TestResolveFileUseCase:
         response = await use_case.execute(request)
 
         # Should use commit, not branch
-        assert response.file.commit_id == 1
+        assert response.file.content_hash == "hash1"
         assert response.commit.commit_hash.value == "abc123def456"
 
     # === Response Structure Tests ===
@@ -351,7 +351,6 @@ class TestResolveFileUseCaseEdgeCases:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=999,  # Non-existent commit
                 path="orphan.py",
                 content_hash="hash",
                 size_bytes=100,
@@ -371,3 +370,76 @@ class TestResolveFileUseCaseEdgeCases:
 
         with pytest.raises(CommitNotFound):
             await use_case.execute(request)
+
+    @pytest.mark.asyncio
+    async def test_default_resolution_returns_linked_commit(self) -> None:
+        """Default resolution should return a commit actually linked to the file.
+
+        Regression test: with HEAD-first indexing, the latest commit on the
+        default branch might not be the commit that contains the resolved file
+        version. The use case should find a commit linked to the file via
+        commit_files, not just the latest on the branch.
+        """
+        repository_repo = InMemoryRepositoryRepository()
+        repository_repo.add(
+            Repository(
+                id=1,
+                name="test-repo",
+                url="/path",
+                default_branch="main",
+            )
+        )
+
+        commit_repo = InMemoryCommitRepository()
+        # Older commit that has the file
+        commit1 = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("aaa111"),
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+        )
+        commit_repo.add(commit1)
+        commit_repo._branch_commits[(1, "main", 1)] = True
+
+        # Newer commit on main (HEAD) that does NOT have the file
+        commit2 = Commit(
+            id=2,
+            repository_id=1,
+            commit_hash=CommitHash("bbb222"),
+            author_date=datetime(2025, 1, 10),
+            commit_date=datetime(2025, 1, 10),
+        )
+        commit_repo.add(commit2)
+        commit_repo._branch_commits[(1, "main", 2)] = True
+
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        file_repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/old_file.py",
+                content_hash="hash_old",
+                size_bytes=100,
+                language="Python",
+            )
+        )
+        file_repo._commit_files.add((1, 1))  # Only linked to commit 1
+
+        use_case = ResolveFileUseCase(
+            repository_repo=repository_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+        request = ResolveFileRequest(
+            repository_name="test-repo",
+            file_path="src/old_file.py",
+        )
+
+        response = await use_case.execute(request)
+
+        # Should return commit 1 (which is actually linked to this file),
+        # not commit 2 (latest on main, but unlinked)
+        assert response.commit.id == 1
+        assert response.file.path == "src/old_file.py"

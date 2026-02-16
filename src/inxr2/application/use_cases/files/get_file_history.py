@@ -165,6 +165,9 @@ class GetFileHistoryUseCase:
     ) -> list[FileVersion]:
         """Build version list with hydrated commit messages.
 
+        Each file version is linked to commits via the commit_files junction.
+        We pick the latest commit for each version.
+
         Args:
             repository: Repository entity for git path
             files: List of file entities for versions
@@ -173,10 +176,25 @@ class GetFileHistoryUseCase:
             List of FileVersion with hydrated commit info
         """
         repo_path = Path(repository.url)
-        versions = []
 
+        # Bulk look up commit IDs for all file versions
+        file_ids = [f.id for f in files if f.id is not None]
+        commit_ids_map = await self._file_repo.get_commit_ids_for_files(file_ids)
+
+        # Collect all unique commit IDs and bulk fetch
+        all_commit_ids = {cid for cids in commit_ids_map.values() for cid in cids}
+        commits = await self._commit_repo.find_by_ids(list(all_commit_ids))
+        commit_map = {c.id: c for c in commits if c.id is not None}
+
+        versions = []
         for file in files:
-            commit_record = await self._commit_repo.find_by_id(file.commit_id)
+            if file.id is None:
+                continue
+            file_commit_ids = commit_ids_map.get(file.id, [])
+            if not file_commit_ids:
+                continue
+            # Use the latest commit (first in the list, sorted desc)
+            commit_record = commit_map.get(file_commit_ids[0])
             if not commit_record:
                 continue
 

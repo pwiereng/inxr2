@@ -167,7 +167,6 @@ class IndexLocalDirectoryUseCase:
                 # Create file entity
                 file_entity = File(
                     repository_id=saved_repo.id,
-                    commit_id=saved_commit.id,
                     path=relative_path,
                     content_hash=content_hash,
                     size_bytes=file_stat.size_bytes,
@@ -175,7 +174,12 @@ class IndexLocalDirectoryUseCase:
                     line_count=self._count_lines(file_path),
                 )
 
-                await self._file_repo.save(file_entity)
+                saved_file = await self._file_repo.save(file_entity)
+                # Link file to commit via junction table
+                if saved_file.id is not None and saved_commit.id is not None:
+                    await self._file_repo.link_file_to_commit(
+                        saved_file.id, saved_commit.id
+                    )
                 indexed_files += 1
 
             except Exception as e:

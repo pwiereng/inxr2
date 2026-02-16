@@ -9,23 +9,23 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base
 
 if TYPE_CHECKING:
-    from .commit import CommitModel
     from .file import FileModel
     from .repository import RepositoryModel
     from .symbol import SymbolModel
 
 
 class ReferenceModel(Base):
-    """SQLAlchemy ORM model for references table."""
+    """SQLAlchemy ORM model for references table.
+
+    References belong to a file version (content-addressable). Commit context
+    is provided through the commit_files junction table.
+    """
 
     __tablename__ = "references"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     repository_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
-    )
-    commit_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("commits.id", ondelete="CASCADE"), nullable=False
     )
 
     # Source location
@@ -63,9 +63,6 @@ class ReferenceModel(Base):
     # Relationships
     repository: Mapped["RepositoryModel"] = relationship(
         "RepositoryModel", back_populates="references", foreign_keys=[repository_id]
-    )
-    commit: Mapped["CommitModel"] = relationship(
-        "CommitModel", back_populates="references"
     )
     source_file: Mapped["FileModel"] = relationship(
         "FileModel", back_populates="references"

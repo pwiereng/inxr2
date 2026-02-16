@@ -114,6 +114,7 @@ class TestIndexingStats:
         assert stats.files_processed == 0
         assert stats.files_skipped == 0
         assert stats.files_failed == 0
+        assert stats.files_at_head == 0
         assert stats.symbols_found == 0
         assert stats.references_found == 0
         assert stats.references_resolved == 0
@@ -158,62 +159,61 @@ class TestDictToSymbol:
             "end_line": 20,
             "end_column": 0,
         }
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=2, commit_id=3)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=2)
 
         assert symbol.name == "my_function"
         assert symbol.kind == SymbolKind.FUNCTION
         assert symbol.file_id == 1
         assert symbol.repository_id == 2
-        assert symbol.commit_id == 3
         assert symbol.start_line == 10
         assert symbol.end_line == 20
 
     def test_class_symbol(self) -> None:
         """Should convert class dict to Symbol."""
         data = {"name": "MyClass", "kind": "class", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.CLASS
 
     def test_method_symbol(self) -> None:
         """Should convert method dict to Symbol."""
         data = {"name": "my_method", "kind": "method", "start_line": 5}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.METHOD
 
     def test_interface_symbol(self) -> None:
         """Should convert interface dict to Symbol."""
         data = {"name": "IMyInterface", "kind": "interface", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.INTERFACE
 
     def test_constant_symbol(self) -> None:
         """Should convert constant dict to Symbol."""
         data = {"name": "MY_CONSTANT", "kind": "constant", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.CONSTANT
 
     def test_variable_symbol(self) -> None:
         """Should convert variable dict to Symbol."""
         data = {"name": "my_var", "kind": "variable", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.VARIABLE
 
     def test_type_alias_maps_to_namespace(self) -> None:
         """Type aliases should map to NAMESPACE."""
         data = {"name": "MyType", "kind": "type", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.NAMESPACE
 
     def test_unknown_kind_defaults_to_function(self) -> None:
         """Unknown kind should default to FUNCTION."""
         data = {"name": "something", "kind": "unknown_kind", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.FUNCTION
 
     def test_missing_kind_defaults_to_function(self) -> None:
         """Missing kind should default to FUNCTION."""
         data = {"name": "something", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.FUNCTION
 
     def test_optional_fields(self) -> None:
@@ -225,14 +225,14 @@ class TestDictToSymbol:
             "qualified_name": "module.qualified_func",
             "scope": "module",
         }
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.qualified_name == "module.qualified_func"
         assert symbol.scope == "module"
 
     def test_default_line_values(self) -> None:
         """Should use defaults when line values missing."""
         data = {"name": "func"}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.start_line == 1
         assert symbol.start_column == 0
         assert symbol.end_line == 1
@@ -242,49 +242,49 @@ class TestDictToSymbol:
     def test_struct_symbol(self) -> None:
         """Should convert struct dict to Symbol."""
         data = {"name": "MyStruct", "kind": "struct", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.STRUCT
 
     def test_union_symbol(self) -> None:
         """Should convert union dict to Symbol."""
         data = {"name": "MyUnion", "kind": "union", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.UNION
 
     def test_typedef_symbol(self) -> None:
         """Should convert typedef dict to Symbol."""
         data = {"name": "MyType", "kind": "typedef", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.TYPEDEF
 
     def test_macro_symbol(self) -> None:
         """Should convert macro dict to Symbol."""
         data = {"name": "MY_MACRO", "kind": "macro", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.MACRO
 
     def test_enum_symbol(self) -> None:
         """Should convert enum dict to Symbol."""
         data = {"name": "MyEnum", "kind": "enum", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.ENUM
 
     def test_enum_value_symbol(self) -> None:
         """Should convert enum_value dict to Symbol."""
         data = {"name": "ENUM_VALUE", "kind": "enum_value", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.ENUM_VALUE
 
     def test_struct_field_symbol(self) -> None:
         """Should convert struct_field dict to Symbol."""
         data = {"name": "field_name", "kind": "struct_field", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.STRUCT_FIELD
 
     def test_union_field_symbol(self) -> None:
         """Should convert union_field dict to Symbol."""
         data = {"name": "field_name", "kind": "union_field", "start_line": 1}
-        symbol = _dict_to_symbol(data, file_id=1, repository_id=1, commit_id=1)
+        symbol = _dict_to_symbol(data, file_id=1, repository_id=1)
         assert symbol.kind == SymbolKind.UNION_FIELD
 
 
@@ -299,7 +299,7 @@ class TestDictToReference:
             "source_line": 1,
             "source_column": 7,
         }
-        ref = _dict_to_reference(data, source_file_id=1, repository_id=2, commit_id=3)
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=2)
 
         assert ref.reference_type == ReferenceType.IMPORT
         assert ref.reference_text == "os"
@@ -307,36 +307,35 @@ class TestDictToReference:
         assert ref.source_column == 7
         assert ref.source_file_id == 1
         assert ref.repository_id == 2
-        assert ref.commit_id == 3
 
     def test_call_reference(self) -> None:
         """Should convert call reference dict."""
         data = {"type": "call", "text": "my_function", "source_line": 10}
-        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1)
         assert ref.reference_type == ReferenceType.CALL
 
     def test_usage_reference(self) -> None:
         """Should convert usage reference dict."""
         data = {"type": "usage", "text": "my_var", "source_line": 5}
-        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1)
         assert ref.reference_type == ReferenceType.USAGE
 
     def test_unknown_type_defaults_to_usage(self) -> None:
         """Unknown type should default to USAGE."""
         data = {"type": "unknown", "text": "something", "source_line": 1}
-        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1)
         assert ref.reference_type == ReferenceType.USAGE
 
     def test_missing_type_defaults_to_usage(self) -> None:
         """Missing type should default to USAGE."""
         data = {"text": "something", "source_line": 1}
-        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1)
         assert ref.reference_type == ReferenceType.USAGE
 
     def test_source_end_column_calculated(self) -> None:
         """source_end_column should be calculated from column + text length."""
         data = {"text": "hello", "source_line": 1, "source_column": 10}
-        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1)
         assert ref.source_column == 10
         assert ref.source_end_column == 15  # 10 + len("hello")
 
@@ -348,19 +347,19 @@ class TestDictToReference:
             "source_line": 1,
             "from_module": "pathlib",
         }
-        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1)
         assert ref.metadata == {"from_module": "pathlib"}
 
     def test_no_from_module_metadata_is_none(self) -> None:
         """Without from_module, metadata should be None."""
         data = {"type": "import", "text": "os", "source_line": 1}
-        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1)
         assert ref.metadata is None
 
     def test_default_values(self) -> None:
         """Should use defaults when values missing (except required text)."""
         data = {"text": "some_ref"}  # text is required by Reference entity
-        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1)
         assert ref.source_line == 1
         assert ref.source_column == 0
         assert ref.reference_text == "some_ref"
@@ -370,13 +369,13 @@ class TestDictToReference:
     def test_include_reference(self) -> None:
         """Should convert include reference dict (C/C++ #include)."""
         data = {"type": "include", "text": "stdio.h", "source_line": 1}
-        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1)
         assert ref.reference_type == ReferenceType.INCLUDE
 
     def test_type_annotation_reference(self) -> None:
         """Should convert type_annotation reference dict."""
         data = {"type": "type_annotation", "text": "MyStruct", "source_line": 10}
-        ref = _dict_to_reference(data, source_file_id=1, repository_id=1, commit_id=1)
+        ref = _dict_to_reference(data, source_file_id=1, repository_id=1)
         assert ref.reference_type == ReferenceType.TYPE_ANNOTATION
 
 
@@ -500,7 +499,8 @@ class _FakeResponse:
     files_at_head: int = 100
     files_processed: int = 80
     files_failed: int = 2
-    files_reused: int = 18
+    file_versions_new: int = 10
+    file_versions_cached: int = 8
     symbols_found: int = 400
     references_found: int = 300
     references_resolved: int = 250
@@ -526,7 +526,7 @@ class TestWriteCsvLog:
         rows = list(csv.reader(log.open()))
         assert len(rows) == 2
         assert rows[0][0] == "timestamp"
-        assert rows[0][-1] == "lines_indexed"
+        assert rows[0][-1] == "db_size_added_mb"
         assert rows[1][1] == "test-repo"
         assert rows[1][2] == "main"
 
@@ -557,7 +557,8 @@ class TestWriteCsvLog:
             files_at_head=200,
             files_processed=150,
             files_failed=3,
-            files_reused=47,
+            file_versions_new=30,
+            file_versions_cached=17,
             symbols_found=900,
             references_found=800,
             references_resolved=700,
@@ -571,19 +572,21 @@ class TestWriteCsvLog:
         rows = list(csv.reader((tmp_path / "index.log").open()))
         data = rows[1]
         # columns: ts, repo, branch, commits, files_at_head, processed, failed,
-        #          reused, symbols, refs, resolved, elapsed, indexing, resolving, lines
+        #          file_versions_new, file_versions_cached, symbols, refs, resolved,
+        #          elapsed, indexing, resolving, lines
         assert data[3] == "7"
         assert data[4] == "200"
         assert data[5] == "150"
         assert data[6] == "3"
-        assert data[7] == "47"
-        assert data[8] == "900"
-        assert data[9] == "800"
-        assert data[10] == "700"
-        assert data[11] == "45.7"  # rounded to 1 decimal
-        assert data[12] == "30.1"
-        assert data[13] == "15.6"
-        assert data[14] == "12000"
+        assert data[7] == "30"
+        assert data[8] == "17"
+        assert data[9] == "900"
+        assert data[10] == "800"
+        assert data[11] == "700"
+        assert data[12] == "45.7"  # rounded to 1 decimal
+        assert data[13] == "30.1"
+        assert data[14] == "15.6"
+        assert data[15] == "12000"
 
     def test_does_not_crash_on_write_failure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -599,13 +602,13 @@ class TestWriteCsvLog:
         # Should not raise
         _write_csv_log(_FakeResponse())
 
-    def test_has_15_columns(
+    def test_has_18_columns(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """CSV should have exactly 15 columns."""
+        """CSV should have exactly 18 columns (including db_size_mb, db_size_added_mb)."""
         monkeypatch.chdir(tmp_path)
         _write_csv_log(_FakeResponse())
 
         rows = list(csv.reader((tmp_path / "index.log").open()))
-        assert len(rows[0]) == 15
-        assert len(rows[1]) == 15
+        assert len(rows[0]) == 18
+        assert len(rows[1]) == 18

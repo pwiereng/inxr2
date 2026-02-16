@@ -8,13 +8,16 @@ from pathlib import Path
 @dataclass(frozen=True)
 class File:
     """
-    A source code file at a specific commit (temporal snapshot).
+    A content-addressable file version.
+
+    Represents a unique (repository, path, content_hash) triple. Symbols and
+    references belong to the file version; commit context is provided by the
+    commit_files junction table.
 
     Domain entity (framework-agnostic). Separate from SQLAlchemy ORM model.
 
     Attributes:
         repository_id: Repository this file belongs to
-        commit_id: Commit ID where this version exists
         path: File path relative to repository root
         content_hash: Git blob SHA-1 hash (for deduplication)
         size_bytes: File size in bytes
@@ -27,7 +30,6 @@ class File:
     """
 
     repository_id: int
-    commit_id: int
     path: str
     content_hash: str
     size_bytes: int

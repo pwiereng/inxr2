@@ -260,6 +260,29 @@ class GitService(GitServicePort):
 
         return sorted(files)
 
+    def list_files_with_hashes(
+        self,
+        repo_path: Path,
+        commit_hash: str,
+    ) -> dict[str, str]:
+        """List all files with their git blob hashes at a specific commit."""
+        repo = Repo(repo_path)
+        commit = repo.commit(commit_hash)
+
+        result: dict[str, str] = {}
+
+        def traverse_tree(tree: Any, prefix: str = "") -> None:
+            for item in tree:
+                path = f"{prefix}{item.name}" if prefix else item.name
+                if item.type == "blob":
+                    result[path] = item.hexsha
+                elif item.type == "tree":
+                    traverse_tree(item, f"{path}/")
+
+        traverse_tree(commit.tree)
+
+        return result
+
     def get_file_content(
         self,
         repo_path: Path,

@@ -53,9 +53,7 @@ def _run_single_repo_index(
     verbose: bool,
     index_func: Callable[..., Any],
     index_type: str,
-    max_history: int | None = 100,
-    force: bool = False,
-    since_days: int | None = None,
+    days: int | None = None,
 ) -> None:
     """Run indexing for a single repository path."""
     # Validate git repository
@@ -86,22 +84,19 @@ def _run_single_repo_index(
     console.print(f"  Repository: {path.absolute()}")
     console.print(f"  Branch: {branch or '(current)'}")
     console.print(f"  Languages: {', '.join(lang_list)}")
-    if since_days is not None:
-        console.print(f"  Date filter: last {since_days} days")
+    if days is not None:
+        console.print(f"  Date filter: last {days} days")
     console.print()
 
     try:
-        # Only pass since_days for full indexing (incremental doesn't support it)
         kwargs: dict[str, Any] = {
             "repo_path": path,
             "branch": branch,
             "languages": lang_list,
             "console": console,
-            "max_history": max_history,
-            "force": force,
         }
-        if index_type == "Full" and since_days is not None:
-            kwargs["since_days"] = since_days
+        if days is not None:
+            kwargs["days"] = days
         index_func(**kwargs)
     except Exception as e:
         console.print(f"\n[red]Error during indexing:[/red] {e}")
@@ -118,9 +113,7 @@ def _run_config_based_index(
     verbose: bool,
     index_func: Callable[..., Any],
     index_type: str,
-    max_history_override: int | None = None,
-    force: bool = False,
-    since_days: int | None = None,
+    days: int | None = None,
 ) -> None:
     """Run indexing for repositories defined in config file."""
     from inxr2.adapters.config.yaml_config import YamlConfigService
@@ -168,8 +161,8 @@ def _run_config_based_index(
     console.print(f"\n[bold blue]INXR2 {index_type} Index[/bold blue]")
     console.print(f"  Config: {config_path}")
     console.print(f"  Repositories: {total_repos}")
-    if since_days is not None:
-        console.print(f"  Date filter: last {since_days} days")
+    if days is not None:
+        console.print(f"  Date filter: last {days} days")
     console.print()
 
     # Track overall stats
@@ -224,49 +217,29 @@ def _run_config_based_index(
             is_primary_branch = branch_idx == 1
 
             # Resolve branch name for activity checks
-            # Note: get_repository_info returns current_branch=None in detached HEAD state,
-            # so we use `or` to handle both missing key and None value
             repo_info = git_service.get_repository_info(resolved_path)
             branch_name = branch or repo_info.current_branch or "main"
 
-            # Determine indexing parameters based on branch type and --days
-            max_history = max_history_override or config.indexing.max_commit_history
-            use_since_days: int | None = None
-            primary_fallback_to_head = False
-
-            if since_days is not None:
-                # Check if branch has commits within the --days window
+            # Determine if non-primary branch should be skipped based on --days
+            if days is not None and not is_primary_branch:
                 commits = git_service.list_commits(
                     repo_path=resolved_path,
                     branch=branch_name,
                     max_count=1,
-                    since_days=since_days,
+                    since_days=days,
                 )
-                has_recent_commits = len(commits) > 0
-
-                if is_primary_branch:
-                    # Primary branch: use --days if has recent commits, else fall back to HEAD
-                    if has_recent_commits:
-                        use_since_days = since_days
-                    else:
-                        # Fall back to HEAD only
-                        max_history = 1
-                        primary_fallback_to_head = True
-                else:
-                    # Non-primary branch: skip if no recent commits
-                    if not has_recent_commits:
-                        console.print(
-                            f"[bold cyan][{idx}/{total_repos}][/bold cyan] "
-                            f"[dim][{branch_idx}/{total_branches}][/dim] {repo.name}"
-                        )
-                        console.print(f"  Branch: {branch_name}")
-                        console.print(
-                            f"  [yellow]Skipped:[/yellow] No commits within "
-                            f"last {since_days} days"
-                        )
-                        console.print()
-                        continue
-                    use_since_days = since_days
+                if len(commits) == 0:
+                    console.print(
+                        f"[bold cyan][{idx}/{total_repos}][/bold cyan] "
+                        f"[dim][{branch_idx}/{total_branches}][/dim] {repo.name}"
+                    )
+                    console.print(f"  Branch: {branch_name}")
+                    console.print(
+                        f"  [yellow]Skipped:[/yellow] No commits within "
+                        f"last {days} days"
+                    )
+                    console.print()
+                    continue
 
             # Show progress: [repo/total_repos] [branch/total_branches] repo_name
             if total_branches > 1:
@@ -290,22 +263,9 @@ def _run_config_based_index(
                 branch_line = f"  Branch: {branch_display}"
             console.print(branch_line)
 
-            # Show indexing strategy based on branch type and --days
-            if since_days is not None:
-                if is_primary_branch:
-                    if primary_fallback_to_head:
-                        console.print(
-                            f"  [dim]Strategy: HEAD only "
-                            f"(no commits in last {since_days} days)[/dim]"
-                        )
-                    else:
-                        console.print(
-                            f"  [dim]Strategy: last {since_days} days "
-                            f"(has recent commits)[/dim]"
-                        )
-                else:
-                    # Non-primary with recent commits (if we got here, it wasn't skipped)
-                    console.print(f"  [dim]Strategy: last {since_days} days[/dim]")
+            # Show indexing strategy
+            if days is not None:
+                console.print(f"  [dim]Strategy: last {days} days[/dim]")
             console.print()
 
             try:
@@ -314,16 +274,14 @@ def _run_config_based_index(
                     "branch": branch,
                     "languages": lang_list,
                     "console": console,
-                    "max_history": max_history,
-                    "force": force,
                 }
-                if index_type == "Full" and use_since_days is not None:
-                    kwargs["since_days"] = use_since_days
+                if days is not None:
+                    kwargs["days"] = days
 
                 # Feature branch optimization: if indexing a non-default branch,
                 # use the first branch in config as base_branch to only index
                 # commits unique to this branch (after merge-base)
-                if index_type == "Full" and len(repo.branches) > 1:
+                if len(repo.branches) > 1:
                     default_branch = repo.branches[0]  # First branch is the default
                     if branch and branch != default_branch:
                         kwargs["base_branch"] = default_branch
@@ -462,19 +420,12 @@ def main() -> None:
     help="Comma-separated list of languages to index (default: from config or python,typescript)",
 )
 @click.option(
-    "--history",
-    "-H",
-    type=int,
-    default=None,
-    help="Maximum number of commits to index for time travel (default: from config or 100)",
-)
-@click.option(
     "--days",
     "-d",
     type=int,
     default=None,
     callback=validate_positive_days,
-    help="Only index commits from the last N days (overrides --history when specified)",
+    help="Index commits from the last N days. Extends history backward; already-indexed commits are skipped.",
 )
 @click.option(
     "--verbose",
@@ -487,12 +438,6 @@ def main() -> None:
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
     default="INFO",
     help="Set log level",
-)
-@click.option(
-    "--force",
-    "-f",
-    is_flag=True,
-    help="Force re-index by clearing existing data for the repository first",
 )
 @click.option(
     "--reset-db",
@@ -513,26 +458,27 @@ def index(
     repo: str | None,
     branch: str | None,
     languages: str | None,
-    history: int | None,
     days: int | None,
     verbose: bool,
     log_level: str,
-    force: bool,
     reset_db: bool,
     yes: bool,
 ) -> None:
     """
     Index repositories for code navigation.
 
-    Indexing is always incremental - only new commits since the last index are processed.
-    On first run, indexes commits based on --history or --days limits.
+    Uses full snapshot indexing — every indexed commit stores the complete file tree.
+    Indexing is idempotent: running the same command twice produces the same result.
+
+    First run indexes HEAD only. Subsequent runs forward-fill new commits to HEAD.
+    Use --days to extend history backward.
 
     For a complete re-index, use: inxr2 db reset --yes && inxr2 index ...
 
     Examples:
         inxr2 index --path /path/to/repo --branch main
         inxr2 index --config config.yaml
-        inxr2 index --config config.yaml --repo myrepo
+        inxr2 index --config config.yaml --days 30
     """
     # If a subcommand was invoked (like 'status'), don't run indexing
     if ctx.invoked_subcommand is not None:
@@ -582,9 +528,7 @@ def index(
             verbose=verbose,
             index_func=run_full_index,
             index_type="Indexing",
-            max_history_override=history,
-            force=force,
-            since_days=days,
+            days=days,
         )
     else:
         # Single repository path-based indexing
@@ -596,10 +540,7 @@ def index(
             verbose=verbose,
             index_func=run_full_index,
             index_type="Indexing",
-            # --days overrides --history: disable commit cap when filtering by date
-            max_history=None if days else (history or 100),
-            force=force,
-            since_days=days,
+            days=days,
         )
 
 

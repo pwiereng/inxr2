@@ -324,7 +324,7 @@ indexing:
 
         # Command should succeed with isolated test database
         assert result.exit_code == 0, f"Command failed: {result.output}"
-        # Main branch has recent commits, so should use --days filter (not just HEAD)
+        # Main branch should be shown as primary with days strategy
         assert "(primary)" in result.output
         lines = result.output.split("\n")
         main_using_days = False
@@ -332,14 +332,11 @@ indexing:
             if "Branch: main" in line and "(primary)" in line:
                 # Check subsequent lines for the strategy
                 context = "\n".join(lines[i : i + 3])
-                # Should show "last 7 days (has recent commits)" strategy
-                if "last 7 days" in context and "has recent commits" in context:
+                if "last 7 days" in context:
                     main_using_days = True
                 break
 
-        assert (
-            main_using_days
-        ), "Primary branch with recent commits should use --days filter"
+        assert main_using_days, "Primary branch should show days strategy"
 
     @pytest.fixture
     def temp_git_repo_primary_old(self, tmp_path: Path) -> Path:
@@ -389,10 +386,10 @@ indexing:
         config_path.write_text(config_content)
         return config_path
 
-    def test_primary_branch_no_recent_commits_falls_back_to_head(
+    def test_primary_branch_no_recent_commits_still_indexed(
         self, runner: CliRunner, config_file_primary_old: Path
     ) -> None:
-        """Test that primary branch falls back to HEAD only when no recent commits."""
+        """Test that primary branch is always indexed even when no recent commits."""
         result = runner.invoke(
             main,
             ["index", "--config", str(config_file_primary_old), "--days", "7"],
@@ -401,19 +398,16 @@ indexing:
 
         # Command should succeed with isolated test database
         assert result.exit_code == 0, f"Command failed: {result.output}"
-        # Primary branch has no recent commits, should fall back to HEAD only
+        # Primary branch should always be indexed (never skipped)
         assert "(primary)" in result.output
+        # Should NOT be skipped
         lines = result.output.split("\n")
-        main_head_only = False
+        main_skipped = False
         for i, line in enumerate(lines):
             if "Branch: main" in line and "(primary)" in line:
-                # Check subsequent lines for HEAD-only strategy
                 context = "\n".join(lines[i : i + 3])
-                # Should show "HEAD only (no commits in last 7 days)" strategy
-                if "HEAD only" in context and "no commits in last 7 days" in context:
-                    main_head_only = True
+                if "Skipped" in context:
+                    main_skipped = True
                 break
 
-        assert (
-            main_head_only
-        ), "Primary branch with no recent commits should fall back to HEAD only"
+        assert not main_skipped, "Primary branch should never be skipped"

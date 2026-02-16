@@ -251,6 +251,7 @@ def get_repository_stats_use_case(
     file_adapter: FileAdapter,
     symbol_adapter: SymbolAdapter,
     reference_adapter: ReferenceAdapter,
+    commit_adapter: CommitAdapter,
 ) -> GetRepositoryStatsUseCase:
     """Provide GetRepositoryStatsUseCase with dependencies."""
     return GetRepositoryStatsUseCase(
@@ -258,6 +259,7 @@ def get_repository_stats_use_case(
         file_repo=file_adapter,
         symbol_repo=symbol_adapter,
         reference_repo=reference_adapter,
+        commit_repo=commit_adapter,
     )
 
 

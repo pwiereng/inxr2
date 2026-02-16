@@ -50,31 +50,33 @@ class TestSearchFilesUseCase:
         return repo
 
     @pytest.fixture
-    async def file_repo(self) -> InMemoryFileRepository:
-        """Create a file repository with test data."""
-        repo = InMemoryFileRepository()
-        await repo.save(
+    async def file_repo(
+        self, commit_repo: InMemoryCommitRepository
+    ) -> InMemoryFileRepository:
+        """Create a file repository with test data linked to commits."""
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        f1 = await repo.save(
             File(
-                id=None,
                 repository_id=1,
-                commit_id=1,
                 path="src/utils.py",
                 content_hash="hash1",
                 size_bytes=1000,
                 language="python",
             )
         )
-        await repo.save(
+        f2 = await repo.save(
             File(
-                id=None,
                 repository_id=1,
-                commit_id=1,
                 path="src/main.ts",
                 content_hash="hash2",
                 size_bytes=500,
                 language="typescript",
             )
         )
+        # Link files to commit 1 (abc123)
+        assert f1.id is not None and f2.id is not None
+        await repo.link_file_to_commit(f1.id, commit_id=1)
+        await repo.link_file_to_commit(f2.id, commit_id=1)
         return repo
 
     @pytest.fixture
@@ -103,7 +105,9 @@ class TestSearchFilesUseCase:
         assert len(response.files) == 1
         assert response.files[0].path == "src/utils.py"
         assert response.files[0].repository_name == "test-repo"
-        assert response.files[0].commit_hash == "abc123"
+        # No commit context when searching without branch/commit_hash
+        assert response.files[0].commit_id is None
+        assert response.files[0].commit_hash is None
 
     @pytest.mark.asyncio
     async def test_search_with_repository_filter(

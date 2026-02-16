@@ -66,16 +66,15 @@ class FileFactory:
     @staticmethod
     def create(
         repository_id: int = 1,
-        commit_id: int = 1,
         path: str = "src/test.py",
+        content_hash: str = "b" * 40,
         **kwargs: Any,
     ) -> File:
         """Create a test file."""
         return File(
             repository_id=repository_id,
-            commit_id=commit_id,
             path=path,
-            content_hash=kwargs.get("content_hash", "b" * 40),
+            content_hash=content_hash,
             size_bytes=kwargs.get("size_bytes", 1024),
             id=kwargs.get("id"),
             language=kwargs.get("language", "python"),
@@ -93,7 +92,6 @@ class SymbolFactory:
     def create(
         file_id: int = 1,
         repository_id: int = 1,
-        commit_id: int = 1,
         name: str = "test_function",
         **kwargs: Any,
     ) -> Symbol:
@@ -101,7 +99,6 @@ class SymbolFactory:
         return Symbol(
             file_id=file_id,
             repository_id=repository_id,
-            commit_id=commit_id,
             name=name,
             kind=kwargs.get("kind", SymbolKind.FUNCTION),
             start_line=kwargs.get("start_line", 10),

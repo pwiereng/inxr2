@@ -120,8 +120,8 @@ async def _reset_database_async(console: Console) -> None:
             console.print("  Truncating all tables...")
             await session.execute(
                 text(
-                    'TRUNCATE TABLE "references", symbols, files, branch_commits, '
-                    "commits, index_status, repositories CASCADE;"
+                    'TRUNCATE TABLE "references", symbols, commit_files, files, '
+                    "branch_commits, commits, index_status, repositories CASCADE;"
                 )
             )
             await session.commit()
@@ -168,16 +168,14 @@ class IndexingStats:
     files_processed: int = 0
     files_skipped: int = 0
     files_failed: int = 0
-    files_unchanged: int = 0  # Files not processed because they didn't change
     files_at_head: int = 0  # Number of files at HEAD commit (total in repo)
     lines_indexed: int = 0  # Approximate lines of code indexed
     symbols_found: int = 0
     references_found: int = 0
     references_resolved: int = 0
-    # Content-hash reuse optimization counters
-    files_reused: int = 0
-    symbols_reused: int = 0
-    references_reused: int = 0
+    # Content-addressable file version counters
+    file_versions_new: int = 0  # new file versions created
+    file_versions_cached: int = 0  # existing file versions reused
     # Text search content counters
     comments_indexed: int = 0
     docstrings_indexed: int = 0
@@ -185,6 +183,9 @@ class IndexingStats:
     errors: list[str] = field(default_factory=list)
     # Database query statistics
     db_stats: DBQueryStats = field(default_factory=DBQueryStats)
+    # Database size tracking
+    db_size_bytes: int = 0  # Total DB size after indexing
+    db_size_added_bytes: int = 0  # Size added by this indexing run
 
     @property
     def files_succeeded(self) -> int:
@@ -237,25 +238,21 @@ def run_full_index(
     branch: str | None,
     languages: list[str],
     console: Console,
-    max_history: int | None = 100,
-    force: bool = False,
-    since_days: int | None = None,
+    days: int | None = None,
     base_branch: str | None = None,
 ) -> IndexingResult | None:
     """
-    Run full indexing of a repository with time travel support.
+    Run full snapshot indexing of a repository.
 
-    This performs a complete index from scratch, indexing multiple commits
-    to enable time travel functionality.
+    Every indexed commit stores the complete file tree. Indexing is idempotent:
+    existing commits are skipped after a single DB lookup.
 
     Args:
         repo_path: Path to the git repository
         branch: Branch to index (uses current branch if None)
         languages: List of languages to index
         console: Rich console for output
-        max_history: Maximum number of commits to index (None = all commits)
-        force: If True, clear existing data for this repository before indexing
-        since_days: Only index commits from the last N days (overrides max_history)
+        days: Index commits from the last N days (None = forward fill only)
         base_branch: Base branch for feature branch optimization. When set,
                      only commits unique to this branch (after merge-base) are indexed.
 
@@ -273,9 +270,7 @@ def run_full_index(
                 branch=branch,
                 languages=languages,
                 console=console,
-                max_history=max_history,
-                force=force,
-                since_days=since_days,
+                days=days,
                 base_branch=base_branch,
             )
         )
@@ -290,12 +285,12 @@ async def _run_full_index_async(
     branch: str | None,
     languages: list[str],
     console: Console,
-    max_history: int | None = 100,
-    force: bool = False,
-    since_days: int | None = None,
+    days: int | None = None,
     base_branch: str | None = None,
 ) -> IndexingResult:
     """Async implementation of full indexing using the orchestrator."""
+    from sqlalchemy import text
+
     from inxr2.adapters.external.git_service import GitService
     from inxr2.adapters.external.plaintext_parser import PlaintextParser
     from inxr2.adapters.external.treesitter import TreeSitterService
@@ -353,50 +348,8 @@ async def _run_full_index_async(
             # Show what were about to index
             console.print(f"[cyan]Indexing {repo_path.name}[/cyan]")
             console.print(f"  Branch: [cyan]{current_branch}[/cyan]")
-            if max_history:
-                console.print(f"  Max history: {max_history} commits")
-            if since_days:
-                console.print(f"  Since: last {since_days} days")
-
-            # Show commit range being indexed
-            # Use list_branch_commits when base_branch optimization is active
-            if base_branch and base_branch != current_branch:
-                commits = git_service.list_branch_commits(
-                    repo_path=repo_path,
-                    branch=current_branch,
-                    base_branch=base_branch,
-                    max_count=max_history,
-                    since_days=since_days,
-                )
-            else:
-                commits = git_service.list_commits(
-                    repo_path=repo_path,
-                    branch=current_branch,
-                    max_count=max_history,
-                    since_days=since_days,
-                )
-            if not commits:
-                # Fall back to HEAD if no commits in range
-                head_hash = git_service.get_current_commit(repo_path, current_branch)
-                head_info = git_service.get_commit_info(repo_path, head_hash)
-                commits = [head_info]
-
-            if commits:
-                oldest = commits[0]
-                newest = commits[-1]
-                console.print(f"  Commits: {len(commits)}")
-                oldest_date = oldest.author_date or oldest.commit_date
-                newest_date = newest.author_date or newest.commit_date
-                if oldest_date is not None and hasattr(oldest_date, "strftime"):
-                    oldest_str = oldest_date.strftime("%Y-%m-%d %H:%M:%S %z")
-                else:
-                    oldest_str = str(oldest_date) if oldest_date else "unknown"
-                if newest_date is not None and hasattr(newest_date, "strftime"):
-                    newest_str = newest_date.strftime("%Y-%m-%d %H:%M:%S %z")
-                else:
-                    newest_str = str(newest_date) if newest_date else "unknown"
-                console.print(f"  Oldest: {oldest.hash[:10]} ({oldest_str})")
-                console.print(f"  Newest: {newest.hash[:10]} ({newest_str})")
+            if days:
+                console.print(f"  Days: last {days} days")
             console.print()
 
             # Create indexing request
@@ -404,9 +357,7 @@ async def _run_full_index_async(
                 repository_path=repo_path,
                 branch=current_branch,
                 languages=languages,
-                max_history=max_history,
-                since_days=since_days,
-                force=force,
+                days=days,
                 base_branch=base_branch,
             )
 
@@ -416,10 +367,25 @@ async def _run_full_index_async(
             renderer = IndexingProgressRenderer(console)
             on_progress = renderer.create_progress_callback()
 
+            # Measure DB size before indexing
+            db_size_before = 0
+            result_row = await session.execute(
+                text("SELECT pg_database_size(current_database())")
+            )
+            db_size_before = result_row.scalar() or 0
+
             # Run indexing with progress callback
             response = await orchestrator.index_repository(
                 request, progress_callback=on_progress
             )
+
+            # Measure DB size after indexing
+            await session.commit()
+            db_size_after = 0
+            result_row = await session.execute(
+                text("SELECT pg_database_size(current_database())")
+            )
+            db_size_after = result_row.scalar() or 0
 
             # Show final resolution result
             renderer.print_final_resolution(
@@ -434,20 +400,20 @@ async def _run_full_index_async(
                 files_processed=response.files_processed,
                 files_skipped=response.files_skipped,
                 files_failed=response.files_failed,
-                files_unchanged=response.files_unchanged,
                 files_at_head=response.files_at_head,
                 lines_indexed=response.lines_indexed,
                 symbols_found=response.symbols_found,
                 references_found=response.references_found,
                 references_resolved=response.references_resolved,
-                files_reused=response.files_reused,
-                symbols_reused=response.symbols_reused,
-                references_reused=response.references_reused,
+                file_versions_new=response.file_versions_new,
+                file_versions_cached=response.file_versions_cached,
                 comments_indexed=response.comments_indexed,
                 docstrings_indexed=response.docstrings_indexed,
                 commit_messages_indexed=response.commit_messages_indexed,
                 errors=response.errors,
                 db_stats=response.db_stats,
+                db_size_bytes=db_size_after,
+                db_size_added_bytes=db_size_after - db_size_before,
             )
 
             renderer.print_summary(
@@ -458,13 +424,12 @@ async def _run_full_index_async(
                 resolving_seconds=response.resolving_seconds,
                 repo_name=repo_path.name,
                 branch=current_branch,
-                max_history=max_history,
-                since_days=since_days,
+                days=days,
             )
 
             # Only log when actual indexing work was done
             if response.commits_indexed > 0:
-                _write_csv_log(response)
+                _write_csv_log(response, db_size_after, db_size_after - db_size_before)
 
             await session.commit()
 
@@ -624,7 +589,9 @@ def _detect_language(file_path: str) -> str | None:
     return LanguageDetector.detect(file_path)
 
 
-def _write_csv_log(response: Any) -> None:
+def _write_csv_log(
+    response: Any, db_size_bytes: int = 0, db_size_added_bytes: int = 0
+) -> None:
     """Append a one-line CSV summary to index.log after each indexing run.
 
     Creates the file with headers if it doesn't exist. Failures are silently
@@ -639,7 +606,8 @@ def _write_csv_log(response: Any) -> None:
         "files_at_head",
         "files_processed",
         "files_failed",
-        "files_reused",
+        "file_versions_new",
+        "file_versions_cached",
         "symbols_found",
         "references_found",
         "references_resolved",
@@ -647,6 +615,8 @@ def _write_csv_log(response: Any) -> None:
         "indexing_seconds",
         "resolving_seconds",
         "lines_indexed",
+        "db_size_mb",
+        "db_size_added_mb",
     ]
     try:
         write_header = not log_path.exists()
@@ -663,7 +633,8 @@ def _write_csv_log(response: Any) -> None:
                     response.files_at_head,
                     response.files_processed,
                     response.files_failed,
-                    response.files_reused,
+                    response.file_versions_new,
+                    response.file_versions_cached,
                     response.symbols_found,
                     response.references_found,
                     response.references_resolved,
@@ -671,6 +642,8 @@ def _write_csv_log(response: Any) -> None:
                     round(response.indexing_seconds, 1),
                     round(response.resolving_seconds, 1),
                     response.lines_indexed,
+                    round(db_size_bytes / 1_048_576, 1),
+                    round(db_size_added_bytes / 1_048_576, 1),
                 ]
             )
     except Exception:
@@ -681,7 +654,6 @@ def _dict_to_symbol(
     d: dict[str, Any],
     file_id: int,
     repository_id: int,
-    commit_id: int,
 ) -> Any:
     """Convert a symbol dict from parser to Symbol domain entity."""
     from inxr2.domain.entities import Symbol
@@ -743,7 +715,6 @@ def _dict_to_symbol(
     return Symbol(
         file_id=file_id,
         repository_id=repository_id,
-        commit_id=commit_id,
         name=d["name"],
         kind=kind,
         start_line=d.get("start_line", 1),
@@ -761,7 +732,6 @@ def _dict_to_reference(
     d: dict[str, Any],
     source_file_id: int,
     repository_id: int,
-    commit_id: int,
 ) -> Any:
     """Convert a reference dict from parser to Reference domain entity."""
     from inxr2.domain.entities import Reference
@@ -786,7 +756,6 @@ def _dict_to_reference(
 
     return Reference(
         repository_id=repository_id,
-        commit_id=commit_id,
         source_file_id=source_file_id,
         source_line=d.get("source_line", 1),
         source_column=source_column,

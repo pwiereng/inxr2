@@ -42,8 +42,8 @@ class SearchFilesResultItem:
         language: Programming language
         repository_id: Repository ID
         repository_name: Repository name
-        commit_id: Commit ID
-        commit_hash: Commit hash string
+        commit_id: Commit ID (set when search was scoped to a commit)
+        commit_hash: Commit hash string (set when search was scoped to a commit)
     """
 
     id: int
@@ -52,8 +52,8 @@ class SearchFilesResultItem:
     language: str | None
     repository_id: int
     repository_name: str
-    commit_id: int
-    commit_hash: str
+    commit_id: int | None = None
+    commit_hash: str | None = None
 
 
 @dataclass(frozen=True)
@@ -144,9 +144,8 @@ class SearchFilesUseCase:
             limit=request.limit,
         )
 
-        # Collect unique IDs for bulk lookup
+        # Collect unique repo IDs for bulk lookup
         repo_ids = {f.repository_id for f in files if f.repository_id is not None}
-        commit_ids = {f.commit_id for f in files if f.commit_id is not None}
 
         # Fetch repositories in bulk
         repositories = await self._repository_repo.find_by_ids(list(repo_ids))
@@ -154,16 +153,17 @@ class SearchFilesUseCase:
             r.id: r.name for r in repositories if r.id is not None
         }
 
-        # Fetch commits in bulk
-        commits = await self._commit_repo.find_by_ids(list(commit_ids))
-        commit_map: dict[int, str] = {
-            c.id: c.commit_hash.value for c in commits if c.id is not None
-        }
+        # Resolve commit hash if we have a commit context
+        resolved_commit_hash: str | None = None
+        if commit_id is not None:
+            commit = await self._commit_repo.find_by_id(commit_id)
+            if commit is not None:
+                resolved_commit_hash = commit.commit_hash.value
 
         # Build result items
         results: list[SearchFilesResultItem] = []
         for file in files:
-            if file.id is None or file.repository_id is None or file.commit_id is None:
+            if file.id is None or file.repository_id is None:
                 raise ValueError(
                     "File search returned incomplete data; "
                     "this indicates a data integrity issue."
@@ -172,10 +172,6 @@ class SearchFilesUseCase:
             if file.repository_id not in repo_map:
                 raise ValueError(
                     "File references unknown repository; data integrity issue."
-                )
-            if file.commit_id not in commit_map:
-                raise ValueError(
-                    "File references unknown commit; data integrity issue."
                 )
 
             filename = file.path.rsplit("/", 1)[-1] if "/" in file.path else file.path
@@ -188,8 +184,8 @@ class SearchFilesUseCase:
                     language=file.language,
                     repository_id=file.repository_id,
                     repository_name=repo_map[file.repository_id],
-                    commit_id=file.commit_id,
-                    commit_hash=commit_map[file.commit_id],
+                    commit_id=commit_id,
+                    commit_hash=resolved_commit_hash,
                 )
             )
 

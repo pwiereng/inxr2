@@ -127,35 +127,35 @@ class TestGetFileHistoryUseCase:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,
                 language="Python",
             )
         )
+        repo._commit_files.add((1, 1))  # Link file 1 to commit 1
         repo.add(
             File(
                 id=2,
                 repository_id=1,
-                commit_id=2,
                 path="src/main.py",
                 content_hash="hash2",
                 size_bytes=150,
                 language="Python",
             )
         )
+        repo._commit_files.add((2, 2))  # Link file 2 to commit 2
         repo.add(
             File(
                 id=3,
                 repository_id=1,
-                commit_id=3,
                 path="src/main.py",
                 content_hash="hash3",
                 size_bytes=200,
                 language="Python",
             )
         )
+        repo._commit_files.add((3, 3))  # Link file 3 to commit 3
 
         return repo
 

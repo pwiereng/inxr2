@@ -112,15 +112,14 @@ class TestPrintSummary:
         output = buf.getvalue()
         assert "75.0%" in output
 
-    def test_shows_reuse_stats(self) -> None:
+    def test_shows_file_version_stats(self) -> None:
         console, buf = _capture_console()
         renderer = IndexingProgressRenderer(console)
-        stats = IndexingStats(files_reused=10, symbols_reused=50, references_reused=30)
+        stats = IndexingStats(file_versions_new=10, file_versions_cached=50)
         renderer.print_summary(stats)
         output = buf.getvalue()
-        assert "Files Reused" in output
-        assert "Symbols Reused" in output
-        assert "References Reused" in output
+        assert "File Versions (new)" in output
+        assert "File Versions (cached)" in output
 
     def test_shows_errors(self) -> None:
         console, buf = _capture_console()
@@ -142,44 +141,20 @@ class TestPrintSummary:
         assert "DB Queries" in output
         assert "Selects" in output
 
-    def test_incremental_title(self) -> None:
-        """is_incremental=True should show 'Incremental' in the title."""
-        console, buf = _capture_console()
-        renderer = IndexingProgressRenderer(console)
-        renderer.print_summary(IndexingStats(), is_incremental=True)
-        output = buf.getvalue()
-        assert "Incremental" in output
-
-    def test_full_title_by_default(self) -> None:
-        """Default should show 'Full' in the title."""
+    def test_title_always_shows_index_complete(self) -> None:
+        """Title should always show 'Index Complete'."""
         console, buf = _capture_console()
         renderer = IndexingProgressRenderer(console)
         renderer.print_summary(IndexingStats())
         output = buf.getvalue()
-        assert "Full" in output
+        assert "Index Complete" in output
 
-    def test_shows_since_days_range(self) -> None:
+    def test_shows_days_range(self) -> None:
         console, buf = _capture_console()
         renderer = IndexingProgressRenderer(console)
-        renderer.print_summary(IndexingStats(), since_days=7)
+        renderer.print_summary(IndexingStats(), days=7)
         output = buf.getvalue()
         assert "last 7 days" in output
-
-    def test_shows_max_history_range(self) -> None:
-        console, buf = _capture_console()
-        renderer = IndexingProgressRenderer(console)
-        renderer.print_summary(IndexingStats(), max_history=50)
-        output = buf.getvalue()
-        assert "last 50 commits" in output
-
-    def test_since_days_takes_precedence_over_max_history(self) -> None:
-        """When both since_days and max_history are set, since_days wins."""
-        console, buf = _capture_console()
-        renderer = IndexingProgressRenderer(console)
-        renderer.print_summary(IndexingStats(), since_days=7, max_history=50)
-        output = buf.getvalue()
-        assert "last 7 days" in output
-        assert "50 commits" not in output
 
     def test_shows_text_content_stats(self) -> None:
         console, buf = _capture_console()
@@ -228,9 +203,7 @@ class TestProgressCallback:
         output = StringIO()
         callback = renderer.create_progress_callback(output=output)
 
-        progress = IndexingProgress(
-            phase="files", files_processed=0, files_total=100, cache_size=50
-        )
+        progress = IndexingProgress(phase="files", files_processed=0, files_total=100)
         callback(progress)
         # The "Files to process" line goes to console, not output
         # But 0% milestone should write to output
@@ -243,11 +216,7 @@ class TestProgressCallback:
         callback = renderer.create_progress_callback(output=output)
 
         # Trigger initial display
-        callback(
-            IndexingProgress(
-                phase="files", files_processed=0, files_total=100, cache_size=0
-            )
-        )
+        callback(IndexingProgress(phase="files", files_processed=0, files_total=100))
         # Hit 50% milestone
         callback(
             IndexingProgress(
@@ -256,7 +225,6 @@ class TestProgressCallback:
                 files_total=100,
                 symbols_found=200,
                 references_found=100,
-                cache_size=30,
             )
         )
         text = output.getvalue()
@@ -310,20 +278,23 @@ class TestProgressCallback:
         text = output.getvalue()
         assert "50%" in text
 
-    def test_duplicate_milestone_not_printed_twice(self) -> None:
-        """Same percentage reported twice should only print once."""
+    def test_spinner_rotates_on_each_call(self) -> None:
+        """Each callback should show a different spinner character."""
         console, _ = _capture_console()
         renderer = IndexingProgressRenderer(console)
         output = StringIO()
         callback = renderer.create_progress_callback(output=output)
 
-        progress = IndexingProgress(
-            phase="files", files_processed=50, files_total=100, cache_size=0
-        )
+        progress = IndexingProgress(phase="files", files_processed=50, files_total=100)
         callback(progress)
         callback(progress)
         text = output.getvalue()
-        assert text.count("50%") == 1
+        # Both calls write output (spinner keeps line alive)
+        assert text.count("50%") == 2
+        # Different spinner chars on each line
+        lines = [part.strip() for part in text.split("\r") if part.strip()]
+        assert len(lines) == 2
+        assert lines[0][0] != lines[1][0]  # spinner rotated
 
     def test_files_total_zero_no_crash(self) -> None:
         """files_total=0 should not cause division by zero."""
@@ -332,11 +303,7 @@ class TestProgressCallback:
         output = StringIO()
         callback = renderer.create_progress_callback(output=output)
 
-        callback(
-            IndexingProgress(
-                phase="files", files_processed=0, files_total=0, cache_size=0
-            )
-        )
+        callback(IndexingProgress(phase="files", files_processed=0, files_total=0))
         # No output expected and no crash
         assert True
 

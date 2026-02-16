@@ -14,11 +14,12 @@ class Symbol:
     A code symbol (function, class, variable, etc) at a specific file version.
 
     Domain entity (framework-agnostic). Separate from SQLAlchemy ORM model.
+    Symbols belong to a file version; commit context is provided through
+    the commit_files junction table.
 
     Attributes:
-        file_id: File containing this symbol
+        file_id: File version containing this symbol
         repository_id: Repository containing this symbol
-        commit_id: Commit where this symbol version exists
         name: Simple symbol name (e.g., 'calculate_total')
         kind: Symbol kind (function, class, variable, etc)
         start_line: Starting line number (1-indexed)
@@ -37,7 +38,6 @@ class Symbol:
 
     file_id: int
     repository_id: int
-    commit_id: int
     name: str
     kind: SymbolKind
     start_line: int

@@ -158,7 +158,6 @@ class TestGetRepositoryFilesUseCase:
         await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=1024,
@@ -169,7 +168,6 @@ class TestGetRepositoryFilesUseCase:
         await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="README.md",
                 content_hash="hash2",
                 size_bytes=512,
@@ -180,7 +178,6 @@ class TestGetRepositoryFilesUseCase:
         await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="tests/test_main.py",
                 content_hash="hash3",
                 size_bytes=2048,
@@ -251,7 +248,6 @@ class TestGetRepositoryFilesUseCase:
         await file_repository.save(
             File(
                 repository_id=repo1.id,
-                commit_id=commit1.id,
                 path="file1.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -260,7 +256,6 @@ class TestGetRepositoryFilesUseCase:
         await file_repository.save(
             File(
                 repository_id=repo1.id,
-                commit_id=commit1.id,
                 path="file2.py",
                 content_hash="hash2",
                 size_bytes=200,
@@ -269,7 +264,6 @@ class TestGetRepositoryFilesUseCase:
         await file_repository.save(
             File(
                 repository_id=repo2.id,
-                commit_id=commit2.id,
                 path="file3.py",
                 content_hash="hash3",
                 size_bytes=300,
@@ -373,7 +367,6 @@ class TestGetRepositoryTreeUseCase:
         await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -383,7 +376,6 @@ class TestGetRepositoryTreeUseCase:
         await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/utils/helper.py",
                 content_hash="hash2",
                 size_bytes=200,
@@ -393,7 +385,6 @@ class TestGetRepositoryTreeUseCase:
         await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="README.md",
                 content_hash="hash3",
                 size_bytes=50,
@@ -452,7 +443,6 @@ class TestGetRepositoryTreeUseCase:
         await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="app.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -461,7 +451,6 @@ class TestGetRepositoryTreeUseCase:
         await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/main.py",
                 content_hash="hash2",
                 size_bytes=100,
@@ -470,7 +459,6 @@ class TestGetRepositoryTreeUseCase:
         await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="zebra.txt",
                 content_hash="hash3",
                 size_bytes=100,
@@ -517,7 +505,6 @@ class TestGetRepositoryTreeUseCase:
         await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="index.js",
                 content_hash="hash1",
                 size_bytes=100,
@@ -548,8 +535,8 @@ class TestGetRepositoryTreeUseCase:
     async def test_get_tree_at_specific_commit(self) -> None:
         """Test getting tree at a specific commit (time travel)."""
         repo_repository = InMemoryRepositoryRepository()
-        file_repository = InMemoryFileRepository()
         commit_repository = InMemoryCommitRepository()
+        file_repository = InMemoryFileRepository(commit_repo=commit_repository)
 
         repo = await repo_repository.save(
             Repository(name="test-repo", url="https://example.com/repo.git")
@@ -577,35 +564,36 @@ class TestGetRepositoryTreeUseCase:
         assert commit2.id is not None
 
         # Files at commit 1: only app.py exists
-        await file_repository.save(
+        f1 = await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit1.id,
                 path="app.py",
                 content_hash="hash1",
                 size_bytes=100,
             )
         )
+        assert f1.id is not None
+        await file_repository.link_file_to_commit(f1.id, commit1.id)
 
-        # Files at commit 2: app.py and new_feature.py exist
-        await file_repository.save(
+        # Files at commit 2: app.py (updated) and new_feature.py exist
+        f2 = await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit2.id,
                 path="app.py",
                 content_hash="hash1_v2",
                 size_bytes=150,
             )
         )
-        await file_repository.save(
+        f3 = await file_repository.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit2.id,
                 path="new_feature.py",
                 content_hash="hash2",
                 size_bytes=200,
             )
         )
+        assert f2.id is not None and f3.id is not None
+        await file_repository.link_files_to_commit([f2.id, f3.id], commit2.id)
 
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
@@ -721,24 +709,25 @@ class TestGetRepositoryTreeUseCase:
             File(
                 id=1,
                 repository_id=repo.id,
-                commit_id=commit1.id,
                 path="app.py",
                 content_hash="hash1",
                 size_bytes=100,
             )
         )
+        file_repository._commit_files.add((commit1.id, 1))
 
-        # Commit 2: adds utils.py (app.py unchanged, not re-indexed)
+        # Commit 2: adds utils.py, app.py still present (full snapshot)
+        file_repository._commit_files.add((commit2.id, 1))  # app.py at commit 2
         file_repository.add(
             File(
                 id=2,
                 repository_id=repo.id,
-                commit_id=commit2.id,
                 path="utils.py",
                 content_hash="hash2",
                 size_bytes=200,
             )
         )
+        file_repository._commit_files.add((commit2.id, 2))  # utils.py at commit 2
 
         # Git service reports utils.py as added at commit2
         git_service = FakeGitService()
@@ -793,7 +782,6 @@ class TestGetRepositoryTreeUseCase:
             File(
                 id=1,
                 repository_id=repo.id,
-                commit_id=1,
                 path="app.py",
                 content_hash="hash1",
                 size_bytes=100,
