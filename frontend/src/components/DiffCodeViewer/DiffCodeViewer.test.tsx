@@ -134,4 +134,54 @@ line 10`
       expect(screen.getByText(/1\s*\/\s*2/)).toBeInTheDocument()
     })
   })
+
+  describe('context menu', () => {
+    it('should show menu on right-click when text is selected and onSearchText provided', () => {
+      const onSearchText = vi.fn()
+      vi.spyOn(window, 'getSelection').mockReturnValue({
+        toString: () => 'diffText',
+      } as Selection)
+
+      render(<DiffCodeViewer {...defaultProps} onSearchText={onSearchText} />)
+
+      // Right-click on a code area in the left panel
+      const tables = document.querySelectorAll('table')
+      expect(tables.length).toBeGreaterThan(0)
+      fireEvent.contextMenu(tables[0]!)
+
+      // Menu item should appear
+      expect(screen.getByText(/Search for/)).toBeInTheDocument()
+      expect(screen.getByText(/diffText/)).toBeInTheDocument()
+    })
+
+    it('should call onSearchText with selected text when menu item is clicked', () => {
+      const onSearchText = vi.fn()
+      vi.spyOn(window, 'getSelection').mockReturnValue({
+        toString: () => 'myDiffVar',
+      } as Selection)
+
+      render(<DiffCodeViewer {...defaultProps} onSearchText={onSearchText} />)
+
+      const tables = document.querySelectorAll('table')
+      fireEvent.contextMenu(tables[0]!)
+
+      fireEvent.click(screen.getByText(/Search for/))
+
+      expect(onSearchText).toHaveBeenCalledWith('myDiffVar')
+    })
+
+    it('should NOT show menu when no text is selected', () => {
+      const onSearchText = vi.fn()
+      vi.spyOn(window, 'getSelection').mockReturnValue({
+        toString: () => '',
+      } as Selection)
+
+      render(<DiffCodeViewer {...defaultProps} onSearchText={onSearchText} />)
+
+      const tables = document.querySelectorAll('table')
+      fireEvent.contextMenu(tables[0]!)
+
+      expect(screen.queryByText(/Search for/)).not.toBeInTheDocument()
+    })
+  })
 })
