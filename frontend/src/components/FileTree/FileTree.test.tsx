@@ -208,4 +208,72 @@ describe('FileTree', () => {
       expect(readmeItem).toHaveClass('Mui-selected')
     })
   })
+
+  describe('file tree filter', () => {
+    it('should show filter input when tree has nodes', () => {
+      render(<FileTree nodes={sampleTree} />)
+      expect(screen.getByLabelText('Filter files')).toBeInTheDocument()
+    })
+
+    it('should not show filter input when loading', () => {
+      render(<FileTree nodes={[]} loading={true} />)
+      expect(screen.queryByLabelText('Filter files')).not.toBeInTheDocument()
+    })
+
+    it('should not show filter input when tree is empty', () => {
+      render(<FileTree nodes={[]} />)
+      expect(screen.queryByLabelText('Filter files')).not.toBeInTheDocument()
+    })
+
+    it('should hide tree and show results when typing in filter', () => {
+      render(<FileTree nodes={sampleTree} />)
+
+      // Tree nodes visible initially
+      expect(screen.getByText('src')).toBeInTheDocument()
+      expect(screen.getByText('README.md')).toBeInTheDocument()
+
+      // Type in filter
+      fireEvent.change(screen.getByLabelText('Filter files'), { target: { value: 'Button' } })
+
+      // Filter results should appear (path shown in results)
+      expect(screen.getByText('src/components/Button.tsx')).toBeInTheDocument()
+
+      // Tree nodes should be hidden (src as a tree node is gone, only filter results remain)
+      // The tree List is unmounted when filtering, so the tree-rendered "src" is removed
+      // But "src" might still appear as part of the path in results — check that the
+      // tree-specific expand/collapse behavior is gone
+      expect(screen.queryByText('utils')).not.toBeInTheDocument()
+    })
+
+    it('should call onFileSelect when selecting a file from filter results', () => {
+      const onFileSelect = vi.fn()
+      render(<FileTree nodes={sampleTree} onFileSelect={onFileSelect} />)
+
+      // Type in filter
+      fireEvent.change(screen.getByLabelText('Filter files'), { target: { value: 'Button' } })
+
+      // Click on the result (click the path secondary text)
+      fireEvent.click(screen.getByText('src/components/Button.tsx'))
+
+      expect(onFileSelect).toHaveBeenCalledWith('src/components/Button.tsx')
+    })
+
+    it('should clear filter and restore tree after selecting a result', () => {
+      const onFileSelect = vi.fn()
+      render(<FileTree nodes={sampleTree} onFileSelect={onFileSelect} />)
+
+      // Type in filter
+      fireEvent.change(screen.getByLabelText('Filter files'), { target: { value: 'Button' } })
+
+      // Click on the result
+      fireEvent.click(screen.getByText('src/components/Button.tsx'))
+
+      // Filter should be cleared
+      expect(screen.getByLabelText('Filter files')).toHaveValue('')
+
+      // Tree should be visible again
+      expect(screen.getByText('src')).toBeInTheDocument()
+      expect(screen.getByText('README.md')).toBeInTheDocument()
+    })
+  })
 })

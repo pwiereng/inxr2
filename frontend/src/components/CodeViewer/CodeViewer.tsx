@@ -6,6 +6,8 @@ import { getPrismLanguage } from '@/lib/prismLanguages'
 
 import type { FileSymbol, FileReference, BlameLine } from '@/lib/api'
 import { formatDateYMD } from '@/lib/dateUtils'
+import { useCodeContextMenu } from '@/hooks/useCodeContextMenu'
+import { CodeContextMenu } from '@/components/CodeContextMenu'
 
 interface CodeViewerProps {
   content: string
@@ -19,6 +21,7 @@ interface CodeViewerProps {
   onReferenceClick?: (reference: FileReference) => void
   onLineClick?: (line: number) => void
   onBlameCommitClick?: (commitHash: string) => void
+  onSearchText?: (text: string) => void
 }
 
 // Represents a clickable segment in a line
@@ -42,10 +45,12 @@ export function CodeViewer({
   onReferenceClick,
   onLineClick,
   onBlameCommitClick,
+  onSearchText,
 }: CodeViewerProps) {
   const codeRef = useRef<HTMLElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const theme = useTheme()
+  const { contextMenu, handleContextMenu, handleClose } = useCodeContextMenu()
 
   // Map language to Prism language
   const prismLanguage = getPrismLanguage(language)
@@ -313,6 +318,7 @@ export function CodeViewer({
   return (
     <Box
       ref={containerRef}
+      onContextMenu={onSearchText ? handleContextMenu : undefined}
       sx={{
         fontFamily: 'monospace',
         fontSize: '13px',
@@ -450,6 +456,13 @@ export function CodeViewer({
           })}
         </Box>
       </Box>
+      {onSearchText && (
+        <CodeContextMenu
+          contextMenu={contextMenu}
+          onSearch={() => onSearchText(contextMenu?.selectedText ?? '')}
+          onClose={handleClose}
+        />
+      )}
     </Box>
   )
 }

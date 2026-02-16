@@ -9,6 +9,8 @@ import * as Diff from 'diff'
 import { getPrismLanguage } from '@/lib/prismLanguages'
 
 import type { FileSymbol, FileReference } from '@/lib/api'
+import { useCodeContextMenu } from '@/hooks/useCodeContextMenu'
+import { CodeContextMenu } from '@/components/CodeContextMenu'
 
 interface DiffCodeViewerProps {
   leftContent: string
@@ -27,6 +29,7 @@ interface DiffCodeViewerProps {
   onReferenceClick?: (reference: FileReference, panel: 'left' | 'right') => void
   onLineClick?: (line: number, panel: 'left' | 'right') => void
   onClosePanel: (panel: 'left' | 'right') => void
+  onSearchText?: (text: string) => void
 }
 
 interface DiffLine {
@@ -115,11 +118,13 @@ export function DiffCodeViewer({
   onReferenceClick,
   onLineClick,
   onClosePanel,
+  onSearchText,
 }: DiffCodeViewerProps) {
   const leftContainerRef = useRef<HTMLDivElement>(null)
   const rightContainerRef = useRef<HTMLDivElement>(null)
   const [syncScroll] = useState(true)
   const theme = useTheme()
+  const { contextMenu, handleContextMenu, handleClose } = useCodeContextMenu()
 
   const prismLanguage = getPrismLanguage(language)
   const langGrammar = Prism.languages[prismLanguage]
@@ -580,6 +585,7 @@ export function DiffCodeViewer({
         {/* Code content */}
         <Box
           ref={containerRef}
+          onContextMenu={onSearchText ? handleContextMenu : undefined}
           sx={{
             flex: 1,
             overflow: 'auto',
@@ -735,6 +741,13 @@ export function DiffCodeViewer({
         {renderPanel('left', leftHeader, leftContainerRef, leftSymbols, leftReferences)}
         {renderPanel('right', rightHeader, rightContainerRef, rightSymbols, rightReferences)}
       </Box>
+      {onSearchText && (
+        <CodeContextMenu
+          contextMenu={contextMenu}
+          onSearch={() => onSearchText(contextMenu?.selectedText ?? '')}
+          onClose={handleClose}
+        />
+      )}
     </Box>
   )
 }

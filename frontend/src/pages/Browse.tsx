@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -145,6 +145,41 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
     params.set('commit', commitHash)
     navigate(`/history?${params.toString()}`)
   }
+
+  const handleSearchText = useCallback(
+    (text: string) => {
+      if (!text) return
+      const params = new URLSearchParams()
+      if (repoName) params.set('repo', repoName)
+      if (selectedBranch) params.set('branch', selectedBranch)
+      if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
+      params.set('query', text)
+      navigate(`/search?${params.toString()}`)
+    },
+    [repoName, selectedBranch, urlState.selectedCommit, navigate]
+  )
+
+  // Keyboard shortcut: Cmd+Shift+F (Mac) / Ctrl+Shift+F (Win/Linux)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
+      const isMod = e.metaKey || e.ctrlKey
+      if (isMod && e.shiftKey && e.key === 'F') {
+        e.preventDefault()
+        const selection = window.getSelection()
+        const selectedText = selection?.toString().trim() ?? ''
+        if (selectedText) {
+          handleSearchText(selectedText)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleSearchText])
 
   if (loading) {
     return (
@@ -447,6 +482,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                     onReferenceClick={actions.handleDiffReferenceClick}
                     onLineClick={actions.handleDiffLineClick}
                     onClosePanel={actions.closePanel}
+                    onSearchText={handleSearchText}
                   />
                 ) : diffMode && diffLoading ? (
                   <Box
@@ -503,6 +539,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                           onSymbolClick={actions.handleSymbolClick}
                           onReferenceClick={actions.handleCodeReferenceClick}
                           onLineClick={actions.navigateToLine}
+                          onSearchText={handleSearchText}
                         />
                       </Box>
                     </Box>
@@ -622,6 +659,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                         onReferenceClick={actions.handleCodeReferenceClick}
                         onLineClick={actions.navigateToLine}
                         onBlameCommitClick={handleBlameCommitClick}
+                        onSearchText={handleSearchText}
                       />
                     )}
                   </Box>
