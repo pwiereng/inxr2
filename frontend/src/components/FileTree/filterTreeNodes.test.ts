@@ -98,8 +98,7 @@ describe('filterAndRank', () => {
   it('should rank name-starts-with above name-contains', () => {
     const results = filterAndRank(flat, 'index')
     const names = results.map((e) => e.name)
-    // "index.ts" starts with "index" (tier 0), "src" directory path-matches (tier 2)
-    // Name-starts-with should rank first
+    // "index.ts" starts with "index" (tier 0), so it should rank above other matches
     expect(names[0]).toBe('index.ts')
   })
 

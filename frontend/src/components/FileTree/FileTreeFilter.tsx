@@ -61,7 +61,13 @@ export function FileTreeFilter({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (!filterText) return
+      if (!filterText.trim() || results.length === 0) {
+        if (e.key === 'Escape' && filterText) {
+          e.preventDefault()
+          onFilterChange('')
+        }
+        return
+      }
 
       if (e.key === 'ArrowDown') {
         e.preventDefault()

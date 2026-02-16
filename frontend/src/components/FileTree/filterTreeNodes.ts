@@ -57,7 +57,7 @@ export function flattenTree(nodes: TreeNode[]): FlatFileEntry[] {
 export function filterAndRank(entries: FlatFileEntry[], query: string): FlatFileEntry[] {
   if (!query.trim()) return []
 
-  const q = query.toLowerCase()
+  const q = query.trim().toLowerCase()
 
   const scored: { entry: FlatFileEntry; score: number }[] = []
 

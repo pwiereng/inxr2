@@ -231,7 +231,7 @@ export function FileTree({ nodes, selectedFileId, onFileSelect, loading = false 
   const handleFilterDirectorySelect = useCallback((path: string) => {
     setFilterText('')
     // Expand the directory and all its parents
-    const parentPaths = getParentPaths(path + '/placeholder')
+    const parentPaths = getParentPaths(path)
     setExpandedPaths((prev) => {
       const next = new Set(prev)
       // Add the directory itself and all parents
