@@ -29,7 +29,6 @@ class SymbolResponse(BaseModel):
     file_id: int
     file_path: str | None = None
     repository_id: int
-    commit_id: int
     start_line: int
     start_column: int
     end_line: int
@@ -106,7 +105,6 @@ async def search_symbols(
                 file_id=s.symbol.file_id,
                 file_path=s.file_path,
                 repository_id=s.symbol.repository_id,
-                commit_id=s.symbol.commit_id,
                 start_line=s.symbol.start_line,
                 start_column=s.symbol.start_column,
                 end_line=s.symbol.end_line,
@@ -168,7 +166,6 @@ async def get_symbols_by_name(
                 file_id=s.symbol.file_id,
                 file_path=s.file_path,
                 repository_id=s.symbol.repository_id,
-                commit_id=s.symbol.commit_id,
                 start_line=s.symbol.start_line,
                 start_column=s.symbol.start_column,
                 end_line=s.symbol.end_line,
@@ -210,7 +207,6 @@ async def get_symbol(
         file_id=symbol.file_id,
         file_path=file_path,
         repository_id=symbol.repository_id,
-        commit_id=symbol.commit_id,
         start_line=symbol.start_line,
         start_column=symbol.start_column,
         end_line=symbol.end_line,

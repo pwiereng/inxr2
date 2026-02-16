@@ -6,9 +6,6 @@ from pathlib import Path
 import pytest
 
 from inxr2.application.ports.services import CommitInfo
-from inxr2.application.use_cases.indexing.optimize_file_indexing import (
-    OptimizeFileIndexingUseCase,
-)
 from inxr2.application.use_cases.indexing.process_commit import (
     ProcessCommitRequest,
     ProcessCommitUseCase,
@@ -114,11 +111,6 @@ def use_case(
     reference_repo: InMemoryReferenceRepository,
     parser_service: FakeParserService,
 ) -> ProcessCommitUseCase:
-    optimize = OptimizeFileIndexingUseCase(
-        file_repository=file_repo,
-        symbol_repository=symbol_repo,
-        reference_repository=reference_repo,
-    )
     process_file = ProcessFileUseCase(
         git_service=git_service,
         file_repo=file_repo,
@@ -127,10 +119,10 @@ def use_case(
         text_content_repo=text_content_repo,
         parser_service=parser_service,
         plaintext_parser=FakePlaintextParser(),
-        optimize_use_case=optimize,
     )
     return ProcessCommitUseCase(
         commit_repo=commit_repo,
+        file_repo=file_repo,
         git_service=git_service,
         text_content_repo=text_content_repo,
         process_file_use_case=process_file,
@@ -172,7 +164,6 @@ class TestProcessCommitUseCase:
             commit_data=_make_commit(),
             repo_path=Path("/repos/test-repo"),
             branch="main",
-            content_hash_cache={},
         )
 
         result = await use_case.execute(request)
@@ -205,7 +196,6 @@ class TestProcessCommitUseCase:
             commit_data=commit_data,
             repo_path=Path("/repos/test-repo"),
             branch="main",
-            content_hash_cache={},
         )
         await use_case.execute(request1)
 
@@ -218,7 +208,6 @@ class TestProcessCommitUseCase:
             commit_data=commit_data,
             repo_path=Path("/repos/test-repo"),
             branch="feature",
-            content_hash_cache={},
         )
         await use_case.execute(request2)
 
@@ -243,7 +232,6 @@ class TestProcessCommitUseCase:
             commit_data=_make_commit(),
             repo_path=Path("/repos/test-repo"),
             branch="main",
-            content_hash_cache={},
         )
 
         result = await use_case.execute(request)
@@ -273,7 +261,6 @@ class TestProcessCommitUseCase:
             commit_data=commit_data,
             repo_path=Path("/repos/test-repo"),
             branch="main",
-            content_hash_cache={},
         )
         result1 = await use_case.execute(request1)
         assert result1.files_processed > 0
@@ -284,7 +271,6 @@ class TestProcessCommitUseCase:
             commit_data=commit_data,
             repo_path=Path("/repos/test-repo"),
             branch="feature",
-            content_hash_cache={},
         )
         result2 = await use_case.execute(request2)
         assert (
@@ -303,7 +289,6 @@ class TestProcessCommitUseCase:
             commit_data=_make_commit(message="Add new feature"),
             repo_path=Path("/repos/test-repo"),
             branch="main",
-            content_hash_cache={},
         )
 
         result = await use_case.execute(request)
@@ -325,7 +310,6 @@ class TestProcessCommitUseCase:
             commit_data=_make_commit(),
             repo_path=Path("/repos/test-repo"),
             branch="main",
-            content_hash_cache={},
         )
 
         result = await use_case.execute(request)
@@ -353,7 +337,6 @@ class TestProcessCommitUseCase:
             commit_data=commit_data,
             repo_path=Path("/repos/test-repo"),
             branch="main",
-            content_hash_cache={},
         )
         await use_case.execute(request)
         await use_case.execute(request)

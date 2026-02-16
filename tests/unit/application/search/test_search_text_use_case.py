@@ -56,9 +56,7 @@ class TestSearchTextUseCase:
         repo = InMemoryFileRepository()
         await repo.save(
             File(
-                id=None,
                 repository_id=1,
-                commit_id=1,
                 path="src/parser.py",
                 content_hash="hash1",
                 size_bytes=1000,

@@ -51,7 +51,6 @@ class TestGetRepositoryStatsUseCase:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -62,7 +61,6 @@ class TestGetRepositoryStatsUseCase:
             File(
                 id=2,
                 repository_id=1,
-                commit_id=1,
                 path="src/utils.py",
                 content_hash="hash2",
                 size_bytes=200,
@@ -73,7 +71,6 @@ class TestGetRepositoryStatsUseCase:
             File(
                 id=3,
                 repository_id=1,
-                commit_id=1,
                 path="src/app.ts",
                 content_hash="hash3",
                 size_bytes=300,
@@ -84,7 +81,6 @@ class TestGetRepositoryStatsUseCase:
             File(
                 id=4,
                 repository_id=1,
-                commit_id=1,
                 path="README.md",
                 content_hash="hash4",
                 size_bytes=50,
@@ -96,7 +92,6 @@ class TestGetRepositoryStatsUseCase:
             File(
                 id=5,
                 repository_id=2,
-                commit_id=2,
                 path="index.js",
                 content_hash="hash5",
                 size_bytes=150,
@@ -115,7 +110,6 @@ class TestGetRepositoryStatsUseCase:
                 id=1,
                 file_id=1,
                 repository_id=1,
-                commit_id=1,
                 name="main",
                 kind=SymbolKind.FUNCTION,
                 start_line=1,
@@ -129,7 +123,6 @@ class TestGetRepositoryStatsUseCase:
                 id=2,
                 file_id=1,
                 repository_id=1,
-                commit_id=1,
                 name="Helper",
                 kind=SymbolKind.CLASS,
                 start_line=12,
@@ -143,7 +136,6 @@ class TestGetRepositoryStatsUseCase:
                 id=3,
                 file_id=2,
                 repository_id=1,
-                commit_id=1,
                 name="utility",
                 kind=SymbolKind.FUNCTION,
                 start_line=1,
@@ -158,7 +150,6 @@ class TestGetRepositoryStatsUseCase:
                 id=4,
                 file_id=5,
                 repository_id=2,
-                commit_id=2,
                 name="init",
                 kind=SymbolKind.FUNCTION,
                 start_line=1,
@@ -178,7 +169,6 @@ class TestGetRepositoryStatsUseCase:
             Reference(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 source_file_id=1,
                 source_line=5,
                 source_column=10,
@@ -191,7 +181,6 @@ class TestGetRepositoryStatsUseCase:
             Reference(
                 id=2,
                 repository_id=1,
-                commit_id=1,
                 source_file_id=1,
                 source_line=8,
                 source_column=4,
@@ -205,7 +194,6 @@ class TestGetRepositoryStatsUseCase:
             Reference(
                 id=3,
                 repository_id=2,
-                commit_id=2,
                 source_file_id=5,
                 source_line=3,
                 source_column=0,
@@ -406,7 +394,6 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 path="a.py",
                 content_hash="h1",
                 size_bytes=100,
@@ -417,7 +404,6 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
             File(
                 id=2,
                 repository_id=1,
-                commit_id=1,
                 path="b.py",
                 content_hash="h2",
                 size_bytes=100,
@@ -428,7 +414,6 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
             File(
                 id=3,
                 repository_id=1,
-                commit_id=1,
                 path="c.py",
                 content_hash="h3",
                 size_bytes=100,

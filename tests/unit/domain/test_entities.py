@@ -68,7 +68,6 @@ class TestFile:
         """Test creating a file entity."""
         file = File(
             repository_id=1,
-            commit_id=1,
             path="src/main.py",
             content_hash="sha256hash",
             size_bytes=1024,
@@ -91,7 +90,6 @@ class TestSymbol:
         symbol = Symbol(
             file_id=1,
             repository_id=1,
-            commit_id=1,
             name="my_function",
             kind=SymbolKind.FUNCTION,
             start_line=10,
@@ -120,7 +118,6 @@ class TestReference:
         """Test creating a reference entity."""
         ref = Reference(
             repository_id=1,
-            commit_id=1,
             source_file_id=2,
             source_line=20,
             source_column=8,

@@ -94,7 +94,6 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 path="file_a.py",
                 content_hash="hash_a_v1",
                 size_bytes=100,
@@ -105,7 +104,6 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
             File(
                 id=2,
                 repository_id=1,
-                commit_id=1,
                 path="file_b.py",
                 content_hash="hash_b_v1",
                 size_bytes=100,
@@ -116,20 +114,20 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
             File(
                 id=3,
                 repository_id=1,
-                commit_id=1,
                 path="file_c.py",
                 content_hash="hash_c_v1",
                 size_bytes=100,
                 language="python",
             )
         )
+        # Link commit 1 files
+        repo._commit_files.update({(1, 1), (1, 2), (1, 3)})
 
         # Files at commit2 (newer) - full tree snapshot
         repo.add(
             File(
                 id=4,
                 repository_id=1,
-                commit_id=2,
                 path="file_a.py",
                 content_hash="hash_a_v2",  # CHANGED
                 size_bytes=150,
@@ -140,7 +138,6 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
             File(
                 id=5,
                 repository_id=1,
-                commit_id=2,
                 path="file_b.py",
                 content_hash="hash_b_v1",  # UNCHANGED
                 size_bytes=100,
@@ -151,7 +148,6 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
             File(
                 id=6,
                 repository_id=1,
-                commit_id=2,
                 path="file_c.py",
                 content_hash="hash_c_v1",  # UNCHANGED
                 size_bytes=100,
@@ -162,13 +158,14 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
             File(
                 id=7,
                 repository_id=1,
-                commit_id=2,
                 path="file_d.py",
                 content_hash="hash_d_v1",  # NEW FILE
                 size_bytes=200,
                 language="python",
             )
         )
+        # Link commit 2 files (full snapshot)
+        repo._commit_files.update({(2, 4), (2, 5), (2, 6), (2, 7)})
 
         return repo
 

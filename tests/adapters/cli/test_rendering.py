@@ -112,15 +112,14 @@ class TestPrintSummary:
         output = buf.getvalue()
         assert "75.0%" in output
 
-    def test_shows_reuse_stats(self) -> None:
+    def test_shows_file_version_stats(self) -> None:
         console, buf = _capture_console()
         renderer = IndexingProgressRenderer(console)
-        stats = IndexingStats(files_reused=10, symbols_reused=50, references_reused=30)
+        stats = IndexingStats(file_versions_new=10, file_versions_cached=50)
         renderer.print_summary(stats)
         output = buf.getvalue()
-        assert "Files Reused" in output
-        assert "Symbols Reused" in output
-        assert "References Reused" in output
+        assert "File Versions (new)" in output
+        assert "File Versions (cached)" in output
 
     def test_shows_errors(self) -> None:
         console, buf = _capture_console()
@@ -204,9 +203,7 @@ class TestProgressCallback:
         output = StringIO()
         callback = renderer.create_progress_callback(output=output)
 
-        progress = IndexingProgress(
-            phase="files", files_processed=0, files_total=100, cache_size=50
-        )
+        progress = IndexingProgress(phase="files", files_processed=0, files_total=100)
         callback(progress)
         # The "Files to process" line goes to console, not output
         # But 0% milestone should write to output
@@ -219,11 +216,7 @@ class TestProgressCallback:
         callback = renderer.create_progress_callback(output=output)
 
         # Trigger initial display
-        callback(
-            IndexingProgress(
-                phase="files", files_processed=0, files_total=100, cache_size=0
-            )
-        )
+        callback(IndexingProgress(phase="files", files_processed=0, files_total=100))
         # Hit 50% milestone
         callback(
             IndexingProgress(
@@ -232,7 +225,6 @@ class TestProgressCallback:
                 files_total=100,
                 symbols_found=200,
                 references_found=100,
-                cache_size=30,
             )
         )
         text = output.getvalue()
@@ -293,16 +285,14 @@ class TestProgressCallback:
         output = StringIO()
         callback = renderer.create_progress_callback(output=output)
 
-        progress = IndexingProgress(
-            phase="files", files_processed=50, files_total=100, cache_size=0
-        )
+        progress = IndexingProgress(phase="files", files_processed=50, files_total=100)
         callback(progress)
         callback(progress)
         text = output.getvalue()
         # Both calls write output (spinner keeps line alive)
         assert text.count("50%") == 2
         # Different spinner chars on each line
-        lines = [l.strip() for l in text.split("\r") if l.strip()]
+        lines = [part.strip() for part in text.split("\r") if part.strip()]
         assert len(lines) == 2
         assert lines[0][0] != lines[1][0]  # spinner rotated
 
@@ -313,11 +303,7 @@ class TestProgressCallback:
         output = StringIO()
         callback = renderer.create_progress_callback(output=output)
 
-        callback(
-            IndexingProgress(
-                phase="files", files_processed=0, files_total=0, cache_size=0
-            )
-        )
+        callback(IndexingProgress(phase="files", files_processed=0, files_total=0))
         # No output expected and no crash
         assert True
 

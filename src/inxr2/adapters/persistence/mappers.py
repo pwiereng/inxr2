@@ -100,7 +100,6 @@ class FileMapper:
         return File(
             id=model.id,
             repository_id=model.repository_id,
-            commit_id=model.commit_id,
             path=model.path,
             content_hash=model.content_hash,
             size_bytes=model.size_bytes,
@@ -117,7 +116,6 @@ class FileMapper:
         return FileModel(
             id=entity.id,
             repository_id=entity.repository_id,
-            commit_id=entity.commit_id,
             path=entity.path,
             content_hash=entity.content_hash,
             size_bytes=entity.size_bytes,
@@ -139,7 +137,6 @@ class SymbolMapper:
             id=model.id,
             file_id=model.file_id,
             repository_id=model.repository_id,
-            commit_id=model.commit_id,
             name=model.name,
             kind=SymbolKind(model.kind),
             start_line=model.start_line,
@@ -162,7 +159,6 @@ class SymbolMapper:
             id=entity.id,
             file_id=entity.file_id,
             repository_id=entity.repository_id,
-            commit_id=entity.commit_id,
             name=entity.name,
             kind=entity.kind.value,
             start_line=entity.start_line,
@@ -188,7 +184,6 @@ class ReferenceMapper:
         return Reference(
             id=model.id,
             repository_id=model.repository_id,
-            commit_id=model.commit_id,
             source_file_id=model.source_file_id,
             source_line=model.source_line,
             source_column=model.source_column,
@@ -210,7 +205,6 @@ class ReferenceMapper:
         return ReferenceModel(
             id=entity.id,
             repository_id=entity.repository_id,
-            commit_id=entity.commit_id,
             source_file_id=entity.source_file_id,
             source_line=entity.source_line,
             source_column=entity.source_column,

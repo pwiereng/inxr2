@@ -68,8 +68,8 @@ class FileSearchResultResponse(BaseModel):
     language: str | None
     repository_id: int
     repository_name: str
-    commit_id: int
-    commit_hash: str
+    commit_id: int | None = None
+    commit_hash: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

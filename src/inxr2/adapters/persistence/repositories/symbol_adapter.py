@@ -1,27 +1,21 @@
 """PostgreSQL symbol repository adapter."""
 
-from datetime import UTC, datetime
-
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import Subquery, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....application.ports.repositories import CopySymbolsResult, SymbolRepositoryPort
+from ....application.ports.repositories import SymbolRepositoryPort
 from ....domain.entities import Symbol
 from ..mappers import SymbolMapper
+from ..models.commit import CommitModel
+from ..models.commit_file import CommitFileModel
+from ..models.file import FileModel
 from ..models.symbol import SymbolModel
-from ._latest_file_query import latest_file_ids_subquery
 
 
 class PostgresSymbolRepository(SymbolRepositoryPort):
     """PostgreSQL implementation of SymbolRepositoryPort."""
 
     def __init__(self, session: AsyncSession):
-        """
-        Initialize repository.
-
-        Args:
-            session: SQLAlchemy async session
-        """
         self.session = session
         self.mapper = SymbolMapper()
 
@@ -61,6 +55,33 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
 
+    def _latest_file_ids_subquery(self, repository_id: int) -> Subquery:
+        """Subquery returning the latest file ID per (repository_id, path).
+
+        Uses commit dates via commit_files junction to determine "latest",
+        which is correct even for HEAD-first indexing where newer commits
+        may have lower file IDs.
+        """
+        inner = (
+            select(
+                FileModel.id.label("file_id"),
+                func.row_number()
+                .over(
+                    partition_by=FileModel.path,
+                    order_by=[
+                        CommitModel.commit_date.desc(),
+                        CommitModel.id.desc(),
+                    ],
+                )
+                .label("rn"),
+            )
+            .join(CommitFileModel, CommitFileModel.file_id == FileModel.id)
+            .join(CommitModel, CommitModel.id == CommitFileModel.commit_id)
+            .where(FileModel.repository_id == repository_id)
+            .subquery()
+        )
+        return select(inner.c.file_id.label("max_id")).where(inner.c.rn == 1).subquery()
+
     async def search_by_name(
         self,
         name: str,
@@ -70,19 +91,16 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
-        Only returns symbols from the latest version of each file,
-        avoiding duplicates from multiple indexed commits.
+        When repository_id is provided, deduplicates by filtering to
+        only the latest file version per (repository_id, path).
         """
-        # Build base query
         query = select(SymbolModel).where(SymbolModel.name.ilike(f"%{name}%"))
 
         if repository_id is not None:
             query = query.where(SymbolModel.repository_id == repository_id)
-
-            # Filter to only symbols from latest file versions
-            query = query.where(
-                SymbolModel.file_id.in_(latest_file_ids_subquery(repository_id))
-            )
+            # Deduplicate: only symbols from latest file version per path
+            latest_sq = self._latest_file_ids_subquery(repository_id)
+            query = query.where(SymbolModel.file_id.in_(select(latest_sq.c.max_id)))
 
         if kind is not None:
             query = query.where(SymbolModel.kind == kind)
@@ -102,14 +120,10 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
     ) -> list[Symbol]:
         """Find all symbols with the exact given name.
 
-        Useful for disambiguation when multiple symbols have the same name
-        (e.g., save() methods in different classes).
-
         Args:
             name: The exact symbol name to match
             repository_id: Filter by repository (optional)
-            commit_id: Filter by specific commit for time travel (optional).
-                       If not provided, returns symbols from latest file versions.
+            commit_id: Filter by specific commit via commit_files (optional).
         """
         query = select(SymbolModel).where(SymbolModel.name == name)
 
@@ -117,15 +131,19 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
             query = query.where(SymbolModel.repository_id == repository_id)
 
         if commit_id is not None:
-            # Time travel mode: filter to specific commit
-            query = query.where(SymbolModel.commit_id == commit_id)
-        elif repository_id is not None:
-            # Default mode: filter to only symbols from latest file versions
+            # Filter via commit_files junction
             query = query.where(
-                SymbolModel.file_id.in_(latest_file_ids_subquery(repository_id))
+                SymbolModel.file_id.in_(
+                    select(CommitFileModel.file_id).where(
+                        CommitFileModel.commit_id == commit_id
+                    )
+                )
             )
+        elif repository_id is not None:
+            # Default mode: only latest file version per path
+            latest_sq = self._latest_file_ids_subquery(repository_id)
+            query = query.where(SymbolModel.file_id.in_(select(latest_sq.c.max_id)))
 
-        # Order by qualified_name for consistent ordering
         query = query.order_by(SymbolModel.qualified_name, SymbolModel.id)
 
         result = await self.session.execute(query)
@@ -137,14 +155,14 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
     ) -> list[Symbol]:
         """Find symbols by fully qualified name.
 
-        Only returns symbols from the latest version of each file,
-        avoiding duplicates from multiple indexed commits.
+        Deduplicates by filtering to only latest file version per path.
         """
+        latest_sq = self._latest_file_ids_subquery(repository_id)
         result = await self.session.execute(
             select(SymbolModel).where(
                 SymbolModel.repository_id == repository_id,
                 SymbolModel.qualified_name == qualified_name,
-                SymbolModel.file_id.in_(latest_file_ids_subquery(repository_id)),
+                SymbolModel.file_id.in_(select(latest_sq.c.max_id)),
             )
         )
         models = result.scalars().all()
@@ -184,89 +202,3 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         )
         await self.session.flush()
         return result.rowcount or 0  # type: ignore[attr-defined]
-
-    async def copy_symbols_to_file(
-        self,
-        source_file_id: int,
-        target_file_id: int,
-        target_commit_id: int,
-        target_repository_id: int,
-    ) -> CopySymbolsResult:
-        """Copy all symbols from source file to target file.
-
-        Creates new symbol records with the target file/commit IDs while
-        preserving all other symbol attributes. Parent symbol IDs are
-        remapped to point to the newly created symbols.
-
-        Performance: Uses a single flush for all inserts (O(1) for inserts),
-        then individual UPDATE statements for parent_symbol_id remapping
-        (O(N) for symbols with parents). Most files have few nested symbols,
-        so this is acceptable for typical use cases.
-        """
-        # Fetch source symbols ordered by ID to maintain parent-child ordering
-        result = await self.session.execute(
-            select(SymbolModel)
-            .where(SymbolModel.file_id == source_file_id)
-            .order_by(SymbolModel.id)
-        )
-        source_symbols = list(result.scalars().all())
-
-        if not source_symbols:
-            return CopySymbolsResult(count=0, id_mapping={})
-
-        # Track source symbols that have parents (for second pass)
-        symbols_with_parents: list[tuple[int, int]] = []  # (source_id, parent_id)
-
-        # Create all new symbols and add to session (no flush yet)
-        new_symbols: list[SymbolModel] = []
-        indexed_at = datetime.now(UTC).replace(tzinfo=None)
-
-        for source in source_symbols:
-            new_symbol = SymbolModel(
-                file_id=target_file_id,
-                repository_id=target_repository_id,
-                commit_id=target_commit_id,
-                name=source.name,
-                qualified_name=source.qualified_name,
-                kind=source.kind,
-                start_line=source.start_line,
-                start_column=source.start_column,
-                end_line=source.end_line,
-                end_column=source.end_column,
-                scope=source.scope,
-                signature=source.signature,
-                docstring=source.docstring,
-                extra_metadata=source.extra_metadata,
-                parent_symbol_id=None,  # Set in second pass
-                indexed_at=indexed_at,
-            )
-            self.session.add(new_symbol)
-            new_symbols.append(new_symbol)
-
-            # Track symbols that need parent remapping
-            if source.parent_symbol_id is not None and source.id is not None:
-                symbols_with_parents.append((source.id, source.parent_symbol_id))
-
-        # Single flush to insert all symbols at once
-        await self.session.flush()
-
-        # Build old->new ID mapping (symbols maintain order after flush)
-        old_to_new_id: dict[int, int] = {}
-        for source, new_symbol in zip(source_symbols, new_symbols, strict=True):
-            if source.id is not None and new_symbol.id is not None:
-                old_to_new_id[source.id] = new_symbol.id
-
-        # Second pass: batch update parent_symbol_id references
-        if symbols_with_parents:
-            for source_id, old_parent_id in symbols_with_parents:
-                new_id = old_to_new_id.get(source_id)
-                new_parent_id = old_to_new_id.get(old_parent_id)
-                if new_id is not None and new_parent_id is not None:
-                    await self.session.execute(
-                        update(SymbolModel)
-                        .where(SymbolModel.id == new_id)
-                        .values(parent_symbol_id=new_parent_id)
-                    )
-            await self.session.flush()
-
-        return CopySymbolsResult(count=len(source_symbols), id_mapping=old_to_new_id)

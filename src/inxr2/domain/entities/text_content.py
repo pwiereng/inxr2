@@ -31,7 +31,7 @@ class TextContent:
     """
 
     repository_id: int
-    commit_id: int
+    commit_id: int | None
     source_type: str
     content: str
     source_file_id: int | None

@@ -2,8 +2,8 @@
 Process file use case.
 
 Extracts symbols, references, comments, and text content from a single file
-during indexing. This was extracted from DefaultIndexingOrchestrator to keep
-the orchestrator focused on coordination.
+during indexing. Uses content-addressable file versioning: if a file version
+(repo, path, content_hash) already exists, skips parsing entirely.
 """
 
 import hashlib
@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from inxr2.domain.entities import (
-    File,
     Reference,
     Symbol,
     TextContent,
 )
+from inxr2.domain.services.language_detector import LanguageDetector
 from inxr2.domain.value_objects import (
     ReferenceType,
     SymbolKind,
@@ -30,10 +30,6 @@ from ...ports.repositories import (
     TextContentRepositoryPort,
 )
 from ...ports.services import GitServicePort, PlaintextParserPort
-from .optimize_file_indexing import (
-    OptimizeFileIndexingRequest,
-    OptimizeFileIndexingUseCase,
-)
 
 
 @dataclass
@@ -41,13 +37,11 @@ class ProcessFileRequest:
     """Request to process a single file during indexing."""
 
     repository_id: int
-    commit_id: int
     file_path: str
     commit_hash: str
     repo_path: Path
-    content_hash_cache: dict[str, int]  # mutated in-place (adds new entries)
     blob_hash: str | None = None  # git blob hash for fast skip
-    blob_to_content_hash: dict[str, str] | None = None  # blob hash → content hash
+    blob_to_content_hash: dict[str, str] | None = None  # blob hash -> content hash
 
 
 @dataclass
@@ -57,30 +51,26 @@ class ProcessFileResult:
     processed: bool
     skipped: bool
     failed: bool
-    reused: bool
+    file_id: int | None  # file version ID for commit_files linking
+    file_version_created: bool  # True if a new file version was created
     symbols_found: int
     references_found: int
-    symbols_reused: int
-    references_reused: int
     lines_indexed: int
     comments_indexed: int
     docstrings_indexed: int
     non_code_file_indexed: bool
     error: str | None = None
-    db_inserts: int = 0
-    db_selects: int = 0
 
 
 class ProcessFileUseCase:
     """
     Use case for processing a single file during indexing.
 
-    Handles:
-    - Reading file content from git
-    - Content-hash optimization (reuse from donor file)
-    - Parsing code files for symbols and references
-    - Extracting comments and docstrings
-    - Indexing non-code files as text content
+    Uses content-addressable file versioning:
+    - A file version is uniquely identified by (repo_id, path, content_hash)
+    - If a version already exists, we skip parsing entirely (no copying needed)
+    - If it's new, we parse and save symbols/references
+    - The caller (ProcessCommitUseCase) handles linking file_id to commit
     """
 
     def __init__(
@@ -92,7 +82,6 @@ class ProcessFileUseCase:
         text_content_repo: TextContentRepositoryPort,
         parser_service: Any,  # ParserServicePort
         plaintext_parser: PlaintextParserPort,
-        optimize_use_case: OptimizeFileIndexingUseCase,
     ) -> None:
         self._git_service = git_service
         self._file_repo = file_repo
@@ -101,10 +90,9 @@ class ProcessFileUseCase:
         self._text_content_repo = text_content_repo
         self._parser_service = parser_service
         self._plaintext_parser = plaintext_parser
-        self._optimize_use_case = optimize_use_case
 
     async def execute(self, request: ProcessFileRequest) -> ProcessFileResult:
-        """Process a single file: parse, extract symbols/references, save."""
+        """Process a single file: find or create version, parse if new."""
         try:
             return await self._do_process(request)
         except Exception as e:
@@ -112,11 +100,10 @@ class ProcessFileUseCase:
                 processed=False,
                 skipped=False,
                 failed=True,
-                reused=False,
+                file_id=None,
+                file_version_created=False,
                 symbols_found=0,
                 references_found=0,
-                symbols_reused=0,
-                references_reused=0,
                 lines_indexed=0,
                 comments_indexed=0,
                 docstrings_indexed=0,
@@ -125,17 +112,37 @@ class ProcessFileUseCase:
             )
 
     async def _do_process(self, request: ProcessFileRequest) -> ProcessFileResult:
-        """Inner processing logic (called within try/except)."""
-        db_inserts = 0
-        db_selects = 0
-
-        # Fast path: if blob hash is known and maps to a cached content hash,
-        # skip get_file_content entirely (avoids git subprocess per file)
+        """Inner processing logic."""
+        # Fast path: if blob hash maps to a known content hash,
+        # try to find existing file version without reading git content
         known_content_hash = self._lookup_blob_hash(request)
-        if known_content_hash and known_content_hash in request.content_hash_cache:
-            return await self._fast_reuse(request, known_content_hash)
+        if known_content_hash:
+            file_entity, created = await self._file_repo.find_or_create_version(
+                repository_id=request.repository_id,
+                path=request.file_path,
+                content_hash=known_content_hash,
+                size_bytes=0,  # placeholder — version already exists
+            )
+            if not created:
+                # File version already exists — skip entirely
+                return ProcessFileResult(
+                    processed=True,
+                    skipped=False,
+                    failed=False,
+                    file_id=file_entity.id,
+                    file_version_created=False,
+                    symbols_found=0,
+                    references_found=0,
+                    lines_indexed=0,
+                    comments_indexed=0,
+                    docstrings_indexed=0,
+                    non_code_file_indexed=False,
+                )
+            # Created with placeholder size — need to read content to fill in
+            # This shouldn't happen often (blob→content_hash implies we've
+            # seen this content before), but handle gracefully by falling through
 
-        # Get file content
+        # Read file content from git
         content = self._git_service.get_file_content(
             repo_path=request.repo_path,
             commit_hash=request.commit_hash,
@@ -145,65 +152,44 @@ class ProcessFileUseCase:
         # Calculate content hash
         content_hash = hashlib.sha1(content.encode("utf-8")).hexdigest()
 
-        # Record blob → content hash mapping for future fast reuse
+        # Record blob → content hash mapping for future fast skip
         if request.blob_hash and request.blob_to_content_hash is not None:
             request.blob_to_content_hash[request.blob_hash] = content_hash
 
-        # Detect language
-        language = self._detect_language(request.file_path)
+        # Detect language using full LanguageDetector (60+ extensions, fixes #35)
+        language = LanguageDetector.detect(request.file_path)
 
-        # Create file record
-        file_entity = File(
-            id=None,
+        # Find or create file version
+        content_bytes = content.encode("utf-8")
+        line_count = content.count("\n") + 1
+        file_entity, created = await self._file_repo.find_or_create_version(
             repository_id=request.repository_id,
-            commit_id=request.commit_id,
             path=request.file_path,
             content_hash=content_hash,
-            size_bytes=len(content.encode("utf-8")),
+            size_bytes=len(content_bytes),
             language=language,
-            line_count=content.count("\n") + 1,
+            line_count=line_count,
         )
-        db_file = await self._file_repo.save(file_entity)
-        db_inserts += 1
-        file_id = db_file.id
-        assert file_id is not None, "File must have an ID after save"
+        file_id = file_entity.id
+        assert file_id is not None
 
-        # Try content-hash optimization
-        optimize_request = OptimizeFileIndexingRequest(
-            target_file_id=file_id,
-            target_commit_id=request.commit_id,
-            target_repository_id=request.repository_id,
-            content_hash=content_hash,
-            content_hash_cache=request.content_hash_cache,
-        )
-        optimization_result = await self._optimize_use_case.execute(optimize_request)
-
-        if optimization_result.optimization_applied:
-            # Reused symbols/references from donor file
-            request.content_hash_cache[content_hash] = file_id
-            db_selects += 2
-            db_inserts += (
-                optimization_result.symbols_copied
-                + optimization_result.references_copied
-            )
+        if not created:
+            # File version already exists — symbols/references already saved
             return ProcessFileResult(
                 processed=True,
                 skipped=False,
                 failed=False,
-                reused=True,
-                symbols_found=optimization_result.symbols_copied,
-                references_found=optimization_result.references_copied,
-                symbols_reused=optimization_result.symbols_copied,
-                references_reused=optimization_result.references_copied,
-                lines_indexed=file_entity.line_count or 0,
+                file_id=file_id,
+                file_version_created=False,
+                symbols_found=0,
+                references_found=0,
+                lines_indexed=0,
                 comments_indexed=0,
                 docstrings_indexed=0,
                 non_code_file_indexed=False,
-                db_inserts=db_inserts,
-                db_selects=db_selects,
             )
 
-        # Parse file and extract symbols/references
+        # New file version — parse and save symbols/references
         if language and self._parser_service.supports_language(language):
             symbols_data, references_data = await self._parser_service.parse_file(
                 content=content,
@@ -211,18 +197,16 @@ class ProcessFileUseCase:
                 file_path=request.file_path,
             )
 
-            # Extract and save comments
+            # Extract and save comments (file-derived, commit_id=None)
             comments_indexed, docstrings_indexed, comment_errors = (
                 await self._extract_and_save_comments(
                     content=content,
                     language=language,
                     file_path_str=request.file_path,
                     repository_id=request.repository_id,
-                    commit_id=request.commit_id,
                     file_id=file_id,
                 )
             )
-            comment_inserts = comments_indexed + docstrings_indexed
 
             # Save symbols
             symbols_found = 0
@@ -231,7 +215,6 @@ class ProcessFileUseCase:
                     id=None,
                     file_id=file_id,
                     repository_id=request.repository_id,
-                    commit_id=request.commit_id,
                     name=symbol_data["name"],
                     kind=SymbolKind(symbol_data["kind"]),
                     start_line=symbol_data["start_line"],
@@ -243,7 +226,6 @@ class ProcessFileUseCase:
                     metadata=symbol_data.get("metadata", {}),
                 )
                 await self._symbol_repo.save(symbol)
-                db_inserts += 1
                 symbols_found += 1
 
             # Save references
@@ -264,7 +246,6 @@ class ProcessFileUseCase:
                 reference = Reference(
                     id=None,
                     repository_id=request.repository_id,
-                    commit_id=request.commit_id,
                     source_file_id=file_id,
                     source_line=ref_data["source_line"],
                     source_column=source_column,
@@ -274,36 +255,28 @@ class ProcessFileUseCase:
                     target_symbol_id=None,
                 )
                 await self._reference_repo.save(reference)
-                db_inserts += 1
                 references_found += 1
-
-            # Add to cache
-            request.content_hash_cache[content_hash] = file_id
 
             return ProcessFileResult(
                 processed=True,
                 skipped=False,
                 failed=False,
-                reused=False,
+                file_id=file_id,
+                file_version_created=True,
                 symbols_found=symbols_found,
                 references_found=references_found,
-                symbols_reused=0,
-                references_reused=0,
-                lines_indexed=file_entity.line_count or 0,
+                lines_indexed=line_count,
                 comments_indexed=comments_indexed,
                 docstrings_indexed=docstrings_indexed,
                 non_code_file_indexed=False,
                 error=comment_errors,
-                db_inserts=db_inserts + comment_inserts,
-                db_selects=db_selects,
             )
 
-        # Not a supported code file - try parsing as plaintext/non-code file
+        # Not a supported code file — try parsing as plaintext/non-code file
         indexed_as_plaintext = await self._index_non_code_file(
             content=content,
             file_path_str=request.file_path,
             repository_id=request.repository_id,
-            commit_id=request.commit_id,
             file_id=file_id,
         )
 
@@ -312,35 +285,29 @@ class ProcessFileUseCase:
                 processed=True,
                 skipped=False,
                 failed=False,
-                reused=False,
+                file_id=file_id,
+                file_version_created=True,
                 symbols_found=0,
                 references_found=0,
-                symbols_reused=0,
-                references_reused=0,
-                lines_indexed=file_entity.line_count or 0,
+                lines_indexed=line_count,
                 comments_indexed=0,
                 docstrings_indexed=0,
                 non_code_file_indexed=True,
                 error=indexed_as_plaintext.error,
-                db_inserts=db_inserts + indexed_as_plaintext.inserts,
-                db_selects=db_selects,
             )
 
         return ProcessFileResult(
             processed=False,
             skipped=True,
             failed=False,
-            reused=False,
+            file_id=file_id,
+            file_version_created=True,
             symbols_found=0,
             references_found=0,
-            symbols_reused=0,
-            references_reused=0,
             lines_indexed=0,
             comments_indexed=0,
             docstrings_indexed=0,
             non_code_file_indexed=False,
-            db_inserts=db_inserts,
-            db_selects=db_selects,
         )
 
     @staticmethod
@@ -354,94 +321,18 @@ class ProcessFileUseCase:
             return request.blob_to_content_hash[request.blob_hash]
         return None
 
-    async def _fast_reuse(
-        self, request: ProcessFileRequest, content_hash: str
-    ) -> ProcessFileResult:
-        """Fast-path reuse: blob hash already seen, content hash in cache.
-
-        Creates a file record and copies symbols/references from the donor,
-        without reading file content from git.
-        """
-        donor_file_id = request.content_hash_cache[content_hash]
-        # We need basic file metadata — get it from the donor
-        donor_file = await self._file_repo.find_by_id(donor_file_id)
-
-        language = self._detect_language(request.file_path)
-        file_entity = File(
-            id=None,
-            repository_id=request.repository_id,
-            commit_id=request.commit_id,
-            path=request.file_path,
-            content_hash=content_hash,
-            size_bytes=donor_file.size_bytes if donor_file else 0,
-            language=language,
-            line_count=donor_file.line_count if donor_file else 0,
-        )
-        db_file = await self._file_repo.save(file_entity)
-        file_id = db_file.id
-        assert file_id is not None
-
-        optimize_request = OptimizeFileIndexingRequest(
-            target_file_id=file_id,
-            target_commit_id=request.commit_id,
-            target_repository_id=request.repository_id,
-            content_hash=content_hash,
-            content_hash_cache=request.content_hash_cache,
-        )
-        optimization_result = await self._optimize_use_case.execute(optimize_request)
-
-        request.content_hash_cache[content_hash] = file_id
-        db_inserts = (
-            1
-            + optimization_result.symbols_copied
-            + optimization_result.references_copied
-        )
-
-        return ProcessFileResult(
-            processed=True,
-            skipped=False,
-            failed=False,
-            reused=True,
-            symbols_found=optimization_result.symbols_copied,
-            references_found=optimization_result.references_copied,
-            symbols_reused=optimization_result.symbols_copied,
-            references_reused=optimization_result.references_copied,
-            lines_indexed=file_entity.line_count or 0,
-            comments_indexed=0,
-            docstrings_indexed=0,
-            non_code_file_indexed=False,
-            db_inserts=db_inserts,
-            db_selects=2,
-        )
-
-    def _detect_language(self, file_path: str) -> str | None:
-        """Detect language from file extension."""
-        ext_map = {
-            ".py": "python",
-            ".ts": "typescript",
-            ".tsx": "typescript",
-            ".js": "javascript",
-            ".jsx": "javascript",
-            ".java": "java",
-            ".c": "c",
-            ".h": "c",
-            ".cs": "csharp",
-        }
-        for ext, lang in ext_map.items():
-            if file_path.endswith(ext):
-                return lang
-        return None
-
     async def _extract_and_save_comments(
         self,
         content: str,
         language: str,
         file_path_str: str,
         repository_id: int,
-        commit_id: int,
         file_id: int,
     ) -> tuple[int, int, str | None]:
         """Extract comments and docstrings from a file and save to database.
+
+        File-derived text content uses commit_id=None since it belongs
+        to the file version, not a specific commit.
 
         Returns:
             Tuple of (comments_indexed, docstrings_indexed, error_message_or_none)
@@ -471,7 +362,7 @@ class ProcessFileUseCase:
                 text_content = TextContent(
                     id=None,
                     repository_id=repository_id,
-                    commit_id=commit_id,
+                    commit_id=None,  # file-derived, not commit-specific
                     source_type=source_type,
                     source_file_id=file_id,
                     source_line=comment_data["source_line"],
@@ -502,7 +393,6 @@ class ProcessFileUseCase:
         content: str,
         file_path_str: str,
         repository_id: int,
-        commit_id: int,
         file_id: int,
     ) -> _NonCodeResult:
         """Index non-code files (markdown, YAML, etc.) as searchable text content."""
@@ -519,7 +409,7 @@ class ProcessFileUseCase:
                 text_content = TextContent(
                     id=None,
                     repository_id=repository_id,
-                    commit_id=commit_id,
+                    commit_id=None,  # file-derived, not commit-specific
                     source_type=TextSearchSourceType.FILE_CONTENT.value,
                     source_file_id=file_id,
                     source_line=chunk["source_line"],

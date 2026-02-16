@@ -4,9 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from inxr2.application.use_cases.indexing.optimize_file_indexing import (
-    OptimizeFileIndexingUseCase,
-)
 from inxr2.application.use_cases.indexing.process_file import (
     ProcessFileRequest,
     ProcessFileUseCase,
@@ -112,11 +109,6 @@ def use_case(
     text_content_repo: InMemoryTextContentRepository,
     parser_service: FakeParserService,
 ) -> ProcessFileUseCase:
-    optimize = OptimizeFileIndexingUseCase(
-        file_repository=file_repo,
-        symbol_repository=symbol_repo,
-        reference_repository=reference_repo,
-    )
     return ProcessFileUseCase(
         git_service=git_service,
         file_repo=file_repo,
@@ -125,7 +117,6 @@ def use_case(
         text_content_repo=text_content_repo,
         parser_service=parser_service,
         plaintext_parser=FakePlaintextParser(),
-        optimize_use_case=optimize,
     )
 
 
@@ -142,11 +133,9 @@ class TestProcessFileUseCase:
         """Test that a supported code file is parsed and symbols/references saved."""
         request = ProcessFileRequest(
             repository_id=1,
-            commit_id=1,
             file_path="src/main.py",
             commit_hash="abc123",
             repo_path=Path("/repos/test-repo"),
-            content_hash_cache={},
         )
 
         result = await use_case.execute(request)
@@ -166,34 +155,28 @@ class TestProcessFileUseCase:
         file_repo: InMemoryFileRepository,
         symbol_repo: InMemorySymbolRepository,
     ) -> None:
-        """Test that content-hash optimization reuses symbols from donor."""
-        # First: process the file normally to populate cache
-        cache: dict[str, int] = {}
+        """Test that content-hash optimization reuses file version from cache."""
+        # First: process the file normally to create a file version
         request1 = ProcessFileRequest(
             repository_id=1,
-            commit_id=1,
             file_path="src/main.py",
             commit_hash="abc123",
             repo_path=Path("/repos/test-repo"),
-            content_hash_cache=cache,
         )
         result1 = await use_case.execute(request1)
         assert result1.processed is True
-        assert result1.reused is False
+        assert result1.file_version_created is True
 
-        # Second: same content hash -> should reuse
+        # Second: same content hash -> should reuse existing file version
         request2 = ProcessFileRequest(
             repository_id=1,
-            commit_id=2,
             file_path="src/main.py",
             commit_hash="abc123",
             repo_path=Path("/repos/test-repo"),
-            content_hash_cache=cache,
         )
         result2 = await use_case.execute(request2)
         assert result2.processed is True
-        assert result2.reused is True
-        assert result2.symbols_reused > 0
+        assert result2.file_version_created is False
 
     @pytest.mark.asyncio
     async def test_non_code_file_indexing(
@@ -204,11 +187,9 @@ class TestProcessFileUseCase:
         """Test that non-code files (markdown, yaml) are indexed as text content."""
         request = ProcessFileRequest(
             repository_id=1,
-            commit_id=1,
             file_path="README.md",
             commit_hash="abc123",
             repo_path=Path("/repos/test-repo"),
-            content_hash_cache={},
         )
 
         result = await use_case.execute(request)
@@ -228,11 +209,9 @@ class TestProcessFileUseCase:
         """Test that unsupported language files without plaintext support are skipped."""
         request = ProcessFileRequest(
             repository_id=1,
-            commit_id=1,
             file_path="image.png",
             commit_hash="abc123",
             repo_path=Path("/repos/test-repo"),
-            content_hash_cache={},
         )
 
         result = await use_case.execute(request)
@@ -258,11 +237,6 @@ class TestProcessFileUseCase:
             ) -> str:
                 raise RuntimeError("Git error")
 
-        optimize = OptimizeFileIndexingUseCase(
-            file_repository=file_repo,
-            symbol_repository=symbol_repo,
-            reference_repository=reference_repo,
-        )
         use_case = ProcessFileUseCase(
             git_service=ErrorGitService(),
             file_repo=file_repo,
@@ -271,16 +245,13 @@ class TestProcessFileUseCase:
             text_content_repo=text_content_repo,
             parser_service=parser_service,
             plaintext_parser=FakePlaintextParser(),
-            optimize_use_case=optimize,
         )
 
         request = ProcessFileRequest(
             repository_id=1,
-            commit_id=1,
             file_path="src/main.py",
             commit_hash="abc123",
             repo_path=Path("/repos/test-repo"),
-            content_hash_cache={},
         )
 
         result = await use_case.execute(request)
@@ -313,11 +284,9 @@ class TestProcessFileUseCase:
 
         request = ProcessFileRequest(
             repository_id=1,
-            commit_id=1,
             file_path="src/main.py",
             commit_hash="abc123",
             repo_path=Path("/repos/test-repo"),
-            content_hash_cache={},
         )
 
         result = await use_case.execute(request)
@@ -341,11 +310,9 @@ class TestProcessFileUseCase:
         result_py = await use_case.execute(
             ProcessFileRequest(
                 repository_id=1,
-                commit_id=1,
                 file_path="main.py",
                 commit_hash="abc123",
                 repo_path=Path("/repos/test-repo"),
-                content_hash_cache={},
             )
         )
         assert result_py.processed is True
@@ -355,11 +322,9 @@ class TestProcessFileUseCase:
         result_ts = await use_case.execute(
             ProcessFileRequest(
                 repository_id=1,
-                commit_id=1,
                 file_path="app.ts",
                 commit_hash="abc123",
                 repo_path=Path("/repos/test-repo"),
-                content_hash_cache={},
             )
         )
         assert result_ts.processed is True

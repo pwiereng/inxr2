@@ -166,16 +166,17 @@ async def test_second_commit(
 async def test_file(
     db_session: AsyncSession, test_repository: Repository, test_commit: Commit
 ) -> File:
-    """Create a test file."""
+    """Create a test file and link it to the test commit."""
     assert test_repository.id is not None
     assert test_commit.id is not None
     adapter = PostgresFileRepository(db_session)
     file = await adapter.save(
         FileFactory.create(
             repository_id=test_repository.id,
-            commit_id=test_commit.id,
             path="src/test.py",
         )
     )
+    assert file.id is not None
+    await adapter.link_file_to_commit(file.id, test_commit.id)
     await db_session.commit()
     return file

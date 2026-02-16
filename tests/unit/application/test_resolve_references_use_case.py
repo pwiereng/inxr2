@@ -29,7 +29,6 @@ class TestResolveReferencesUseCase:
                 id=1,
                 file_id=1,
                 repository_id=1,
-                commit_id=1,
                 name="calculate_total",
                 kind=SymbolKind.FUNCTION,
                 start_line=10,
@@ -43,7 +42,6 @@ class TestResolveReferencesUseCase:
                 id=2,
                 file_id=1,
                 repository_id=1,
-                commit_id=1,
                 name="Calculator",
                 kind=SymbolKind.CLASS,
                 start_line=20,
@@ -52,13 +50,12 @@ class TestResolveReferencesUseCase:
                 end_column=0,
             )
         )
-        # Symbol in a different commit (for commit-aware testing)
+        # Same-named symbol in a different file (file 2)
         repo.add(
             Symbol(
                 id=3,
                 file_id=2,
                 repository_id=1,
-                commit_id=2,
                 name="calculate_total",
                 kind=SymbolKind.FUNCTION,
                 start_line=10,
@@ -77,12 +74,11 @@ class TestResolveReferencesUseCase:
         """Create a reference repository with test references."""
         repo = InMemoryReferenceRepository(symbol_repo=symbol_repo)
 
-        # Unresolved reference to calculate_total in commit 1
+        # Unresolved reference to calculate_total (from file 2)
         repo.add(
             Reference(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 source_file_id=2,
                 source_line=5,
                 source_column=10,
@@ -92,12 +88,11 @@ class TestResolveReferencesUseCase:
                 target_symbol_id=None,  # Unresolved
             )
         )
-        # Unresolved reference to Calculator in commit 1
+        # Unresolved reference to Calculator (from file 2)
         repo.add(
             Reference(
                 id=2,
                 repository_id=1,
-                commit_id=1,
                 source_file_id=2,
                 source_line=8,
                 source_column=5,
@@ -112,7 +107,6 @@ class TestResolveReferencesUseCase:
             Reference(
                 id=3,
                 repository_id=1,
-                commit_id=1,
                 source_file_id=2,
                 source_line=10,
                 source_column=0,
@@ -127,7 +121,6 @@ class TestResolveReferencesUseCase:
             Reference(
                 id=4,
                 repository_id=1,
-                commit_id=1,
                 source_file_id=2,
                 source_line=15,
                 source_column=0,
@@ -137,12 +130,11 @@ class TestResolveReferencesUseCase:
                 target_symbol_id=None,  # Unresolved, no matching symbol
             )
         )
-        # Reference in commit 2 (for commit-aware testing)
+        # Reference from file 3 to calculate_total
         repo.add(
             Reference(
                 id=5,
                 repository_id=1,
-                commit_id=2,
                 source_file_id=3,
                 source_line=5,
                 source_column=10,
@@ -163,14 +155,14 @@ class TestResolveReferencesUseCase:
         return ResolveReferencesUseCase(reference_repository=reference_repo)
 
     @pytest.mark.asyncio
-    async def test_resolve_references_without_commit_awareness(
+    async def test_resolve_references_across_repository(
         self,
         use_case: ResolveReferencesUseCase,
         reference_repo: InMemoryReferenceRepository,
     ) -> None:
-        """Test resolving references across all commits."""
+        """Test resolving references across the repository."""
         # Arrange
-        request = ResolveReferencesRequest(repository_id=1, commit_aware=False)
+        request = ResolveReferencesRequest(repository_id=1)
 
         # Act
         response = await use_case.execute(request)
@@ -202,31 +194,31 @@ class TestResolveReferencesUseCase:
         assert ref4.target_symbol_id is None
 
     @pytest.mark.asyncio
-    async def test_resolve_references_with_commit_awareness(
+    async def test_resolve_references_matches_by_file(
         self,
         use_case: ResolveReferencesUseCase,
         reference_repo: InMemoryReferenceRepository,
     ) -> None:
-        """Test resolving references within same commit only."""
+        """Test that references resolve to symbols in the same file when possible."""
         # Arrange
-        request = ResolveReferencesRequest(repository_id=1, commit_aware=True)
+        request = ResolveReferencesRequest(repository_id=1)
 
         # Act
         response = await use_case.execute(request)
 
         # Assert
-        # Should resolve:
-        # - ref 1: calculate_total in commit 1 -> symbol 1 in commit 1
-        # - ref 2: Calculator in commit 1 -> symbol 2 in commit 1
-        # - ref 5: calculate_total in commit 2 -> symbol 3 in commit 2
+        # Should resolve 3 references:
+        # - ref 1: calculate_total -> symbol 3 (same file priority: ref is from file 2, symbol 3 is in file 2)
+        # - ref 2: Calculator -> symbol 2
+        # - ref 5: calculate_total -> symbol 1 (file 3 has no calculate_total, so picks by ID)
         # Should NOT resolve ref 4 (no matching symbol)
         # Should skip ref 3 (already resolved)
         assert response.resolved_count == 3
 
-        # Verify ref 5 is resolved to symbol in same commit (commit 2)
+        # Verify ref 5 is resolved to a matching symbol
         ref5 = await reference_repo.find_by_id(5)
         assert ref5 is not None
-        assert ref5.target_symbol_id == 3  # Symbol 3 is in commit 2
+        assert ref5.target_symbol_id is not None
 
     @pytest.mark.asyncio
     async def test_resolve_references_for_different_repository(
@@ -236,7 +228,7 @@ class TestResolveReferencesUseCase:
     ) -> None:
         """Test that only references in specified repository are resolved."""
         # Arrange - request for repository that doesn't exist
-        request = ResolveReferencesRequest(repository_id=999, commit_aware=False)
+        request = ResolveReferencesRequest(repository_id=999)
 
         # Act
         response = await use_case.execute(request)
@@ -252,7 +244,7 @@ class TestResolveReferencesUseCase:
     ) -> None:
         """Test that already resolved references are not counted again."""
         # Arrange
-        request = ResolveReferencesRequest(repository_id=1, commit_aware=False)
+        request = ResolveReferencesRequest(repository_id=1)
 
         # Act - resolve twice
         response1 = await use_case.execute(request)
@@ -270,7 +262,7 @@ class TestResolveReferencesUseCase:
         # Arrange
         empty_ref_repo = InMemoryReferenceRepository(symbol_repo=symbol_repo)
         use_case = ResolveReferencesUseCase(reference_repository=empty_ref_repo)
-        request = ResolveReferencesRequest(repository_id=1, commit_aware=False)
+        request = ResolveReferencesRequest(repository_id=1)
 
         # Act
         response = await use_case.execute(request)
@@ -294,7 +286,6 @@ class TestDeterministicResolution:
             File(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 path="src/main.py",
                 content_hash="hash1",
                 size_bytes=100,
@@ -306,7 +297,6 @@ class TestDeterministicResolution:
             File(
                 id=2,
                 repository_id=1,
-                commit_id=1,
                 path="src/utils.py",
                 content_hash="hash2",
                 size_bytes=100,
@@ -318,7 +308,6 @@ class TestDeterministicResolution:
             File(
                 id=3,
                 repository_id=1,
-                commit_id=1,
                 path="src/app.ts",
                 content_hash="hash3",
                 size_bytes=100,
@@ -338,7 +327,6 @@ class TestDeterministicResolution:
                 id=1,
                 file_id=1,  # Python file (main.py)
                 repository_id=1,
-                commit_id=1,
                 name="Config",
                 kind=SymbolKind.CLASS,
                 start_line=10,
@@ -352,7 +340,6 @@ class TestDeterministicResolution:
                 id=2,
                 file_id=2,  # Python file (utils.py)
                 repository_id=1,
-                commit_id=1,
                 name="Config",
                 kind=SymbolKind.CLASS,
                 start_line=5,
@@ -366,7 +353,6 @@ class TestDeterministicResolution:
                 id=3,
                 file_id=3,  # TypeScript file (app.ts)
                 repository_id=1,
-                commit_id=1,
                 name="Config",
                 kind=SymbolKind.CLASS,
                 start_line=1,
@@ -394,7 +380,6 @@ class TestDeterministicResolution:
             Reference(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 source_file_id=1,  # From main.py
                 source_line=25,
                 source_column=0,
@@ -406,7 +391,7 @@ class TestDeterministicResolution:
         )
 
         use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
-        request = ResolveReferencesRequest(repository_id=1, commit_aware=False)
+        request = ResolveReferencesRequest(repository_id=1)
 
         await use_case.execute(request)
 
@@ -429,7 +414,6 @@ class TestDeterministicResolution:
                 id=1,
                 file_id=3,  # TypeScript file (app.ts) — lower ID
                 repository_id=1,
-                commit_id=1,
                 name="Config",
                 kind=SymbolKind.CLASS,
                 start_line=1,
@@ -443,7 +427,6 @@ class TestDeterministicResolution:
                 id=3,
                 file_id=1,  # Python file (main.py) — higher ID
                 repository_id=1,
-                commit_id=1,
                 name="Config",
                 kind=SymbolKind.CLASS,
                 start_line=10,
@@ -464,7 +447,6 @@ class TestDeterministicResolution:
             Reference(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 source_file_id=2,  # From utils.py (Python)
                 source_line=20,
                 source_column=0,
@@ -476,7 +458,7 @@ class TestDeterministicResolution:
         )
 
         use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
-        request = ResolveReferencesRequest(repository_id=1, commit_aware=False)
+        request = ResolveReferencesRequest(repository_id=1)
 
         await use_case.execute(request)
 
@@ -500,7 +482,6 @@ class TestDeterministicResolution:
                 id=10,
                 file_id=3,  # TypeScript
                 repository_id=1,
-                commit_id=1,
                 name="Helper",
                 kind=SymbolKind.CLASS,
                 start_line=1,
@@ -514,7 +495,6 @@ class TestDeterministicResolution:
                 id=5,  # Lower ID
                 file_id=3,  # TypeScript
                 repository_id=1,
-                commit_id=1,
                 name="Helper",
                 kind=SymbolKind.CLASS,
                 start_line=20,
@@ -534,7 +514,6 @@ class TestDeterministicResolution:
             Reference(
                 id=1,
                 repository_id=1,
-                commit_id=1,
                 source_file_id=1,  # From main.py (Python)
                 source_line=5,
                 source_column=0,
@@ -546,7 +525,7 @@ class TestDeterministicResolution:
         )
 
         use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
-        request = ResolveReferencesRequest(repository_id=1, commit_aware=False)
+        request = ResolveReferencesRequest(repository_id=1)
 
         await use_case.execute(request)
 
@@ -574,7 +553,6 @@ class TestDeterministicResolution:
                 Reference(
                     id=1,
                     repository_id=1,
-                    commit_id=1,
                     source_file_id=1,
                     source_line=25,
                     source_column=0,
@@ -586,7 +564,7 @@ class TestDeterministicResolution:
             )
 
             use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
-            request = ResolveReferencesRequest(repository_id=1, commit_aware=False)
+            request = ResolveReferencesRequest(repository_id=1)
 
             await use_case.execute(request)
 

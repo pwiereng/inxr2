@@ -1080,7 +1080,7 @@ class TestGitServiceIntegration:
         # First indexing run — fresh, indexes HEAD only
         response1 = await orchestrator.index_repository(request)
         assert response1.commits_indexed == 1
-        first_files_processed = response1.files_processed
+        assert response1.files_processed > 0
 
         # Count commits after first run
         commits_after_first = await commit_repo.list_by_repository(repository_id=1)

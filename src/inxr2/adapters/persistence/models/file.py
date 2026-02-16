@@ -3,13 +3,22 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CHAR, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    CHAR,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
 
 if TYPE_CHECKING:
-    from .commit import CommitModel
+    from .commit_file import CommitFileModel
     from .reference import ReferenceModel
     from .repository import RepositoryModel
     from .symbol import SymbolModel
@@ -17,16 +26,18 @@ if TYPE_CHECKING:
 
 
 class FileModel(Base):
-    """SQLAlchemy ORM model for files table."""
+    """SQLAlchemy ORM model for files table.
+
+    Represents a content-addressable file version. A file version is uniquely
+    identified by (repository_id, path, content_hash). Commits reference file
+    versions through the commit_files junction table.
+    """
 
     __tablename__ = "files"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     repository_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
-    )
-    commit_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("commits.id", ondelete="CASCADE"), nullable=False
     )
     path: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(CHAR(40), nullable=False, index=True)
@@ -39,11 +50,22 @@ class FileModel(Base):
         DateTime(timezone=False), nullable=False, server_default="now()"
     )
 
+    __table_args__ = (
+        UniqueConstraint(
+            "repository_id",
+            "path",
+            "content_hash",
+            name="uq_file_version",
+        ),
+    )
+
     # Relationships
     repository: Mapped["RepositoryModel"] = relationship(
         "RepositoryModel", back_populates="files"
     )
-    commit: Mapped["CommitModel"] = relationship("CommitModel", back_populates="files")
+    commit_files: Mapped[list["CommitFileModel"]] = relationship(
+        "CommitFileModel", back_populates="file", cascade="all, delete-orphan"
+    )
     symbols: Mapped[list["SymbolModel"]] = relationship(
         "SymbolModel", back_populates="file", cascade="all, delete-orphan"
     )

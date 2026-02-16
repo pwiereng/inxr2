@@ -133,10 +133,7 @@ class IndexingProgressRenderer:
         def on_progress(p: IndexingProgress) -> None:
             if not state.shown_start and p.files_total > 0:
                 state.shown_start = True
-                console.print(
-                    f"  [dim]Files to process: {p.files_total} | "
-                    f"Cache size: {p.cache_size}[/dim]"
-                )
+                console.print(f"  [dim]Files to process: {p.files_total}[/dim]")
 
             if p.phase == "files" and p.files_total > 0:
                 pct = int((p.files_processed / p.files_total) * 100)
@@ -149,8 +146,7 @@ class IndexingProgressRenderer:
                 out.write(
                     f"\r  {spinner} {state.last_pct}% "
                     f"({p.files_processed}/{p.files_total}) | "
-                    f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
-                    f"Cache: {p.cache_size}    "
+                    f"Symbols: {p.symbols_found} | Refs: {p.references_found}    "
                 )
                 out.flush()
             elif p.phase == "resolving":
@@ -268,13 +264,15 @@ class IndexingProgressRenderer:
                 f"[dim]{stats.commit_messages_indexed:,}[/dim]",
             )
 
-        if stats.files_reused > 0:
+        if stats.file_versions_new > 0 or stats.file_versions_cached > 0:
             table.add_row("", "")
-            table.add_row("Files Reused", f"[yellow]{stats.files_reused}[/yellow]")
-            table.add_row("Symbols Reused", f"[yellow]{stats.symbols_reused}[/yellow]")
             table.add_row(
-                "References Reused",
-                f"[yellow]{stats.references_reused}[/yellow]",
+                "File Versions (new)",
+                f"[green]{stats.file_versions_new}[/green]",
+            )
+            table.add_row(
+                "File Versions (cached)",
+                f"[yellow]{stats.file_versions_cached}[/yellow]",
             )
 
         if elapsed_seconds is not None:

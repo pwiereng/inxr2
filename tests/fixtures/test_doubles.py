@@ -40,7 +40,6 @@ from typing import Any, BinaryIO
 
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
-    CopySymbolsResult,
     FileRepositoryPort,
     IndexStatusRepositoryPort,
     ReferenceRepositoryPort,
@@ -110,7 +109,6 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 id=self._next_id,
                 file_id=symbol.file_id,
                 repository_id=symbol.repository_id,
-                commit_id=symbol.commit_id,
                 name=symbol.name,
                 kind=symbol.kind,
                 start_line=symbol.start_line,
@@ -219,14 +217,22 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         name: str,
         repository_id: int | None = None,
         commit_id: int | None = None,
-        limit: int = 100,
     ) -> list[Symbol]:
         """Find symbols by exact name.
 
+        When commit_id is provided, filters to symbols from files linked to
+        that commit via commit_files junction table.
         When commit_id is None and repository_id is set with file_repo available,
         filters to only symbols from the latest version of each file
         (matching Postgres behavior).
         """
+        # When commit_id is provided, filter to files linked to that commit
+        commit_file_ids: set[int] | None = None
+        if commit_id is not None and self._file_repo is not None:
+            commit_file_ids = {
+                fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+            }
+
         # Compute latest file IDs when not in time-travel mode
         latest_file_ids: set[int] | None = None
         if (
@@ -241,7 +247,10 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
             if symbol.name == name:
                 if repository_id is not None and symbol.repository_id != repository_id:
                     continue
-                if commit_id is not None and symbol.commit_id != commit_id:
+                if (
+                    commit_file_ids is not None
+                    and symbol.file_id not in commit_file_ids
+                ):
                     continue
                 if (
                     latest_file_ids is not None
@@ -250,7 +259,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                     continue
                 results.append(symbol)
         results.sort(key=lambda s: (s.qualified_name or "", s.id or 0))
-        return results[:limit]
+        return results
 
     async def count_by_repository(self, repository_id: int) -> int:
         """Count symbols in a repository."""
@@ -265,75 +274,6 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
             del self._symbols[sid]
         return len(to_delete)
 
-    async def copy_symbols_to_file(
-        self,
-        source_file_id: int,
-        target_file_id: int,
-        target_commit_id: int,
-        target_repository_id: int,
-    ) -> CopySymbolsResult:
-        """Copy all symbols from source file to target file."""
-        source_symbols = [
-            s for s in self._symbols.values() if s.file_id == source_file_id
-        ]
-        if not source_symbols:
-            return CopySymbolsResult(count=0, id_mapping={})
-
-        # Map old symbol IDs to new ones for parent_symbol_id remapping
-        old_to_new_id: dict[int, int] = {}
-
-        for source in source_symbols:
-            new_symbol = Symbol(
-                id=self._next_id,
-                file_id=target_file_id,
-                repository_id=target_repository_id,
-                commit_id=target_commit_id,
-                name=source.name,
-                kind=source.kind,
-                start_line=source.start_line,
-                start_column=source.start_column,
-                end_line=source.end_line,
-                end_column=source.end_column,
-                qualified_name=source.qualified_name,
-                scope=source.scope,
-                signature=source.signature,
-                docstring=source.docstring,
-                metadata=source.metadata,
-                parent_symbol_id=None,  # Will be remapped below
-            )
-            self._symbols[self._next_id] = new_symbol
-            if source.id is not None:
-                old_to_new_id[source.id] = self._next_id
-            self._next_id += 1
-
-        # Remap parent_symbol_id references
-        for source in source_symbols:
-            if source.parent_symbol_id is not None and source.id is not None:
-                new_id = old_to_new_id.get(source.id)
-                new_parent_id = old_to_new_id.get(source.parent_symbol_id)
-                if new_id is not None and new_parent_id is not None:
-                    old_symbol = self._symbols[new_id]
-                    self._symbols[new_id] = Symbol(
-                        id=old_symbol.id,
-                        file_id=old_symbol.file_id,
-                        repository_id=old_symbol.repository_id,
-                        commit_id=old_symbol.commit_id,
-                        name=old_symbol.name,
-                        kind=old_symbol.kind,
-                        start_line=old_symbol.start_line,
-                        start_column=old_symbol.start_column,
-                        end_line=old_symbol.end_line,
-                        end_column=old_symbol.end_column,
-                        qualified_name=old_symbol.qualified_name,
-                        scope=old_symbol.scope,
-                        signature=old_symbol.signature,
-                        docstring=old_symbol.docstring,
-                        metadata=old_symbol.metadata,
-                        parent_symbol_id=new_parent_id,
-                    )
-
-        return CopySymbolsResult(count=len(source_symbols), id_mapping=old_to_new_id)
-
     # Test helper methods
     def add(self, symbol: Symbol) -> Symbol:
         """Add a symbol for testing (convenience method)."""
@@ -342,7 +282,6 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 id=self._next_id,
                 file_id=symbol.file_id,
                 repository_id=symbol.repository_id,
-                commit_id=symbol.commit_id,
                 name=symbol.name,
                 kind=symbol.kind,
                 start_line=symbol.start_line,
@@ -379,10 +318,12 @@ class InMemoryFileRepository(FileRepositoryPort):
     """
     In-memory implementation of FileRepositoryPort for testing.
 
+    Uses content-addressable file versions with a commit_files junction table.
+
     Example:
         repo = InMemoryFileRepository()
-        repo.add(File(...))
-        file = await repo.find_by_id("file-1")
+        file, created = await repo.find_or_create_version(1, "src/main.py", "abc123", 100)
+        await repo.link_file_to_commit(file.id, commit_id=1)
 
     For time travel testing, pass a commit repository:
         commit_repo = InMemoryCommitRepository()
@@ -397,6 +338,8 @@ class InMemoryFileRepository(FileRepositoryPort):
                          (required for find_by_repository_path_and_commit_hash)
         """
         self._files: dict[int, File] = {}
+        # Junction table: set of (commit_id, file_id) pairs
+        self._commit_files: set[tuple[int, int]] = set()
         self._next_id = 1
         self._commit_repo = commit_repo
 
@@ -406,7 +349,6 @@ class InMemoryFileRepository(FileRepositoryPort):
             file = File(
                 id=self._next_id,
                 repository_id=file.repository_id,
-                commit_id=file.commit_id,
                 path=file.path,
                 content_hash=file.content_hash,
                 size_bytes=file.size_bytes,
@@ -437,6 +379,54 @@ class InMemoryFileRepository(FileRepositoryPort):
             saved_files.append(saved)
         return saved_files
 
+    async def find_or_create_version(
+        self,
+        repository_id: int,
+        path: str,
+        content_hash: str,
+        size_bytes: int,
+        language: str | None = None,
+        encoding: str = "utf-8",
+        is_binary: bool = False,
+        line_count: int | None = None,
+    ) -> tuple[File, bool]:
+        """Find existing file version or create a new one.
+
+        Looks up by (repository_id, path, content_hash) unique key.
+        """
+        for f in self._files.values():
+            if (
+                f.repository_id == repository_id
+                and f.path == path
+                and f.content_hash == content_hash
+            ):
+                return (f, False)
+
+        # Create new
+        file = File(
+            id=self._next_id,
+            repository_id=repository_id,
+            path=path,
+            content_hash=content_hash,
+            size_bytes=size_bytes,
+            language=language,
+            encoding=encoding,
+            is_binary=is_binary,
+            line_count=line_count,
+        )
+        self._files[self._next_id] = file
+        self._next_id += 1
+        return (file, True)
+
+    async def link_file_to_commit(self, file_id: int, commit_id: int) -> None:
+        """Link a file version to a commit via commit_files junction table."""
+        self._commit_files.add((commit_id, file_id))
+
+    async def link_files_to_commit(self, file_ids: list[int], commit_id: int) -> None:
+        """Bulk link file versions to a commit."""
+        for fid in file_ids:
+            self._commit_files.add((commit_id, fid))
+
     async def list_by_repository(self, repository_id: int) -> list[File]:
         """List all files for a repository."""
         return [f for f in self._files.values() if f.repository_id == repository_id]
@@ -444,74 +434,32 @@ class InMemoryFileRepository(FileRepositoryPort):
     async def find_by_path(
         self, repository_id: int, commit_id: int, path: str
     ) -> File | None:
-        """Find file by path."""
+        """Find file by repository, commit, and path via commit_files."""
+        file_ids = {fid for cid, fid in self._commit_files if cid == commit_id}
         for file in self._files.values():
             if (
-                file.repository_id == repository_id
-                and file.commit_id == commit_id
+                file.id in file_ids
+                and file.repository_id == repository_id
                 and file.path == path
             ):
                 return file
         return None
 
     async def list_by_commit(self, commit_id: int) -> list[File]:
-        """List files for a commit."""
-        return [f for f in self._files.values() if f.commit_id == commit_id]
+        """List files for a commit via commit_files junction table."""
+        file_ids = {fid for cid, fid in self._commit_files if cid == commit_id}
+        return [f for f in self._files.values() if f.id in file_ids]
 
     async def list_at_or_before_commit(
         self, repository_id: int, commit_id: int
     ) -> list[File]:
         """List the latest version of each file at or before a specific commit.
 
-        This requires commit_repo to be set for proper date-based filtering.
+        With full snapshot indexing via commit_files, this is equivalent to
+        list_by_commit since every commit has its complete file tree.
         """
-        if self._commit_repo is None:
-            # No commit repo - fall back to simple commit_id matching
-            return [
-                f
-                for f in self._files.values()
-                if f.repository_id == repository_id and f.commit_id == commit_id
-            ]
-
-        # Get target commit date
-        target_commit = await self._commit_repo.find_by_id(commit_id)
-        if target_commit is None:
-            return []
-
-        # Get all commits up to and including the target
-        all_commits = self._commit_repo.get_all_commits()
-        valid_commit_ids = {
-            c.id
-            for c in all_commits
-            if c.repository_id == repository_id
-            and c.id is not None
-            and c.commit_date <= target_commit.commit_date
-        }
-
-        # Get all files from these commits, keeping only the latest per path
-        path_to_file: dict[str, File] = {}
-        for f in self._files.values():
-            if f.repository_id == repository_id and f.commit_id in valid_commit_ids:
-                # Get commit date for this file's commit
-                file_commit = await self._commit_repo.find_by_id(f.commit_id)
-                if file_commit is None:
-                    continue
-
-                existing = path_to_file.get(f.path)
-                if existing is None:
-                    path_to_file[f.path] = f
-                else:
-                    # Compare commit dates, keep the newer one
-                    existing_commit = await self._commit_repo.find_by_id(
-                        existing.commit_id
-                    )
-                    if (
-                        existing_commit is not None
-                        and file_commit.commit_date > existing_commit.commit_date
-                    ):
-                        path_to_file[f.path] = f
-
-        return list(path_to_file.values())
+        files = await self.list_by_commit(commit_id)
+        return [f for f in files if f.repository_id == repository_id]
 
     async def find_by_content_hash(self, content_hash: str) -> list[File]:
         """Find files by content hash."""
@@ -531,10 +479,7 @@ class InMemoryFileRepository(FileRepositoryPort):
     ) -> list[File]:
         """List all versions of a file across commits (for time travel).
 
-        Args:
-            repository_id: The repository ID
-            path: The file path
-            branch: Optional branch to filter by (requires commit_repo with branch tracking)
+        Returns distinct file versions for this path.
         """
         files = [
             f
@@ -549,7 +494,11 @@ class InMemoryFileRepository(FileRepositoryPort):
             for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
                 if repo_id == repository_id and b == branch:
                     branch_commit_ids.add(cid)
-            files = [f for f in files if f.commit_id in branch_commit_ids]
+            # Get file_ids linked to branch commits
+            branch_file_ids = {
+                fid for cid, fid in self._commit_files if cid in branch_commit_ids
+            }
+            files = [f for f in files if f.id in branch_file_ids]
 
         return files
 
@@ -572,170 +521,94 @@ class InMemoryFileRepository(FileRepositoryPort):
         if commit is None or commit.id is None:
             return None
 
-        # Find file matching repository, path, and commit_id
-        for file in self._files.values():
-            if (
-                file.repository_id == repository_id
-                and file.path == path
-                and file.commit_id == commit.id
-            ):
-                return file
-        return None
+        # Find file at this commit via commit_files
+        return await self.find_by_path(repository_id, commit.id, path)
 
     async def list_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> list[File]:
         """List the latest version of each file on a branch.
 
-        For delta-indexed repositories, this aggregates files across all commits
-        on the branch, returning only the most recent version of each unique path.
+        Gets the latest commit on the branch, then returns all files
+        linked to that commit via commit_files.
         """
         if self._commit_repo is None:
             # No commit repo - return all files for repository
             return [f for f in self._files.values() if f.repository_id == repository_id]
 
-        # Get commit IDs on this branch
-        branch_commit_ids: set[int] = set()
-        for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
-            if repo_id == repository_id and b == branch:
-                branch_commit_ids.add(cid)
+        # Find latest commit on branch
+        latest = await self._commit_repo.find_latest_by_branch(repository_id, branch)
+        if latest is None or latest.id is None:
+            return []
 
-        # Get commits with dates for ordering
-        commits_with_dates: dict[int, datetime] = {}
-        for cid in branch_commit_ids:
-            commit = self._commit_repo._commits.get(cid)
-            if commit:
-                commits_with_dates[cid] = commit.commit_date
-
-        # Get all files on this branch
-        branch_files = [
-            f
-            for f in self._files.values()
-            if f.repository_id == repository_id and f.commit_id in branch_commit_ids
-        ]
-
-        # Group by path and keep only the latest (by commit date, then commit_id desc)
-        latest_by_path: dict[str, File] = {}
-        for file in branch_files:
-            file_date = commits_with_dates.get(file.commit_id, datetime.min)
-            if file.path not in latest_by_path:
-                latest_by_path[file.path] = file
-            else:
-                existing_file = latest_by_path[file.path]
-                existing_date = commits_with_dates.get(
-                    existing_file.commit_id, datetime.min
-                )
-                if file_date > existing_date:
-                    latest_by_path[file.path] = file
-                elif file_date == existing_date:
-                    # Tie-breaker: prefer higher commit_id (matches production behavior)
-                    if (
-                        file.commit_id is not None
-                        and existing_file.commit_id is not None
-                        and file.commit_id > existing_file.commit_id
-                    ):
-                        latest_by_path[file.path] = file
-
-        # Return sorted by path
-        return sorted(latest_by_path.values(), key=lambda f: f.path)
+        files = await self.list_by_commit(latest.id)
+        return sorted(
+            [f for f in files if f.repository_id == repository_id],
+            key=lambda f: f.path,
+        )
 
     async def list_changed_at_commit(
         self, repository_id: int, commit_id: int
     ) -> list[File]:
         """List only files that actually changed at a specific commit.
 
-        Returns files where either:
-        - The file is new (no prior version exists), OR
-        - The file's content_hash differs from the most recent prior version
-
-        Requires commit_repo to determine commit ordering.
-        Mirrors the Postgres ROW_NUMBER() window function approach.
+        Compares with parent commit's file set to find new or changed files.
         """
-        if self._commit_repo is None:
-            # No commit repo - fall back to returning all files at commit
-            return [
-                f
-                for f in self._files.values()
-                if f.repository_id == repository_id and f.commit_id == commit_id
-            ]
-
-        # Get target commit to determine its date
-        target_commit = await self._commit_repo.find_by_id(commit_id)
-        if target_commit is None:
-            return []
-
-        # Get all files at the target commit
+        # Get files at this commit via commit_files
+        files_at_commit = await self.list_by_commit(commit_id)
         files_at_commit = [
-            f
-            for f in self._files.values()
-            if f.repository_id == repository_id and f.commit_id == commit_id
+            f for f in files_at_commit if f.repository_id == repository_id
         ]
 
-        if not files_at_commit:
-            return []
+        if not files_at_commit or self._commit_repo is None:
+            return files_at_commit
 
-        # Build commit_dates lookup: commit_id -> (commit_date, commit_id)
-        # for all commits in this repo
-        commit_dates: dict[int, tuple[datetime, int]] = {}
+        # Get target commit
+        target_commit = await self._commit_repo.find_by_id(commit_id)
+        if target_commit is None:
+            return files_at_commit
+
+        # Find parent commit (most recent commit before this one)
+        parent_commit_id = None
+        parent_date = None
         for c in self._commit_repo._commits.values():
-            if c.repository_id == repository_id and c.id is not None:
-                commit_dates[c.id] = (c.commit_date, c.id)
-
-        target_key = (target_commit.commit_date, commit_id)
-
-        # Build prior_hashes: for each path, keep the content_hash from the
-        # most recent commit strictly before the target commit.
-        # "Most recent" = highest (commit_date, commit_id) that is < target_key.
-        prior_hashes: dict[str, str] = {}
-        prior_keys: dict[str, tuple[datetime, int]] = {}
-
-        for f in self._files.values():
-            if f.repository_id != repository_id:
+            if c.repository_id != repository_id or c.id is None or c.id == commit_id:
                 continue
-            f_key = commit_dates.get(f.commit_id)
-            if f_key is None or f_key >= target_key:
-                continue
-            # This file is from a prior commit
-            existing_key = prior_keys.get(f.path)
-            if existing_key is None or f_key > existing_key:
-                prior_hashes[f.path] = f.content_hash or ""
-                prior_keys[f.path] = f_key
+            if c.commit_date < target_commit.commit_date or (
+                c.commit_date == target_commit.commit_date and c.id < commit_id
+            ):
+                if (
+                    parent_date is None
+                    or c.commit_date > parent_date
+                    or (
+                        c.commit_date == parent_date
+                        and parent_commit_id is not None
+                        and c.id > parent_commit_id
+                    )
+                ):
+                    parent_commit_id = c.id
+                    parent_date = c.commit_date
 
-        # Filter to only changed files
-        changed_files = []
+        if parent_commit_id is None:
+            # No parent - all files are "changed" (first commit)
+            return files_at_commit
+
+        # Get files at parent commit
+        parent_files = await self.list_by_commit(parent_commit_id)
+        parent_hashes = {
+            f.path: f.content_hash
+            for f in parent_files
+            if f.repository_id == repository_id
+        }
+
+        # Changed = new or different content_hash
+        changed = []
         for f in files_at_commit:
-            prior_hash = prior_hashes.get(f.path)
-            if prior_hash is None or prior_hash != f.content_hash:
-                changed_files.append(f)
+            parent_hash = parent_hashes.get(f.path)
+            if parent_hash is None or parent_hash != f.content_hash:
+                changed.append(f)
 
-        return changed_files
-
-    async def find_one_by_content_hash_in_repo(
-        self, repository_id: int, content_hash: str
-    ) -> File | None:
-        """Find first file with matching content hash within a repository."""
-        for file in self._files.values():
-            if (
-                file.repository_id == repository_id
-                and file.content_hash == content_hash
-            ):
-                return file
-        return None
-
-    async def get_content_hash_to_file_id_map(
-        self, repository_id: int
-    ) -> dict[str, int]:
-        """Load all content hashes for a repository into memory."""
-        result: dict[str, int] = {}
-        for file in self._files.values():
-            if (
-                file.repository_id == repository_id
-                and file.content_hash
-                and file.id is not None
-                and file.content_hash not in result
-            ):
-                result[file.content_hash] = file.id
-        return result
+        return changed
 
     async def search_by_name(
         self,
@@ -747,12 +620,19 @@ class InMemoryFileRepository(FileRepositoryPort):
     ) -> list[File]:
         """Search files by name/path pattern.
 
-        Uses case-insensitive pattern matching on file paths.
+        When commit_id is set, filters via commit_files junction.
         When commit_id is None, deduplicates by (repository_id, path).
         """
         query_lower = query.lower()
-        results = []
 
+        # If commit_id is provided, get file_ids for that commit
+        commit_file_ids: set[int] | None = None
+        if commit_id is not None:
+            commit_file_ids = {
+                fid for cid, fid in self._commit_files if cid == commit_id
+            }
+
+        results = []
         for file in self._files.values():
             # Check if query matches path (case-insensitive)
             if query_lower not in file.path.lower():
@@ -762,7 +642,7 @@ class InMemoryFileRepository(FileRepositoryPort):
             if repository_id is not None and file.repository_id != repository_id:
                 continue
 
-            if commit_id is not None and file.commit_id != commit_id:
+            if commit_file_ids is not None and file.id not in commit_file_ids:
                 continue
 
             if language is not None and file.language != language:
@@ -772,47 +652,15 @@ class InMemoryFileRepository(FileRepositoryPort):
 
         # When no commit_id, deduplicate by (repository_id, path) keeping latest
         if commit_id is None:
-            if self._commit_repo is not None:
-                # Use commit dates (matches Postgres ROW_NUMBER approach)
-                commit_keys: dict[int, tuple[datetime, str]] = {}
-                for c in self._commit_repo._commits.values():
-                    if c.id is not None:
-                        commit_keys[c.id] = (c.commit_date, c.commit_hash.value)
-
-                latest_by_repo_path: dict[tuple[int | None, str], File] = {}
-                latest_keys: dict[tuple[int | None, str], tuple[datetime, str]] = {}
-                for f in results:
-                    rp_key = (f.repository_id, f.path)
-                    f_key = commit_keys.get(f.commit_id)
-                    if f_key is None:
-                        # No commit info — keep highest file.id among such candidates,
-                        # but any entry with real commit data always wins.
-                        existing = latest_by_repo_path.get(rp_key)
-                        if existing is None:
-                            latest_by_repo_path[rp_key] = f
-                        elif rp_key not in latest_keys:
-                            # Existing also has no commit info — prefer higher id
-                            if f.id is not None and (
-                                existing.id is None or f.id > existing.id
-                            ):
-                                latest_by_repo_path[rp_key] = f
-                        continue
-                    existing_key = latest_keys.get(rp_key)
-                    if existing_key is None or f_key > existing_key:
-                        latest_by_repo_path[rp_key] = f
-                        latest_keys[rp_key] = f_key
-                results = list(latest_by_repo_path.values())
-            else:
-                # Fallback: max(id) when no commit repo (backward compat)
-                latest_by_repo_path_simple: dict[tuple[int | None, str], File] = {}
-                for f in results:
-                    key = (f.repository_id, f.path)
-                    existing = latest_by_repo_path_simple.get(key)
-                    if existing is None or (
-                        f.id is not None and (existing.id is None or f.id > existing.id)
-                    ):
-                        latest_by_repo_path_simple[key] = f
-                results = list(latest_by_repo_path_simple.values())
+            latest_by_repo_path: dict[tuple[int | None, str], File] = {}
+            for f in results:
+                key = (f.repository_id, f.path)
+                existing = latest_by_repo_path.get(key)
+                if existing is None or (
+                    f.id is not None and (existing.id is None or f.id > existing.id)
+                ):
+                    latest_by_repo_path[key] = f
+            results = list(latest_by_repo_path.values())
 
         # Sort by relevance (exact filename match first, then prefix, then contains)
         def relevance_key(f: File) -> tuple[int, str]:
@@ -830,62 +678,60 @@ class InMemoryFileRepository(FileRepositoryPort):
 
         return results[:limit]
 
+    async def get_commit_ids_for_files(
+        self, file_ids: list[int]
+    ) -> dict[int, list[int]]:
+        """Get commit IDs linked to file versions via commit_files."""
+        result: dict[int, list[int]] = {}
+        for fid in file_ids:
+            commit_ids = sorted(
+                [cid for cid, f in self._commit_files if f == fid],
+                reverse=True,
+            )
+            if commit_ids:
+                result[fid] = commit_ids
+        return result
+
     def _compute_latest_file_ids(self, repository_id: int) -> set[int]:
-        """Compute the latest file ID for each unique path in a repository.
+        """Compute the latest file IDs for a repository.
 
-        Mirrors the Postgres pattern: ROW_NUMBER() OVER (PARTITION BY path
-        ORDER BY commit_date DESC, commit_hash DESC, file_id DESC) where rn=1.
-
-        Uses commit dates from _commit_repo when available; falls back to
-        max(id) when no commit repo is set (backward compat for tests that
-        don't wire up commit_repo).
+        Returns the latest version of each unique (repository_id, path) pair,
+        determined by the newest commit date (not file ID). This handles
+        HEAD-first indexing where newer commits may have lower file IDs.
         """
-        if self._commit_repo is None:
-            # Fallback: max(id) per path (legacy behavior)
-            latest_by_path: dict[str, int] = {}
-            for file in self._files.values():
-                if file.repository_id == repository_id and file.id is not None:
-                    current = latest_by_path.get(file.path)
-                    if current is None or file.id > current:
-                        latest_by_path[file.path] = file.id
-            return set(latest_by_path.values())
+        # Build file_id → max commit date mapping
+        file_max_date: dict[int, tuple] = {}  # file_id → (commit_date, commit_id)
+        if self._commit_repo is not None:
+            for cid, fid in self._commit_files:
+                commit = self._commit_repo._commits.get(cid)
+                if commit is not None and commit.commit_date is not None:
+                    existing = file_max_date.get(fid)
+                    key = (commit.commit_date, cid)
+                    if existing is None or key > existing:
+                        file_max_date[fid] = key
 
-        # Build commit_id -> (commit_date, commit_hash) lookup
-        commit_keys: dict[int, tuple[datetime, str]] = {}
-        for c in self._commit_repo._commits.values():
-            if c.repository_id == repository_id and c.id is not None:
-                commit_keys[c.id] = (c.commit_date, c.commit_hash.value)
-
-        # For each path, keep the file whose commit has the newest date
-        latest_by_path_dated: dict[str, tuple[tuple[datetime, str], int]] = {}
+        # Among linked files for this repo, keep latest per path by commit date
+        latest_by_path: dict[str, tuple[int, tuple]] = {}  # path → (file_id, date_key)
         for file in self._files.values():
-            if file.repository_id != repository_id or file.id is None:
-                continue
-            key = commit_keys.get(file.commit_id)
-            if key is None:
-                # Commit not in repo — fall back to max(id) for this path,
-                # but real commits (date > datetime.min) always win.
-                existing = latest_by_path_dated.get(file.path)
-                if existing is None:
-                    latest_by_path_dated[file.path] = (
-                        (datetime.min, ""),
-                        file.id,
-                    )
-                elif existing[0][0] == datetime.min and file.id > existing[1]:
-                    latest_by_path_dated[file.path] = (
-                        existing[0],
-                        file.id,
-                    )
-                continue
-            existing = latest_by_path_dated.get(file.path)
             if (
-                existing is None
-                or key > existing[0]
-                or (key == existing[0] and file.id > existing[1])
+                file.repository_id == repository_id
+                and file.id is not None
+                and file.id in file_max_date
             ):
-                latest_by_path_dated[file.path] = (key, file.id)
+                date_key = file_max_date[file.id]
+                existing = latest_by_path.get(file.path)
+                if existing is None or date_key > existing[1]:
+                    latest_by_path[file.path] = (file.id, date_key)
 
-        return {file_id for _, file_id in latest_by_path_dated.values()}
+        if latest_by_path:
+            return {fid for fid, _ in latest_by_path.values()}
+
+        # Fallback: return all file_ids for this repository
+        return {
+            f.id
+            for f in self._files.values()
+            if f.repository_id == repository_id and f.id is not None
+        }
 
     # Test helper methods
     def add(self, file: File) -> None:
@@ -893,10 +739,13 @@ class InMemoryFileRepository(FileRepositoryPort):
         if file.id is None:
             raise ValueError("File must have an ID when using add()")
         self._files[file.id] = file
+        # Update _next_id to avoid collisions
+        self._next_id = max(self._next_id, file.id + 1)
 
     def clear(self) -> None:
-        """Clear all files."""
+        """Clear all files and commit_files links."""
         self._files.clear()
+        self._commit_files.clear()
 
 
 class InMemoryRepositoryRepository(RepositoryPort):
@@ -1246,8 +1095,8 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         Args:
             symbol_repo: Optional symbol repository for resolving references.
                         Required for resolve_unlinked_references to work properly.
-            file_repo: Optional file repository for language-aware resolution.
-                      When provided, enables same-file and same-language priority.
+            file_repo: Optional file repository for language-aware resolution
+                      and commit_files junction table access.
             commit_repo: Optional commit repository for branch filtering.
                         Required for branch parameter to work in find_references_*.
         """
@@ -1260,12 +1109,9 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     async def save(self, reference: Reference) -> Reference:
         """Save reference to in-memory storage."""
         if reference.id is None:
-            # Create a new reference with an assigned ID
-            # Since Reference is frozen, we need to create a new instance
             reference = Reference(
                 id=self._next_id,
                 repository_id=reference.repository_id,
-                commit_id=reference.commit_id,
                 source_file_id=reference.source_file_id,
                 source_line=reference.source_line,
                 source_column=reference.source_column,
@@ -1306,30 +1152,26 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     ) -> list[Reference]:
         """Find all references to a symbol.
 
-        Args:
-            symbol_id: The target symbol ID
-            limit: Maximum number of results
-            commit_id: Filter by specific commit for time travel (optional)
-            branch: Filter by branch name (only show refs from files on this branch)
-
-        When commit_id and branch are both None and file_repo is available,
-        filters to only refs from the latest version of each file
-        (matching Postgres behavior).
+        When commit_id is provided, filters via commit_files junction table.
+        When branch is provided, filters to files on that branch via commit_files.
         """
         refs = [r for r in self._references.values() if r.target_symbol_id == symbol_id]
-        if commit_id is not None:
-            refs = [r for r in refs if r.commit_id == commit_id]
 
-        # Apply branch filter if specified
-        if (
+        if commit_id is not None and self._file_repo is not None:
+            # Filter to refs whose source_file_id is linked to this commit
+            commit_file_ids = {
+                fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+            }
+            refs = [r for r in refs if r.source_file_id in commit_file_ids]
+        elif (
             branch is not None
             and self._commit_repo is not None
             and self._file_repo is not None
         ):
             # Get commit IDs on this branch
             branch_commit_ids: set[int] = set()
+            # Infer repository_id from first ref's file
             for ref in refs:
-                # Get repository_id from file
                 file = self._file_repo._files.get(ref.source_file_id)
                 if file is not None:
                     for (
@@ -1339,15 +1181,15 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                     ), _ in self._commit_repo._branch_commits.items():
                         if repo_id == file.repository_id and b == branch:
                             branch_commit_ids.add(cid)
-                    break  # Only need to get branch commits once
+                    break
 
-            # Filter refs to only those whose source file is on this branch
-            filtered_refs = []
-            for ref in refs:
-                file = self._file_repo._files.get(ref.source_file_id)
-                if file is not None and file.commit_id in branch_commit_ids:
-                    filtered_refs.append(ref)
-            refs = filtered_refs
+            # Get file_ids linked to branch commits
+            branch_file_ids = {
+                fid
+                for cid, fid in self._file_repo._commit_files
+                if cid in branch_commit_ids
+            }
+            refs = [r for r in refs if r.source_file_id in branch_file_ids]
         elif commit_id is None and self._file_repo is not None:
             # Default mode: filter to latest file versions (matches Postgres)
             inferred_repo_id = self._get_repo_id_from_refs(refs)
@@ -1374,27 +1216,22 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     ) -> list[Reference]:
         """Find references by text.
 
-        Args:
-            text: The reference text to match
-            repository_id: Filter by repository
-            limit: Maximum number of results
-            commit_id: Filter by specific commit for time travel (optional)
-            branch: Filter by branch name (only show refs from files on this branch)
-
-        When commit_id and branch are both None and file_repo is available,
-        filters to only refs from the latest version of each file
-        (matching Postgres behavior).
+        When commit_id is provided, filters via commit_files junction table.
+        When branch is provided, filters to files on that branch via commit_files.
         """
         refs = [
             r
             for r in self._references.values()
             if r.reference_text == text and r.repository_id == repository_id
         ]
-        if commit_id is not None:
-            refs = [r for r in refs if r.commit_id == commit_id]
 
-        # Apply branch filter if specified
-        if (
+        if commit_id is not None and self._file_repo is not None:
+            # Filter to refs whose source_file_id is linked to this commit
+            commit_file_ids = {
+                fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+            }
+            refs = [r for r in refs if r.source_file_id in commit_file_ids]
+        elif (
             branch is not None
             and self._commit_repo is not None
             and self._file_repo is not None
@@ -1405,13 +1242,13 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 if repo_id == repository_id and b == branch:
                     branch_commit_ids.add(cid)
 
-            # Filter refs to only those whose source file is on this branch
-            filtered_refs = []
-            for ref in refs:
-                file = self._file_repo._files.get(ref.source_file_id)
-                if file is not None and file.commit_id in branch_commit_ids:
-                    filtered_refs.append(ref)
-            refs = filtered_refs
+            # Get file_ids linked to branch commits
+            branch_file_ids = {
+                fid
+                for cid, fid in self._file_repo._commit_files
+                if cid in branch_commit_ids
+            }
+            refs = [r for r in refs if r.source_file_id in branch_file_ids]
         elif commit_id is None and self._file_repo is not None:
             # Default mode: filter to latest file versions (matches Postgres)
             latest_ids = self._file_repo._compute_latest_file_ids(repository_id)
@@ -1451,18 +1288,12 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         self,
         repository_id: int,
         batch_size: int = 1000,
-        commit_aware: bool = False,
     ) -> int:
         """Resolve a batch of unlinked references.
 
-        Resolution priority (matches real implementation):
-        1. Same file - most likely the correct local symbol
-        2. Same language - cross-file but same language preferred
-        3. Lowest symbol ID - deterministic tiebreaker for consistency
-
-        This matches the real DB implementation which only selects refs
-        that have a matching symbol (via JOIN), so batch_size limits
-        the number of resolvable refs processed, not just examined.
+        With content-addressable file versions, symbols are unique per file
+        version (no commit_id ambiguity), so resolution matches by name
+        across the entire repository.
         """
         if self._symbol_repo is None:
             return 0
@@ -1471,38 +1302,27 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         updated_refs: dict[int, Reference] = {}
 
         for ref_id, ref in self._references.items():
-            # Stop when we've resolved batch_size refs
             if resolved_count >= batch_size:
                 break
 
-            # Skip if already resolved or wrong repository
             if ref.target_symbol_id is not None or ref.repository_id != repository_id:
                 continue
 
-            # Find all matching symbols
-            candidates: list[Symbol] = []
-            for symbol in self._symbol_repo.get_all_symbols():
-                if (
-                    symbol.repository_id == repository_id
-                    and symbol.name == ref.reference_text
-                ):
-                    if commit_aware:
-                        if symbol.commit_id == ref.commit_id:
-                            candidates.append(symbol)
-                    else:
-                        candidates.append(symbol)
+            candidates: list[Symbol] = [
+                s
+                for s in self._symbol_repo.get_all_symbols()
+                if s.repository_id == repository_id and s.name == ref.reference_text
+            ]
 
             if not candidates:
                 continue
 
-            # Pick best match using priority: same-file, same-language, lowest ID
             matching_symbol = self._pick_best_symbol(ref, candidates)
 
             if matching_symbol is not None and matching_symbol.id is not None:
                 updated_refs[ref_id] = Reference(
                     id=ref.id,
                     repository_id=ref.repository_id,
-                    commit_id=ref.commit_id,
                     source_file_id=ref.source_file_id,
                     source_line=ref.source_line,
                     source_column=ref.source_column,
@@ -1523,10 +1343,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         return resolved_count
 
     def _get_repo_id_from_refs(self, refs: list[Reference]) -> int | None:
-        """Get repository_id directly from references.
-
-        Used by find_references_to_symbol which doesn't take repository_id directly.
-        """
+        """Get repository_id directly from references."""
         if not refs:
             return None
         return refs[0].repository_id
@@ -1547,7 +1364,6 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         if len(candidates) == 1:
             return candidates[0]
 
-        # Get reference file language if file_repo is available
         ref_file_language: str | None = None
         if self._file_repo is not None:
             for file in self._file_repo._files.values():
@@ -1556,11 +1372,9 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                     break
 
         def sort_key(symbol: Symbol) -> tuple[int, int, int]:
-            # Lower values = higher priority
             same_file = 0 if symbol.file_id == ref.source_file_id else 1
 
-            # Same language check (requires file_repo)
-            same_language = 1  # Default: not same language
+            same_language = 1
             if self._file_repo is not None and ref_file_language is not None:
                 for file in self._file_repo._files.values():
                     if file.id == symbol.file_id:
@@ -1574,54 +1388,35 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         candidates.sort(key=sort_key)
         return candidates[0]
 
-    async def resolve_unlinked_references(
-        self, repository_id: int, commit_aware: bool = False
-    ) -> int:
+    async def resolve_unlinked_references(self, repository_id: int) -> int:
         """Resolve references to their target symbols.
 
-        This fake implementation matches references to symbols by name.
-        Requires symbol_repo to be set for proper functionality.
-
-        Uses the same priority logic as resolve_references_batch:
-        1. Same file - most likely the correct local symbol
-        2. Same language - cross-file but same language preferred
-        3. Lowest symbol ID - deterministic tiebreaker for consistency
+        Matches references to symbols by name across the entire repository.
+        With content-addressable file versions, symbols are unique per file
+        version, so no commit-aware mode is needed.
         """
         if self._symbol_repo is None:
-            # Without a symbol repo, we can't resolve anything
             return 0
 
         resolved_count = 0
         updated_refs: dict[int, Reference] = {}
 
         for ref_id, ref in self._references.items():
-            # Skip if already resolved or wrong repository
             if ref.target_symbol_id is not None or ref.repository_id != repository_id:
                 continue
 
-            # Find all matching symbols
-            candidates: list[Symbol] = []
-            for symbol in self._symbol_repo.get_all_symbols():
-                if (
-                    symbol.repository_id == repository_id
-                    and symbol.name == ref.reference_text
-                ):
-                    if commit_aware:
-                        # Only match if same commit
-                        if symbol.commit_id == ref.commit_id:
-                            candidates.append(symbol)
-                    else:
-                        candidates.append(symbol)
+            candidates: list[Symbol] = [
+                s
+                for s in self._symbol_repo.get_all_symbols()
+                if s.repository_id == repository_id and s.name == ref.reference_text
+            ]
 
-            # Pick best match using priority: same-file, same-language, lowest ID
             matching_symbol = self._pick_best_symbol(ref, candidates)
 
             if matching_symbol is not None and matching_symbol.id is not None:
-                # Create updated reference with target_symbol_id set
                 updated_refs[ref_id] = Reference(
                     id=ref.id,
                     repository_id=ref.repository_id,
-                    commit_id=ref.commit_id,
                     source_file_id=ref.source_file_id,
                     source_line=ref.source_line,
                     source_column=ref.source_column,
@@ -1638,66 +1433,19 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 )
                 resolved_count += 1
 
-        # Apply updates
         self._references.update(updated_refs)
         return resolved_count
-
-    async def copy_references_to_file(
-        self,
-        source_file_id: int,
-        target_file_id: int,
-        target_commit_id: int,
-        target_repository_id: int,
-        symbol_id_mapping: dict[int, int] | None = None,
-    ) -> int:
-        """Copy all references from source file to target file."""
-        source_refs = [
-            r for r in self._references.values() if r.source_file_id == source_file_id
-        ]
-        if not source_refs:
-            return 0
-
-        for source in source_refs:
-            # Remap target_symbol_id if mapping is available
-            old_target = source.target_symbol_id
-            if symbol_id_mapping and old_target and old_target in symbol_id_mapping:
-                new_target_symbol_id = symbol_id_mapping[old_target]
-            else:
-                new_target_symbol_id = None
-
-            new_ref = Reference(
-                id=self._next_id,
-                repository_id=target_repository_id,
-                commit_id=target_commit_id,
-                source_file_id=target_file_id,
-                source_line=source.source_line,
-                source_column=source.source_column,
-                source_end_column=source.source_end_column,
-                reference_text=source.reference_text,
-                reference_type=source.reference_type,
-                target_symbol_id=new_target_symbol_id,
-                target_repository_id=None,
-                is_definition=source.is_definition,
-                is_write=source.is_write,
-                resolution_confidence=source.resolution_confidence,
-                metadata=source.metadata,
-            )
-            self._references[self._next_id] = new_ref
-            self._next_id += 1
-
-        return len(source_refs)
 
     # Test helper methods
     def add(self, reference: Reference) -> None:
         """Add a reference for testing."""
         if reference.id is not None:
             self._references[reference.id] = reference
+            self._next_id = max(self._next_id, reference.id + 1)
         else:
-            # Auto-assign ID
             new_ref = Reference(
                 id=self._next_id,
                 repository_id=reference.repository_id,
-                commit_id=reference.commit_id,
                 source_file_id=reference.source_file_id,
                 source_line=reference.source_line,
                 source_column=reference.source_column,
@@ -2485,7 +2233,6 @@ def create_populated_symbol_repository() -> InMemorySymbolRepository:
             id=1,
             file_id=1,
             repository_id=1,
-            commit_id=1,
             name="calculate_total",
             kind=SymbolKind.FUNCTION,
             start_line=10,
@@ -2500,7 +2247,6 @@ def create_populated_symbol_repository() -> InMemorySymbolRepository:
             id=2,
             file_id=1,
             repository_id=1,
-            commit_id=1,
             name="Calculator",
             kind=SymbolKind.CLASS,
             start_line=20,
@@ -2515,7 +2261,6 @@ def create_populated_symbol_repository() -> InMemorySymbolRepository:
             id=3,
             file_id=1,
             repository_id=1,
-            commit_id=1,
             name="add",
             kind=SymbolKind.METHOD,
             start_line=25,

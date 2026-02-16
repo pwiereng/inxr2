@@ -120,8 +120,8 @@ async def _reset_database_async(console: Console) -> None:
             console.print("  Truncating all tables...")
             await session.execute(
                 text(
-                    'TRUNCATE TABLE "references", symbols, files, branch_commits, '
-                    "commits, index_status, repositories CASCADE;"
+                    'TRUNCATE TABLE "references", symbols, commit_files, files, '
+                    "branch_commits, commits, index_status, repositories CASCADE;"
                 )
             )
             await session.commit()
@@ -173,10 +173,9 @@ class IndexingStats:
     symbols_found: int = 0
     references_found: int = 0
     references_resolved: int = 0
-    # Content-hash reuse optimization counters
-    files_reused: int = 0
-    symbols_reused: int = 0
-    references_reused: int = 0
+    # Content-addressable file version counters
+    file_versions_new: int = 0  # new file versions created
+    file_versions_cached: int = 0  # existing file versions reused
     # Text search content counters
     comments_indexed: int = 0
     docstrings_indexed: int = 0
@@ -406,9 +405,8 @@ async def _run_full_index_async(
                 symbols_found=response.symbols_found,
                 references_found=response.references_found,
                 references_resolved=response.references_resolved,
-                files_reused=response.files_reused,
-                symbols_reused=response.symbols_reused,
-                references_reused=response.references_reused,
+                file_versions_new=response.file_versions_new,
+                file_versions_cached=response.file_versions_cached,
                 comments_indexed=response.comments_indexed,
                 docstrings_indexed=response.docstrings_indexed,
                 commit_messages_indexed=response.commit_messages_indexed,
@@ -608,7 +606,8 @@ def _write_csv_log(
         "files_at_head",
         "files_processed",
         "files_failed",
-        "files_reused",
+        "file_versions_new",
+        "file_versions_cached",
         "symbols_found",
         "references_found",
         "references_resolved",
@@ -634,7 +633,8 @@ def _write_csv_log(
                     response.files_at_head,
                     response.files_processed,
                     response.files_failed,
-                    response.files_reused,
+                    response.file_versions_new,
+                    response.file_versions_cached,
                     response.symbols_found,
                     response.references_found,
                     response.references_resolved,
@@ -654,7 +654,6 @@ def _dict_to_symbol(
     d: dict[str, Any],
     file_id: int,
     repository_id: int,
-    commit_id: int,
 ) -> Any:
     """Convert a symbol dict from parser to Symbol domain entity."""
     from inxr2.domain.entities import Symbol
@@ -716,7 +715,6 @@ def _dict_to_symbol(
     return Symbol(
         file_id=file_id,
         repository_id=repository_id,
-        commit_id=commit_id,
         name=d["name"],
         kind=kind,
         start_line=d.get("start_line", 1),
@@ -734,7 +732,6 @@ def _dict_to_reference(
     d: dict[str, Any],
     source_file_id: int,
     repository_id: int,
-    commit_id: int,
 ) -> Any:
     """Convert a reference dict from parser to Reference domain entity."""
     from inxr2.domain.entities import Reference
@@ -759,7 +756,6 @@ def _dict_to_reference(
 
     return Reference(
         repository_id=repository_id,
-        commit_id=commit_id,
         source_file_id=source_file_id,
         source_line=d.get("source_line", 1),
         source_column=source_column,

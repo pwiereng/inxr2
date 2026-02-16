@@ -179,7 +179,11 @@ class SearchTextUseCase:
             for r in results
             if r.text_content.source_file_id is not None
         }
-        commit_ids = {r.text_content.commit_id for r in results}
+        commit_ids = {
+            r.text_content.commit_id
+            for r in results
+            if r.text_content.commit_id is not None
+        }
 
         # Bulk fetch repositories, files, and commits (single query each)
         repositories = await self._repository_repo.find_by_ids(list(repo_ids))
@@ -212,13 +216,21 @@ class SearchTextUseCase:
                     file_path = file.path
 
             # Get commit hash from bulk-fetched data
-            commit = commit_map.get(text_content.commit_id)
+            commit = (
+                commit_map.get(text_content.commit_id)
+                if text_content.commit_id is not None
+                else None
+            )
             commit_hash = commit.commit_hash.value if commit else "unknown"
 
             # Get branch from bulk-fetched data
             # Note: A commit can be on multiple branches, we'll take the first one
             branch = None
-            branches = branches_map.get(text_content.commit_id, [])
+            branches = (
+                branches_map.get(text_content.commit_id, [])
+                if text_content.commit_id is not None
+                else []
+            )
             if branches:
                 branch = branches[0]
 

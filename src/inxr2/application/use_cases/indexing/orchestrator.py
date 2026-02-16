@@ -71,31 +71,6 @@ class IndexRepositoryResponse:
     Response from indexing operation.
 
     Contains statistics about what was indexed and any errors encountered.
-
-    Attributes:
-        repository_id: Database ID of indexed repository
-        repository_name: Human-readable repository name
-        branch: Branch that was indexed
-        commits_indexed: Number of commits processed
-        files_total: Total changed files found across indexed commits
-        files_processed: Files successfully processed
-        files_skipped: Files skipped (wrong language, too large, etc.)
-        files_failed: Files that failed to process
-        files_at_head: Number of files at HEAD commit (total in repo)
-        lines_indexed: Approximate lines of code indexed
-        symbols_found: Total symbols extracted
-        references_found: Total references extracted
-        references_resolved: References successfully resolved to targets
-        files_reused: Files reused via content-hash optimization
-        symbols_reused: Symbols reused via content-hash optimization
-        references_reused: References reused via content-hash optimization
-        comments_indexed: Number of comments indexed for text search
-        docstrings_indexed: Number of docstrings indexed for text search
-        commit_messages_indexed: Number of commit messages indexed for text search
-        non_code_files_indexed: Number of non-code files indexed for text search
-        errors: List of error messages (non-fatal)
-        elapsed_seconds: Time taken to complete indexing
-        db_stats: Database query statistics (selects, inserts, updates)
     """
 
     repository_id: int
@@ -111,9 +86,8 @@ class IndexRepositoryResponse:
     symbols_found: int = 0
     references_found: int = 0
     references_resolved: int = 0
-    files_reused: int = 0
-    symbols_reused: int = 0
-    references_reused: int = 0
+    file_versions_new: int = 0  # new file versions created
+    file_versions_cached: int = 0  # existing file versions reused
     comments_indexed: int = 0
     docstrings_indexed: int = 0
     commit_messages_indexed: int = 0
@@ -131,15 +105,7 @@ class IndexRepositoryResponse:
 
     @property
     def files_succeeded(self) -> int:
-        """Number of successfully processed files.
-
-        With the current counting logic:
-        - files_processed: incremented only for successfully parsed/reused files
-        - files_failed: incremented for files that threw exceptions
-        - files_skipped: incremented for unsupported languages
-
-        So files_succeeded = files_processed (they're equivalent now).
-        """
+        """Number of successfully processed files."""
         return self.files_processed
 
     @property

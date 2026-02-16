@@ -137,7 +137,6 @@ class TestFileMapper:
         """Test converting File entity to FileModel."""
         entity = FileFactory.create(
             repository_id=1,
-            commit_id=1,
             path="src/test.py",
             content_hash="b" * 40,
             size_bytes=1024,
@@ -146,7 +145,6 @@ class TestFileMapper:
         model = FileMapper.to_model(entity)
 
         assert model.repository_id == entity.repository_id
-        assert model.commit_id == entity.commit_id
         assert model.path == entity.path
         assert model.content_hash == entity.content_hash
         assert model.size_bytes == entity.size_bytes
@@ -158,7 +156,6 @@ class TestFileMapper:
         model = FileModel(
             id=1,
             repository_id=1,
-            commit_id=1,
             path="src/test.py",
             content_hash="b" * 40,
             size_bytes=1024,
@@ -184,7 +181,6 @@ class TestSymbolMapper:
         entity = SymbolFactory.create(
             file_id=1,
             repository_id=1,
-            commit_id=1,
             name="test_function",
             kind=SymbolKind.FUNCTION,
             start_line=10,
@@ -207,7 +203,6 @@ class TestSymbolMapper:
             id=1,
             file_id=1,
             repository_id=1,
-            commit_id=1,
             name="test_function",
             kind="function",
             start_line=10,

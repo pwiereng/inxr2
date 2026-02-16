@@ -152,9 +152,9 @@ class GetRepositoryStatsUseCase:
     def _deduplicate_files_by_path(self, files: list[File]) -> list[File]:
         """Deduplicate files by path, keeping the latest version.
 
-        In delta-indexed repositories, list_by_repository may return multiple
-        versions of the same file (one per indexed commit). This method keeps
-        only the latest version of each unique path based on commit_id.
+        In content-addressable repositories, list_by_repository may return
+        multiple versions of the same file. This method keeps only the latest
+        version of each unique path based on file ID (higher ID = more recent).
 
         Args:
             files: List of File entities (may contain duplicates)
@@ -167,9 +167,9 @@ class GetRepositoryStatsUseCase:
             existing = latest_by_path.get(file.path)
             if existing is None:
                 latest_by_path[file.path] = file
-            elif file.commit_id is not None and existing.commit_id is not None:
-                # Keep the one with higher commit_id (more recent)
-                if file.commit_id > existing.commit_id:
+            elif file.id is not None and existing.id is not None:
+                # Keep the one with higher id (more recent)
+                if file.id > existing.id:
                     latest_by_path[file.path] = file
         return list(latest_by_path.values())
 

@@ -16,10 +16,8 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .branch_commit import BranchCommitModel
-    from .file import FileModel
-    from .reference import ReferenceModel
+    from .commit_file import CommitFileModel
     from .repository import RepositoryModel
-    from .symbol import SymbolModel
     from .text_content import TextContentModel
 
 
@@ -60,14 +58,8 @@ class CommitModel(Base):
     repository: Mapped["RepositoryModel"] = relationship(
         "RepositoryModel", back_populates="commits"
     )
-    files: Mapped[list["FileModel"]] = relationship(
-        "FileModel", back_populates="commit", cascade="all, delete-orphan"
-    )
-    symbols: Mapped[list["SymbolModel"]] = relationship(
-        "SymbolModel", back_populates="commit", cascade="all, delete-orphan"
-    )
-    references: Mapped[list["ReferenceModel"]] = relationship(
-        "ReferenceModel", back_populates="commit", cascade="all, delete-orphan"
+    commit_files: Mapped[list["CommitFileModel"]] = relationship(
+        "CommitFileModel", back_populates="commit", cascade="all, delete-orphan"
     )
     branch_commits: Mapped[list["BranchCommitModel"]] = relationship(
         "BranchCommitModel", back_populates="commit", cascade="all, delete-orphan"

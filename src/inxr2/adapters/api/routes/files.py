@@ -594,8 +594,12 @@ async def get_file_content(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Get commit info to get the hash
-    commit = await commit_adapter.find_by_id(file.commit_id)
+    # Find a commit linked to this file via commit_files junction
+    commit_ids_map = await file_adapter.get_commit_ids_for_files([file_id])
+    linked_commit_ids = commit_ids_map.get(file_id, [])
+    if not linked_commit_ids:
+        raise HTTPException(status_code=404, detail="No commit linked to this file")
+    commit = await commit_adapter.find_by_id(linked_commit_ids[0])
     if not commit:
         raise HTTPException(status_code=404, detail="Commit not found")
 

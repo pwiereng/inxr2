@@ -49,9 +49,8 @@ class FakeIndexingOrchestrator(IndexingOrchestratorPort):
             symbols_found=400,
             references_found=500,
             references_resolved=450,
-            files_reused=0,
-            symbols_reused=0,
-            references_reused=0,
+            file_versions_new=95,
+            file_versions_cached=0,
             errors=[],
             elapsed_seconds=1.5,
         )
@@ -162,9 +161,8 @@ class TestIndexingOrchestratorPort:
                     symbols_found=350,
                     references_found=400,
                     references_resolved=380,
-                    files_reused=0,
-                    symbols_reused=0,
-                    references_reused=0,
+                    file_versions_new=90,
+                    file_versions_cached=0,
                     errors=[
                         "Failed to parse invalid_file.py: SyntaxError",
                         "Failed to read binary_file.bin: UnicodeDecodeError",
@@ -216,9 +214,8 @@ class TestIndexingOrchestratorPort:
         assert isinstance(response.symbols_found, int)
         assert isinstance(response.references_found, int)
         assert isinstance(response.references_resolved, int)
-        assert isinstance(response.files_reused, int)
-        assert isinstance(response.symbols_reused, int)
-        assert isinstance(response.references_reused, int)
+        assert isinstance(response.file_versions_new, int)
+        assert isinstance(response.file_versions_cached, int)
         assert isinstance(response.errors, list)
         assert isinstance(response.elapsed_seconds, float)
 

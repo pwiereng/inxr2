@@ -13,11 +13,12 @@ class Reference:
     A reference to a symbol (usage, call, import, etc).
 
     Domain entity (framework-agnostic). Separate from SQLAlchemy ORM model.
+    References belong to a file version; commit context is provided through
+    the commit_files junction table.
 
     Attributes:
         repository_id: Repository containing this reference
-        commit_id: Commit where this reference exists
-        source_file_id: File containing the reference
+        source_file_id: File version containing the reference
         source_line: Line number where reference occurs (1-indexed)
         source_column: Column number where reference starts (0-indexed)
         source_end_column: Column number where reference ends
@@ -34,7 +35,6 @@ class Reference:
     """
 
     repository_id: int
-    commit_id: int
     source_file_id: int
     source_line: int
     source_column: int

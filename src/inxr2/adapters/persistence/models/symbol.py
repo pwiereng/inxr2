@@ -9,14 +9,17 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base
 
 if TYPE_CHECKING:
-    from .commit import CommitModel
     from .file import FileModel
     from .reference import ReferenceModel
     from .repository import RepositoryModel
 
 
 class SymbolModel(Base):
-    """SQLAlchemy ORM model for symbols table."""
+    """SQLAlchemy ORM model for symbols table.
+
+    Symbols belong to a file version (content-addressable). Commit context
+    is provided through the commit_files junction table.
+    """
 
     __tablename__ = "symbols"
 
@@ -26,9 +29,6 @@ class SymbolModel(Base):
     )
     repository_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
-    )
-    commit_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("commits.id", ondelete="CASCADE"), nullable=False
     )
 
     # Symbol identification
@@ -53,11 +53,6 @@ class SymbolModel(Base):
     docstring: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
-    # Full-text search - excluded from ORM operations
-    # This column is managed by database triggers or updated via raw SQL
-    # We use column_property with deferred loading to avoid insert/update issues
-    # Note: For now, we simply exclude this from the ORM by not mapping it
-
     indexed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default="now()"
     )
@@ -66,9 +61,6 @@ class SymbolModel(Base):
     file: Mapped["FileModel"] = relationship("FileModel", back_populates="symbols")
     repository: Mapped["RepositoryModel"] = relationship(
         "RepositoryModel", back_populates="symbols"
-    )
-    commit: Mapped["CommitModel"] = relationship(
-        "CommitModel", back_populates="symbols"
     )
     parent_symbol: Mapped["SymbolModel | None"] = relationship(
         "SymbolModel", remote_side=[id], backref="child_symbols"

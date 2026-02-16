@@ -47,7 +47,6 @@ class FileResponse(BaseModel):
 
     id: int
     repository_id: int
-    commit_id: int
     path: str
     language: str | None
     size_bytes: int
@@ -249,7 +248,6 @@ async def get_repository_files(
         FileResponse(
             id=file.id if file.id is not None else 0,
             repository_id=file.repository_id,
-            commit_id=file.commit_id,
             path=file.path,
             language=file.language,
             size_bytes=file.size_bytes,

@@ -3,7 +3,8 @@ Process commit use case.
 
 Handles processing a single commit during indexing: saving the commit record,
 linking to branch, indexing commit message, and delegating file processing
-to ProcessFileUseCase.
+to ProcessFileUseCase. After all files are processed, bulk-links file versions
+to the commit via commit_files.
 """
 
 from collections.abc import Callable
@@ -13,7 +14,11 @@ from pathlib import Path
 from inxr2.domain.entities import Commit, TextContent
 from inxr2.domain.value_objects import CommitHash, TextSearchSourceType
 
-from ...ports.repositories import CommitRepositoryPort, TextContentRepositoryPort
+from ...ports.repositories import (
+    CommitRepositoryPort,
+    FileRepositoryPort,
+    TextContentRepositoryPort,
+)
 from ...ports.services import CommitInfo, GitServicePort
 from .process_file import ProcessFileRequest, ProcessFileResult, ProcessFileUseCase
 
@@ -26,7 +31,6 @@ class ProcessCommitRequest:
     commit_data: CommitInfo
     repo_path: Path
     branch: str
-    content_hash_cache: dict[str, int]
     blob_to_content_hash: dict[str, str] | None = None
 
 
@@ -39,17 +43,14 @@ class ProcessCommitResult:
     files_failed: int = 0
     symbols_found: int = 0
     references_found: int = 0
-    files_reused: int = 0
-    symbols_reused: int = 0
-    references_reused: int = 0
+    file_versions_new: int = 0  # new file versions created
+    file_versions_cached: int = 0  # existing file versions reused
     lines_indexed: int = 0
     comments_indexed: int = 0
     docstrings_indexed: int = 0
     commit_messages_indexed: int = 0
     non_code_files_indexed: int = 0
     errors: list[str] = field(default_factory=list)
-    db_inserts: int = 0
-    db_selects: int = 0
 
 
 # Type alias for per-file progress callback
@@ -66,16 +67,19 @@ class ProcessCommitUseCase:
     - Indexing commit message as text content
     - Full snapshot: always processes ALL files in the commit
     - Delegating file processing to ProcessFileUseCase
+    - Bulk-linking file versions to commit via commit_files
     """
 
     def __init__(
         self,
         commit_repo: CommitRepositoryPort,
+        file_repo: FileRepositoryPort,
         git_service: GitServicePort,
         text_content_repo: TextContentRepositoryPort,
         process_file_use_case: ProcessFileUseCase,
     ) -> None:
         self._commit_repo = commit_repo
+        self._file_repo = file_repo
         self._git_service = git_service
         self._text_content_repo = text_content_repo
         self._process_file_use_case = process_file_use_case
@@ -96,7 +100,6 @@ class ProcessCommitUseCase:
             repository_id=request.repository_id,
             commit_hash=commit_hash_str,
         )
-        result.db_selects += 1
 
         if existing_commit is not None:
             commit_id = existing_commit.id
@@ -108,7 +111,6 @@ class ProcessCommitUseCase:
                 commit_id=commit_id,
                 branch=request.branch,
             )
-            result.db_inserts += 1
             return result
 
         # Save new commit to database
@@ -138,7 +140,6 @@ class ProcessCommitUseCase:
             commit_date=commit_date,
         )
         db_commit = await self._commit_repo.save(commit)
-        result.db_inserts += 1
         commit_id = db_commit.id
         assert commit_id is not None, "Commit must have an ID after save"
 
@@ -148,7 +149,6 @@ class ProcessCommitUseCase:
             commit_id=commit_id,
             branch=request.branch,
         )
-        result.db_inserts += 1
 
         # Index commit message
         await self._index_commit_message(
@@ -159,33 +159,37 @@ class ProcessCommitUseCase:
         )
 
         # Full snapshot: always process ALL files in this commit
-        # Use list_files_with_hashes to get blob hashes for fast-skip optimization
         files_with_hashes = self._git_service.list_files_with_hashes(
             repo_path=request.repo_path,
             commit_hash=request.commit_data.hash,
         )
 
-        # Shared blob→content_hash mapping (populated as files are processed,
-        # reused across commits via the request)
+        # Shared blob->content_hash mapping
         blob_to_content_hash = request.blob_to_content_hash or {}
 
-        # Process each file
+        # Process each file and collect file IDs for bulk linking
+        file_ids: list[int] = []
         for file_path_str, blob_hash in files_with_hashes.items():
             file_request = ProcessFileRequest(
                 repository_id=request.repository_id,
-                commit_id=commit_id,
                 file_path=file_path_str,
                 commit_hash=request.commit_data.hash,
                 repo_path=request.repo_path,
-                content_hash_cache=request.content_hash_cache,
                 blob_hash=blob_hash,
                 blob_to_content_hash=blob_to_content_hash,
             )
             file_result = await self._process_file_use_case.execute(file_request)
             self._aggregate_file_result(result, file_result)
 
+            if file_result.file_id is not None:
+                file_ids.append(file_result.file_id)
+
             if progress_callback:
                 progress_callback(result)
+
+        # Bulk-link all file versions to this commit
+        if file_ids:
+            await self._file_repo.link_files_to_commit(file_ids, commit_id)
 
         return result
 
@@ -199,12 +203,12 @@ class ProcessCommitUseCase:
             result.files_skipped += 1
         if file_result.failed:
             result.files_failed += 1
-        if file_result.reused:
-            result.files_reused += 1
+        if file_result.file_version_created:
+            result.file_versions_new += 1
+        elif file_result.file_id is not None and not file_result.failed:
+            result.file_versions_cached += 1
         result.symbols_found += file_result.symbols_found
         result.references_found += file_result.references_found
-        result.symbols_reused += file_result.symbols_reused
-        result.references_reused += file_result.references_reused
         result.lines_indexed += file_result.lines_indexed
         result.comments_indexed += file_result.comments_indexed
         result.docstrings_indexed += file_result.docstrings_indexed
@@ -212,8 +216,6 @@ class ProcessCommitUseCase:
             result.non_code_files_indexed += 1
         if file_result.error:
             result.errors.append(file_result.error)
-        result.db_inserts += file_result.db_inserts
-        result.db_selects += file_result.db_selects
 
     async def _index_commit_message(
         self,
@@ -241,7 +243,6 @@ class ProcessCommitUseCase:
                 content_type="commit_message",
             )
             await self._text_content_repo.save(text_content)
-            result.db_inserts += 1
             result.commit_messages_indexed += 1
 
         except Exception as e:

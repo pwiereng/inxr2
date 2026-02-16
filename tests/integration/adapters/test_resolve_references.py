@@ -75,7 +75,6 @@ class TestResolveReferencesBatch:
         file_a = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/file_a.py",
                 content_hash="hash_a",
                 size_bytes=100,
@@ -85,7 +84,6 @@ class TestResolveReferencesBatch:
         file_b = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/file_b.py",
                 content_hash="hash_b",
                 size_bytes=100,
@@ -100,7 +98,6 @@ class TestResolveReferencesBatch:
             Symbol(
                 file_id=file_a.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="Config",
                 kind=SymbolKind.CLASS,
                 start_line=1,
@@ -113,7 +110,6 @@ class TestResolveReferencesBatch:
             Symbol(
                 file_id=file_b.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="Config",
                 kind=SymbolKind.CLASS,
                 start_line=1,
@@ -130,7 +126,6 @@ class TestResolveReferencesBatch:
             Reference(
                 source_file_id=file_b.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 source_line=15,
                 source_column=0,
                 source_end_column=6,
@@ -168,7 +163,6 @@ class TestResolveReferencesBatch:
         py_source = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/utils.py",
                 content_hash="hash_py_src",
                 size_bytes=100,
@@ -178,7 +172,6 @@ class TestResolveReferencesBatch:
         py_target = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/models.py",
                 content_hash="hash_py_tgt",
                 size_bytes=100,
@@ -188,7 +181,6 @@ class TestResolveReferencesBatch:
         ts_file = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="frontend/api.ts",
                 content_hash="hash_ts",
                 size_bytes=100,
@@ -204,7 +196,6 @@ class TestResolveReferencesBatch:
             Symbol(
                 file_id=ts_file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="Config",
                 kind=SymbolKind.CLASS,
                 start_line=1,
@@ -217,7 +208,6 @@ class TestResolveReferencesBatch:
             Symbol(
                 file_id=py_target.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="Config",
                 kind=SymbolKind.CLASS,
                 start_line=1,
@@ -236,7 +226,6 @@ class TestResolveReferencesBatch:
             Reference(
                 source_file_id=py_source.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 source_line=5,
                 source_column=0,
                 source_end_column=6,
@@ -276,7 +265,6 @@ class TestResolveReferencesBatch:
         file_src = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/source.py",
                 content_hash="hash_src",
                 size_bytes=100,
@@ -286,7 +274,6 @@ class TestResolveReferencesBatch:
         file_x = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/module_x.py",
                 content_hash="hash_x",
                 size_bytes=100,
@@ -296,7 +283,6 @@ class TestResolveReferencesBatch:
         file_y = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/module_y.py",
                 content_hash="hash_y",
                 size_bytes=100,
@@ -312,7 +298,6 @@ class TestResolveReferencesBatch:
             Symbol(
                 file_id=file_x.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="Helper",
                 kind=SymbolKind.CLASS,
                 start_line=1,
@@ -325,7 +310,6 @@ class TestResolveReferencesBatch:
             Symbol(
                 file_id=file_y.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="Helper",
                 kind=SymbolKind.CLASS,
                 start_line=1,
@@ -342,7 +326,6 @@ class TestResolveReferencesBatch:
             Reference(
                 source_file_id=file_src.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 source_line=5,
                 source_column=0,
                 source_end_column=6,
@@ -380,7 +363,6 @@ class TestResolveReferencesBatch:
         file = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/main.py",
                 content_hash="hash_main",
                 size_bytes=100,
@@ -393,7 +375,6 @@ class TestResolveReferencesBatch:
             Symbol(
                 file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="func",
                 kind=SymbolKind.FUNCTION,
                 start_line=1,
@@ -409,7 +390,6 @@ class TestResolveReferencesBatch:
             Reference(
                 source_file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 source_line=10,
                 source_column=0,
                 source_end_column=4,
@@ -444,7 +424,6 @@ class TestResolveReferencesBatch:
         file = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/main.py",
                 content_hash="hash_main2",
                 size_bytes=100,
@@ -458,7 +437,6 @@ class TestResolveReferencesBatch:
             Reference(
                 source_file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 source_line=5,
                 source_column=0,
                 source_end_column=20,
@@ -502,7 +480,6 @@ class TestResolveReferencesBatch:
         file = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/main.py",
                 content_hash="hash_unresolvable",
                 size_bytes=100,
@@ -516,7 +493,6 @@ class TestResolveReferencesBatch:
             Symbol(
                 file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="my_function",
                 kind=SymbolKind.FUNCTION,
                 start_line=1,
@@ -536,7 +512,6 @@ class TestResolveReferencesBatch:
                 Reference(
                     source_file_id=file.id,
                     repository_id=repo.id,
-                    commit_id=commit.id,
                     source_line=i + 10,
                     source_column=0,
                     source_end_column=len(name),
@@ -552,7 +527,6 @@ class TestResolveReferencesBatch:
             Reference(
                 source_file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 source_line=30,
                 source_column=0,
                 source_end_column=11,
@@ -602,7 +576,6 @@ class TestResolveReferencesBatch:
         file = await file_adapter.save(
             File(
                 repository_id=repo.id,
-                commit_id=commit.id,
                 path="src/main.py",
                 content_hash="hash_batch",
                 size_bytes=100,
@@ -615,7 +588,6 @@ class TestResolveReferencesBatch:
             Symbol(
                 file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="func_a",
                 kind=SymbolKind.FUNCTION,
                 start_line=1,
@@ -628,7 +600,6 @@ class TestResolveReferencesBatch:
             Symbol(
                 file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 name="func_b",
                 kind=SymbolKind.FUNCTION,
                 start_line=10,
@@ -645,7 +616,6 @@ class TestResolveReferencesBatch:
             Reference(
                 source_file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 source_line=20,
                 source_column=0,
                 source_end_column=6,
@@ -658,7 +628,6 @@ class TestResolveReferencesBatch:
             Reference(
                 source_file_id=file.id,
                 repository_id=repo.id,
-                commit_id=commit.id,
                 source_line=25,
                 source_column=0,
                 source_end_column=6,
@@ -687,314 +656,3 @@ class TestResolveReferencesBatch:
             repository_id=repo.id, batch_size=1
         )
         assert resolved_third == 0
-
-    async def test_commit_aware_mode(self, db_session: AsyncSession) -> None:
-        """In commit-aware mode, references only resolve to symbols from same commit."""
-        repo_adapter = PostgresRepositoryAdapter(db_session)
-        repository = Repository(
-            name="commit-aware-test", url="https://example.com/ca.git"
-        )
-        saved_repo = await repo_adapter.save(repository)
-        assert saved_repo.id is not None
-
-        commit_adapter = PostgresCommitRepository(db_session)
-        commit1 = await commit_adapter.save(
-            Commit(
-                repository_id=saved_repo.id,
-                commit_hash=CommitHash("c1" + "0" * 38),
-                author_date=datetime(2025, 1, 1),
-                commit_date=datetime(2025, 1, 1),
-            )
-        )
-        commit2 = await commit_adapter.save(
-            Commit(
-                repository_id=saved_repo.id,
-                commit_hash=CommitHash("c2" + "0" * 38),
-                author_date=datetime(2025, 1, 2),
-                commit_date=datetime(2025, 1, 2),
-            )
-        )
-        assert commit1.id is not None
-        assert commit2.id is not None
-
-        file_adapter = PostgresFileRepository(db_session)
-        symbol_adapter = PostgresSymbolRepository(db_session)
-        ref_adapter = PostgresReferenceRepository(db_session)
-
-        # File and symbol in commit 1
-        file1 = await file_adapter.save(
-            File(
-                repository_id=saved_repo.id,
-                commit_id=commit1.id,
-                path="src/main.py",
-                content_hash="hash_c1",
-                size_bytes=100,
-                language="python",
-            )
-        )
-        assert file1.id is not None
-
-        sym1 = await symbol_adapter.save(
-            Symbol(
-                file_id=file1.id,
-                repository_id=saved_repo.id,
-                commit_id=commit1.id,
-                name="process",
-                kind=SymbolKind.FUNCTION,
-                start_line=1,
-                start_column=0,
-                end_line=5,
-                end_column=0,
-            )
-        )
-        assert sym1.id is not None
-
-        # File and symbol in commit 2
-        file2 = await file_adapter.save(
-            File(
-                repository_id=saved_repo.id,
-                commit_id=commit2.id,
-                path="src/main.py",
-                content_hash="hash_c2",
-                size_bytes=100,
-                language="python",
-            )
-        )
-        assert file2.id is not None
-
-        sym2 = await symbol_adapter.save(
-            Symbol(
-                file_id=file2.id,
-                repository_id=saved_repo.id,
-                commit_id=commit2.id,
-                name="process",
-                kind=SymbolKind.FUNCTION,
-                start_line=1,
-                start_column=0,
-                end_line=5,
-                end_column=0,
-            )
-        )
-        assert sym2.id is not None
-
-        # Reference in commit 2 — should only resolve to sym2
-        ref = await ref_adapter.save(
-            Reference(
-                source_file_id=file2.id,
-                repository_id=saved_repo.id,
-                commit_id=commit2.id,
-                source_line=10,
-                source_column=0,
-                source_end_column=7,
-                reference_text="process",
-                reference_type=ReferenceType.CALL,
-                target_symbol_id=None,
-            )
-        )
-        assert ref.id is not None
-
-        # Act
-        resolved = await ref_adapter.resolve_references_batch(
-            repository_id=saved_repo.id, batch_size=100, commit_aware=True
-        )
-
-        # Assert — resolved to commit2 symbol, not commit1
-        assert resolved == 1
-        updated_ref = await ref_adapter.find_by_id(ref.id)
-        assert updated_ref is not None
-        assert updated_ref.target_symbol_id == sym2.id
-
-    async def test_commit_aware_does_not_cross_commits(
-        self, db_session: AsyncSession
-    ) -> None:
-        """In commit-aware mode, reference in commit2 does not resolve to symbol in commit1."""
-        repo_adapter = PostgresRepositoryAdapter(db_session)
-        repository = Repository(
-            name="cross-commit-test", url="https://example.com/crosscommit.git"
-        )
-        saved_repo = await repo_adapter.save(repository)
-        assert saved_repo.id is not None
-
-        commit_adapter = PostgresCommitRepository(db_session)
-        commit1 = await commit_adapter.save(
-            Commit(
-                repository_id=saved_repo.id,
-                commit_hash=CommitHash("cc1" + "0" * 37),
-                author_date=datetime(2025, 1, 1),
-                commit_date=datetime(2025, 1, 1),
-            )
-        )
-        commit2 = await commit_adapter.save(
-            Commit(
-                repository_id=saved_repo.id,
-                commit_hash=CommitHash("cc2" + "0" * 37),
-                author_date=datetime(2025, 1, 2),
-                commit_date=datetime(2025, 1, 2),
-            )
-        )
-        assert commit1.id is not None
-        assert commit2.id is not None
-
-        file_adapter = PostgresFileRepository(db_session)
-        symbol_adapter = PostgresSymbolRepository(db_session)
-        ref_adapter = PostgresReferenceRepository(db_session)
-
-        # File and symbol "process" in commit1
-        file1 = await file_adapter.save(
-            File(
-                repository_id=saved_repo.id,
-                commit_id=commit1.id,
-                path="src/utils.py",
-                content_hash="hash_utils_c1",
-                size_bytes=100,
-                language="python",
-            )
-        )
-        assert file1.id is not None
-
-        sym1 = await symbol_adapter.save(
-            Symbol(
-                file_id=file1.id,
-                repository_id=saved_repo.id,
-                commit_id=commit1.id,
-                name="process",
-                kind=SymbolKind.FUNCTION,
-                start_line=1,
-                start_column=0,
-                end_line=5,
-                end_column=0,
-            )
-        )
-        assert sym1.id is not None
-
-        # Different file in commit2 with reference to "process"
-        file2 = await file_adapter.save(
-            File(
-                repository_id=saved_repo.id,
-                commit_id=commit2.id,
-                path="src/main.py",
-                content_hash="hash_main_c2",
-                size_bytes=100,
-                language="python",
-            )
-        )
-        assert file2.id is not None
-
-        ref = await ref_adapter.save(
-            Reference(
-                source_file_id=file2.id,
-                repository_id=saved_repo.id,
-                commit_id=commit2.id,
-                source_line=10,
-                source_column=0,
-                source_end_column=7,
-                reference_text="process",
-                reference_type=ReferenceType.CALL,
-                target_symbol_id=None,
-            )
-        )
-        assert ref.id is not None
-
-        # Act — commit-aware mode should NOT resolve (no "process" in commit2)
-        resolved_commit_aware = await ref_adapter.resolve_references_batch(
-            repository_id=saved_repo.id, batch_size=100, commit_aware=True
-        )
-
-        # Assert — NOT resolved (no matching symbol in same commit)
-        assert resolved_commit_aware == 0
-        updated_ref = await ref_adapter.find_by_id(ref.id)
-        assert updated_ref is not None
-        assert updated_ref.target_symbol_id is None
-
-        # Act — cross-commit mode (default) SHOULD resolve to commit1 symbol
-        resolved_cross_commit = await ref_adapter.resolve_references_batch(
-            repository_id=saved_repo.id, batch_size=100, commit_aware=False
-        )
-
-        # Assert — resolved to the commit1 symbol
-        assert resolved_cross_commit == 1
-        updated_ref = await ref_adapter.find_by_id(ref.id)
-        assert updated_ref is not None
-        assert updated_ref.target_symbol_id == sym1.id
-
-    async def test_commit_aware_cross_file_resolution(
-        self, db_session: AsyncSession
-    ) -> None:
-        """In commit-aware mode, cross-file resolution works within same commit."""
-        repo, commit = await self._create_repo_and_commit(
-            db_session, "cross-file-test", "xf"
-        )
-        assert repo.id is not None
-        assert commit.id is not None
-
-        file_adapter = PostgresFileRepository(db_session)
-        symbol_adapter = PostgresSymbolRepository(db_session)
-        ref_adapter = PostgresReferenceRepository(db_session)
-
-        # File A with reference to "Logger"
-        file_a = await file_adapter.save(
-            File(
-                repository_id=repo.id,
-                commit_id=commit.id,
-                path="src/file_a.py",
-                content_hash="hash_file_a",
-                size_bytes=100,
-                language="python",
-            )
-        )
-        assert file_a.id is not None
-
-        # File B with symbol "Logger"
-        file_b = await file_adapter.save(
-            File(
-                repository_id=repo.id,
-                commit_id=commit.id,
-                path="src/file_b.py",
-                content_hash="hash_file_b",
-                size_bytes=100,
-                language="python",
-            )
-        )
-        assert file_b.id is not None
-
-        sym_logger = await symbol_adapter.save(
-            Symbol(
-                file_id=file_b.id,
-                repository_id=repo.id,
-                commit_id=commit.id,
-                name="Logger",
-                kind=SymbolKind.CLASS,
-                start_line=1,
-                start_column=0,
-                end_line=10,
-                end_column=0,
-            )
-        )
-        assert sym_logger.id is not None
-
-        # Reference to "Logger" in file_a
-        ref = await ref_adapter.save(
-            Reference(
-                source_file_id=file_a.id,
-                repository_id=repo.id,
-                commit_id=commit.id,
-                source_line=5,
-                source_column=0,
-                source_end_column=6,
-                reference_text="Logger",
-                reference_type=ReferenceType.USAGE,
-                target_symbol_id=None,
-            )
-        )
-        assert ref.id is not None
-
-        # Act — commit-aware mode with cross-file resolution
-        resolved = await ref_adapter.resolve_references_batch(
-            repository_id=repo.id, batch_size=100, commit_aware=True
-        )
-
-        # Assert — resolved to symbol in file_b (same commit, different file)
-        assert resolved == 1
-        updated_ref = await ref_adapter.find_by_id(ref.id)
-        assert updated_ref is not None
-        assert updated_ref.target_symbol_id == sym_logger.id
