@@ -162,7 +162,22 @@ class ResolveFileUseCase:
             return file, commit
 
         if branch:
-            # Branch mode: get latest version of file on this branch
+            # Branch mode: resolve commit first, then find file at that commit
+            commit = await self._commit_repo.find_latest_by_branch(
+                repository_id, branch
+            )
+            if not commit:
+                raise CommitNotFound(commit_hash=f"(no commits on branch {branch})")
+
+            # Find file at this commit (guaranteed to be linked)
+            if commit.id is not None:
+                file = await self._file_repo.find_by_path(
+                    repository_id, commit.id, path
+                )
+                if file:
+                    return file, commit
+
+            # Fallback: use list_versions_by_path + find linked commit
             versions = await self._file_repo.list_versions_by_path(
                 repository_id, path, branch
             )
@@ -172,42 +187,52 @@ class ResolveFileUseCase:
                     repository_name=repository.name,
                     branch=branch,
                 )
-            file = versions[0]  # Most recent version on this branch
-            commit = await self._commit_repo.find_latest_by_branch(
-                repository_id, branch
-            )
-            if not commit:
-                raise CommitNotFound(commit_hash=f"(no commits on branch {branch})")
+            file = versions[0]
+            commit = await self._find_linked_commit(file, commit)
             return file, commit
 
-        # Default: get latest version across all branches
+        # Default: resolve HEAD commit on default branch first
+        default_branch = repository.default_branch or "main"
+        commit = await self._commit_repo.find_latest_by_branch(
+            repository_id, default_branch
+        )
+
+        # Primary: find file at HEAD commit (correct regardless of ID ordering)
+        if commit and commit.id is not None:
+            file = await self._file_repo.find_by_path(
+                repository_id, commit.id, path
+            )
+            if file:
+                return file, commit
+
+        # Fallback: find by repository and path + find linked commit
         file = await self._file_repo.find_by_repository_and_path(repository_id, path)
         if not file:
             raise FileNotFound(path=path, repository_name=repository.name)
 
-        # Find a commit actually linked to this file version
+        commit = await self._find_linked_commit(file, commit)
+        return file, commit
+
+    async def _find_linked_commit(
+        self, file: File, fallback_commit: Commit | None
+    ) -> Commit:
+        """Find a commit actually linked to a file version.
+
+        Uses get_commit_ids_for_files (ordered by commit_date descending)
+        to find the most recent commit that contains this file version.
+        Falls back to the provided commit or raises CommitNotFound.
+        """
         if file.id is not None:
             file_commit_ids = await self._file_repo.get_commit_ids_for_files(
                 [file.id]
             )
             linked_ids = file_commit_ids.get(file.id, [])
             if linked_ids:
-                # Already ordered by commit_date descending
                 commit = await self._commit_repo.find_by_id(linked_ids[0])
                 if commit:
-                    return file, commit
+                    return commit
 
-        # Fallback: latest commit on default branch
-        default_branch = repository.default_branch or "main"
-        commit = await self._commit_repo.find_latest_by_branch(
-            repository_id, default_branch
-        )
-        if not commit:
-            commits = await self._commit_repo.list_by_repository(
-                repository_id=repository_id
-            )
-            if not commits:
-                raise CommitNotFound(commit_hash="(no commits found for repository)")
-            commit = commits[0]
+        if fallback_commit:
+            return fallback_commit
 
-        return file, commit
+        raise CommitNotFound(commit_hash="(no linked commit found)")

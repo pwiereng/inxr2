@@ -1254,6 +1254,14 @@ class TestFilesAPI:
         saved_file = await file_adapter.save(file)
         assert saved_file.id is not None
 
+        # Link file to commit and commit to branch for resolve_file
+        await file_adapter.link_file_to_commit(saved_file.id, saved_commit.id)
+        await commit_adapter.link_commit_to_branch(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            branch="main",
+        )
+
         symbol_adapter = PostgresSymbolRepository(db_session)
         symbol = Symbol(
             file_id=saved_file.id,
@@ -1334,6 +1342,14 @@ class TestFilesAPI:
         )
         saved_file = await file_adapter.save(file)
         assert saved_file.id is not None
+
+        # Link file to commit and commit to branch for resolve_file
+        await file_adapter.link_file_to_commit(saved_file.id, saved_commit.id)
+        await commit_adapter.link_commit_to_branch(
+            repository_id=saved_repo.id,
+            commit_id=saved_commit.id,
+            branch="main",
+        )
 
         reference_adapter = PostgresReferenceRepository(db_session)
         reference = Reference(

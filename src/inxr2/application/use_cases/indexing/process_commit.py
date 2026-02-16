@@ -38,6 +38,7 @@ class ProcessCommitRequest:
 class ProcessCommitResult:
     """Result of processing a single commit."""
 
+    commit_skipped: bool = False  # True if commit already existed (branch link only)
     files_processed: int = 0
     files_skipped: int = 0
     files_failed: int = 0
@@ -111,6 +112,7 @@ class ProcessCommitUseCase:
                 commit_id=commit_id,
                 branch=request.branch,
             )
+            result.commit_skipped = True
             return result
 
         # Save new commit to database

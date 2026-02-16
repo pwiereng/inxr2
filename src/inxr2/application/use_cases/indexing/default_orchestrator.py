@@ -217,7 +217,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             )
             self._merge_commit_result(agg, cr)
             all_errors.extend(cr.errors)
-            commits_indexed += 1
+            if not cr.commit_skipped:
+                commits_indexed += 1
 
         # Step 6: Resolve references
         db_stats.selects += 1  # initial count query
@@ -320,6 +321,11 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
         # Part 1: Forward fill from last_indexed_hash to HEAD
         if last_indexed_hash:
+            # Short-circuit: if HEAD hasn't moved and no --days backfill,
+            # skip the expensive list_commits call entirely
+            if last_indexed_hash == current_head and not request.days:
+                return []
+
             all_commits = self._git_service.list_commits(
                 repo_path=request.repository_path,
                 branch=branch,

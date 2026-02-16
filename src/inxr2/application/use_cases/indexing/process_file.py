@@ -114,22 +114,30 @@ class ProcessFileUseCase:
     async def _do_process(self, request: ProcessFileRequest) -> ProcessFileResult:
         """Inner processing logic."""
         # Fast path: if blob hash maps to a known content hash,
-        # try to find existing file version without reading git content
+        # check if file version already exists WITHOUT creating a placeholder.
+        # Using find_by_content_hash (read-only) avoids inserting a row with
+        # size_bytes=0 that would block proper parsing on fall-through.
         known_content_hash = self._lookup_blob_hash(request)
         if known_content_hash:
-            file_entity, created = await self._file_repo.find_or_create_version(
-                repository_id=request.repository_id,
-                path=request.file_path,
-                content_hash=known_content_hash,
-                size_bytes=0,  # placeholder — version already exists
+            existing_files = await self._file_repo.find_by_content_hash(
+                known_content_hash
             )
-            if not created:
+            existing_version = next(
+                (
+                    f
+                    for f in existing_files
+                    if f.repository_id == request.repository_id
+                    and f.path == request.file_path
+                ),
+                None,
+            )
+            if existing_version is not None:
                 # File version already exists — skip entirely
                 return ProcessFileResult(
                     processed=True,
                     skipped=False,
                     failed=False,
-                    file_id=file_entity.id,
+                    file_id=existing_version.id,
                     file_version_created=False,
                     symbols_found=0,
                     references_found=0,
@@ -138,9 +146,7 @@ class ProcessFileUseCase:
                     docstrings_indexed=0,
                     non_code_file_indexed=False,
                 )
-            # Created with placeholder size — need to read content to fill in
-            # This shouldn't happen often (blob→content_hash implies we've
-            # seen this content before), but handle gracefully by falling through
+            # Not found — fall through to full processing (read content, create properly)
 
         # Read file content from git
         content = self._git_service.get_file_content(
