@@ -119,10 +119,14 @@ class IndexingProgressRenderer:
         out = output or sys.stdout
         console = self._console
 
+        _SPINNER = "|/-\\"
+
         class _State:
             pcts: set[int] = set()
             phase: str = ""
             shown_start: bool = False
+            tick: int = 0
+            last_pct: int = 0
 
         state = _State()
 
@@ -136,18 +140,25 @@ class IndexingProgressRenderer:
 
             if p.phase == "files" and p.files_total > 0:
                 pct = int((p.files_processed / p.files_total) * 100)
+                state.tick += 1
+                spinner = _SPINNER[state.tick % len(_SPINNER)]
                 if pct in _MILESTONES and pct not in state.pcts:
                     state.pcts.add(pct)
-                    out.write(
-                        f"\r  {pct}% ({p.files_processed}/{p.files_total}) | "
-                        f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
-                        f"Cache: {p.cache_size}    "
-                    )
-                    out.flush()
+                    state.last_pct = pct
+                # Always update the line with current spinner
+                out.write(
+                    f"\r  {spinner} {state.last_pct}% "
+                    f"({p.files_processed}/{p.files_total}) | "
+                    f"Symbols: {p.symbols_found} | Refs: {p.references_found} | "
+                    f"Cache: {p.cache_size}    "
+                )
+                out.flush()
             elif p.phase == "resolving":
                 if state.phase != "resolving":
                     state.phase = "resolving"
                     state.pcts = set()
+                    state.tick = 0
+                    state.last_pct = 0
                     out.write("\n")
                     if p.refs_total > 0:
                         console.print(
@@ -158,13 +169,16 @@ class IndexingProgressRenderer:
                         console.print("  [cyan]Resolving references...[/cyan]")
                 if p.refs_total > 0:
                     pct = int((p.refs_resolved / p.refs_total) * 100)
+                    state.tick += 1
+                    spinner = _SPINNER[state.tick % len(_SPINNER)]
                     if pct in _MILESTONES and pct not in state.pcts:
                         state.pcts.add(pct)
-                        out.write(
-                            f"\r  Resolving: {pct}% "
-                            f"({p.refs_resolved}/{p.refs_total})    "
-                        )
-                        out.flush()
+                        state.last_pct = pct
+                    out.write(
+                        f"\r  {spinner} Resolving: {state.last_pct}% "
+                        f"({p.refs_resolved}/{p.refs_total})    "
+                    )
+                    out.flush()
 
         return on_progress
 

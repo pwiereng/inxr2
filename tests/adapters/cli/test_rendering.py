@@ -286,8 +286,8 @@ class TestProgressCallback:
         text = output.getvalue()
         assert "50%" in text
 
-    def test_duplicate_milestone_not_printed_twice(self) -> None:
-        """Same percentage reported twice should only print once."""
+    def test_spinner_rotates_on_each_call(self) -> None:
+        """Each callback should show a different spinner character."""
         console, _ = _capture_console()
         renderer = IndexingProgressRenderer(console)
         output = StringIO()
@@ -299,7 +299,12 @@ class TestProgressCallback:
         callback(progress)
         callback(progress)
         text = output.getvalue()
-        assert text.count("50%") == 1
+        # Both calls write output (spinner keeps line alive)
+        assert text.count("50%") == 2
+        # Different spinner chars on each line
+        lines = [l.strip() for l in text.split("\r") if l.strip()]
+        assert len(lines) == 2
+        assert lines[0][0] != lines[1][0]  # spinner rotated
 
     def test_files_total_zero_no_crash(self) -> None:
         """files_total=0 should not cause division by zero."""

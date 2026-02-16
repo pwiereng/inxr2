@@ -46,6 +46,8 @@ class ProcessFileRequest:
     commit_hash: str
     repo_path: Path
     content_hash_cache: dict[str, int]  # mutated in-place (adds new entries)
+    blob_hash: str | None = None  # git blob hash for fast skip
+    blob_to_content_hash: dict[str, str] | None = None  # blob hash → content hash
 
 
 @dataclass
@@ -127,6 +129,12 @@ class ProcessFileUseCase:
         db_inserts = 0
         db_selects = 0
 
+        # Fast path: if blob hash is known and maps to a cached content hash,
+        # skip get_file_content entirely (avoids git subprocess per file)
+        known_content_hash = self._lookup_blob_hash(request)
+        if known_content_hash and known_content_hash in request.content_hash_cache:
+            return await self._fast_reuse(request, known_content_hash)
+
         # Get file content
         content = self._git_service.get_file_content(
             repo_path=request.repo_path,
@@ -136,6 +144,10 @@ class ProcessFileUseCase:
 
         # Calculate content hash
         content_hash = hashlib.sha1(content.encode("utf-8")).hexdigest()
+
+        # Record blob → content hash mapping for future fast reuse
+        if request.blob_hash and request.blob_to_content_hash is not None:
+            request.blob_to_content_hash[request.blob_hash] = content_hash
 
         # Detect language
         language = self._detect_language(request.file_path)
@@ -329,6 +341,77 @@ class ProcessFileUseCase:
             non_code_file_indexed=False,
             db_inserts=db_inserts,
             db_selects=db_selects,
+        )
+
+    @staticmethod
+    def _lookup_blob_hash(request: ProcessFileRequest) -> str | None:
+        """Look up content hash from blob hash if available."""
+        if (
+            request.blob_hash
+            and request.blob_to_content_hash is not None
+            and request.blob_hash in request.blob_to_content_hash
+        ):
+            return request.blob_to_content_hash[request.blob_hash]
+        return None
+
+    async def _fast_reuse(
+        self, request: ProcessFileRequest, content_hash: str
+    ) -> ProcessFileResult:
+        """Fast-path reuse: blob hash already seen, content hash in cache.
+
+        Creates a file record and copies symbols/references from the donor,
+        without reading file content from git.
+        """
+        donor_file_id = request.content_hash_cache[content_hash]
+        # We need basic file metadata — get it from the donor
+        donor_file = await self._file_repo.find_by_id(donor_file_id)
+
+        language = self._detect_language(request.file_path)
+        file_entity = File(
+            id=None,
+            repository_id=request.repository_id,
+            commit_id=request.commit_id,
+            path=request.file_path,
+            content_hash=content_hash,
+            size_bytes=donor_file.size_bytes if donor_file else 0,
+            language=language,
+            line_count=donor_file.line_count if donor_file else 0,
+        )
+        db_file = await self._file_repo.save(file_entity)
+        file_id = db_file.id
+        assert file_id is not None
+
+        optimize_request = OptimizeFileIndexingRequest(
+            target_file_id=file_id,
+            target_commit_id=request.commit_id,
+            target_repository_id=request.repository_id,
+            content_hash=content_hash,
+            content_hash_cache=request.content_hash_cache,
+        )
+        optimization_result = await self._optimize_use_case.execute(optimize_request)
+
+        request.content_hash_cache[content_hash] = file_id
+        db_inserts = (
+            1
+            + optimization_result.symbols_copied
+            + optimization_result.references_copied
+        )
+
+        return ProcessFileResult(
+            processed=True,
+            skipped=False,
+            failed=False,
+            reused=True,
+            symbols_found=optimization_result.symbols_copied,
+            references_found=optimization_result.references_copied,
+            symbols_reused=optimization_result.symbols_copied,
+            references_reused=optimization_result.references_copied,
+            lines_indexed=file_entity.line_count or 0,
+            comments_indexed=0,
+            docstrings_indexed=0,
+            non_code_file_indexed=False,
+            db_inserts=db_inserts,
+            db_selects=2,
         )
 
     def _detect_language(self, file_path: str) -> str | None:

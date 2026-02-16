@@ -203,6 +203,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         commits_indexed = 0
         agg = ProcessCommitResult()  # running aggregate
         all_errors: list[str] = []
+        # Shared blob→content_hash mapping across all commits (avoids git reads)
+        blob_to_content_hash: dict[str, str] = {}
 
         for i, commit_data in enumerate(commits_data):
             commit_request = ProcessCommitRequest(
@@ -211,6 +213,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 repo_path=request.repository_path,
                 branch=branch,
                 content_hash_cache=content_hash_cache,
+                blob_to_content_hash=blob_to_content_hash,
             )
 
             def on_file_progress(cr: ProcessCommitResult) -> None:

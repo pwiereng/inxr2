@@ -2188,6 +2188,15 @@ class FakeGitService(GitServicePort):
     ) -> list[str]:
         return self.files_in_commit.get(commit_hash, [])
 
+    def list_files_with_hashes(
+        self,
+        repo_path: Path,
+        commit_hash: str,
+    ) -> dict[str, str]:
+        """Return file paths mapped to fake blob hashes."""
+        files = self.files_in_commit.get(commit_hash, [])
+        return {f: f"blob_{f}_{commit_hash}" for f in files}
+
     def get_changed_files_in_commit(
         self, repo_path: Path, commit_hash: str
     ) -> ChangedFiles:

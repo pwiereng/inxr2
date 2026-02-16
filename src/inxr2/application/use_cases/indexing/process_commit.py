@@ -27,6 +27,7 @@ class ProcessCommitRequest:
     repo_path: Path
     branch: str
     content_hash_cache: dict[str, int]
+    blob_to_content_hash: dict[str, str] | None = None
 
 
 @dataclass
@@ -158,13 +159,18 @@ class ProcessCommitUseCase:
         )
 
         # Full snapshot: always process ALL files in this commit
-        files_to_process = self._git_service.list_files(
+        # Use list_files_with_hashes to get blob hashes for fast-skip optimization
+        files_with_hashes = self._git_service.list_files_with_hashes(
             repo_path=request.repo_path,
             commit_hash=request.commit_data.hash,
         )
 
+        # Shared blob→content_hash mapping (populated as files are processed,
+        # reused across commits via the request)
+        blob_to_content_hash = request.blob_to_content_hash or {}
+
         # Process each file
-        for file_path_str in files_to_process:
+        for file_path_str, blob_hash in files_with_hashes.items():
             file_request = ProcessFileRequest(
                 repository_id=request.repository_id,
                 commit_id=commit_id,
@@ -172,6 +178,8 @@ class ProcessCommitUseCase:
                 commit_hash=request.commit_data.hash,
                 repo_path=request.repo_path,
                 content_hash_cache=request.content_hash_cache,
+                blob_hash=blob_hash,
+                blob_to_content_hash=blob_to_content_hash,
             )
             file_result = await self._process_file_use_case.execute(file_request)
             self._aggregate_file_result(result, file_result)
