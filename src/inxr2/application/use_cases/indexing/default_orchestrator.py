@@ -325,6 +325,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 branch=branch,
                 max_count=None,
             )
+            # list_commits returns oldest-first; reverse to newest-first
+            # so we walk from HEAD back toward last_indexed_hash
+            all_commits.reverse()
             forward_fill: list[CommitInfo] = []
             for c in all_commits:
                 if c.hash == last_indexed_hash:
@@ -357,6 +360,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                     max_count=None,
                     since_days=request.days,
                 )
+            # Reverse to newest-first for consistent ordering
+            day_commits.reverse()
             _add_unique(day_commits)
 
         # Fall back to HEAD if nothing selected

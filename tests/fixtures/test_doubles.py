@@ -1905,10 +1905,10 @@ class FakeGitService(GitServicePort):
         max_count: int | None = 1000,
         since_days: int | None = None,
     ) -> list[CommitInfo]:
-        # Return newest-first (like real git log)
-        commits = list(reversed(self.commits))
+        # Return oldest-first (matching real GitService which reverses git log)
+        commits = list(self.commits)
         if max_count:
-            commits = commits[:max_count]
+            commits = commits[-max_count:]
         return commits
 
     def list_branch_commits(
