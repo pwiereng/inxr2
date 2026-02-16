@@ -18,6 +18,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 
 import type { TreeNode } from '@/lib/api'
 import { FileTypeIcon } from './file-icons'
+import { FileTreeFilter } from './FileTreeFilter'
 
 // Find a file in the tree by its ID and return the path to it
 function findFilePathById(nodes: TreeNode[], fileId: number): string | null {
@@ -179,6 +180,7 @@ function TreeNodeItem({
 
 export function FileTree({ nodes, selectedFileId, onFileSelect, loading = false }: FileTreeProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
+  const [filterText, setFilterText] = useState('')
   const selectedRef = useRef<HTMLDivElement>(null!)
 
   const toggleExpanded = useCallback((path: string) => {
@@ -218,6 +220,27 @@ export function FileTree({ nodes, selectedFileId, onFileSelect, loading = false 
     }
   }, [selectedFileId, nodes])
 
+  const handleFilterFileSelect = useCallback(
+    (path: string) => {
+      setFilterText('')
+      onFileSelect?.(path)
+    },
+    [onFileSelect]
+  )
+
+  const handleFilterDirectorySelect = useCallback((path: string) => {
+    setFilterText('')
+    // Expand the directory and all its parents
+    const parentPaths = getParentPaths(path + '/placeholder')
+    setExpandedPaths((prev) => {
+      const next = new Set(prev)
+      // Add the directory itself and all parents
+      next.add(path)
+      parentPaths.forEach((p) => next.add(p))
+      return next
+    })
+  }, [])
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
@@ -236,21 +259,34 @@ export function FileTree({ nodes, selectedFileId, onFileSelect, loading = false 
     )
   }
 
+  const isFiltering = filterText.trim().length > 0
+
   return (
-    <List dense disablePadding sx={{ overflow: 'auto' }}>
-      {nodes.map((node) => (
-        <TreeNodeItem
-          key={node.path}
-          node={node}
-          level={0}
-          selectedFileId={selectedFileId}
-          onFileSelect={onFileSelect}
-          expandedPaths={expandedPaths}
-          toggleExpanded={toggleExpanded}
-          selectedRef={selectedRef}
-        />
-      ))}
-    </List>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <FileTreeFilter
+        nodes={nodes}
+        filterText={filterText}
+        onFilterChange={setFilterText}
+        onFileSelect={handleFilterFileSelect}
+        onDirectorySelect={handleFilterDirectorySelect}
+      />
+      {!isFiltering && (
+        <List dense disablePadding sx={{ overflow: 'auto', flex: 1 }}>
+          {nodes.map((node) => (
+            <TreeNodeItem
+              key={node.path}
+              node={node}
+              level={0}
+              selectedFileId={selectedFileId}
+              onFileSelect={onFileSelect}
+              expandedPaths={expandedPaths}
+              toggleExpanded={toggleExpanded}
+              selectedRef={selectedRef}
+            />
+          ))}
+        </List>
+      )}
+    </Box>
   )
 }
 
