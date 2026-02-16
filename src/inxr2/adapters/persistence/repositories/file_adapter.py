@@ -451,8 +451,13 @@ class PostgresFileRepository(FileRepositoryPort):
 
         query = (
             select(CommitFileModel.file_id, CommitFileModel.commit_id)
+            .join(CommitModel, CommitModel.id == CommitFileModel.commit_id)
             .where(CommitFileModel.file_id.in_(file_ids))
-            .order_by(CommitFileModel.file_id, CommitFileModel.commit_id.desc())
+            .order_by(
+                CommitFileModel.file_id,
+                CommitModel.commit_date.desc(),
+                CommitModel.id.desc(),
+            )
         )
         result = await self.session.execute(query)
         rows = result.all()

@@ -258,7 +258,7 @@ INXR2 uses **full snapshot indexing** — every indexed commit stores the comple
 - **Idempotent**: Running the same command twice produces the same result. No `--force` needed.
 - **No gaps**: Forward fill always runs, ensuring contiguous coverage from the oldest indexed commit to HEAD.
 - **Backfill with `--days`**: Extend history backward at any time. `--days 10` today, `--days 100` tomorrow — equivalent to `--days 100` from scratch.
-- **Content-hash reuse**: Files unchanged between commits skip parsing. Watch for "Files Reused" in output.
+- **Content-hash reuse**: Files unchanged between commits skip parsing. Watch for "File Versions (new)" and "File Versions (cached)" in output.
 
 **Examples:**
 ```bash

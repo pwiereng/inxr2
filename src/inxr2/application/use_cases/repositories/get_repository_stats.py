@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from ....domain.entities import File, Repository
 from ....domain.exceptions import RepositoryNotFound
 from ...ports.repositories import (
+    CommitRepositoryPort,
     FileRepositoryPort,
     ReferenceRepositoryPort,
     RepositoryPort,
@@ -63,6 +64,7 @@ class GetRepositoryStatsUseCase:
         file_repo: FileRepositoryPort,
         symbol_repo: SymbolRepositoryPort,
         reference_repo: ReferenceRepositoryPort,
+        commit_repo: CommitRepositoryPort | None = None,
     ) -> None:
         """Initialize use case with required repositories.
 
@@ -71,11 +73,13 @@ class GetRepositoryStatsUseCase:
             file_repo: Repository for accessing files
             symbol_repo: Repository for accessing symbols
             reference_repo: Repository for accessing references
+            commit_repo: Repository for accessing commits (used to get HEAD files)
         """
         self._repository_repo = repository_repo
         self._file_repo = file_repo
         self._symbol_repo = symbol_repo
         self._reference_repo = reference_repo
+        self._commit_repo = commit_repo
 
     async def execute(self, request: GetRepositoryStatsRequest) -> RepositoryStats:
         """Execute statistics aggregation.
@@ -96,15 +100,13 @@ class GetRepositoryStatsUseCase:
         repository_id = repository.id if repository.id is not None else 0
 
         # 2. Get counts in parallel
-        files, symbol_count, reference_count = await asyncio.gather(
-            self._file_repo.list_by_repository(repository_id),
+        symbol_count, reference_count = await asyncio.gather(
             self._symbol_repo.count_by_repository(repository_id),
             self._reference_repo.count_by_repository(repository_id),
         )
 
-        # 3. Deduplicate files by path (keep latest version per path)
-        # list_by_repository may return multiple versions per path in delta-indexed repos
-        unique_files = self._deduplicate_files_by_path(files)
+        # 3. Get files at HEAD commit (preferred) or fall back to deduplication
+        unique_files = await self._get_head_files(repository, repository_id)
 
         # 4. Compute language distribution from deduplicated files
         language_distribution = self._compute_language_distribution(unique_files)
@@ -148,6 +150,34 @@ class GetRepositoryStatsUseCase:
             return repository
 
         raise ValueError("Either repository_id or repository_name must be provided")
+
+    async def _get_head_files(
+        self, repository: Repository, repository_id: int
+    ) -> list[File]:
+        """Get files at HEAD commit, falling back to deduplication.
+
+        Prefers using list_by_commit with the HEAD commit for accurate
+        results regardless of auto-increment ID ordering. Falls back to
+        list_by_repository with deduplication when commit_repo is unavailable.
+
+        Args:
+            repository: Repository entity (for default_branch)
+            repository_id: Repository database ID
+
+        Returns:
+            List of unique files at HEAD
+        """
+        if self._commit_repo is not None:
+            default_branch = repository.default_branch or "main"
+            commit = await self._commit_repo.find_latest_by_branch(
+                repository_id, default_branch
+            )
+            if commit and commit.id is not None:
+                return await self._file_repo.list_by_commit(commit.id)
+
+        # Fallback: list all and deduplicate
+        files = await self._file_repo.list_by_repository(repository_id)
+        return self._deduplicate_files_by_path(files)
 
     def _deduplicate_files_by_path(self, files: list[File]) -> list[File]:
         """Deduplicate files by path, keeping the latest version.

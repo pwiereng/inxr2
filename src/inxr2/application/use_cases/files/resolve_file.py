@@ -185,13 +185,24 @@ class ResolveFileUseCase:
         if not file:
             raise FileNotFound(path=path, repository_name=repository.name)
 
-        # Find any commit that includes this file
+        # Find a commit actually linked to this file version
+        if file.id is not None:
+            file_commit_ids = await self._file_repo.get_commit_ids_for_files(
+                [file.id]
+            )
+            linked_ids = file_commit_ids.get(file.id, [])
+            if linked_ids:
+                # Already ordered by commit_date descending
+                commit = await self._commit_repo.find_by_id(linked_ids[0])
+                if commit:
+                    return file, commit
+
+        # Fallback: latest commit on default branch
         default_branch = repository.default_branch or "main"
         commit = await self._commit_repo.find_latest_by_branch(
             repository_id, default_branch
         )
         if not commit:
-            # Try to find any commit at all
             commits = await self._commit_repo.list_by_repository(
                 repository_id=repository_id
             )

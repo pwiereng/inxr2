@@ -681,15 +681,29 @@ class InMemoryFileRepository(FileRepositoryPort):
     async def get_commit_ids_for_files(
         self, file_ids: list[int]
     ) -> dict[int, list[int]]:
-        """Get commit IDs linked to file versions via commit_files."""
+        """Get commit IDs linked to file versions via commit_files.
+
+        Orders by commit_date descending (matching production behavior).
+        Falls back to commit_id descending if no commit_repo is available.
+        """
         result: dict[int, list[int]] = {}
         for fid in file_ids:
-            commit_ids = sorted(
-                [cid for cid, f in self._commit_files if f == fid],
-                reverse=True,
-            )
-            if commit_ids:
-                result[fid] = commit_ids
+            commit_ids = [cid for cid, f in self._commit_files if f == fid]
+            if not commit_ids:
+                continue
+
+            if self._commit_repo is not None:
+                # Sort by commit_date descending, then commit_id descending
+                def sort_key(cid: int) -> tuple[datetime, int]:
+                    commit = self._commit_repo._commits.get(cid)  # type: ignore[union-attr]
+                    date = commit.commit_date if commit else datetime.min
+                    return (date, cid)
+
+                commit_ids.sort(key=sort_key, reverse=True)
+            else:
+                commit_ids.sort(reverse=True)
+
+            result[fid] = commit_ids
         return result
 
     def _compute_latest_file_ids(self, repository_id: int) -> set[int]:

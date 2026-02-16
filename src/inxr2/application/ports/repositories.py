@@ -476,7 +476,7 @@ class FileRepositoryPort(ABC):
         """Get commit IDs linked to file versions via commit_files junction.
 
         For each file_id, returns the list of commit IDs that include it,
-        ordered by most recent first (highest commit_id first).
+        ordered by most recent first (by commit_date descending).
 
         Args:
             file_ids: List of file version IDs to look up

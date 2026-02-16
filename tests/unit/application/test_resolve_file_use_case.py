@@ -370,3 +370,76 @@ class TestResolveFileUseCaseEdgeCases:
 
         with pytest.raises(CommitNotFound):
             await use_case.execute(request)
+
+    @pytest.mark.asyncio
+    async def test_default_resolution_returns_linked_commit(self) -> None:
+        """Default resolution should return a commit actually linked to the file.
+
+        Regression test: with HEAD-first indexing, the latest commit on the
+        default branch might not be the commit that contains the resolved file
+        version. The use case should find a commit linked to the file via
+        commit_files, not just the latest on the branch.
+        """
+        repository_repo = InMemoryRepositoryRepository()
+        repository_repo.add(
+            Repository(
+                id=1,
+                name="test-repo",
+                url="/path",
+                default_branch="main",
+            )
+        )
+
+        commit_repo = InMemoryCommitRepository()
+        # Older commit that has the file
+        commit1 = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("aaa111"),
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+        )
+        commit_repo.add(commit1)
+        commit_repo._branch_commits[(1, "main", 1)] = True
+
+        # Newer commit on main (HEAD) that does NOT have the file
+        commit2 = Commit(
+            id=2,
+            repository_id=1,
+            commit_hash=CommitHash("bbb222"),
+            author_date=datetime(2025, 1, 10),
+            commit_date=datetime(2025, 1, 10),
+        )
+        commit_repo.add(commit2)
+        commit_repo._branch_commits[(1, "main", 2)] = True
+
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        file_repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/old_file.py",
+                content_hash="hash_old",
+                size_bytes=100,
+                language="Python",
+            )
+        )
+        file_repo._commit_files.add((1, 1))  # Only linked to commit 1
+
+        use_case = ResolveFileUseCase(
+            repository_repo=repository_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+        request = ResolveFileRequest(
+            repository_name="test-repo",
+            file_path="src/old_file.py",
+        )
+
+        response = await use_case.execute(request)
+
+        # Should return commit 1 (which is actually linked to this file),
+        # not commit 2 (latest on main, but unlinked)
+        assert response.commit.id == 1
+        assert response.file.path == "src/old_file.py"
