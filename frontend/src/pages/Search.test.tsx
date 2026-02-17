@@ -222,6 +222,58 @@ describe('Search', () => {
     })
   })
 
+  it('should have all source type checkboxes checked by default', async () => {
+    render(<Search />)
+
+    await waitFor(() => {
+      const symbolsCheckbox = screen.getByLabelText('Symbols') as HTMLInputElement
+      const commentsCheckbox = screen.getByLabelText('Comments') as HTMLInputElement
+      const docstringsCheckbox = screen.getByLabelText('Docstrings') as HTMLInputElement
+      const commitMsgsCheckbox = screen.getByLabelText('Commit Messages') as HTMLInputElement
+      const fileContentCheckbox = screen.getByLabelText('File Content') as HTMLInputElement
+
+      expect(symbolsCheckbox.checked).toBe(true)
+      expect(commentsCheckbox.checked).toBe(true)
+      expect(docstringsCheckbox.checked).toBe(true)
+      expect(commitMsgsCheckbox.checked).toBe(true)
+      expect(fileContentCheckbox.checked).toBe(true)
+    })
+  })
+
+  it('should call both searchSymbols and searchText by default', async () => {
+    window.history.pushState({}, '', '?query=test')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(mockSearchSymbols).toHaveBeenCalledWith(
+        expect.objectContaining({ q: 'test' })
+      )
+      expect(mockSearchText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'test',
+          source_types: undefined, // All text types = no filter
+        })
+      )
+    })
+  })
+
+  it('should exclude unchecked source types from results', async () => {
+    // URL has all types except symbol
+    window.history.pushState(
+      {},
+      '',
+      '?query=test&source_types=comment,docstring,commit_message,file_content'
+    )
+    render(<Search />)
+
+    await waitFor(() => {
+      // searchText should be called with the specified types
+      expect(mockSearchText).toHaveBeenCalled()
+      // searchSymbols should NOT be called since symbol is unchecked
+      expect(mockSearchSymbols).not.toHaveBeenCalled()
+    })
+  })
+
   it('should render Symbols checkbox in source types', async () => {
     render(<Search />)
 

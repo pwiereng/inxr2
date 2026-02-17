@@ -70,6 +70,9 @@ const LANGUAGES = [
   'yaml',
 ]
 
+const ALL_SOURCE_TYPE_VALUES = SOURCE_TYPES.map((t) => t.value)
+const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => t.value !== 'symbol').map((t) => t.value)
+
 const RESULTS_PER_PAGE = 20
 
 export default function Search() {
@@ -89,9 +92,15 @@ export default function Search() {
   const offset = (page - 1) * RESULTS_PER_PAGE
 
   // Parse array params
+  // No source_types param = all selected (default). Param present = only those selected.
   const sourceTypesParam = searchParams.get('source_types')
   const languagesParam = searchParams.get('languages')
-  const selectedSourceTypes = sourceTypesParam ? sourceTypesParam.split(',') : []
+  const selectedSourceTypes: string[] =
+    sourceTypesParam === null
+      ? ALL_SOURCE_TYPE_VALUES
+      : sourceTypesParam
+        ? sourceTypesParam.split(',')
+        : []
   const selectedLanguages = languagesParam ? languagesParam.split(',') : []
   const sourceTypesKey = selectedSourceTypes.join(',')
   const languagesKey = selectedLanguages.join(',')
@@ -120,7 +129,7 @@ export default function Search() {
       const newParams = new URLSearchParams(searchParams)
       newParams.set('query', inputQuery)
       newParams.delete('page') // Reset to page 1 on new search
-      setSearchParams(newParams)
+      setSearchParams(newParams, { replace: true })
     }, 300)
 
     return () => clearTimeout(timer)
@@ -170,8 +179,10 @@ export default function Search() {
           // Text/symbol search mode
           const textSourceTypes = selectedSourceTypes.filter((t) => t !== 'symbol')
           const hasSymbol = selectedSourceTypes.includes('symbol')
-          const hasTextFilters = textSourceTypes.length > 0
-          const callText = hasTextFilters || selectedSourceTypes.length === 0
+          const callText = textSourceTypes.length > 0
+          const allTextTypesSelected = ALL_TEXT_TYPE_VALUES.every((v) =>
+            textSourceTypes.includes(v)
+          )
 
           const promises: Promise<void>[] = []
           let symbolResults: Symbol[] = []
@@ -199,7 +210,7 @@ export default function Search() {
               mode: mode as 'keyword' | 'phrase' | 'regex',
               repo: selectedRepoId,
               branch: branchParam || undefined,
-              source_types: hasTextFilters ? textSourceTypes : undefined,
+              source_types: allTextTypesSelected ? undefined : textSourceTypes,
               languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
               limit: RESULTS_PER_PAGE,
               offset,
@@ -257,13 +268,13 @@ export default function Search() {
     const newParams = new URLSearchParams(searchParams)
     newParams.set('branch', newBranch)
     newParams.delete('commit') // Reset to HEAD when branch changes
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
   }
 
   const handleHeaderCommitChange = (newCommit: string) => {
     const newParams = new URLSearchParams(searchParams)
     newParams.set('commit', newCommit)
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
   }
 
   const handleTabChange = (tab: TabValue) => {
@@ -298,7 +309,7 @@ export default function Search() {
     if (newMode === 'file') {
       newParams.delete('source_types')
     }
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
   }
 
   const handleSourceTypeToggle = (type: string) => {
@@ -306,13 +317,17 @@ export default function Search() {
     const current = selectedSourceTypes
     const updated = current.includes(type) ? current.filter((t) => t !== type) : [...current, type]
 
-    if (updated.length > 0) {
-      newParams.set('source_types', updated.join(','))
-    } else {
+    // If all types re-selected, remove param (back to default)
+    if (
+      updated.length === ALL_SOURCE_TYPE_VALUES.length &&
+      ALL_SOURCE_TYPE_VALUES.every((v) => updated.includes(v))
+    ) {
       newParams.delete('source_types')
+    } else {
+      newParams.set('source_types', updated.join(','))
     }
     newParams.delete('page')
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
   }
 
   const handleLanguageChange = (lang: string) => {
@@ -323,13 +338,13 @@ export default function Search() {
       newParams.delete('languages')
     }
     newParams.delete('page')
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
   }
 
   const handlePageChange = (_event: React.ChangeEvent<unknown>, value: number) => {
     const newParams = new URLSearchParams(searchParams)
     newParams.set('page', value.toString())
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
     // Scroll to top of results
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -404,11 +419,12 @@ export default function Search() {
     )
   }
 
-  const handleClearFilters = () => {
-    const newParams = new URLSearchParams()
-    if (query) newParams.set('q', query)
-    if (mode !== 'keyword') newParams.set('mode', mode)
-    setSearchParams(newParams)
+  const handleSelectAll = () => {
+    const newParams = new URLSearchParams(searchParams)
+    newParams.delete('source_types')
+    newParams.delete('languages')
+    newParams.delete('page')
+    setSearchParams(newParams, { replace: true })
   }
 
   const getSourceTypeBadgeColor = (
@@ -435,7 +451,7 @@ export default function Search() {
   }
 
   const totalPages = Math.ceil(totalResults / RESULTS_PER_PAGE)
-  const hasFilters = selectedSourceTypes.length > 0 || selectedLanguages.length > 0
+  const hasFilters = sourceTypesParam !== null || selectedLanguages.length > 0
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -502,8 +518,8 @@ export default function Search() {
               </FormControl>
 
               {hasFilters && (
-                <Button onClick={handleClearFilters} variant="outlined" size="small">
-                  Clear Filters
+                <Button onClick={handleSelectAll} variant="outlined" size="small">
+                  Select All
                 </Button>
               )}
             </Box>
