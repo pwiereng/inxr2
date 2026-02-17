@@ -190,18 +190,20 @@ class ListCommitsUseCase:
                     default_branch,
                     exc_info=True,
                 )
-            # Find the actual merge-base (last common ancestor)
-            try:
-                merge_base_hash = self._git_service.get_merge_base(
-                    repo_path, branch, default_branch
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to get merge-base for %s vs %s",
-                    branch,
-                    default_branch,
-                    exc_info=True,
-                )
+            # Only compute merge-base when we have branch-specific commits.
+            # Without them, showing a fork point is misleading.
+            if branch_specific_hashes:
+                try:
+                    merge_base_hash = self._git_service.get_merge_base(
+                        repo_path, branch, default_branch
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to get merge-base for %s vs %s",
+                        branch,
+                        default_branch,
+                        exc_info=True,
+                    )
 
         # For merged branches, git merge-base returns the branch tip (since
         # it's now reachable from main).  In that case, derive the fork point
