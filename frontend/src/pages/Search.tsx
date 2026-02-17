@@ -245,7 +245,7 @@ export default function Search() {
           setTotalResults(symbolTotal + textTotal)
           // Pagination is driven by text search total (the only source with a real total count).
           // Symbol search returns batch size, not a true total, so it can't drive pagination.
-          setPaginationTotal(callText ? textTotal : symbolTotal)
+          setPaginationTotal(callText ? textTotal : 0)
         }
       } catch (err) {
         console.error('Search failed:', err)
