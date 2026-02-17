@@ -27,6 +27,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
+import { highlightMatches } from '@/lib/highlightMatches'
 import {
   searchText,
   searchFiles,
@@ -491,7 +492,7 @@ export default function Search() {
                   label="Mode"
                   onChange={(e) => handleModeChange(e.target.value)}
                 >
-                  <MenuItem value="keyword">Keyword</MenuItem>
+                  <MenuItem value="keyword">Keyword (fuzzy)</MenuItem>
                   <MenuItem value="phrase">Phrase</MenuItem>
                   <MenuItem value="regex">Regex</MenuItem>
                   <MenuItem value="file">File</MenuItem>
@@ -723,10 +724,18 @@ export default function Search() {
                                   }}
                                 >
                                   {result.kind === 'symbol'
-                                    ? result.data.signature ||
-                                      result.data.qualified_name ||
-                                      result.data.name
-                                    : result.data.headline || result.data.content}
+                                    ? highlightMatches(
+                                        result.data.signature ||
+                                          result.data.qualified_name ||
+                                          result.data.name,
+                                        query,
+                                        'keyword'
+                                      )
+                                    : highlightMatches(
+                                        result.data.headline || result.data.content,
+                                        query,
+                                        mode
+                                      )}
                                 </Typography>
                               }
                             />

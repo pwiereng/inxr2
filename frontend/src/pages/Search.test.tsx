@@ -3,6 +3,26 @@ import { render, screen, waitFor, fireEvent } from '@/test/utils'
 import Search from './Search'
 import * as api from '@/lib/api'
 
+/**
+ * Helper to find an element whose textContent matches, even when the text
+ * is split across child elements (e.g., <mark> highlighting).
+ */
+function getByTextContent(text: string | RegExp) {
+  return screen.getByText((_content, element) => {
+    if (!element) return false
+    const tc = element.textContent || ''
+    const matches = text instanceof RegExp ? text.test(tc) : tc === text
+    // Only match the deepest element that contains the full text
+    // (avoid matching parent wrappers)
+    if (!matches) return false
+    const childrenMatch = Array.from(element.children).some((child) => {
+      const ctc = child.textContent || ''
+      return text instanceof RegExp ? text.test(ctc) : ctc === text
+    })
+    return !childrenMatch
+  })
+}
+
 // Mock the API
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual('@/lib/api')
@@ -169,8 +189,8 @@ describe('Search', () => {
       expect(screen.getByText(/Commit Message/i)).toBeInTheDocument()
     })
 
-    // Click the result
-    fireEvent.click(screen.getByText(/fix: update get_file_symbols_by_path/i))
+    // Click the result (text may be split by <mark> highlighting)
+    fireEvent.click(getByTextContent(/fix: update get_file_symbols_by_path/i))
 
     // Should navigate to history, not browse
     await waitFor(() => {
@@ -211,10 +231,10 @@ describe('Search', () => {
     render(<Search />)
 
     await waitFor(() => {
-      expect(screen.getByText(/# helper function/i)).toBeInTheDocument()
+      expect(getByTextContent(/# helper function/i)).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByText(/# helper function/i))
+    fireEvent.click(getByTextContent(/# helper function/i))
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/browse/test-repo/src/utils.py')
@@ -253,10 +273,10 @@ describe('Search', () => {
     render(<Search />)
 
     await waitFor(() => {
-      expect(screen.getByText(/# Initialize console/i)).toBeInTheDocument()
+      expect(getByTextContent(/# Initialize console/i)).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByText(/# Initialize console/i))
+    fireEvent.click(getByTextContent(/# Initialize console/i))
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/browse/test-repo/src/cli.py')
@@ -401,7 +421,7 @@ describe('Search', () => {
     await waitFor(() => {
       expect(screen.getByText('Symbol')).toBeInTheDocument()
       expect(screen.getByText('class')).toBeInTheDocument()
-      expect(screen.getByText('class MyClass(Base)')).toBeInTheDocument()
+      expect(getByTextContent('class MyClass(Base)')).toBeInTheDocument()
     })
   })
 
@@ -434,10 +454,10 @@ describe('Search', () => {
     render(<Search />)
 
     await waitFor(() => {
-      expect(screen.getByText('def my_function(x: int) -> str')).toBeInTheDocument()
+      expect(getByTextContent('def my_function(x: int) -> str')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByText('def my_function(x: int) -> str'))
+    fireEvent.click(getByTextContent('def my_function(x: int) -> str'))
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/browse/test-repo/src/utils.py')
