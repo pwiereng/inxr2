@@ -261,6 +261,8 @@ export async function searchSymbols(params: {
   q?: string
   kind?: string
   repository_id?: number
+  branch?: string
+  language?: string
   limit?: number
   offset?: number
 }): Promise<SymbolListResponse> {
@@ -268,6 +270,8 @@ export async function searchSymbols(params: {
   if (params.q) searchParams.set('q', params.q)
   if (params.kind) searchParams.set('kind', params.kind)
   if (params.repository_id) searchParams.set('repository_id', params.repository_id.toString())
+  if (params.branch) searchParams.set('branch', params.branch)
+  if (params.language) searchParams.set('language', params.language)
   if (params.limit) searchParams.set('limit', params.limit.toString())
   if (params.offset) searchParams.set('offset', params.offset.toString())
 

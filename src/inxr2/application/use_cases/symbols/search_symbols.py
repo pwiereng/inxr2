@@ -49,6 +49,8 @@ class SearchSymbolsRequest:
     exact_match: bool = False
     limit: int = 50
     offset: int = 0
+    branch: str | None = None
+    language: str | None = None
 
 
 @dataclass
@@ -143,6 +145,8 @@ class SearchSymbolsUseCase:
                 repository_id=request.repository_id,
                 kind=request.kind,
                 limit=request.limit + request.offset,
+                branch=request.branch,
+                language=request.language,
             )
 
         # Apply offset for pagination

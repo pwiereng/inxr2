@@ -77,6 +77,10 @@ async def search_symbols(
     q: str = Query(default="", description="Search query for symbol name"),
     kind: str | None = Query(default=None, description="Filter by symbol kind"),
     repository_id: int | None = Query(default=None, description="Filter by repository"),
+    branch: str | None = Query(default=None, description="Filter by branch name"),
+    language: str | None = Query(
+        default=None, description="Filter by programming language"
+    ),
     limit: int = Query(default=50, ge=1, le=200, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ) -> SymbolListResponse:
@@ -92,6 +96,8 @@ async def search_symbols(
             kind=kind,
             limit=limit,
             offset=offset,
+            branch=branch,
+            language=language,
         )
     )
 

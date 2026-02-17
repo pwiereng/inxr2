@@ -513,8 +513,19 @@ class SymbolRepositoryPort(ABC):
         repository_id: int | None = None,
         kind: str | None = None,
         limit: int = 50,
+        branch: str | None = None,
+        language: str | None = None,
     ) -> list[Symbol]:
-        """Search symbols by name (supports autocomplete)."""
+        """Search symbols by name (supports autocomplete).
+
+        Args:
+            name: Search pattern (case-insensitive substring match)
+            repository_id: Filter by repository (optional)
+            kind: Filter by symbol kind (optional)
+            limit: Maximum results
+            branch: Filter by branch name via commit_files → branch_commits (optional)
+            language: Filter by programming language via files (optional)
+        """
         pass
 
     @abstractmethod

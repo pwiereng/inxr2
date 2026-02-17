@@ -35,14 +35,24 @@ export function highlightMatches(
   const parts = text.split(pattern)
   if (parts.length === 1) return text
 
-  // After split with a capturing group, odd indices are the matched parts
-  return parts.map((part, i) =>
-    i % 2 === 1 ? (
-      <mark key={i} style={{ backgroundColor: '#fff176', borderRadius: 2, padding: '0 1px' }}>
-        {part}
-      </mark>
-    ) : (
-      part
-    )
-  )
+  // After split with a capturing group, odd indices are the matched parts.
+  // Skip empty strings that occur at split boundaries.
+  const elements: React.ReactNode[] = []
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
+    if (part === '') continue
+    if (i % 2 === 1) {
+      elements.push(
+        <mark
+          key={elements.length}
+          style={{ backgroundColor: '#fff176', borderRadius: 2, padding: '0 1px' }}
+        >
+          {part}
+        </mark>
+      )
+    } else {
+      elements.push(part)
+    }
+  }
+  return elements
 }

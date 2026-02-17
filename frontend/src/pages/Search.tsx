@@ -194,6 +194,8 @@ export default function Search() {
               searchSymbols({
                 q: query,
                 repository_id: selectedRepoId,
+                branch: branchParam || undefined,
+                language: selectedLanguages[0] || undefined,
                 limit: RESULTS_PER_PAGE,
                 offset,
               }).then((response) => {
@@ -601,7 +603,7 @@ export default function Search() {
                   {isFileMode
                     ? fileResults.map((file, index) => (
                         <ListItem
-                          key={`${file.id}-${index}`}
+                          key={file.id}
                           disablePadding
                           divider={index < fileResults.length - 1}
                         >
@@ -641,7 +643,7 @@ export default function Search() {
                       ))
                     : results.map((result, index) => (
                         <ListItem
-                          key={`${result.kind}-${result.data.id}-${index}`}
+                          key={`${result.kind}-${result.data.id}`}
                           disablePadding
                           divider={index < results.length - 1}
                         >
