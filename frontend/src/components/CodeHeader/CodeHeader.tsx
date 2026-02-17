@@ -101,9 +101,9 @@ export function CodeHeader({
         if (!repo) return
 
         const response = await getRepositoryBranches(repo.id)
-        // Only show indexed branches
+        // Only show indexed branches (those with a last_indexed_commit)
         const indexedBranches = response.branches.filter(
-          (b) => b.commit_count && b.commit_count > 0
+          (b) => b.last_indexed_commit
         )
         setBranches(indexedBranches)
       } catch (error) {

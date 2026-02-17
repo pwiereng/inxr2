@@ -227,6 +227,74 @@ describe('CodeHeader', () => {
       expect(screen.getByRole('tab', { name: /browse/i })).toBeInTheDocument()
     })
 
+    it('should show branches with last_indexed_commit even when commit_count is 0', async () => {
+      const api = await import('@/lib/api')
+      vi.mocked(api.getRepositoryBranches).mockResolvedValue({
+        branches: [
+          {
+            name: 'main',
+            last_indexed_commit: 'abc123',
+            oldest_indexed_commit: 'def456',
+            commit_count: 289,
+            last_indexed_at: '2024-01-01',
+          },
+          {
+            name: 'feature-branch',
+            last_indexed_commit: 'ghi789',
+            oldest_indexed_commit: null,
+            commit_count: 0,
+            last_indexed_at: null,
+          },
+        ],
+      })
+
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('main')).toBeInTheDocument()
+      })
+
+      // Open the branch selector
+      const comboboxes = screen.getAllByRole('combobox')
+      const branchSelect = comboboxes[1]!
+      fireEvent.mouseDown(branchSelect)
+
+      // feature-branch should appear even though commit_count is 0
+      const featureBranchOption = await screen.findByText(/feature-branch/)
+      expect(featureBranchOption).toBeInTheDocument()
+    })
+
+    it('should not show branches without last_indexed_commit', async () => {
+      const api = await import('@/lib/api')
+      vi.mocked(api.getRepositoryBranches).mockResolvedValue({
+        branches: [
+          {
+            name: 'main',
+            last_indexed_commit: 'abc123',
+            oldest_indexed_commit: 'def456',
+            commit_count: 289,
+            last_indexed_at: '2024-01-01',
+          },
+          {
+            name: 'unindexed-branch',
+            last_indexed_commit: null,
+            oldest_indexed_commit: null,
+            commit_count: 0,
+            last_indexed_at: null,
+          },
+        ],
+      })
+
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('main')).toBeInTheDocument()
+      })
+
+      // unindexed-branch should NOT appear
+      expect(screen.queryByText('unindexed-branch')).not.toBeInTheDocument()
+    })
+
     it('should call onBranchChange when branch is changed', async () => {
       const onBranchChange = vi.fn()
 

@@ -223,6 +223,79 @@ describe('BranchSelector', () => {
     expect(container!.firstChild).toBeNull()
   })
 
+  it('shows branches with last_indexed_commit even when commit_count is 0', async () => {
+    vi.mocked(api.getRepositoryBranches).mockResolvedValue({
+      branches: [
+        {
+          name: 'main',
+          commit_count: 289,
+          last_indexed_commit: 'abc123',
+          oldest_indexed_commit: 'def456',
+          last_indexed_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          name: 'feature',
+          commit_count: 0,
+          last_indexed_commit: 'xyz789',
+          oldest_indexed_commit: null,
+          last_indexed_at: null,
+        },
+      ],
+    })
+
+    await act(async () => {
+      render(
+        <BranchSelector
+          repositoryId={1}
+          selectedBranch={null}
+          defaultBranch="main"
+          onBranchChange={mockOnBranchChange}
+        />
+      )
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    // Should render as dropdown (2 branches), not plain text
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
+  })
+
+  it('excludes branches without last_indexed_commit', async () => {
+    vi.mocked(api.getRepositoryBranches).mockResolvedValue({
+      branches: [
+        {
+          name: 'main',
+          commit_count: 10,
+          last_indexed_commit: 'abc123',
+          oldest_indexed_commit: 'def456',
+          last_indexed_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          name: 'unindexed',
+          commit_count: 0,
+          last_indexed_commit: null,
+          oldest_indexed_commit: null,
+          last_indexed_at: null,
+        },
+      ],
+    })
+
+    await act(async () => {
+      render(
+        <BranchSelector
+          repositoryId={1}
+          selectedBranch={null}
+          defaultBranch="main"
+          onBranchChange={mockOnBranchChange}
+        />
+      )
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    // Only 1 indexed branch → renders as plain text, not dropdown
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.getByText('main')).toBeInTheDocument()
+  })
+
   it('falls back to default branch when selected branch is not indexed', async () => {
     vi.mocked(api.getRepositoryBranches).mockResolvedValue({
       branches: [
