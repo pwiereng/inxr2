@@ -463,6 +463,65 @@ class TestListCommitsUseCase:
             assert c.is_merge_base is False
 
     @pytest.mark.asyncio
+    async def test_merged_branch_fork_point_not_at_head(
+        self,
+        repository_repo: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        tmp_path: Path,
+    ) -> None:
+        """For merged branches, FORK should mark the real fork point, not HEAD.
+
+        When a branch has been merged back to main, git merge-base returns the
+        branch tip (it's reachable from both branches). The use case should
+        detect this and place the fork point at the first shared commit after
+        the branch-specific section.
+        """
+        repo_path = tmp_path / "test-repo"
+        git_service = StubGitListCommitsService()
+        # Full history (oldest first): shared1, shared2, branch1, branch2
+        git_service.set_commits(
+            str(repo_path),
+            "merged-feature",
+            [
+                _make_commit_info("shared1", "shared1", message="Shared commit 1"),
+                _make_commit_info("shared2", "shared2", message="Shared commit 2"),
+                _make_commit_info("branch1", "branch1", message="Branch commit 1"),
+                _make_commit_info("branch2", "branch2", message="Branch commit 2"),
+            ],
+        )
+        # Branch-specific commits: branch1, branch2
+        git_service.set_branch_commits(
+            str(repo_path),
+            "merged-feature",
+            "main",
+            [
+                _make_commit_info("branch1", "branch1", message="Branch commit 1"),
+                _make_commit_info("branch2", "branch2", message="Branch commit 2"),
+            ],
+        )
+        # Simulate merged branch: git merge-base returns the branch HEAD
+        git_service.set_merge_base(str(repo_path), "merged-feature", "main", "branch2")
+
+        use_case = ListCommitsUseCase(
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+            git_service=git_service,
+        )
+
+        request = ListCommitsRequest(
+            repository_name="test-repo", branch="merged-feature"
+        )
+        result = await use_case.execute(request)
+
+        by_hash = {c.hash: c for c in result.commits}
+        # Branch-specific commits should NOT be the merge-base
+        assert by_hash["branch2"].is_merge_base is False
+        assert by_hash["branch1"].is_merge_base is False
+        # The fork point should be the first shared commit (shared2)
+        assert by_hash["shared2"].is_merge_base is True
+        assert by_hash["shared1"].is_merge_base is False
+
+    @pytest.mark.asyncio
     async def test_branch_commits_error_graceful_degradation(
         self,
         repository_repo: InMemoryRepositoryRepository,

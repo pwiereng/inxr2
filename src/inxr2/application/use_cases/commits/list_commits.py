@@ -203,6 +203,20 @@ class ListCommitsUseCase:
                     exc_info=True,
                 )
 
+        # For merged branches, git merge-base returns the branch tip (since
+        # it's now reachable from main).  In that case, derive the fork point
+        # from the commit list: the first non-branch-specific commit after the
+        # branch-specific section is the actual fork point.
+        if merge_base_hash and merge_base_hash in branch_specific_hashes:
+            merge_base_hash = None
+            seen_branch_specific = False
+            for ci in git_commits:  # newest-first
+                if ci.hash in branch_specific_hashes:
+                    seen_branch_specific = True
+                elif seen_branch_specific:
+                    merge_base_hash = ci.hash
+                    break
+
         # Build response (git_commits is newest-first after reverse above)
         result: list[CommitWithMetadata] = []
         for ci in git_commits:
