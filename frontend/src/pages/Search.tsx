@@ -289,27 +289,30 @@ export default function Search() {
   }
 
   const handleResultClick = (result: TextSearchResult) => {
-    // Navigate to Browse with the result's location
     const resultRepoName = result.repository_name
     const filePath = result.file_path
 
     // Build URL params
     const params = new URLSearchParams()
+    params.set('repo', resultRepoName)
     if (result.branch) {
       params.set('branch', result.branch)
     }
     if (result.commit_hash) {
       params.set('commit', result.commit_hash)
     }
-    if (result.source_line) {
-      params.set('line', result.source_line.toString())
-    }
 
-    if (filePath) {
-      // Navigate to specific file
+    if (result.source_type === 'commit_message') {
+      // Commit messages navigate to History, focused on that commit
+      navigate(`/history?${params.toString()}`)
+    } else if (filePath) {
+      // File-based results navigate to Browse at the specific file/line
+      if (result.source_line) {
+        params.set('line', result.source_line.toString())
+      }
       navigate(`/browse/${encodeURIComponent(resultRepoName)}/${filePath}?${params.toString()}`)
     } else {
-      // Commit message - navigate to repository root
+      // Fallback: navigate to repository root in Browse
       navigate(`/browse/${encodeURIComponent(resultRepoName)}?${params.toString()}`)
     }
   }

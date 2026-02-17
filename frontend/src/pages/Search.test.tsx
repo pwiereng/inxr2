@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@/test/utils'
+import { render, screen, waitFor, fireEvent } from '@/test/utils'
 import Search from './Search'
 import * as api from '@/lib/api'
 
@@ -123,6 +123,94 @@ describe('Search', () => {
       },
       { timeout: 1000 }
     )
+  })
+
+  it('should navigate to history when clicking a commit_message result', async () => {
+    mockSearchText.mockResolvedValue({
+      results: [
+        {
+          id: 1,
+          source_type: 'commit_message',
+          content: 'fix: update get_file_symbols_by_path',
+          content_type: null,
+          repository_id: 1,
+          repository_name: 'test-repo',
+          file_path: null,
+          source_line: null,
+          source_end_line: null,
+          language: null,
+          commit_hash: 'abc123def456',
+          branch: 'main',
+          headline: null,
+          rank: 1.0,
+        },
+      ],
+      total: 1,
+      query: 'get_file_symbols_by_path',
+      mode: 'keyword',
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=get_file_symbols_by_path&source_types=commit_message')
+    render(<Search />)
+
+    // Wait for results to appear
+    await waitFor(() => {
+      expect(screen.getByText(/Commit Message/i)).toBeInTheDocument()
+    })
+
+    // Click the result
+    fireEvent.click(screen.getByText(/fix: update get_file_symbols_by_path/i))
+
+    // Should navigate to history, not browse
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/history')
+      expect(window.location.search).toContain('commit=abc123def456')
+      expect(window.location.search).toContain('repo=test-repo')
+    })
+  })
+
+  it('should navigate to browse when clicking a file-based result', async () => {
+    mockSearchText.mockResolvedValue({
+      results: [
+        {
+          id: 2,
+          source_type: 'comment',
+          content: '# helper function',
+          content_type: null,
+          repository_id: 1,
+          repository_name: 'test-repo',
+          file_path: 'src/utils.py',
+          source_line: 10,
+          source_end_line: null,
+          language: 'python',
+          commit_hash: 'abc123def456',
+          branch: 'main',
+          headline: null,
+          rank: 1.0,
+        },
+      ],
+      total: 1,
+      query: 'helper',
+      mode: 'keyword',
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=helper')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/# helper function/i)).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText(/# helper function/i))
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/browse/test-repo/src/utils.py')
+      expect(window.location.search).toContain('line=10')
+    })
   })
 
   it('should filter by repository when repo param is in URL', async () => {
