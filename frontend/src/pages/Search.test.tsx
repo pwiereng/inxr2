@@ -9,6 +9,7 @@ vi.mock('@/lib/api', async () => {
   return {
     ...actual,
     searchText: vi.fn(),
+    searchSymbols: vi.fn(),
     getRepositories: vi.fn(),
     getRepositoryBranches: vi.fn(),
     getCommits: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('@/lib/api', async () => {
 })
 
 const mockSearchText = vi.mocked(api.searchText)
+const mockSearchSymbols = vi.mocked(api.searchSymbols)
 const mockGetRepositories = vi.mocked(api.getRepositories)
 const mockGetRepositoryBranches = vi.mocked(api.getRepositoryBranches)
 const mockGetCommits = vi.mocked(api.getCommits)
@@ -75,6 +77,13 @@ describe('Search', () => {
       limit: 20,
       offset: 0,
     })
+
+    mockSearchSymbols.mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    })
   })
 
   it('should render search page with empty state', async () => {
@@ -86,7 +95,7 @@ describe('Search', () => {
 
     expect(
       screen.getByText(
-        /Enter a search query to find text in comments, docstrings, commit messages, and files/i
+        /Enter a search query to find symbols, comments, docstrings, commit messages, and files/i
       )
     ).toBeInTheDocument()
   })
@@ -210,6 +219,157 @@ describe('Search', () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe('/browse/test-repo/src/utils.py')
       expect(window.location.search).toContain('line=10')
+    })
+  })
+
+  it('should render Symbols checkbox in source types', async () => {
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Symbols')).toBeInTheDocument()
+    })
+  })
+
+  it('should call searchSymbols when Symbols source type is selected', async () => {
+    mockSearchSymbols.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'get_file_symbols_by_path',
+          qualified_name: 'inxr2.api.get_file_symbols_by_path',
+          kind: 'function',
+          file_id: 10,
+          file_path: 'src/api/routes.py',
+          repository_id: 1,
+          commit_id: 1,
+          start_line: 42,
+          start_column: 0,
+          end_line: 55,
+          end_column: 0,
+          signature: 'def get_file_symbols_by_path(repo: str, path: str)',
+          docstring: null,
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState(
+      {},
+      '',
+      '?query=get_file_symbols_by_path&source_types=symbol'
+    )
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(mockSearchSymbols).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'get_file_symbols_by_path',
+        })
+      )
+    })
+
+    // Should NOT call searchText when only symbol is selected
+    expect(mockSearchText).not.toHaveBeenCalled()
+  })
+
+  it('should render symbol results with Symbol badge and kind', async () => {
+    mockSearchSymbols.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'MyClass',
+          qualified_name: 'module.MyClass',
+          kind: 'class',
+          file_id: 10,
+          file_path: 'src/models.py',
+          repository_id: 1,
+          commit_id: 1,
+          start_line: 5,
+          start_column: 0,
+          end_line: 20,
+          end_column: 0,
+          signature: 'class MyClass(Base)',
+          docstring: null,
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=MyClass&source_types=symbol')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Symbol')).toBeInTheDocument()
+      expect(screen.getByText('class')).toBeInTheDocument()
+      expect(screen.getByText('class MyClass(Base)')).toBeInTheDocument()
+    })
+  })
+
+  it('should navigate to browse when clicking a symbol result', async () => {
+    mockSearchSymbols.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'my_function',
+          qualified_name: 'module.my_function',
+          kind: 'function',
+          file_id: 10,
+          file_path: 'src/utils.py',
+          repository_id: 1,
+          commit_id: 1,
+          start_line: 15,
+          start_column: 0,
+          end_line: 25,
+          end_column: 0,
+          signature: 'def my_function(x: int) -> str',
+          docstring: null,
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=my_function&source_types=symbol')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(screen.getByText('def my_function(x: int) -> str')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText('def my_function(x: int) -> str'))
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/browse/test-repo/src/utils.py')
+      expect(window.location.search).toContain('line=15')
+    })
+  })
+
+  it('should call both searchSymbols and searchText when both are selected', async () => {
+    mockSearchSymbols.mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=test&source_types=symbol,comment')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(mockSearchSymbols).toHaveBeenCalledWith(
+        expect.objectContaining({ q: 'test' })
+      )
+      expect(mockSearchText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'test',
+          source_types: ['comment'],
+        })
+      )
     })
   })
 

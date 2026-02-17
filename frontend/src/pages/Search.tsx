@@ -30,18 +30,26 @@ import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import {
   searchText,
   searchFiles,
+  searchSymbols,
   getRepositories,
   type TextSearchParams,
   type TextSearchResult,
   type FileSearchResult,
   type Repository,
+  type Symbol,
 } from '@/lib/api'
 
 // Search mode type
 type SearchMode = 'keyword' | 'phrase' | 'regex' | 'file'
 
+// Unified result type for combining text and symbol search results
+type UnifiedResult =
+  | { kind: 'text'; data: TextSearchResult }
+  | { kind: 'symbol'; data: Symbol }
+
 // Source type options
 const SOURCE_TYPES = [
+  { value: 'symbol', label: 'Symbols' },
   { value: 'comment', label: 'Comments' },
   { value: 'docstring', label: 'Docstrings' },
   { value: 'commit_message', label: 'Commit Messages' },
@@ -93,7 +101,7 @@ export default function Search() {
 
   // Data state
   const [repositories, setRepositories] = useState<Repository[]>([])
-  const [results, setResults] = useState<TextSearchResult[]>([])
+  const [results, setResults] = useState<UnifiedResult[]>([])
   const [fileResults, setFileResults] = useState<FileSearchResult[]>([])
   const [totalResults, setTotalResults] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -159,22 +167,60 @@ export default function Search() {
           setResults([])
           setTotalResults(response.total_count)
         } else {
-          // Text search mode
-          const params: TextSearchParams = {
-            q: query,
-            mode: mode as 'keyword' | 'phrase' | 'regex',
-            repo: selectedRepoId,
-            branch: branchParam || undefined,
-            source_types: selectedSourceTypes.length > 0 ? selectedSourceTypes : undefined,
-            languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
-            limit: RESULTS_PER_PAGE,
-            offset,
+          // Text/symbol search mode
+          const textSourceTypes = selectedSourceTypes.filter((t) => t !== 'symbol')
+          const hasSymbol = selectedSourceTypes.includes('symbol')
+          const hasTextFilters = textSourceTypes.length > 0
+          const callText = hasTextFilters || selectedSourceTypes.length === 0
+
+          const promises: Promise<void>[] = []
+          let symbolResults: Symbol[] = []
+          let textResults: TextSearchResult[] = []
+          let symbolTotal = 0
+          let textTotal = 0
+
+          if (hasSymbol) {
+            promises.push(
+              searchSymbols({
+                q: query,
+                repository_id: selectedRepoId,
+                limit: RESULTS_PER_PAGE,
+                offset,
+              }).then((response) => {
+                symbolResults = response.items
+                symbolTotal = response.total
+              })
+            )
           }
 
-          const response = await searchText(params)
-          setResults(response.results)
+          if (callText) {
+            const params: TextSearchParams = {
+              q: query,
+              mode: mode as 'keyword' | 'phrase' | 'regex',
+              repo: selectedRepoId,
+              branch: branchParam || undefined,
+              source_types: hasTextFilters ? textSourceTypes : undefined,
+              languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
+              limit: RESULTS_PER_PAGE,
+              offset,
+            }
+            promises.push(
+              searchText(params).then((response) => {
+                textResults = response.results
+                textTotal = response.total
+              })
+            )
+          }
+
+          await Promise.all(promises)
+
+          const unified: UnifiedResult[] = [
+            ...symbolResults.map((s) => ({ kind: 'symbol' as const, data: s })),
+            ...textResults.map((t) => ({ kind: 'text' as const, data: t })),
+          ]
+          setResults(unified)
           setFileResults([])
-          setTotalResults(response.total)
+          setTotalResults(symbolTotal + textTotal)
         }
       } catch (err) {
         console.error('Search failed:', err)
@@ -288,6 +334,25 @@ export default function Search() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const handleUnifiedResultClick = (result: UnifiedResult) => {
+    if (result.kind === 'text') {
+      handleResultClick(result.data)
+    } else {
+      // Symbol result - navigate to browse at the file and line
+      const repo = repositories.find((r) => r.id === result.data.repository_id)
+      if (!repo || !result.data.file_path) return
+
+      const params = new URLSearchParams()
+      params.set('repo', repo.name)
+      if (branchParam) params.set('branch', branchParam)
+      params.set('line', result.data.start_line.toString())
+
+      navigate(
+        `/browse/${encodeURIComponent(repo.name)}/${result.data.file_path}?${params.toString()}`
+      )
+    }
+  }
+
   const handleResultClick = (result: TextSearchResult) => {
     const resultRepoName = result.repository_name
     const filePath = result.file_path
@@ -350,6 +415,8 @@ export default function Search() {
     sourceType: string
   ): 'default' | 'primary' | 'secondary' | 'info' | 'success' => {
     switch (sourceType) {
+      case 'symbol':
+        return 'primary'
       case 'comment':
         return 'info'
       case 'docstring':
@@ -559,30 +626,75 @@ export default function Search() {
                       ))
                     : results.map((result, index) => (
                         <ListItem
-                          key={`${result.id}-${index}`}
+                          key={`${result.kind}-${result.data.id}-${index}`}
                           disablePadding
                           divider={index < results.length - 1}
                         >
-                          <ListItemButton onClick={() => handleResultClick(result)}>
+                          <ListItemButton onClick={() => handleUnifiedResultClick(result)}>
                             <ListItemText
                               primary={
-                                <Box
-                                  sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}
-                                >
-                                  <Chip
-                                    label={formatSourceType(result.source_type)}
-                                    size="small"
-                                    color={getSourceTypeBadgeColor(result.source_type)}
-                                  />
-                                  <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                                    {result.repository_name}
-                                    {result.file_path && ` / ${result.file_path}`}
-                                    {result.source_line && `:${result.source_line}`}
-                                  </Typography>
-                                  {result.language && (
-                                    <Chip label={result.language} size="small" variant="outlined" />
-                                  )}
-                                </Box>
+                                result.kind === 'symbol' ? (
+                                  <Box
+                                    sx={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 1,
+                                      mb: 0.5,
+                                    }}
+                                  >
+                                    <Chip label="Symbol" size="small" color="primary" />
+                                    <Chip
+                                      label={result.data.kind}
+                                      size="small"
+                                      variant="outlined"
+                                    />
+                                    <Typography
+                                      variant="body2"
+                                      sx={{ fontFamily: 'monospace' }}
+                                    >
+                                      {repositories.find(
+                                        (r) => r.id === result.data.repository_id
+                                      )?.name || ''}
+                                      {result.data.file_path &&
+                                        ` / ${result.data.file_path}`}
+                                      :{result.data.start_line}
+                                    </Typography>
+                                  </Box>
+                                ) : (
+                                  <Box
+                                    sx={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 1,
+                                      mb: 0.5,
+                                    }}
+                                  >
+                                    <Chip
+                                      label={formatSourceType(result.data.source_type)}
+                                      size="small"
+                                      color={getSourceTypeBadgeColor(
+                                        result.data.source_type
+                                      )}
+                                    />
+                                    <Typography
+                                      variant="body2"
+                                      sx={{ fontFamily: 'monospace' }}
+                                    >
+                                      {result.data.repository_name}
+                                      {result.data.file_path &&
+                                        ` / ${result.data.file_path}`}
+                                      {result.data.source_line &&
+                                        `:${result.data.source_line}`}
+                                    </Typography>
+                                    {result.data.language && (
+                                      <Chip
+                                        label={result.data.language}
+                                        size="small"
+                                        variant="outlined"
+                                      />
+                                    )}
+                                  </Box>
+                                )
                               }
                               secondary={
                                 <Typography
@@ -594,7 +706,11 @@ export default function Search() {
                                     wordBreak: 'break-word',
                                   }}
                                 >
-                                  {result.headline || result.content}
+                                  {result.kind === 'symbol'
+                                    ? result.data.signature ||
+                                      result.data.qualified_name ||
+                                      result.data.name
+                                    : result.data.headline || result.data.content}
                                 </Typography>
                               }
                             />
@@ -628,7 +744,7 @@ export default function Search() {
               <Typography color="text.secondary">
                 {isFileMode
                   ? 'Enter a file name to search for files by path'
-                  : 'Enter a search query to find text in comments, docstrings, commit messages, and files'}
+                  : 'Enter a search query to find symbols, comments, docstrings, commit messages, and files'}
               </Typography>
             </Paper>
           )}
