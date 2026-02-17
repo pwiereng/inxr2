@@ -151,9 +151,7 @@ class PostgresTextSearch(TextSearchPort):
                 )
                 .where(BranchCommitModel.branch == query.branch)
             )
-            base_query = base_query.where(
-                file_branch_exists | commit_branch_exists
-            )
+            base_query = base_query.where(file_branch_exists | commit_branch_exists)
 
         # Apply commit filter (for time travel)
         if query.commit_id is not None:

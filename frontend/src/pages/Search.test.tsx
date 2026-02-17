@@ -309,9 +309,7 @@ describe('Search', () => {
     render(<Search />)
 
     await waitFor(() => {
-      expect(mockSearchSymbols).toHaveBeenCalledWith(
-        expect.objectContaining({ q: 'test' })
-      )
+      expect(mockSearchSymbols).toHaveBeenCalledWith(expect.objectContaining({ q: 'test' }))
       expect(mockSearchText).toHaveBeenCalledWith(
         expect.objectContaining({
           q: 'test',
@@ -371,11 +369,7 @@ describe('Search', () => {
       offset: 0,
     })
 
-    window.history.pushState(
-      {},
-      '',
-      '?query=get_file_symbols_by_path&source_types=symbol'
-    )
+    window.history.pushState({}, '', '?query=get_file_symbols_by_path&source_types=symbol')
     render(<Search />)
 
     await waitFor(() => {
@@ -477,9 +471,7 @@ describe('Search', () => {
     render(<Search />)
 
     await waitFor(() => {
-      expect(mockSearchSymbols).toHaveBeenCalledWith(
-        expect.objectContaining({ q: 'test' })
-      )
+      expect(mockSearchSymbols).toHaveBeenCalledWith(expect.objectContaining({ q: 'test' }))
       expect(mockSearchText).toHaveBeenCalledWith(
         expect.objectContaining({
           q: 'test',

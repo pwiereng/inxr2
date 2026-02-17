@@ -428,9 +428,7 @@ async def test_search_branch_filter_finds_file_based_content(
     search = PostgresTextSearch(db_session)
 
     # Link commit to branch "main"
-    await commit_repo.link_commit_to_branch(
-        test_repository.id, test_commit.id, "main"
-    )
+    await commit_repo.link_commit_to_branch(test_repository.id, test_commit.id, "main")
 
     # Create comment with NULL commit_id (file-derived, as real indexing does)
     await text_repo.save(
@@ -457,8 +455,7 @@ async def test_search_branch_filter_finds_file_based_content(
 
     assert total >= 1
     assert any(
-        r.text_content.content == "Initialize rich console for output"
-        for r in results
+        r.text_content.content == "Initialize rich console for output" for r in results
     )
 
     # Search with non-existent branch — should find nothing
@@ -489,9 +486,7 @@ async def test_search_branch_filter_finds_commit_messages(
     search = PostgresTextSearch(db_session)
 
     # Link commit to branch "main"
-    await commit_repo.link_commit_to_branch(
-        test_repository.id, test_commit.id, "main"
-    )
+    await commit_repo.link_commit_to_branch(test_repository.id, test_commit.id, "main")
 
     # Create commit message with commit_id but NULL source_file_id
     await text_repo.save(

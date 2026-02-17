@@ -44,9 +44,7 @@ import {
 type SearchMode = 'keyword' | 'phrase' | 'regex' | 'file'
 
 // Unified result type for combining text and symbol search results
-type UnifiedResult =
-  | { kind: 'text'; data: TextSearchResult }
-  | { kind: 'symbol'; data: Symbol }
+type UnifiedResult = { kind: 'text'; data: TextSearchResult } | { kind: 'symbol'; data: Symbol }
 
 // Source type options
 const SOURCE_TYPES = [
@@ -665,16 +663,11 @@ export default function Search() {
                                       size="small"
                                       variant="outlined"
                                     />
-                                    <Typography
-                                      variant="body2"
-                                      sx={{ fontFamily: 'monospace' }}
-                                    >
-                                      {repositories.find(
-                                        (r) => r.id === result.data.repository_id
-                                      )?.name || ''}
-                                      {result.data.file_path &&
-                                        ` / ${result.data.file_path}`}
-                                      :{result.data.start_line}
+                                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                                      {repositories.find((r) => r.id === result.data.repository_id)
+                                        ?.name || ''}
+                                      {result.data.file_path && ` / ${result.data.file_path}`}:
+                                      {result.data.start_line}
                                     </Typography>
                                   </Box>
                                 ) : (
@@ -689,19 +682,12 @@ export default function Search() {
                                     <Chip
                                       label={formatSourceType(result.data.source_type)}
                                       size="small"
-                                      color={getSourceTypeBadgeColor(
-                                        result.data.source_type
-                                      )}
+                                      color={getSourceTypeBadgeColor(result.data.source_type)}
                                     />
-                                    <Typography
-                                      variant="body2"
-                                      sx={{ fontFamily: 'monospace' }}
-                                    >
+                                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
                                       {result.data.repository_name}
-                                      {result.data.file_path &&
-                                        ` / ${result.data.file_path}`}
-                                      {result.data.source_line &&
-                                        `:${result.data.source_line}`}
+                                      {result.data.file_path && ` / ${result.data.file_path}`}
+                                      {result.data.source_line && `:${result.data.source_line}`}
                                     </Typography>
                                     {result.data.language && (
                                       <Chip

@@ -66,9 +66,7 @@ describe('highlightMatches', () => {
     })
 
     it('escapes special regex characters in phrase', () => {
-      const html = renderToHTML(
-        highlightMatches('TODO: fix this (now)', 'TODO:', 'phrase')
-      )
+      const html = renderToHTML(highlightMatches('TODO: fix this (now)', 'TODO:', 'phrase'))
       expect(html).toMatch(/<mark[^>]*>TODO:<\/mark>/)
     })
   })
@@ -85,9 +83,7 @@ describe('highlightMatches', () => {
     })
 
     it('highlights all occurrences', () => {
-      const html = renderToHTML(
-        highlightMatches('foo bar foo baz foo', 'foo', 'regex')
-      )
+      const html = renderToHTML(highlightMatches('foo bar foo baz foo', 'foo', 'regex'))
       const markCount = (html.match(/<mark/g) || []).length
       expect(markCount).toBe(3)
     })
