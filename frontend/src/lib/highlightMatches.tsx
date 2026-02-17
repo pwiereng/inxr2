@@ -35,8 +35,9 @@ export function highlightMatches(
   const parts = text.split(pattern)
   if (parts.length === 1) return text
 
+  // After split with a capturing group, odd indices are the matched parts
   return parts.map((part, i) =>
-    pattern.test(part) ? (
+    i % 2 === 1 ? (
       <mark key={i} style={{ backgroundColor: '#fff176', borderRadius: 2, padding: '0 1px' }}>
         {part}
       </mark>

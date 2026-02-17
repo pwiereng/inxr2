@@ -217,7 +217,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             )
             self._merge_commit_result(agg, cr)
             all_errors.extend(cr.errors)
-            commits_indexed += 1
+            if not cr.commit_skipped:
+                commits_indexed += 1
 
         # Step 6: Resolve references
         db_stats.selects += 1  # initial count query
