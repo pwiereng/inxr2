@@ -192,7 +192,9 @@ export default function Search() {
           let symbolTotal = 0
           let textTotal = 0
 
-          if (hasSymbol) {
+          if (hasSymbol && offset === 0) {
+            // Only fetch symbols on page 1 (they're top matches, not paginated —
+            // the API returns batch count, not a true total).
             promises.push(
               searchSymbols({
                 q: query,
@@ -200,7 +202,7 @@ export default function Search() {
                 branch: branchParam || undefined,
                 language: selectedLanguages[0] || undefined,
                 limit: RESULTS_PER_PAGE,
-                offset: 0, // Symbols are not paginated (API returns batch count, not true total)
+                offset: 0,
               }).then((response) => {
                 symbolResults = response.items
                 symbolTotal = response.total
@@ -229,10 +231,12 @@ export default function Search() {
 
           await Promise.all(promises)
 
-          // Symbols are shown as top matches (not paginated), text results are paginated.
-          // Truncate to RESULTS_PER_PAGE to avoid showing 2x items when both are active.
+          // Symbols are shown as top matches on page 1 only (not paginated).
+          // On subsequent pages, only text results are shown.
           const unified: UnifiedResult[] = [
-            ...symbolResults.map((s) => ({ kind: 'symbol' as const, data: s })),
+            ...(offset === 0
+              ? symbolResults.map((s) => ({ kind: 'symbol' as const, data: s }))
+              : []),
             ...textResults.map((t) => ({ kind: 'text' as const, data: t })),
           ].slice(0, RESULTS_PER_PAGE)
           setResults(unified)
