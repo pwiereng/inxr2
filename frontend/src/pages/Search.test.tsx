@@ -60,6 +60,8 @@ describe('Search', () => {
           commit_date: '2024-01-01T00:00:00Z',
           is_indexed: true,
           tags: [],
+          is_branch_specific: false,
+          is_merge_base: false,
         },
       ],
       total: 1,

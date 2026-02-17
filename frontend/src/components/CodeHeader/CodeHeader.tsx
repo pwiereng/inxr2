@@ -102,9 +102,7 @@ export function CodeHeader({
 
         const response = await getRepositoryBranches(repo.id)
         // Only show indexed branches (those with a last_indexed_commit)
-        const indexedBranches = response.branches.filter(
-          (b) => b.last_indexed_commit
-        )
+        const indexedBranches = response.branches.filter((b) => b.last_indexed_commit)
         setBranches(indexedBranches)
       } catch (error) {
         console.error('Failed to load branches:', error)
@@ -302,7 +300,21 @@ export function CodeHeader({
                       ? formatDateTimeUTC(commitInfo.commit_date)
                       : ''
                     return (
-                      <MenuItem key={commitInfo.hash} value={commitInfo.hash}>
+                      <MenuItem
+                        key={commitInfo.hash}
+                        value={commitInfo.hash}
+                        sx={{
+                          ...(commitInfo.is_branch_specific && {
+                            borderLeft: 3,
+                            borderColor: 'success.main',
+                            bgcolor: 'action.hover',
+                          }),
+                          ...(commitInfo.is_merge_base && {
+                            borderBottom: 2,
+                            borderColor: 'info.main',
+                          }),
+                        }}
+                      >
                         <Tooltip title={commitInfo.message} placement="left">
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Box
@@ -356,6 +368,25 @@ export function CodeHeader({
                                 }}
                               >
                                 HEAD
+                              </Typography>
+                            )}
+                            {commitInfo.is_merge_base && (
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                sx={{
+                                  ml: 0.5,
+                                  px: 0.5,
+                                  py: 0.125,
+                                  bgcolor: 'info.main',
+                                  color: 'info.contrastText',
+                                  borderRadius: 0.5,
+                                  fontSize: '0.65rem',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                FORK
                               </Typography>
                             )}
                             {commitInfo.tags?.map((tag) => (

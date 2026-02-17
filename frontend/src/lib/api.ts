@@ -147,6 +147,8 @@ export interface CommitInfo {
   commit_date: string
   is_indexed: boolean
   tags: string[]
+  is_branch_specific: boolean
+  is_merge_base: boolean
 }
 
 export interface CommitListResponse {

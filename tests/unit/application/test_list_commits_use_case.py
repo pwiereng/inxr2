@@ -50,6 +50,9 @@ class StubGitListCommitsService:
         # Map (repo_path, branch) -> list of CommitInfo (oldest first)
         self._commits: dict[tuple[str, str], list[CommitInfo]] = {}
         self._tags: dict[str, list[str]] = {}
+        # Map (repo_path, branch, base_branch) -> list of branch-specific CommitInfo
+        self._branch_commits: dict[tuple[str, str, str], list[CommitInfo]] = {}
+        self._branch_commits_error: bool = False
 
     def set_commits(
         self, repo_path: str, branch: str, commits: list[CommitInfo]
@@ -58,6 +61,18 @@ class StubGitListCommitsService:
 
     def set_tags(self, tags: dict[str, list[str]]) -> None:
         self._tags = tags
+
+    def set_branch_commits(
+        self,
+        repo_path: str,
+        branch: str,
+        base_branch: str,
+        commits: list[CommitInfo],
+    ) -> None:
+        self._branch_commits[(repo_path, branch, base_branch)] = commits
+
+    def set_branch_commits_error(self, error: bool = True) -> None:
+        self._branch_commits_error = error
 
     def list_commits(
         self,
@@ -75,6 +90,19 @@ class StubGitListCommitsService:
 
     def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
         return self._tags
+
+    def list_branch_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        base_branch: str,
+        max_count: int | None = 1000,
+        since_days: int | None = None,
+    ) -> list[CommitInfo]:
+        if self._branch_commits_error:
+            raise RuntimeError("list_branch_commits failed")
+        key = (str(repo_path), branch, base_branch)
+        return list(self._branch_commits.get(key, []))
 
 
 class TestListCommitsUseCase:
@@ -310,3 +338,136 @@ class TestListCommitsUseCase:
 
         for c in result.commits:
             assert c.tags == []
+
+    # === Branch-Specific Commit Highlighting Tests ===
+
+    @pytest.mark.asyncio
+    async def test_branch_specific_flags_on_feature_branch(
+        self,
+        repository_repo: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        tmp_path: Path,
+    ) -> None:
+        """Non-default branch should flag branch-specific commits and mark fork point."""
+        repo_path = tmp_path / "test-repo"
+        git_service = StubGitListCommitsService()
+        # Full history (oldest first): shared1, shared2, branch1, branch2
+        git_service.set_commits(
+            str(repo_path),
+            "feature",
+            [
+                _make_commit_info("shared1", "shared1", message="Shared commit"),
+                _make_commit_info("shared2", "shared2", message="Shared commit 2"),
+                _make_commit_info("branch1", "branch1", message="Branch commit 1"),
+                _make_commit_info("branch2", "branch2", message="Branch commit 2"),
+            ],
+        )
+        # Branch-specific commits (oldest first): branch1, branch2
+        git_service.set_branch_commits(
+            str(repo_path),
+            "feature",
+            "main",
+            [
+                _make_commit_info("branch1", "branch1", message="Branch commit 1"),
+                _make_commit_info("branch2", "branch2", message="Branch commit 2"),
+            ],
+        )
+
+        use_case = ListCommitsUseCase(
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+            git_service=git_service,
+        )
+
+        request = ListCommitsRequest(repository_name="test-repo", branch="feature")
+        result = await use_case.execute(request)
+
+        by_hash = {c.hash: c for c in result.commits}
+        assert by_hash["branch2"].is_branch_specific is True
+        assert by_hash["branch1"].is_branch_specific is True
+        # Oldest branch commit is the fork point
+        assert by_hash["branch1"].is_merge_base is True
+        assert by_hash["branch2"].is_merge_base is False
+        # Shared commits have no flags
+        assert by_hash["shared1"].is_branch_specific is False
+        assert by_hash["shared1"].is_merge_base is False
+        assert by_hash["shared2"].is_branch_specific is False
+        assert by_hash["shared2"].is_merge_base is False
+
+    @pytest.mark.asyncio
+    async def test_default_branch_has_no_highlighting(
+        self,
+        use_case: ListCommitsUseCase,
+    ) -> None:
+        """Default branch should have no branch-specific or merge-base flags."""
+        request = ListCommitsRequest(repository_name="test-repo", branch="main")
+        result = await use_case.execute(request)
+
+        for c in result.commits:
+            assert c.is_branch_specific is False
+            assert c.is_merge_base is False
+
+    @pytest.mark.asyncio
+    async def test_no_branch_commits_graceful_degradation(
+        self,
+        repository_repo: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        tmp_path: Path,
+    ) -> None:
+        """When no branch-specific commits found, all flags should be False."""
+        repo_path = tmp_path / "test-repo"
+        git_service = StubGitListCommitsService()
+        git_service.set_commits(
+            str(repo_path),
+            "feature",
+            [
+                _make_commit_info("aaa", "aaa1234", message="Commit A"),
+                _make_commit_info("bbb", "bbb1234", message="Commit B"),
+            ],
+        )
+        # No branch_commits set (returns empty list by default)
+
+        use_case = ListCommitsUseCase(
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+            git_service=git_service,
+        )
+
+        request = ListCommitsRequest(repository_name="test-repo", branch="feature")
+        result = await use_case.execute(request)
+
+        for c in result.commits:
+            assert c.is_branch_specific is False
+            assert c.is_merge_base is False
+
+    @pytest.mark.asyncio
+    async def test_branch_commits_error_graceful_degradation(
+        self,
+        repository_repo: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        tmp_path: Path,
+    ) -> None:
+        """When list_branch_commits raises, all flags should be False."""
+        repo_path = tmp_path / "test-repo"
+        git_service = StubGitListCommitsService()
+        git_service.set_commits(
+            str(repo_path),
+            "feature",
+            [
+                _make_commit_info("aaa", "aaa1234", message="Commit A"),
+            ],
+        )
+        git_service.set_branch_commits_error(True)
+
+        use_case = ListCommitsUseCase(
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+            git_service=git_service,
+        )
+
+        request = ListCommitsRequest(repository_name="test-repo", branch="feature")
+        result = await use_case.execute(request)
+
+        for c in result.commits:
+            assert c.is_branch_specific is False
+            assert c.is_merge_base is False

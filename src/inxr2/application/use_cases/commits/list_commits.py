@@ -32,6 +32,15 @@ class GitListCommitsProtocol(Protocol):
 
     def get_tags(self, repo_path: Path) -> dict[str, list[str]]: ...
 
+    def list_branch_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        base_branch: str,
+        max_count: int | None = 1000,
+        since_days: int | None = None,
+    ) -> list[CommitInfo]: ...
+
 
 @dataclass
 class CommitWithMetadata:
@@ -49,6 +58,8 @@ class CommitWithMetadata:
     commit_date: str
     is_indexed: bool
     tags: list[str]
+    is_branch_specific: bool = False
+    is_merge_base: bool = False
 
 
 @dataclass
@@ -157,20 +168,47 @@ class ListCommitsUseCase:
             )
             tags_map = {}
 
-        # Build response
-        result = [
-            CommitWithMetadata(
-                hash=ci.hash,
-                short_hash=ci.short_hash,
-                message=ci.message,
-                author_name=ci.author_name,
-                author_email=ci.author_email,
-                commit_date=ci.commit_date.isoformat(),
-                is_indexed=ci.hash in indexed_hashes,
-                tags=tags_map.get(ci.hash, []),
+        # Determine branch-specific commits via list_branch_commits
+        # This correctly handles both merged and unmerged branches
+        branch_specific_hashes: set[str] = set()
+        oldest_branch_hash: str | None = None
+        default_branch = repository.default_branch
+        if branch != default_branch:
+            try:
+                branch_commits = self._git_service.list_branch_commits(
+                    repo_path, branch, default_branch
+                )
+                branch_specific_hashes = {ci.hash for ci in branch_commits}
+                # Oldest branch commit (first in list) marks the fork point
+                if branch_commits:
+                    oldest_branch_hash = branch_commits[0].hash
+            except Exception:
+                logger.warning(
+                    "Failed to list branch commits for %s vs %s",
+                    branch,
+                    default_branch,
+                    exc_info=True,
+                )
+
+        # Build response (git_commits is newest-first after reverse above)
+        result: list[CommitWithMetadata] = []
+        for ci in git_commits:
+            is_branch_specific = ci.hash in branch_specific_hashes
+            is_merge_base = ci.hash == oldest_branch_hash
+            result.append(
+                CommitWithMetadata(
+                    hash=ci.hash,
+                    short_hash=ci.short_hash,
+                    message=ci.message,
+                    author_name=ci.author_name,
+                    author_email=ci.author_email,
+                    commit_date=ci.commit_date.isoformat(),
+                    is_indexed=ci.hash in indexed_hashes,
+                    tags=tags_map.get(ci.hash, []),
+                    is_branch_specific=is_branch_specific,
+                    is_merge_base=is_merge_base,
+                )
             )
-            for ci in git_commits
-        ]
 
         return ListCommitsResponse(
             commits=result,

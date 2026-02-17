@@ -1981,6 +1981,9 @@ class FakeGitService(GitServicePort):
     def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
         return self._tags
 
+    def get_merge_base(self, repo_path: Path, branch1: str, branch2: str) -> str | None:
+        return None
+
     def get_blame(
         self, repo_path: Path, commit_hash: str, file_path: str
     ) -> list[BlameLineInfo]:
