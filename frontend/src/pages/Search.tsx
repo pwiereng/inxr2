@@ -112,6 +112,7 @@ export default function Search() {
   const [results, setResults] = useState<UnifiedResult[]>([])
   const [fileResults, setFileResults] = useState<FileSearchResult[]>([])
   const [totalResults, setTotalResults] = useState(0)
+  const [paginationTotal, setPaginationTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -153,6 +154,7 @@ export default function Search() {
       setResults([])
       setFileResults([])
       setTotalResults(0)
+      setPaginationTotal(0)
       return
     }
 
@@ -174,6 +176,7 @@ export default function Search() {
           setFileResults(response.files)
           setResults([])
           setTotalResults(response.total_count)
+          setPaginationTotal(response.total_count)
         } else {
           // Text/symbol search mode
           const textSourceTypes = selectedSourceTypes.filter((t) => t !== 'symbol')
@@ -197,7 +200,7 @@ export default function Search() {
                 branch: branchParam || undefined,
                 language: selectedLanguages[0] || undefined,
                 limit: RESULTS_PER_PAGE,
-                offset,
+                offset: 0, // Symbols are not paginated (API returns batch count, not true total)
               }).then((response) => {
                 symbolResults = response.items
                 symbolTotal = response.total
@@ -226,13 +229,18 @@ export default function Search() {
 
           await Promise.all(promises)
 
+          // Symbols are shown as top matches (not paginated), text results are paginated.
+          // Truncate to RESULTS_PER_PAGE to avoid showing 2x items when both are active.
           const unified: UnifiedResult[] = [
             ...symbolResults.map((s) => ({ kind: 'symbol' as const, data: s })),
             ...textResults.map((t) => ({ kind: 'text' as const, data: t })),
-          ]
+          ].slice(0, RESULTS_PER_PAGE)
           setResults(unified)
           setFileResults([])
           setTotalResults(symbolTotal + textTotal)
+          // Pagination is driven by text search total (the only source with a real total count).
+          // Symbol search returns batch size, not a true total, so it can't drive pagination.
+          setPaginationTotal(callText ? textTotal : symbolTotal)
         }
       } catch (err) {
         console.error('Search failed:', err)
@@ -240,6 +248,7 @@ export default function Search() {
         setResults([])
         setFileResults([])
         setTotalResults(0)
+        setPaginationTotal(0)
       } finally {
         setLoading(false)
       }
@@ -451,7 +460,7 @@ export default function Search() {
     return sourceType.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase())
   }
 
-  const totalPages = Math.ceil(totalResults / RESULTS_PER_PAGE)
+  const totalPages = Math.ceil(paginationTotal / RESULTS_PER_PAGE)
   const hasFilters = sourceTypesParam !== null || selectedLanguages.length > 0
 
   return (
