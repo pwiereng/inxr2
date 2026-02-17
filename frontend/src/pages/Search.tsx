@@ -378,7 +378,7 @@ export default function Search() {
     if (result.branch) {
       params.set('branch', result.branch)
     }
-    if (result.commit_hash) {
+    if (result.commit_hash && result.commit_hash !== 'unknown') {
       params.set('commit', result.commit_hash)
     }
 

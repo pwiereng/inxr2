@@ -52,7 +52,7 @@ class SearchTextResultItem:
         content: The searchable text content
         content_type: Content type (single_line_comment, block_comment, etc.)
         language: Programming language
-        commit_hash: Commit hash
+        commit_hash: Commit hash (None for file-derived content without direct commit)
         branch: Branch name (if applicable)
         rank: Relevance score (higher is better)
         headline: Highlighted snippet (optional)
@@ -68,7 +68,7 @@ class SearchTextResultItem:
     content: str
     content_type: str | None
     language: str | None
-    commit_hash: str
+    commit_hash: str | None
     branch: str | None
     rank: float
     headline: str | None
@@ -221,7 +221,7 @@ class SearchTextUseCase:
                 if text_content.commit_id is not None
                 else None
             )
-            commit_hash = commit.commit_hash.value if commit else "unknown"
+            commit_hash = commit.commit_hash.value if commit else None
 
             # Get branch from bulk-fetched data
             # Note: A commit can be on multiple branches, we'll take the first one
@@ -233,6 +233,10 @@ class SearchTextUseCase:
             )
             if branches:
                 branch = branches[0]
+
+            # For file-derived content (commit_id=None), use request branch as fallback
+            if branch is None and request.branch:
+                branch = request.branch
 
             enriched_results.append(
                 SearchTextResultItem(

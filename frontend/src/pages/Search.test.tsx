@@ -222,6 +222,50 @@ describe('Search', () => {
     })
   })
 
+  it('should not include commit=unknown when clicking file-derived result with null commit_hash', async () => {
+    mockSearchText.mockResolvedValue({
+      results: [
+        {
+          id: 3,
+          source_type: 'comment',
+          content: '# Initialize console',
+          content_type: null,
+          repository_id: 1,
+          repository_name: 'test-repo',
+          file_path: 'src/cli.py',
+          source_line: 22,
+          source_end_line: null,
+          language: 'python',
+          commit_hash: null,
+          branch: 'main',
+          headline: null,
+          rank: 1.0,
+        },
+      ],
+      total: 1,
+      query: 'console',
+      mode: 'keyword',
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=console&source_types=comment')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/# Initialize console/i)).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText(/# Initialize console/i))
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/browse/test-repo/src/cli.py')
+      expect(window.location.search).toContain('branch=main')
+      expect(window.location.search).toContain('line=22')
+      expect(window.location.search).not.toContain('commit=')
+    })
+  })
+
   it('should have all source type checkboxes checked by default', async () => {
     render(<Search />)
 

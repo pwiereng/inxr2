@@ -445,7 +445,7 @@ export interface TextSearchResult {
   content: string
   content_type: string | null
   language: string | null
-  commit_hash: string
+  commit_hash: string | null
   branch: string | null
   rank: number
   headline: string | null
