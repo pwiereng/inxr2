@@ -232,13 +232,14 @@ export default function Search() {
           await Promise.all(promises)
 
           // Symbols are shown as top matches on page 1 only (not paginated).
-          // On subsequent pages, only text results are shown.
+          // They don't displace text results — text always gets the full page
+          // at its own offset, so there are no pagination gaps across pages.
           const unified: UnifiedResult[] = [
             ...(offset === 0
               ? symbolResults.map((s) => ({ kind: 'symbol' as const, data: s }))
               : []),
             ...textResults.map((t) => ({ kind: 'text' as const, data: t })),
-          ].slice(0, RESULTS_PER_PAGE)
+          ]
           setResults(unified)
           setFileResults([])
           setTotalResults(symbolTotal + textTotal)

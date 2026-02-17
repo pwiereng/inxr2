@@ -43,10 +43,7 @@ export function highlightMatches(
     if (part === '') continue
     if (i % 2 === 1) {
       elements.push(
-        <mark
-          key={elements.length}
-          style={{ backgroundColor: '#fff176', borderRadius: 2, padding: '0 1px' }}
-        >
+        <mark key={i} style={{ backgroundColor: '#fff176', borderRadius: 2, padding: '0 1px' }}>
           {part}
         </mark>
       )
