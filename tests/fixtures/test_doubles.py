@@ -161,6 +161,8 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         repository_id: int | None = None,
         kind: str | None = None,
         limit: int = 50,
+        branch: str | None = None,
+        language: str | None = None,
     ) -> list[Symbol]:
         """Search symbols by name with optional filters.
 
@@ -172,6 +174,32 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         if repository_id is not None and self._file_repo is not None:
             latest_file_ids = self._file_repo._compute_latest_file_ids(repository_id)
 
+        # Compute branch file IDs if branch filter is set
+        branch_file_ids: set[int] | None = None
+        if branch is not None and self._file_repo is not None:
+            commit_repo = getattr(self._file_repo, "_commit_repo", None)
+            if commit_repo is not None:
+                branch_commit_ids: set[int] = set()
+                for (repo_id, b, cid), _ in commit_repo._branch_commits.items():
+                    if b == branch and (
+                        repository_id is None or repo_id == repository_id
+                    ):
+                        branch_commit_ids.add(cid)
+                branch_file_ids = {
+                    fid
+                    for cid, fid in self._file_repo._commit_files
+                    if cid in branch_commit_ids
+                }
+
+        # Compute language file IDs if language filter is set
+        language_file_ids: set[int] | None = None
+        if language is not None and self._file_repo is not None:
+            language_file_ids = {
+                f.id
+                for f in self._file_repo._files.values()
+                if f.language == language and f.id is not None
+            }
+
         results = []
         for symbol in self._symbols.values():
             if name.lower() in symbol.name.lower():
@@ -182,6 +210,16 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 if (
                     latest_file_ids is not None
                     and symbol.file_id not in latest_file_ids
+                ):
+                    continue
+                if (
+                    branch_file_ids is not None
+                    and symbol.file_id not in branch_file_ids
+                ):
+                    continue
+                if (
+                    language_file_ids is not None
+                    and symbol.file_id not in language_file_ids
                 ):
                     continue
                 results.append(symbol)
@@ -1980,6 +2018,9 @@ class FakeGitService(GitServicePort):
 
     def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
         return self._tags
+
+    def get_merge_base(self, repo_path: Path, branch1: str, branch2: str) -> str | None:
+        return None
 
     def get_blame(
         self, repo_path: Path, commit_hash: str, file_path: str

@@ -62,6 +62,8 @@ const mockCommits = {
       commit_date: '2024-01-01T10:30:00Z',
       is_indexed: true,
       tags: ['v1.0'],
+      is_branch_specific: false,
+      is_merge_base: false,
     },
     {
       hash: 'def456ghi789',
@@ -72,6 +74,8 @@ const mockCommits = {
       commit_date: '2024-01-02T14:45:00Z',
       is_indexed: true,
       tags: [],
+      is_branch_specific: false,
+      is_merge_base: false,
     },
   ],
   total: 2,
@@ -225,6 +229,74 @@ describe('CodeHeader', () => {
       // Branch selector should not be present (no 'main' text from branch)
       // But tabs should still show
       expect(screen.getByRole('tab', { name: /browse/i })).toBeInTheDocument()
+    })
+
+    it('should show branches with last_indexed_commit even when commit_count is 0', async () => {
+      const api = await import('@/lib/api')
+      vi.mocked(api.getRepositoryBranches).mockResolvedValue({
+        branches: [
+          {
+            name: 'main',
+            last_indexed_commit: 'abc123',
+            oldest_indexed_commit: 'def456',
+            commit_count: 289,
+            last_indexed_at: '2024-01-01',
+          },
+          {
+            name: 'feature-branch',
+            last_indexed_commit: 'ghi789',
+            oldest_indexed_commit: null,
+            commit_count: 0,
+            last_indexed_at: null,
+          },
+        ],
+      })
+
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('main')).toBeInTheDocument()
+      })
+
+      // Open the branch selector
+      const comboboxes = screen.getAllByRole('combobox')
+      const branchSelect = comboboxes[1]!
+      fireEvent.mouseDown(branchSelect)
+
+      // feature-branch should appear even though commit_count is 0
+      const featureBranchOption = await screen.findByText(/feature-branch/)
+      expect(featureBranchOption).toBeInTheDocument()
+    })
+
+    it('should not show branches without last_indexed_commit', async () => {
+      const api = await import('@/lib/api')
+      vi.mocked(api.getRepositoryBranches).mockResolvedValue({
+        branches: [
+          {
+            name: 'main',
+            last_indexed_commit: 'abc123',
+            oldest_indexed_commit: 'def456',
+            commit_count: 289,
+            last_indexed_at: '2024-01-01',
+          },
+          {
+            name: 'unindexed-branch',
+            last_indexed_commit: null,
+            oldest_indexed_commit: null,
+            commit_count: 0,
+            last_indexed_at: null,
+          },
+        ],
+      })
+
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('main')).toBeInTheDocument()
+      })
+
+      // unindexed-branch should NOT appear
+      expect(screen.queryByText('unindexed-branch')).not.toBeInTheDocument()
     })
 
     it('should call onBranchChange when branch is changed', async () => {
@@ -488,6 +560,88 @@ describe('CodeHeader', () => {
 
     it('should handle ISO timestamp with UTC suffix', () => {
       expect(formatDateYMD('2025-01-15T10:30:00Z')).toBe('2025-01-15')
+    })
+  })
+
+  describe('branch-specific commit highlighting', () => {
+    it('should show FORK badge on merge-base commit', async () => {
+      const api = await import('@/lib/api')
+      vi.mocked(api.getCommits).mockResolvedValue({
+        commits: [
+          {
+            hash: 'branch1hash',
+            short_hash: 'branch1',
+            message: 'Branch commit',
+            author_name: 'Test Author',
+            author_email: 'test@example.com',
+            commit_date: '2024-01-03T10:00:00Z',
+            is_indexed: true,
+            tags: [],
+            is_branch_specific: true,
+            is_merge_base: false,
+          },
+          {
+            hash: 'mergebasehash',
+            short_hash: 'mergeba',
+            message: 'Merge base commit',
+            author_name: 'Test Author',
+            author_email: 'test@example.com',
+            commit_date: '2024-01-02T10:00:00Z',
+            is_indexed: true,
+            tags: [],
+            is_branch_specific: false,
+            is_merge_base: true,
+          },
+          {
+            hash: 'sharedhash',
+            short_hash: 'shared1',
+            message: 'Shared commit',
+            author_name: 'Test Author',
+            author_email: 'test@example.com',
+            commit_date: '2024-01-01T10:00:00Z',
+            is_indexed: true,
+            tags: [],
+            is_branch_specific: false,
+            is_merge_base: false,
+          },
+        ],
+        total: 3,
+      })
+
+      render(<CodeHeader {...defaultProps} branch="feature" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('branch1')).toBeInTheDocument()
+      })
+
+      // Open the commit selector dropdown
+      const comboboxes = screen.getAllByRole('combobox')
+      const commitSelect = comboboxes[2]!
+      fireEvent.mouseDown(commitSelect)
+
+      await waitFor(() => {
+        expect(screen.getByText('FORK')).toBeInTheDocument()
+      })
+    })
+
+    it('should not show FORK badge on default branch', async () => {
+      render(<CodeHeader {...defaultProps} branch="main" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('abc123d')).toBeInTheDocument()
+      })
+
+      // Open the commit selector dropdown
+      const comboboxes = screen.getAllByRole('combobox')
+      const commitSelect = comboboxes[2]!
+      fireEvent.mouseDown(commitSelect)
+
+      await waitFor(() => {
+        // After opening dropdown, hash appears in both the select value and menu items
+        expect(screen.getAllByText('abc123d').length).toBeGreaterThanOrEqual(1)
+      })
+
+      expect(screen.queryByText('FORK')).not.toBeInTheDocument()
     })
   })
 

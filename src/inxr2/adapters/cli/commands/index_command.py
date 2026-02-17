@@ -120,8 +120,9 @@ async def _reset_database_async(console: Console) -> None:
             console.print("  Truncating all tables...")
             await session.execute(
                 text(
-                    'TRUNCATE TABLE "references", symbols, commit_files, files, '
-                    "branch_commits, commits, index_status, repositories CASCADE;"
+                    'TRUNCATE TABLE "references", symbols, text_contents, '
+                    "commit_files, files, branch_commits, commits, "
+                    "index_status, repositories CASCADE;"
                 )
             )
             await session.commit()

@@ -27,21 +27,28 @@ import SearchIcon from '@mui/icons-material/Search'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
+import { highlightMatches } from '@/lib/highlightMatches'
 import {
   searchText,
   searchFiles,
+  searchSymbols,
   getRepositories,
   type TextSearchParams,
   type TextSearchResult,
   type FileSearchResult,
   type Repository,
+  type Symbol,
 } from '@/lib/api'
 
 // Search mode type
 type SearchMode = 'keyword' | 'phrase' | 'regex' | 'file'
 
+// Unified result type for combining text and symbol search results
+type UnifiedResult = { kind: 'text'; data: TextSearchResult } | { kind: 'symbol'; data: Symbol }
+
 // Source type options
 const SOURCE_TYPES = [
+  { value: 'symbol', label: 'Symbols' },
   { value: 'comment', label: 'Comments' },
   { value: 'docstring', label: 'Docstrings' },
   { value: 'commit_message', label: 'Commit Messages' },
@@ -62,6 +69,9 @@ const LANGUAGES = [
   'yaml',
 ]
 
+const ALL_SOURCE_TYPE_VALUES = SOURCE_TYPES.map((t) => t.value)
+const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => t.value !== 'symbol').map((t) => t.value)
+
 const RESULTS_PER_PAGE = 20
 
 export default function Search() {
@@ -81,9 +91,15 @@ export default function Search() {
   const offset = (page - 1) * RESULTS_PER_PAGE
 
   // Parse array params
+  // No source_types param = all selected (default). Param present = only those selected.
   const sourceTypesParam = searchParams.get('source_types')
   const languagesParam = searchParams.get('languages')
-  const selectedSourceTypes = sourceTypesParam ? sourceTypesParam.split(',') : []
+  const selectedSourceTypes: string[] =
+    sourceTypesParam === null
+      ? ALL_SOURCE_TYPE_VALUES
+      : sourceTypesParam
+        ? sourceTypesParam.split(',')
+        : []
   const selectedLanguages = languagesParam ? languagesParam.split(',') : []
   const sourceTypesKey = selectedSourceTypes.join(',')
   const languagesKey = selectedLanguages.join(',')
@@ -93,9 +109,10 @@ export default function Search() {
 
   // Data state
   const [repositories, setRepositories] = useState<Repository[]>([])
-  const [results, setResults] = useState<TextSearchResult[]>([])
+  const [results, setResults] = useState<UnifiedResult[]>([])
   const [fileResults, setFileResults] = useState<FileSearchResult[]>([])
   const [totalResults, setTotalResults] = useState(0)
+  const [paginationTotal, setPaginationTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -112,7 +129,7 @@ export default function Search() {
       const newParams = new URLSearchParams(searchParams)
       newParams.set('query', inputQuery)
       newParams.delete('page') // Reset to page 1 on new search
-      setSearchParams(newParams)
+      setSearchParams(newParams, { replace: true })
     }, 300)
 
     return () => clearTimeout(timer)
@@ -137,6 +154,7 @@ export default function Search() {
       setResults([])
       setFileResults([])
       setTotalResults(0)
+      setPaginationTotal(0)
       return
     }
 
@@ -158,23 +176,76 @@ export default function Search() {
           setFileResults(response.files)
           setResults([])
           setTotalResults(response.total_count)
+          setPaginationTotal(response.total_count)
         } else {
-          // Text search mode
-          const params: TextSearchParams = {
-            q: query,
-            mode: mode as 'keyword' | 'phrase' | 'regex',
-            repo: selectedRepoId,
-            branch: branchParam || undefined,
-            source_types: selectedSourceTypes.length > 0 ? selectedSourceTypes : undefined,
-            languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
-            limit: RESULTS_PER_PAGE,
-            offset,
+          // Text/symbol search mode
+          const textSourceTypes = selectedSourceTypes.filter((t) => t !== 'symbol')
+          const hasSymbol = selectedSourceTypes.includes('symbol')
+          const callText = textSourceTypes.length > 0
+          const allTextTypesSelected = ALL_TEXT_TYPE_VALUES.every((v) =>
+            textSourceTypes.includes(v)
+          )
+
+          const promises: Promise<void>[] = []
+          let symbolResults: Symbol[] = []
+          let textResults: TextSearchResult[] = []
+          let symbolTotal = 0
+          let textTotal = 0
+
+          if (hasSymbol && offset === 0) {
+            // Only fetch symbols on page 1 (they're top matches, not paginated —
+            // the API returns batch count, not a true total).
+            promises.push(
+              searchSymbols({
+                q: query,
+                repository_id: selectedRepoId,
+                branch: branchParam || undefined,
+                language: selectedLanguages[0] || undefined,
+                limit: RESULTS_PER_PAGE,
+                offset: 0,
+              }).then((response) => {
+                symbolResults = response.items
+                symbolTotal = response.total
+              })
+            )
           }
 
-          const response = await searchText(params)
-          setResults(response.results)
+          if (callText) {
+            const params: TextSearchParams = {
+              q: query,
+              mode: mode as 'keyword' | 'phrase' | 'regex',
+              repo: selectedRepoId,
+              branch: branchParam || undefined,
+              source_types: allTextTypesSelected ? undefined : textSourceTypes,
+              languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
+              limit: RESULTS_PER_PAGE,
+              offset,
+            }
+            promises.push(
+              searchText(params).then((response) => {
+                textResults = response.results
+                textTotal = response.total
+              })
+            )
+          }
+
+          await Promise.all(promises)
+
+          // Symbols are shown as top matches on page 1 only (not paginated).
+          // They don't displace text results — text always gets the full page
+          // at its own offset, so there are no pagination gaps across pages.
+          const unified: UnifiedResult[] = [
+            ...(offset === 0
+              ? symbolResults.map((s) => ({ kind: 'symbol' as const, data: s }))
+              : []),
+            ...textResults.map((t) => ({ kind: 'text' as const, data: t })),
+          ]
+          setResults(unified)
           setFileResults([])
-          setTotalResults(response.total)
+          setTotalResults(symbolTotal + textTotal)
+          // Pagination is driven by text search total (the only source with a real total count).
+          // Symbol search returns batch size, not a true total, so it can't drive pagination.
+          setPaginationTotal(callText ? textTotal : 0)
         }
       } catch (err) {
         console.error('Search failed:', err)
@@ -182,6 +253,7 @@ export default function Search() {
         setResults([])
         setFileResults([])
         setTotalResults(0)
+        setPaginationTotal(0)
       } finally {
         setLoading(false)
       }
@@ -211,13 +283,13 @@ export default function Search() {
     const newParams = new URLSearchParams(searchParams)
     newParams.set('branch', newBranch)
     newParams.delete('commit') // Reset to HEAD when branch changes
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
   }
 
   const handleHeaderCommitChange = (newCommit: string) => {
     const newParams = new URLSearchParams(searchParams)
     newParams.set('commit', newCommit)
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
   }
 
   const handleTabChange = (tab: TabValue) => {
@@ -252,7 +324,7 @@ export default function Search() {
     if (newMode === 'file') {
       newParams.delete('source_types')
     }
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
   }
 
   const handleSourceTypeToggle = (type: string) => {
@@ -260,13 +332,17 @@ export default function Search() {
     const current = selectedSourceTypes
     const updated = current.includes(type) ? current.filter((t) => t !== type) : [...current, type]
 
-    if (updated.length > 0) {
-      newParams.set('source_types', updated.join(','))
-    } else {
+    // If all types re-selected, remove param (back to default)
+    if (
+      updated.length === ALL_SOURCE_TYPE_VALUES.length &&
+      ALL_SOURCE_TYPE_VALUES.every((v) => updated.includes(v))
+    ) {
       newParams.delete('source_types')
+    } else {
+      newParams.set('source_types', updated.join(','))
     }
     newParams.delete('page')
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
   }
 
   const handleLanguageChange = (lang: string) => {
@@ -277,39 +353,61 @@ export default function Search() {
       newParams.delete('languages')
     }
     newParams.delete('page')
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
   }
 
   const handlePageChange = (_event: React.ChangeEvent<unknown>, value: number) => {
     const newParams = new URLSearchParams(searchParams)
     newParams.set('page', value.toString())
-    setSearchParams(newParams)
+    setSearchParams(newParams, { replace: true })
     // Scroll to top of results
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const handleUnifiedResultClick = (result: UnifiedResult) => {
+    if (result.kind === 'text') {
+      handleResultClick(result.data)
+    } else {
+      // Symbol result - navigate to browse at the file and line
+      const repo = repositories.find((r) => r.id === result.data.repository_id)
+      if (!repo || !result.data.file_path) return
+
+      const params = new URLSearchParams()
+      params.set('repo', repo.name)
+      if (branchParam) params.set('branch', branchParam)
+      params.set('line', result.data.start_line.toString())
+
+      navigate(
+        `/browse/${encodeURIComponent(repo.name)}/${result.data.file_path}?${params.toString()}`
+      )
+    }
+  }
+
   const handleResultClick = (result: TextSearchResult) => {
-    // Navigate to Browse with the result's location
     const resultRepoName = result.repository_name
     const filePath = result.file_path
 
     // Build URL params
     const params = new URLSearchParams()
+    params.set('repo', resultRepoName)
     if (result.branch) {
       params.set('branch', result.branch)
     }
-    if (result.commit_hash) {
+    if (result.commit_hash && result.commit_hash !== 'unknown') {
       params.set('commit', result.commit_hash)
     }
-    if (result.source_line) {
-      params.set('line', result.source_line.toString())
-    }
 
-    if (filePath) {
-      // Navigate to specific file
+    if (result.source_type === 'commit_message') {
+      // Commit messages navigate to History, focused on that commit
+      navigate(`/history?${params.toString()}`)
+    } else if (filePath) {
+      // File-based results navigate to Browse at the specific file/line
+      if (result.source_line) {
+        params.set('line', result.source_line.toString())
+      }
       navigate(`/browse/${encodeURIComponent(resultRepoName)}/${filePath}?${params.toString()}`)
     } else {
-      // Commit message - navigate to repository root
+      // Fallback: navigate to repository root in Browse
       navigate(`/browse/${encodeURIComponent(resultRepoName)}?${params.toString()}`)
     }
   }
@@ -336,17 +434,20 @@ export default function Search() {
     )
   }
 
-  const handleClearFilters = () => {
-    const newParams = new URLSearchParams()
-    if (query) newParams.set('q', query)
-    if (mode !== 'keyword') newParams.set('mode', mode)
-    setSearchParams(newParams)
+  const handleSelectAll = () => {
+    const newParams = new URLSearchParams(searchParams)
+    newParams.delete('source_types')
+    newParams.delete('languages')
+    newParams.delete('page')
+    setSearchParams(newParams, { replace: true })
   }
 
   const getSourceTypeBadgeColor = (
     sourceType: string
   ): 'default' | 'primary' | 'secondary' | 'info' | 'success' => {
     switch (sourceType) {
+      case 'symbol':
+        return 'primary'
       case 'comment':
         return 'info'
       case 'docstring':
@@ -364,8 +465,8 @@ export default function Search() {
     return sourceType.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase())
   }
 
-  const totalPages = Math.ceil(totalResults / RESULTS_PER_PAGE)
-  const hasFilters = selectedSourceTypes.length > 0 || selectedLanguages.length > 0
+  const totalPages = Math.ceil(paginationTotal / RESULTS_PER_PAGE)
+  const hasFilters = sourceTypesParam !== null || selectedLanguages.length > 0
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -405,7 +506,7 @@ export default function Search() {
                   label="Mode"
                   onChange={(e) => handleModeChange(e.target.value)}
                 >
-                  <MenuItem value="keyword">Keyword</MenuItem>
+                  <MenuItem value="keyword">Keyword (fuzzy)</MenuItem>
                   <MenuItem value="phrase">Phrase</MenuItem>
                   <MenuItem value="regex">Regex</MenuItem>
                   <MenuItem value="file">File</MenuItem>
@@ -432,8 +533,8 @@ export default function Search() {
               </FormControl>
 
               {hasFilters && (
-                <Button onClick={handleClearFilters} variant="outlined" size="small">
-                  Clear Filters
+                <Button onClick={handleSelectAll} variant="outlined" size="small">
+                  Select All
                 </Button>
               )}
             </Box>
@@ -516,7 +617,7 @@ export default function Search() {
                   {isFileMode
                     ? fileResults.map((file, index) => (
                         <ListItem
-                          key={`${file.id}-${index}`}
+                          key={file.id}
                           disablePadding
                           divider={index < fileResults.length - 1}
                         >
@@ -556,30 +657,63 @@ export default function Search() {
                       ))
                     : results.map((result, index) => (
                         <ListItem
-                          key={`${result.id}-${index}`}
+                          key={`${result.kind}-${result.data.id}`}
                           disablePadding
                           divider={index < results.length - 1}
                         >
-                          <ListItemButton onClick={() => handleResultClick(result)}>
+                          <ListItemButton onClick={() => handleUnifiedResultClick(result)}>
                             <ListItemText
                               primary={
-                                <Box
-                                  sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}
-                                >
-                                  <Chip
-                                    label={formatSourceType(result.source_type)}
-                                    size="small"
-                                    color={getSourceTypeBadgeColor(result.source_type)}
-                                  />
-                                  <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                                    {result.repository_name}
-                                    {result.file_path && ` / ${result.file_path}`}
-                                    {result.source_line && `:${result.source_line}`}
-                                  </Typography>
-                                  {result.language && (
-                                    <Chip label={result.language} size="small" variant="outlined" />
-                                  )}
-                                </Box>
+                                result.kind === 'symbol' ? (
+                                  <Box
+                                    sx={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 1,
+                                      mb: 0.5,
+                                    }}
+                                  >
+                                    <Chip label="Symbol" size="small" color="primary" />
+                                    <Chip
+                                      label={result.data.kind}
+                                      size="small"
+                                      variant="outlined"
+                                    />
+                                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                                      {repositories.find((r) => r.id === result.data.repository_id)
+                                        ?.name || ''}
+                                      {result.data.file_path && ` / ${result.data.file_path}`}:
+                                      {result.data.start_line}
+                                    </Typography>
+                                  </Box>
+                                ) : (
+                                  <Box
+                                    sx={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 1,
+                                      mb: 0.5,
+                                    }}
+                                  >
+                                    <Chip
+                                      label={formatSourceType(result.data.source_type)}
+                                      size="small"
+                                      color={getSourceTypeBadgeColor(result.data.source_type)}
+                                    />
+                                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                                      {result.data.repository_name}
+                                      {result.data.file_path && ` / ${result.data.file_path}`}
+                                      {result.data.source_line && `:${result.data.source_line}`}
+                                    </Typography>
+                                    {result.data.language && (
+                                      <Chip
+                                        label={result.data.language}
+                                        size="small"
+                                        variant="outlined"
+                                      />
+                                    )}
+                                  </Box>
+                                )
                               }
                               secondary={
                                 <Typography
@@ -591,7 +725,19 @@ export default function Search() {
                                     wordBreak: 'break-word',
                                   }}
                                 >
-                                  {result.headline || result.content}
+                                  {result.kind === 'symbol'
+                                    ? highlightMatches(
+                                        result.data.signature ||
+                                          result.data.qualified_name ||
+                                          result.data.name,
+                                        query,
+                                        'keyword'
+                                      )
+                                    : highlightMatches(
+                                        result.data.headline || result.data.content,
+                                        query,
+                                        mode
+                                      )}
                                 </Typography>
                               }
                             />
@@ -625,7 +771,7 @@ export default function Search() {
               <Typography color="text.secondary">
                 {isFileMode
                   ? 'Enter a file name to search for files by path'
-                  : 'Enter a search query to find text in comments, docstrings, commit messages, and files'}
+                  : 'Enter a search query to find symbols, comments, docstrings, commit messages, and files'}
               </Typography>
             </Paper>
           )}

@@ -38,7 +38,7 @@ class SearchTextResultResponse(BaseModel):
     content: str
     content_type: str | None
     language: str | None
-    commit_hash: str
+    commit_hash: str | None
     branch: str | None
     rank: float
     headline: str | None

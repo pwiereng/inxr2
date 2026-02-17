@@ -3,7 +3,7 @@
 import re
 from typing import Any
 
-from sqlalchemy import column, func, select, text
+from sqlalchemy import column, exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
@@ -15,6 +15,7 @@ from ....application.ports.services import (
 from ....domain.value_objects import QueryMode
 from ..mappers import TextContentMapper
 from ..models.branch_commit import BranchCommitModel
+from ..models.commit_file import CommitFileModel
 from ..models.text_content import TextContentModel
 
 # Regex validation constants
@@ -120,13 +121,37 @@ class PostgresTextSearch(TextSearchPort):
                 TextContentModel.repository_id == query.repository_id
             )
 
-        # Apply branch filter (JOIN with branch_commits)
+        # Apply branch filter
+        # File-derived content (comments, docstrings, file_content) has NULL commit_id
+        # but has source_file_id — join through commit_files to reach branch_commits.
+        # Commit messages have commit_id but NULL source_file_id — join directly.
         if query.branch is not None:
-            base_query = base_query.join(
-                BranchCommitModel,
-                (BranchCommitModel.commit_id == TextContentModel.commit_id)
-                & (BranchCommitModel.repository_id == TextContentModel.repository_id),
-            ).where(BranchCommitModel.branch == query.branch)
+            # File-based: text_contents.source_file_id → commit_files → branch_commits
+            file_branch_exists = exists(
+                select(1)
+                .select_from(CommitFileModel)
+                .join(
+                    BranchCommitModel,
+                    (BranchCommitModel.commit_id == CommitFileModel.commit_id)
+                    & (
+                        BranchCommitModel.repository_id
+                        == TextContentModel.repository_id
+                    ),
+                )
+                .where(CommitFileModel.file_id == TextContentModel.source_file_id)
+                .where(BranchCommitModel.branch == query.branch)
+            )
+            # Commit-based: text_contents.commit_id → branch_commits
+            commit_branch_exists = exists(
+                select(1)
+                .select_from(BranchCommitModel)
+                .where(BranchCommitModel.commit_id == TextContentModel.commit_id)
+                .where(
+                    BranchCommitModel.repository_id == TextContentModel.repository_id
+                )
+                .where(BranchCommitModel.branch == query.branch)
+            )
+            base_query = base_query.where(file_branch_exists | commit_branch_exists)
 
         # Apply commit filter (for time travel)
         if query.commit_id is not None:

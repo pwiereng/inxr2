@@ -39,6 +39,8 @@ class CommitResponse(BaseModel):
     commit_date: str
     is_indexed: bool
     tags: list[str] = []
+    is_branch_specific: bool = False
+    is_merge_base: bool = False
 
 
 class CommitListResponse(BaseModel):
@@ -108,6 +110,8 @@ async def list_commits(
                 commit_date=c.commit_date,
                 is_indexed=c.is_indexed,
                 tags=c.tags,
+                is_branch_specific=c.is_branch_specific,
+                is_merge_base=c.is_merge_base,
             )
             for c in result.commits
         ],

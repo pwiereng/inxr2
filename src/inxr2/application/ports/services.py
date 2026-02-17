@@ -180,6 +180,11 @@ class GitServicePort(ABC):
         ...
 
     @abstractmethod
+    def get_merge_base(self, repo_path: Path, branch1: str, branch2: str) -> str | None:
+        """Return the merge-base commit hash of two branches, or None."""
+        ...
+
+    @abstractmethod
     def get_blame(
         self, repo_path: Path, commit_hash: str, file_path: str
     ) -> list[BlameLineInfo]: ...

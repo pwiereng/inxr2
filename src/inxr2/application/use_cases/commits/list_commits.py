@@ -32,6 +32,19 @@ class GitListCommitsProtocol(Protocol):
 
     def get_tags(self, repo_path: Path) -> dict[str, list[str]]: ...
 
+    def get_merge_base(
+        self, repo_path: Path, branch1: str, branch2: str
+    ) -> str | None: ...
+
+    def list_branch_commits(
+        self,
+        repo_path: Path,
+        branch: str,
+        base_branch: str,
+        max_count: int | None = 1000,
+        since_days: int | None = None,
+    ) -> list[CommitInfo]: ...
+
 
 @dataclass
 class CommitWithMetadata:
@@ -49,6 +62,8 @@ class CommitWithMetadata:
     commit_date: str
     is_indexed: bool
     tags: list[str]
+    is_branch_specific: bool = False
+    is_merge_base: bool = False
 
 
 @dataclass
@@ -157,20 +172,72 @@ class ListCommitsUseCase:
             )
             tags_map = {}
 
-        # Build response
-        result = [
-            CommitWithMetadata(
-                hash=ci.hash,
-                short_hash=ci.short_hash,
-                message=ci.message,
-                author_name=ci.author_name,
-                author_email=ci.author_email,
-                commit_date=ci.commit_date.isoformat(),
-                is_indexed=ci.hash in indexed_hashes,
-                tags=tags_map.get(ci.hash, []),
+        # Determine branch-specific commits via list_branch_commits
+        # This correctly handles both merged and unmerged branches
+        branch_specific_hashes: set[str] = set()
+        merge_base_hash: str | None = None
+        default_branch = repository.default_branch
+        if branch != default_branch:
+            try:
+                branch_commits = self._git_service.list_branch_commits(
+                    repo_path, branch, default_branch
+                )
+                branch_specific_hashes = {ci.hash for ci in branch_commits}
+            except Exception:
+                logger.warning(
+                    "Failed to list branch commits for %s vs %s",
+                    branch,
+                    default_branch,
+                    exc_info=True,
+                )
+            # Only compute merge-base when we have branch-specific commits.
+            # Without them, showing a fork point is misleading.
+            if branch_specific_hashes:
+                try:
+                    merge_base_hash = self._git_service.get_merge_base(
+                        repo_path, branch, default_branch
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to get merge-base for %s vs %s",
+                        branch,
+                        default_branch,
+                        exc_info=True,
+                    )
+
+        # For merged branches, git merge-base returns the branch tip (since
+        # it's now reachable from main).  In that case, derive the fork point
+        # from the commit list: the first non-branch-specific commit after the
+        # branch-specific section is the actual fork point.
+        if merge_base_hash and merge_base_hash in branch_specific_hashes:
+            merge_base_hash = None
+            seen_branch_specific = False
+            for ci in git_commits:  # newest-first
+                if ci.hash in branch_specific_hashes:
+                    seen_branch_specific = True
+                elif seen_branch_specific:
+                    merge_base_hash = ci.hash
+                    break
+
+        # Build response (git_commits is newest-first after reverse above)
+        result: list[CommitWithMetadata] = []
+        for ci in git_commits:
+            is_branch_specific = ci.hash in branch_specific_hashes
+            is_merge_base = ci.hash == merge_base_hash
+            result.append(
+                CommitWithMetadata(
+                    hash=ci.hash,
+                    short_hash=ci.short_hash,
+                    message=ci.message,
+                    author_name=ci.author_name,
+                    author_email=ci.author_email,
+                    commit_date=ci.commit_date.isoformat(),
+                    is_indexed=ci.hash in indexed_hashes,
+                    tags=tags_map.get(ci.hash, []),
+                    is_branch_specific=is_branch_specific,
+                    is_merge_base=is_merge_base,
+                )
             )
-            for ci in git_commits
-        ]
 
         return ListCommitsResponse(
             commits=result,

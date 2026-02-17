@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....application.ports.repositories import SymbolRepositoryPort
 from ....domain.entities import Symbol
 from ..mappers import SymbolMapper
+from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
@@ -88,6 +89,8 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         repository_id: int | None = None,
         kind: str | None = None,
         limit: int = 50,
+        branch: str | None = None,
+        language: str | None = None,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
@@ -104,6 +107,29 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
 
         if kind is not None:
             query = query.where(SymbolModel.kind == kind)
+
+        if branch is not None:
+            # Filter to symbols from files that exist on this branch
+            branch_file_ids = (
+                select(CommitFileModel.file_id)
+                .join(
+                    BranchCommitModel,
+                    BranchCommitModel.commit_id == CommitFileModel.commit_id,
+                )
+                .where(BranchCommitModel.branch == branch)
+            )
+            if repository_id is not None:
+                branch_file_ids = branch_file_ids.where(
+                    BranchCommitModel.repository_id == repository_id
+                )
+            query = query.where(SymbolModel.file_id.in_(branch_file_ids))
+
+        if language is not None:
+            query = query.where(
+                SymbolModel.file_id.in_(
+                    select(FileModel.id).where(FileModel.language == language)
+                )
+            )
 
         query = query.order_by(SymbolModel.name).limit(limit)
 

@@ -1,7 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@/test/utils'
+import { render, screen, waitFor, fireEvent } from '@/test/utils'
 import Search from './Search'
 import * as api from '@/lib/api'
+
+/**
+ * Helper to find an element whose textContent matches, even when the text
+ * is split across child elements (e.g., <mark> highlighting).
+ */
+function getByTextContent(text: string | RegExp) {
+  return screen.getByText((_content, element) => {
+    if (!element) return false
+    const tc = element.textContent || ''
+    const matches = text instanceof RegExp ? text.test(tc) : tc === text
+    // Only match the deepest element that contains the full text
+    // (avoid matching parent wrappers)
+    if (!matches) return false
+    const childrenMatch = Array.from(element.children).some((child) => {
+      const ctc = child.textContent || ''
+      return text instanceof RegExp ? text.test(ctc) : ctc === text
+    })
+    return !childrenMatch
+  })
+}
 
 // Mock the API
 vi.mock('@/lib/api', async () => {
@@ -9,6 +29,7 @@ vi.mock('@/lib/api', async () => {
   return {
     ...actual,
     searchText: vi.fn(),
+    searchSymbols: vi.fn(),
     getRepositories: vi.fn(),
     getRepositoryBranches: vi.fn(),
     getCommits: vi.fn(),
@@ -16,6 +37,7 @@ vi.mock('@/lib/api', async () => {
 })
 
 const mockSearchText = vi.mocked(api.searchText)
+const mockSearchSymbols = vi.mocked(api.searchSymbols)
 const mockGetRepositories = vi.mocked(api.getRepositories)
 const mockGetRepositoryBranches = vi.mocked(api.getRepositoryBranches)
 const mockGetCommits = vi.mocked(api.getCommits)
@@ -60,6 +82,8 @@ describe('Search', () => {
           commit_date: '2024-01-01T00:00:00Z',
           is_indexed: true,
           tags: [],
+          is_branch_specific: false,
+          is_merge_base: false,
         },
       ],
       total: 1,
@@ -70,6 +94,13 @@ describe('Search', () => {
       total: 0,
       query: '',
       mode: 'keyword',
+      limit: 20,
+      offset: 0,
+    })
+
+    mockSearchSymbols.mockResolvedValue({
+      items: [],
+      total: 0,
       limit: 20,
       offset: 0,
     })
@@ -84,7 +115,7 @@ describe('Search', () => {
 
     expect(
       screen.getByText(
-        /Enter a search query to find text in comments, docstrings, commit messages, and files/i
+        /Enter a search query to find symbols, comments, docstrings, commit messages, and files/i
       )
     ).toBeInTheDocument()
   })
@@ -121,6 +152,333 @@ describe('Search', () => {
       },
       { timeout: 1000 }
     )
+  })
+
+  it('should navigate to history when clicking a commit_message result', async () => {
+    mockSearchText.mockResolvedValue({
+      results: [
+        {
+          id: 1,
+          source_type: 'commit_message',
+          content: 'fix: update get_file_symbols_by_path',
+          content_type: null,
+          repository_id: 1,
+          repository_name: 'test-repo',
+          file_path: null,
+          source_line: null,
+          source_end_line: null,
+          language: null,
+          commit_hash: 'abc123def456',
+          branch: 'main',
+          headline: null,
+          rank: 1.0,
+        },
+      ],
+      total: 1,
+      query: 'get_file_symbols_by_path',
+      mode: 'keyword',
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=get_file_symbols_by_path&source_types=commit_message')
+    render(<Search />)
+
+    // Wait for results to appear
+    await waitFor(() => {
+      expect(screen.getByText(/Commit Message/i)).toBeInTheDocument()
+    })
+
+    // Click the result (text may be split by <mark> highlighting)
+    fireEvent.click(getByTextContent(/fix: update get_file_symbols_by_path/i))
+
+    // Should navigate to history, not browse
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/history')
+      expect(window.location.search).toContain('commit=abc123def456')
+      expect(window.location.search).toContain('repo=test-repo')
+    })
+  })
+
+  it('should navigate to browse when clicking a file-based result', async () => {
+    mockSearchText.mockResolvedValue({
+      results: [
+        {
+          id: 2,
+          source_type: 'comment',
+          content: '# helper function',
+          content_type: null,
+          repository_id: 1,
+          repository_name: 'test-repo',
+          file_path: 'src/utils.py',
+          source_line: 10,
+          source_end_line: null,
+          language: 'python',
+          commit_hash: 'abc123def456',
+          branch: 'main',
+          headline: null,
+          rank: 1.0,
+        },
+      ],
+      total: 1,
+      query: 'helper',
+      mode: 'keyword',
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=helper')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(getByTextContent(/# helper function/i)).toBeInTheDocument()
+    })
+
+    fireEvent.click(getByTextContent(/# helper function/i))
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/browse/test-repo/src/utils.py')
+      expect(window.location.search).toContain('line=10')
+    })
+  })
+
+  it('should not include commit=unknown when clicking file-derived result with null commit_hash', async () => {
+    mockSearchText.mockResolvedValue({
+      results: [
+        {
+          id: 3,
+          source_type: 'comment',
+          content: '# Initialize console',
+          content_type: null,
+          repository_id: 1,
+          repository_name: 'test-repo',
+          file_path: 'src/cli.py',
+          source_line: 22,
+          source_end_line: null,
+          language: 'python',
+          commit_hash: null,
+          branch: 'main',
+          headline: null,
+          rank: 1.0,
+        },
+      ],
+      total: 1,
+      query: 'console',
+      mode: 'keyword',
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=console&source_types=comment')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(getByTextContent(/# Initialize console/i)).toBeInTheDocument()
+    })
+
+    fireEvent.click(getByTextContent(/# Initialize console/i))
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/browse/test-repo/src/cli.py')
+      expect(window.location.search).toContain('branch=main')
+      expect(window.location.search).toContain('line=22')
+      expect(window.location.search).not.toContain('commit=')
+    })
+  })
+
+  it('should have all source type checkboxes checked by default', async () => {
+    render(<Search />)
+
+    await waitFor(() => {
+      const symbolsCheckbox = screen.getByLabelText('Symbols') as HTMLInputElement
+      const commentsCheckbox = screen.getByLabelText('Comments') as HTMLInputElement
+      const docstringsCheckbox = screen.getByLabelText('Docstrings') as HTMLInputElement
+      const commitMsgsCheckbox = screen.getByLabelText('Commit Messages') as HTMLInputElement
+      const fileContentCheckbox = screen.getByLabelText('File Content') as HTMLInputElement
+
+      expect(symbolsCheckbox.checked).toBe(true)
+      expect(commentsCheckbox.checked).toBe(true)
+      expect(docstringsCheckbox.checked).toBe(true)
+      expect(commitMsgsCheckbox.checked).toBe(true)
+      expect(fileContentCheckbox.checked).toBe(true)
+    })
+  })
+
+  it('should call both searchSymbols and searchText by default', async () => {
+    window.history.pushState({}, '', '?query=test')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(mockSearchSymbols).toHaveBeenCalledWith(expect.objectContaining({ q: 'test' }))
+      expect(mockSearchText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'test',
+          source_types: undefined, // All text types = no filter
+        })
+      )
+    })
+  })
+
+  it('should exclude unchecked source types from results', async () => {
+    // URL has all types except symbol
+    window.history.pushState(
+      {},
+      '',
+      '?query=test&source_types=comment,docstring,commit_message,file_content'
+    )
+    render(<Search />)
+
+    await waitFor(() => {
+      // searchText should be called with the specified types
+      expect(mockSearchText).toHaveBeenCalled()
+      // searchSymbols should NOT be called since symbol is unchecked
+      expect(mockSearchSymbols).not.toHaveBeenCalled()
+    })
+  })
+
+  it('should render Symbols checkbox in source types', async () => {
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Symbols')).toBeInTheDocument()
+    })
+  })
+
+  it('should call searchSymbols when Symbols source type is selected', async () => {
+    mockSearchSymbols.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'get_file_symbols_by_path',
+          qualified_name: 'inxr2.api.get_file_symbols_by_path',
+          kind: 'function',
+          file_id: 10,
+          file_path: 'src/api/routes.py',
+          repository_id: 1,
+          commit_id: 1,
+          start_line: 42,
+          start_column: 0,
+          end_line: 55,
+          end_column: 0,
+          signature: 'def get_file_symbols_by_path(repo: str, path: str)',
+          docstring: null,
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=get_file_symbols_by_path&source_types=symbol')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(mockSearchSymbols).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'get_file_symbols_by_path',
+        })
+      )
+    })
+
+    // Should NOT call searchText when only symbol is selected
+    expect(mockSearchText).not.toHaveBeenCalled()
+  })
+
+  it('should render symbol results with Symbol badge and kind', async () => {
+    mockSearchSymbols.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'MyClass',
+          qualified_name: 'module.MyClass',
+          kind: 'class',
+          file_id: 10,
+          file_path: 'src/models.py',
+          repository_id: 1,
+          commit_id: 1,
+          start_line: 5,
+          start_column: 0,
+          end_line: 20,
+          end_column: 0,
+          signature: 'class MyClass(Base)',
+          docstring: null,
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=MyClass&source_types=symbol')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Symbol')).toBeInTheDocument()
+      expect(screen.getByText('class')).toBeInTheDocument()
+      expect(getByTextContent('class MyClass(Base)')).toBeInTheDocument()
+    })
+  })
+
+  it('should navigate to browse when clicking a symbol result', async () => {
+    mockSearchSymbols.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'my_function',
+          qualified_name: 'module.my_function',
+          kind: 'function',
+          file_id: 10,
+          file_path: 'src/utils.py',
+          repository_id: 1,
+          commit_id: 1,
+          start_line: 15,
+          start_column: 0,
+          end_line: 25,
+          end_column: 0,
+          signature: 'def my_function(x: int) -> str',
+          docstring: null,
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=my_function&source_types=symbol')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(getByTextContent('def my_function(x: int) -> str')).toBeInTheDocument()
+    })
+
+    fireEvent.click(getByTextContent('def my_function(x: int) -> str'))
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/browse/test-repo/src/utils.py')
+      expect(window.location.search).toContain('line=15')
+    })
+  })
+
+  it('should call both searchSymbols and searchText when both are selected', async () => {
+    mockSearchSymbols.mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    })
+
+    window.history.pushState({}, '', '?query=test&source_types=symbol,comment')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(mockSearchSymbols).toHaveBeenCalledWith(expect.objectContaining({ q: 'test' }))
+      expect(mockSearchText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'test',
+          source_types: ['comment'],
+        })
+      )
+    })
   })
 
   it('should filter by repository when repo param is in URL', async () => {

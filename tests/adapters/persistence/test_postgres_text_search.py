@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from inxr2.adapters.persistence.repositories import (
+    PostgresCommitRepository,
     PostgresTextContentRepository,
     PostgresTextSearch,
 )
@@ -403,3 +404,115 @@ async def test_search_with_commit_filter(
 
     assert total == 1
     assert results[0].text_content.content == "Old comment"
+
+
+@pytest.mark.asyncio
+async def test_search_branch_filter_finds_file_based_content(
+    db_session: AsyncSession,
+    test_repository: Repository,
+    test_commit: Commit,
+    test_file: File,
+) -> None:
+    """Test branch filter finds comments/docstrings that have NULL commit_id.
+
+    File-derived text content (comments, docstrings, file_content) stores
+    source_file_id but not commit_id. Branch filtering must join through
+    commit_files to reach branch_commits.
+    """
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
+    commit_repo = PostgresCommitRepository(db_session)
+    text_repo = PostgresTextContentRepository(db_session)
+    search = PostgresTextSearch(db_session)
+
+    # Link commit to branch "main"
+    await commit_repo.link_commit_to_branch(test_repository.id, test_commit.id, "main")
+
+    # Create comment with NULL commit_id (file-derived, as real indexing does)
+    await text_repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=None,
+            source_type=TextSearchSourceType.COMMENT.value,
+            source_file_id=test_file.id,
+            source_line=10,
+            content="Initialize rich console for output",
+            language="python",
+        )
+    )
+    await db_session.commit()
+
+    # Search with branch filter — should find the comment
+    query = TextSearchQuery(
+        query="console",
+        mode=QueryMode.KEYWORD.value,
+        repository_id=test_repository.id,
+        branch="main",
+    )
+    results, total = await search.search(query)
+
+    assert total >= 1
+    assert any(
+        r.text_content.content == "Initialize rich console for output" for r in results
+    )
+
+    # Search with non-existent branch — should find nothing
+    query_other = TextSearchQuery(
+        query="console",
+        mode=QueryMode.KEYWORD.value,
+        repository_id=test_repository.id,
+        branch="nonexistent-branch",
+    )
+    results_other, total_other = await search.search(query_other)
+
+    assert total_other == 0
+
+
+@pytest.mark.asyncio
+async def test_search_branch_filter_finds_commit_messages(
+    db_session: AsyncSession,
+    test_repository: Repository,
+    test_commit: Commit,
+    test_file: File,
+) -> None:
+    """Test branch filter finds commit messages that have commit_id but NULL source_file_id."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+
+    commit_repo = PostgresCommitRepository(db_session)
+    text_repo = PostgresTextContentRepository(db_session)
+    search = PostgresTextSearch(db_session)
+
+    # Link commit to branch "main"
+    await commit_repo.link_commit_to_branch(test_repository.id, test_commit.id, "main")
+
+    # Create commit message with commit_id but NULL source_file_id
+    await text_repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=test_commit.id,
+            source_type=TextSearchSourceType.COMMIT_MESSAGE.value,
+            source_file_id=None,
+            source_line=None,
+            content="feat: Add console logging support",
+            language=None,
+        )
+    )
+    await db_session.commit()
+
+    # Search with branch filter — should find the commit message
+    query = TextSearchQuery(
+        query="console",
+        mode=QueryMode.KEYWORD.value,
+        repository_id=test_repository.id,
+        branch="main",
+    )
+    results, total = await search.search(query)
+
+    assert total >= 1
+    assert any(
+        r.text_content.source_type == TextSearchSourceType.COMMIT_MESSAGE.value
+        for r in results
+    )
