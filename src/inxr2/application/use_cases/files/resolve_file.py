@@ -199,9 +199,7 @@ class ResolveFileUseCase:
 
         # Primary: find file at HEAD commit (correct regardless of ID ordering)
         if commit and commit.id is not None:
-            file = await self._file_repo.find_by_path(
-                repository_id, commit.id, path
-            )
+            file = await self._file_repo.find_by_path(repository_id, commit.id, path)
             if file:
                 return file, commit
 
@@ -223,9 +221,7 @@ class ResolveFileUseCase:
         Falls back to the provided commit or raises CommitNotFound.
         """
         if file.id is not None:
-            file_commit_ids = await self._file_repo.get_commit_ids_for_files(
-                [file.id]
-            )
+            file_commit_ids = await self._file_repo.get_commit_ids_for_files([file.id])
             linked_ids = file_commit_ids.get(file.id, [])
             if linked_ids:
                 commit = await self._commit_repo.find_by_id(linked_ids[0])

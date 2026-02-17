@@ -55,9 +55,7 @@ export function BranchSelector({
       try {
         const response = await getRepositoryBranches(repositoryId)
         // Only show indexed branches (those with a last_indexed_commit)
-        const indexedBranches = response.branches.filter(
-          (b) => b.last_indexed_commit
-        )
+        const indexedBranches = response.branches.filter((b) => b.last_indexed_commit)
         setBranches(indexedBranches)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load branches')

@@ -447,9 +447,7 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
         """
         repository_repo = InMemoryRepositoryRepository()
         repository_repo.add(
-            Repository(
-                id=1, name="test-repo", url="/path", default_branch="main"
-            )
+            Repository(id=1, name="test-repo", url="/path", default_branch="main")
         )
 
         commit_repo = InMemoryCommitRepository()
