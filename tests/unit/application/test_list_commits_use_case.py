@@ -53,6 +53,8 @@ class StubGitListCommitsService:
         # Map (repo_path, branch, base_branch) -> list of branch-specific CommitInfo
         self._branch_commits: dict[tuple[str, str, str], list[CommitInfo]] = {}
         self._branch_commits_error: bool = False
+        # Map (repo_path, branch, base_branch) -> merge-base hash
+        self._merge_bases: dict[tuple[str, str, str], str | None] = {}
 
     def set_commits(
         self, repo_path: str, branch: str, commits: list[CommitInfo]
@@ -70,6 +72,15 @@ class StubGitListCommitsService:
         commits: list[CommitInfo],
     ) -> None:
         self._branch_commits[(repo_path, branch, base_branch)] = commits
+
+    def set_merge_base(
+        self,
+        repo_path: str,
+        branch: str,
+        base_branch: str,
+        merge_base_hash: str | None,
+    ) -> None:
+        self._merge_bases[(repo_path, branch, base_branch)] = merge_base_hash
 
     def set_branch_commits_error(self, error: bool = True) -> None:
         self._branch_commits_error = error
@@ -90,6 +101,15 @@ class StubGitListCommitsService:
 
     def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
         return self._tags
+
+    def get_merge_base(
+        self,
+        repo_path: Path,
+        branch1: str,
+        branch2: str,
+    ) -> str | None:
+        key = (str(repo_path), branch1, branch2)
+        return self._merge_bases.get(key)
 
     def list_branch_commits(
         self,
@@ -372,6 +392,8 @@ class TestListCommitsUseCase:
                 _make_commit_info("branch2", "branch2", message="Branch commit 2"),
             ],
         )
+        # Merge-base is the last common ancestor (shared2)
+        git_service.set_merge_base(str(repo_path), "feature", "main", "shared2")
 
         use_case = ListCommitsUseCase(
             repository_repo=repository_repo,
@@ -385,14 +407,14 @@ class TestListCommitsUseCase:
         by_hash = {c.hash: c for c in result.commits}
         assert by_hash["branch2"].is_branch_specific is True
         assert by_hash["branch1"].is_branch_specific is True
-        # Oldest branch commit is the fork point
-        assert by_hash["branch1"].is_merge_base is True
+        # Branch commits are not the merge-base
+        assert by_hash["branch1"].is_merge_base is False
         assert by_hash["branch2"].is_merge_base is False
-        # Shared commits have no flags
+        # Merge-base is the last shared commit before branching
         assert by_hash["shared1"].is_branch_specific is False
         assert by_hash["shared1"].is_merge_base is False
         assert by_hash["shared2"].is_branch_specific is False
-        assert by_hash["shared2"].is_merge_base is False
+        assert by_hash["shared2"].is_merge_base is True
 
     @pytest.mark.asyncio
     async def test_default_branch_has_no_highlighting(

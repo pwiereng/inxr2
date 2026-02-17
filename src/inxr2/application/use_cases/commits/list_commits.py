@@ -32,6 +32,10 @@ class GitListCommitsProtocol(Protocol):
 
     def get_tags(self, repo_path: Path) -> dict[str, list[str]]: ...
 
+    def get_merge_base(
+        self, repo_path: Path, branch1: str, branch2: str
+    ) -> str | None: ...
+
     def list_branch_commits(
         self,
         repo_path: Path,
@@ -171,7 +175,7 @@ class ListCommitsUseCase:
         # Determine branch-specific commits via list_branch_commits
         # This correctly handles both merged and unmerged branches
         branch_specific_hashes: set[str] = set()
-        oldest_branch_hash: str | None = None
+        merge_base_hash: str | None = None
         default_branch = repository.default_branch
         if branch != default_branch:
             try:
@@ -179,12 +183,21 @@ class ListCommitsUseCase:
                     repo_path, branch, default_branch
                 )
                 branch_specific_hashes = {ci.hash for ci in branch_commits}
-                # Oldest branch commit (first in list) marks the fork point
-                if branch_commits:
-                    oldest_branch_hash = branch_commits[0].hash
             except Exception:
                 logger.warning(
                     "Failed to list branch commits for %s vs %s",
+                    branch,
+                    default_branch,
+                    exc_info=True,
+                )
+            # Find the actual merge-base (last common ancestor)
+            try:
+                merge_base_hash = self._git_service.get_merge_base(
+                    repo_path, branch, default_branch
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to get merge-base for %s vs %s",
                     branch,
                     default_branch,
                     exc_info=True,
@@ -194,7 +207,7 @@ class ListCommitsUseCase:
         result: list[CommitWithMetadata] = []
         for ci in git_commits:
             is_branch_specific = ci.hash in branch_specific_hashes
-            is_merge_base = ci.hash == oldest_branch_hash
+            is_merge_base = ci.hash == merge_base_hash
             result.append(
                 CommitWithMetadata(
                     hash=ci.hash,
