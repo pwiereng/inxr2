@@ -206,6 +206,18 @@ Short paragraph.
         assert "my-package" in all_content
         assert "description" in all_content
 
+    def test_parse_returns_chunks_for_unknown_extensions(
+        self, parser: PlaintextParser
+    ) -> None:
+        """Test that parse() falls through to plain text for non-whitelisted extensions."""
+        content = "#!/bin/bash\necho 'hello world'\nexit 0\n"
+
+        for file_path in ["deploy.sh", "styles.css", "schema.sql"]:
+            chunks = parser.parse(content, file_path)
+            assert len(chunks) > 0, f"Expected chunks for {file_path}"
+            assert chunks[0]["content_type"] == "plain_text"
+            assert "hello world" in chunks[0]["content"]
+
     def test_parse_empty_file_returns_empty_list(self, parser: PlaintextParser) -> None:
         """Test that empty files return no chunks."""
         chunks = parser.parse("", "empty.md")

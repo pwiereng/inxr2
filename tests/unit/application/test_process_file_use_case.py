@@ -202,11 +202,32 @@ class TestProcessFileUseCase:
         assert len(file_contents) > 0
 
     @pytest.mark.asyncio
-    async def test_unsupported_language_skips_file(
+    async def test_binary_content_skips_file(
         self,
-        use_case: ProcessFileUseCase,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        text_content_repo: InMemoryTextContentRepository,
+        parser_service: FakeParserService,
     ) -> None:
-        """Test that unsupported language files without plaintext support are skipped."""
+        """Test that binary content (null bytes) is skipped."""
+        git_service = FakeGitService()
+        git_service.set_file_content(
+            repo_path="/repos/test-repo",
+            commit_hash="abc123",
+            file_path="image.png",
+            content="PNG\x00\x00binary data",
+        )
+        use_case = ProcessFileUseCase(
+            git_service=git_service,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            text_content_repo=text_content_repo,
+            parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
+        )
+
         request = ProcessFileRequest(
             repository_id=1,
             file_path="image.png",
@@ -216,9 +237,31 @@ class TestProcessFileUseCase:
 
         result = await use_case.execute(request)
 
-        # .png is not code, and plaintext parser doesn't support it
         assert result.skipped is True
         assert result.processed is False
+
+    @pytest.mark.asyncio
+    async def test_non_whitelisted_text_file_is_indexed(
+        self,
+        use_case: ProcessFileUseCase,
+        text_content_repo: InMemoryTextContentRepository,
+    ) -> None:
+        """Regression test for GH #39: .sh files must be indexed as text content."""
+        request = ProcessFileRequest(
+            repository_id=1,
+            file_path="scripts/deploy.sh",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+        )
+
+        result = await use_case.execute(request)
+
+        assert result.processed is True
+        assert result.non_code_file_indexed is True
+        file_contents = [
+            tc for tc in text_content_repo.get_all() if tc.source_type == "file_content"
+        ]
+        assert len(file_contents) > 0
 
     @pytest.mark.asyncio
     async def test_file_processing_error_returns_failed(
