@@ -87,6 +87,10 @@ declare module '@mui/material/styles' {
 export const darkTheme = createTheme({
   palette: {
     mode: 'dark',
+    background: {
+      default: '#1e1e1e',
+      paper: '#1e1e1e',
+    },
     code: {
       background: '#1e1e1e',
       text: '#d4d4d4',
