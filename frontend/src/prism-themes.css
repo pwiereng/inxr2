@@ -89,7 +89,7 @@
 .prism-light .token.prolog,
 .prism-light .token.doctype,
 .prism-light .token.cdata {
-  color: #636569;
+  color: #6b6d72;
 }
 
 .prism-light .token.punctuation {
@@ -133,13 +133,13 @@
 
 .prism-light .token.function,
 .prism-light .token.class-name {
-  color: #3568d4;
+  color: #2b5ec2;
 }
 
 .prism-light .token.regex,
 .prism-light .token.important,
 .prism-light .token.variable {
-  color: #d4392e;
+  color: #c9301e;
 }
 
 .prism-light .token.important,

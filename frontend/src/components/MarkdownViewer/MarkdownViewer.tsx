@@ -49,7 +49,7 @@ export function MarkdownViewer({ content }: MarkdownViewerProps) {
         p: 2,
         borderRadius: 1,
         overflow: 'auto',
-        bgcolor: theme.palette.code.background,
+        bgcolor: 'background.default',
         '& code': {
           bgcolor: 'transparent',
           px: 0,
