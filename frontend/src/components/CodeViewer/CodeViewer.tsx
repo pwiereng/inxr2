@@ -324,7 +324,6 @@ export function CodeViewer({
         fontSize: '13px',
         lineHeight: '1.5',
         overflow: 'auto',
-        bgcolor: theme.palette.code.background,
         borderRadius: 1,
       }}
     >

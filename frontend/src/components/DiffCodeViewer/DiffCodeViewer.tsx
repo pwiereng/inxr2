@@ -592,7 +592,7 @@ export function DiffCodeViewer({
             fontFamily: 'monospace',
             fontSize: '13px',
             lineHeight: '1.5',
-            bgcolor: theme.palette.code.background,
+            bgcolor: 'background.default',
           }}
         >
           <Box
