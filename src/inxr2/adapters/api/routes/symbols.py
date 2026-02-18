@@ -83,7 +83,7 @@ async def search_symbols(
     language: str | None = Query(
         default=None, description="Filter by programming language"
     ),
-    scope: Literal["latest", "all_branches", "all_history"] = Query(
+    scope: Literal["latest"] = Query(
         default="latest",
         description="Search scope when no repository is specified",
     ),

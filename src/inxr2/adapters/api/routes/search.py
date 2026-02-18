@@ -108,7 +108,7 @@ async def search_text(
     languages: list[str] | None = Query(
         None, description="Languages filter (e.g., python, typescript)"
     ),
-    scope: Literal["latest", "all_branches", "all_history"] = Query(
+    scope: Literal["latest"] = Query(
         "latest",
         description="Search scope when no repository is specified",
     ),
@@ -202,7 +202,7 @@ async def search_files(
     branch: str | None = Query(None, description="Branch filter"),
     commit_hash: str | None = Query(None, description="Commit hash filter"),
     language: str | None = Query(None, description="Language filter"),
-    scope: Literal["latest", "all_branches", "all_history"] = Query(
+    scope: Literal["latest"] = Query(
         "latest",
         description="Search scope when no repository is specified",
     ),
