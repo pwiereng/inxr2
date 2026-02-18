@@ -403,7 +403,10 @@ class ProcessFileUseCase:
     ) -> _NonCodeResult:
         """Index non-code files (markdown, YAML, etc.) as searchable text content."""
         try:
-            if not self._plaintext_parser.supports_file(file_path_str):
+            # Skip binary content (null bytes indicate binary data).
+            # In production, binary files already fail at get_file_content()
+            # with UnicodeDecodeError, but this guards edge cases.
+            if "\x00" in content:
                 return self._NonCodeResult(indexed=False, inserts=0)
 
             chunks = self._plaintext_parser.parse(content, file_path_str)
