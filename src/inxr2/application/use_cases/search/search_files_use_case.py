@@ -28,6 +28,7 @@ class SearchFilesRequest:
     branch: str | None = None
     commit_hash: str | None = None
     language: str | None = None
+    scope: str = "latest"
     limit: int = 20
 
 
@@ -142,6 +143,7 @@ class SearchFilesUseCase:
             commit_id=commit_id,
             language=request.language,
             limit=request.limit,
+            scope=request.scope if repository_id is None else None,
         )
 
         # Collect unique repo IDs for bulk lookup

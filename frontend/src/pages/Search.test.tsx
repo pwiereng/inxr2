@@ -481,6 +481,43 @@ describe('Search', () => {
     })
   })
 
+  it('should pass scope=latest when no repo is selected', async () => {
+    window.history.pushState({}, '', '?query=test')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(mockSearchSymbols).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'test',
+          scope: 'latest',
+          repository_id: undefined,
+        })
+      )
+      expect(mockSearchText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'test',
+          scope: 'latest',
+          repo: undefined,
+        })
+      )
+    })
+  })
+
+  it('should NOT pass scope when repo is selected', async () => {
+    window.history.pushState({}, '', '?repo=test-repo&query=test')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(mockSearchText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'test',
+          repo: 1,
+          scope: undefined,
+        })
+      )
+    })
+  })
+
   it('should filter by repository when repo param is in URL', async () => {
     mockGetRepositories.mockResolvedValue([
       {

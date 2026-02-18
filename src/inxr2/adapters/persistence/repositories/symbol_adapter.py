@@ -10,6 +10,7 @@ from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
+from ..models.repository import RepositoryModel
 from ..models.symbol import SymbolModel
 
 
@@ -83,6 +84,35 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         )
         return select(inner.c.file_id.label("max_id")).where(inner.c.rn == 1).subquery()
 
+    def _head_file_ids_subquery(self) -> Subquery:
+        """File IDs at HEAD of each repo's default branch (for global search)."""
+        inner = (
+            select(
+                RepositoryModel.id.label("repo_id"),
+                BranchCommitModel.commit_id.label("commit_id"),
+                func.row_number()
+                .over(
+                    partition_by=RepositoryModel.id,
+                    order_by=[CommitModel.commit_date.desc(), CommitModel.id.desc()],
+                )
+                .label("rn"),
+            )
+            .join(
+                BranchCommitModel,
+                (BranchCommitModel.repository_id == RepositoryModel.id)
+                & (BranchCommitModel.branch == RepositoryModel.default_branch),
+            )
+            .join(CommitModel, CommitModel.id == BranchCommitModel.commit_id)
+            .subquery()
+        )
+        head_commits = select(inner.c.commit_id).where(inner.c.rn == 1).subquery()
+
+        return (
+            select(CommitFileModel.file_id.label("file_id"))
+            .where(CommitFileModel.commit_id.in_(select(head_commits.c.commit_id)))
+            .subquery()
+        )
+
     async def search_by_name(
         self,
         name: str,
@@ -91,15 +121,22 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         limit: int = 50,
         branch: str | None = None,
         language: str | None = None,
+        scope: str | None = None,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
         When repository_id is provided, deduplicates by filtering to
         only the latest file version per (repository_id, path).
+        When scope is "latest" and repository_id is None, filters to
+        symbols from files at HEAD of each repo's default branch.
         """
         query = select(SymbolModel).where(SymbolModel.name.ilike(f"%{name}%"))
 
-        if repository_id is not None:
+        if repository_id is None and scope == "latest":
+            # Global search: only symbols from HEAD of each repo's default branch
+            head_fids = self._head_file_ids_subquery()
+            query = query.where(SymbolModel.file_id.in_(select(head_fids.c.file_id)))
+        elif repository_id is not None:
             query = query.where(SymbolModel.repository_id == repository_id)
             # Deduplicate: only symbols from latest file version per path
             latest_sq = self._latest_file_ids_subquery(repository_id)

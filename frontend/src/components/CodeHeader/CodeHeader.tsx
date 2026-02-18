@@ -18,6 +18,7 @@ import CodeIcon from '@mui/icons-material/Code'
 import SearchIcon from '@mui/icons-material/Search'
 import HistoryIcon from '@mui/icons-material/History'
 import FolderIcon from '@mui/icons-material/Folder'
+import PublicIcon from '@mui/icons-material/Public'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import LightModeIcon from '@mui/icons-material/LightMode'
@@ -200,7 +201,7 @@ export function CodeHeader({
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <CircularProgress size={20} />
           </Box>
-        ) : repositories.length > 1 ? (
+        ) : repositories.length > 1 || currentTab === 'search' ? (
           <FormControl size="small" sx={{ minWidth: 150 }}>
             <Select
               value={repoName || ''}
@@ -215,6 +216,12 @@ export function CodeHeader({
                 },
               }}
             >
+              {currentTab === 'search' && (
+                <MenuItem value="">
+                  <PublicIcon fontSize="small" sx={{ mr: 1 }} />
+                  All Repositories
+                </MenuItem>
+              )}
               {repositories.map((repo) => (
                 <MenuItem key={repo.id} value={repo.name}>
                   <FolderIcon fontSize="small" sx={{ mr: 1 }} />

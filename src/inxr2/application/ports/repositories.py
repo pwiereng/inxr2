@@ -443,6 +443,7 @@ class FileRepositoryPort(ABC):
         commit_id: int | None = None,
         language: str | None = None,
         limit: int = 20,
+        scope: str | None = None,
     ) -> list[File]:
         """Search files by name/path pattern.
 
@@ -463,6 +464,8 @@ class FileRepositoryPort(ABC):
                 When None, returns latest version per (repo, path).
             language: Filter by programming language (optional)
             limit: Maximum number of results (default 20)
+            scope: Search scope for global search (e.g. "latest") when no
+                repository_id is specified. Ignored when repository_id is set.
 
         Returns:
             List of matching files, ordered by relevance.
@@ -515,6 +518,7 @@ class SymbolRepositoryPort(ABC):
         limit: int = 50,
         branch: str | None = None,
         language: str | None = None,
+        scope: str | None = None,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
@@ -525,6 +529,8 @@ class SymbolRepositoryPort(ABC):
             limit: Maximum results
             branch: Filter by branch name via commit_files → branch_commits (optional)
             language: Filter by programming language via files (optional)
+            scope: Search scope for global search (e.g. "latest") when no
+                repository_id is specified. Ignored when repository_id is set.
         """
         pass
 
