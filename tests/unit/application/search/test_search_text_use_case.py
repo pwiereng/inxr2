@@ -224,13 +224,23 @@ class TestSearchTextGlobalScope:
             )
         )
         assert f1.id is not None and f2.id is not None
-        await repo.link_file_to_commit(f1.id, commit_id=1)
-        await repo.link_file_to_commit(f2.id, commit_id=2)
+        # Use actual commit IDs from the commit_repo fixture
+        commits_by_repo: dict[int, int] = {}
+        for c in commit_repo._commits.values():
+            assert c.id is not None
+            commits_by_repo[c.repository_id] = c.id
+        await repo.link_file_to_commit(f1.id, commit_id=commits_by_repo[1])
+        await repo.link_file_to_commit(f2.id, commit_id=commits_by_repo[2])
+        # Store file IDs for text_content_repo to reference
+        repo._test_file_ids = (f1.id, f2.id)  # type: ignore[attr-defined]
         return repo
 
     @pytest.fixture
-    async def text_content_repo(self) -> InMemoryTextContentRepository:
+    async def text_content_repo(
+        self, file_repo: InMemoryFileRepository
+    ) -> InMemoryTextContentRepository:
         """Create text content across two repos."""
+        f1_id, f2_id = file_repo._test_file_ids  # type: ignore[attr-defined]
         repo = InMemoryTextContentRepository()
         await repo.save(
             TextContent(
@@ -238,7 +248,7 @@ class TestSearchTextGlobalScope:
                 commit_id=None,
                 source_type="comment",
                 content="TODO: fix parsing logic",
-                source_file_id=1,
+                source_file_id=f1_id,
                 source_line=10,
                 source_end_line=10,
                 language="python",
@@ -251,7 +261,7 @@ class TestSearchTextGlobalScope:
                 commit_id=None,
                 source_type="comment",
                 content="TODO: implement handler",
-                source_file_id=2,
+                source_file_id=f2_id,
                 source_line=20,
                 source_end_line=20,
                 language="rust",

@@ -73,10 +73,15 @@ class TestSearchFilesUseCase:
                 language="typescript",
             )
         )
-        # Link files to commit 1 (abc123)
+        # Link files to the saved commit (abc123)
         assert f1.id is not None and f2.id is not None
-        await repo.link_file_to_commit(f1.id, commit_id=1)
-        await repo.link_file_to_commit(f2.id, commit_id=1)
+        # Use the actual commit ID from the commit_repo fixture
+        saved_commits = list(commit_repo._commits.values())
+        assert len(saved_commits) == 1
+        commit_id = saved_commits[0].id
+        assert commit_id is not None
+        await repo.link_file_to_commit(f1.id, commit_id=commit_id)
+        await repo.link_file_to_commit(f2.id, commit_id=commit_id)
         return repo
 
     @pytest.fixture
@@ -290,8 +295,13 @@ class TestSearchFilesGlobalScope:
             )
         )
         assert f1.id is not None and f2.id is not None
-        await repo.link_file_to_commit(f1.id, commit_id=1)
-        await repo.link_file_to_commit(f2.id, commit_id=2)
+        # Use actual commit IDs from the commit_repo fixture
+        commits_by_repo: dict[int, int] = {}
+        for c in commit_repo._commits.values():
+            assert c.id is not None
+            commits_by_repo[c.repository_id] = c.id
+        await repo.link_file_to_commit(f1.id, commit_id=commits_by_repo[1])
+        await repo.link_file_to_commit(f2.id, commit_id=commits_by_repo[2])
         return repo
 
     @pytest.fixture

@@ -22,6 +22,8 @@ class SearchTextRequest:
         commit_hash: Optional commit hash filter (for time travel)
         source_types: Optional list of source types to filter by
         languages: Optional list of languages to filter by
+        scope: Search scope for cross-repo search (default: "latest").
+            Only applies when repository_id is not provided.
         limit: Maximum results to return (default: 20)
         offset: Pagination offset (default: 0)
     """

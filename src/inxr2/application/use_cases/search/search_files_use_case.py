@@ -20,6 +20,8 @@ class SearchFilesRequest:
         branch: Optional branch name filter
         commit_hash: Optional commit hash filter (for time travel)
         language: Optional programming language filter
+        scope: Search scope for cross-repo search (default: "latest").
+            Only applies when repository_name is not provided.
         limit: Maximum results to return (default: 20)
     """
 

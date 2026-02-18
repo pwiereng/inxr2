@@ -83,9 +83,9 @@ async def search_symbols(
     language: str | None = Query(
         default=None, description="Filter by programming language"
     ),
-    scope: Literal["latest", "all_branches", "all_history"] | None = Query(
-        default=None,
-        description="Search scope when no repository is specified (default: latest)",
+    scope: Literal["latest", "all_branches", "all_history"] = Query(
+        default="latest",
+        description="Search scope when no repository is specified",
     ),
     limit: int = Query(default=50, ge=1, le=200, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
@@ -104,7 +104,7 @@ async def search_symbols(
             offset=offset,
             branch=branch,
             language=language,
-            scope=scope or "latest",
+            scope=scope,
         )
     )
 

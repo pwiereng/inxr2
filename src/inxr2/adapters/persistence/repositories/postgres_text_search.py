@@ -178,7 +178,10 @@ class PostgresTextSearch(TextSearchPort):
             file_scope = TextContentModel.source_file_id.in_(
                 select(head_fids.c.file_id)
             )
-            # For commit messages: commit must be on a default branch
+            # For commit messages: include all commits on default branches
+            # (not just HEAD), since commit messages are inherently tied to
+            # specific commits and filtering to only HEAD would return at
+            # most one commit message per repo.
             default_commits = self._default_branch_commit_ids_subquery()
             commit_scope = TextContentModel.commit_id.in_(
                 select(default_commits.c.commit_id)

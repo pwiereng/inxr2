@@ -2319,7 +2319,10 @@ class FakeTextSearch(TextSearchPort):
             and self._file_repo is not None
         ):
             head_file_ids = self._file_repo._compute_head_file_ids()
-            # Also compute default branch commit IDs for commit messages
+            # Also compute default branch commit IDs for commit messages.
+            # We include ALL commits on the default branch (not just HEAD)
+            # because commit messages are tied to specific commits —
+            # filtering to only HEAD would return at most one per repo.
             if self._file_repo._commit_repo is not None:
                 default_branch_commit_ids = set()
                 for (

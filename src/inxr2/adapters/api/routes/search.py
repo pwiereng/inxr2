@@ -108,9 +108,9 @@ async def search_text(
     languages: list[str] | None = Query(
         None, description="Languages filter (e.g., python, typescript)"
     ),
-    scope: Literal["latest", "all_branches", "all_history"] | None = Query(
-        None,
-        description="Search scope when no repository is specified (default: latest)",
+    scope: Literal["latest", "all_branches", "all_history"] = Query(
+        "latest",
+        description="Search scope when no repository is specified",
     ),
     limit: int = Query(20, ge=1, le=100, description="Results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
@@ -153,7 +153,7 @@ async def search_text(
                 commit_hash=commit,
                 source_types=list(source_types) if source_types else None,
                 languages=languages,
-                scope=scope or "latest",
+                scope=scope,
                 limit=limit,
                 offset=offset,
             )
@@ -202,9 +202,9 @@ async def search_files(
     branch: str | None = Query(None, description="Branch filter"),
     commit_hash: str | None = Query(None, description="Commit hash filter"),
     language: str | None = Query(None, description="Language filter"),
-    scope: Literal["latest", "all_branches", "all_history"] | None = Query(
-        None,
-        description="Search scope when no repository is specified (default: latest)",
+    scope: Literal["latest", "all_branches", "all_history"] = Query(
+        "latest",
+        description="Search scope when no repository is specified",
     ),
     limit: int = Query(20, ge=1, le=100, description="Maximum results"),
 ) -> FileSearchListResponse:
@@ -235,7 +235,7 @@ async def search_files(
                 branch=branch,
                 commit_hash=commit_hash,
                 language=language,
-                scope=scope or "latest",
+                scope=scope,
                 limit=limit,
             )
         )

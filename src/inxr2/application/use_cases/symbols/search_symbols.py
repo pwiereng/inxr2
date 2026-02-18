@@ -40,6 +40,8 @@ class SearchSymbolsRequest:
         exact_match: If True, match exact name instead of partial
         limit: Maximum results to return
         offset: Offset for pagination
+        scope: Search scope for cross-repo search (default: "latest").
+            Only applies when repository_id is not provided.
     """
 
     query: str = ""

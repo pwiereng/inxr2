@@ -4,7 +4,6 @@ from .commit_hash import CommitHash
 from .config import AppConfig, IndexingConfig, RepositoryConfig, ServerConfig
 from .query_mode import QueryMode
 from .reference_type import ReferenceType
-from .search_scope import SearchScope
 from .symbol_kind import SymbolKind
 from .symbol_location import SymbolLocation
 from .text_search_source_type import TextSearchSourceType
@@ -14,7 +13,6 @@ __all__ = [
     "CommitHash",
     "SymbolKind",
     "ReferenceType",
-    "SearchScope",
     "TextSearchSourceType",
     "QueryMode",
     "AppConfig",
