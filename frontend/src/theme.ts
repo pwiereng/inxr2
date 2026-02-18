@@ -142,7 +142,7 @@ export const lightTheme = createTheme({
     divider: '#d0cec8',
     code: {
       background: '#f7f6f2',
-      text: '#0d1117',
+      text: '#141820',
       lineNumber: '#7a7874',
       lineNumberHighlight: '#8a5d00',
       lineNumberHover: '#0d1117',
