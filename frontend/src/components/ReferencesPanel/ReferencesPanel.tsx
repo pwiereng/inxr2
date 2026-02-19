@@ -20,9 +20,9 @@ import CodeIcon from '@mui/icons-material/Code'
 import DataObjectIcon from '@mui/icons-material/DataObject'
 import PushPinIcon from '@mui/icons-material/PushPin'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
+import SearchIcon from '@mui/icons-material/Search'
 
 import { Link } from 'react-router-dom'
-import SearchIcon from '@mui/icons-material/Search'
 
 import { getSymbolReferences, getSymbolsByName, type Reference, type Symbol } from '@/lib/api'
 
