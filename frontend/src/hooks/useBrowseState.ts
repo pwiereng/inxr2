@@ -128,6 +128,7 @@ export interface BrowseActions {
   navigateToFile: (path: string) => void
   navigateToSymbol: (symbol: Symbol) => void
   navigateToLine: (line: number) => void
+  resetToFileTree: () => void
 
   // Diff mode
   enterDiffMode: () => void
@@ -774,6 +775,19 @@ export function useBrowseState(repoNameProp?: string) {
     [navigate, urlState]
   )
 
+  const resetToFileTree = useCallback(() => {
+    if (!urlState.repoName) return
+    resetRefsPanel()
+    setError(null)
+    const params = new URLSearchParams()
+    // Preserve only branch, drawer, and changedOnly
+    if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
+    if (!urlState.drawerOpen) params.set('drawer', '0')
+    if (urlState.changedOnly) params.set('co', '1')
+    const query = params.toString()
+    navigate(`/browse/${encodeURIComponent(urlState.repoName)}${query ? `?${query}` : ''}`)
+  }, [navigate, urlState, resetRefsPanel])
+
   // ========== Diff Mode Actions ==========
 
   const enterDiffMode = useCallback(() => {
@@ -1238,6 +1252,7 @@ export function useBrowseState(repoNameProp?: string) {
     navigateToFile,
     navigateToSymbol,
     navigateToLine,
+    resetToFileTree,
 
     // Diff mode
     enterDiffMode,

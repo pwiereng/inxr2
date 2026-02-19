@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
+  Button,
   Toolbar,
   Typography,
   IconButton,
@@ -23,6 +24,7 @@ import HistoryToggleOffIcon from '@mui/icons-material/HistoryToggleOff'
 import CodeIcon from '@mui/icons-material/Code'
 import DescriptionIcon from '@mui/icons-material/Description'
 import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 
 import { BranchSelector } from '@/components/BranchSelector'
 import { CodeViewer } from '@/components/CodeViewer'
@@ -190,7 +192,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
     )
   }
 
-  if (error) {
+  if (error && !filePath) {
     return (
       <Box sx={{ p: 4 }}>
         <Alert severity="error">{error}</Alert>
@@ -272,6 +274,15 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
               </IconButton>
             </Tooltip>
           </>
+        )}
+
+        {/* Back to file browser (show when file is loaded or file-level error) */}
+        {(fileContent || rawContent || (error && filePath)) && (
+          <Tooltip title="Back to file browser">
+            <IconButton size="small" aria-label="Back to file browser" onClick={actions.resetToFileTree}>
+              <ArrowBackIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         )}
 
         <Box sx={{ flex: 1 }} />
@@ -433,6 +444,29 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
           {fileLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
               <CircularProgress />
+            </Box>
+          ) : error && filePath ? (
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                flex: 1,
+                p: 3,
+                gap: 2,
+              }}
+            >
+              <Alert severity="error" sx={{ maxWidth: 500 }}>
+                {error}
+              </Alert>
+              <Button
+                variant="outlined"
+                startIcon={<ArrowBackIcon />}
+                onClick={actions.resetToFileTree}
+              >
+                Back to file browser
+              </Button>
             </Box>
           ) : rawContent ? (
             <Box sx={{ flex: 1, overflow: 'auto', display: 'flex' }}>
