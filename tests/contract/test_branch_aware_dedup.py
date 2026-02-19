@@ -14,7 +14,7 @@ Scenario:
   - Global dedup picks "feature"'s file version as the latest
   - Queries filtered to "main" should still return results from main's version
 
-These tests are expected to FAIL until the bugs are fixed.
+These tests serve as regression/contract tests to ensure these bugs do not recur.
 """
 
 import pytest

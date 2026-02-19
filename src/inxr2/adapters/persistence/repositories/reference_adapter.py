@@ -68,6 +68,10 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         With content-addressable file versions, references belong to file
         versions. When commit_id is provided, we filter via commit_files
         to show only references from files at that commit.
+
+        Note: ``branch`` scopes the latest-file dedup to that branch's
+        commits. It requires a repository context (inferred from the
+        symbol's references).
         """
         if commit_id is not None:
             # Time travel mode: filter via commit_files junction
@@ -117,6 +121,9 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
 
         With content-addressable file versions, each file version has unique
         references. When commit_id is provided, filters via commit_files.
+
+        Note: ``branch`` scopes the latest-file dedup to that branch's
+        commits. It requires ``repository_id`` to take effect.
         """
         if commit_id is not None:
             # Time travel mode: filter via commit_files junction

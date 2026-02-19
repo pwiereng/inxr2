@@ -141,6 +141,9 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         only the latest file version per (repository_id, path).
         When scope is "latest" and repository_id is None, filters to
         symbols from files at HEAD of each repo's default branch.
+
+        Note: ``branch`` only takes effect when ``repository_id`` is
+        provided, since branch-scoped dedup requires a repository context.
         """
         query = select(SymbolModel).where(SymbolModel.name.ilike(f"%{name}%"))
 

@@ -171,6 +171,9 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         only symbols from the latest version of each file (matching Postgres).
         When scope is "latest" and repository_id is None, filters to symbols
         from files at HEAD of each repo's default branch.
+
+        Note: ``branch`` only takes effect when ``repository_id`` is
+        provided, since branch-scoped dedup requires a repository context.
         """
         # Global scope: filter to HEAD file IDs across all repos
         head_file_ids: set[int] | None = None
