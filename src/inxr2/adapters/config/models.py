@@ -6,7 +6,6 @@ After validation, they are converted to domain value objects.
 
 from pydantic import BaseModel, Field, model_validator
 
-from ...domain.constants import DEFAULT_INDEXING_LANGUAGES
 from ...domain.value_objects import (
     AppConfig,
     IndexingConfig,
@@ -26,10 +25,6 @@ class RepositoryConfigModel(BaseModel):
         default=None, description="Remote URL for cloning (Phase 1.9)"
     )
     branches: list[str] = Field(default=["main"], description="Branches to index")
-    languages: list[str] = Field(
-        default=list(DEFAULT_INDEXING_LANGUAGES),
-        description="Languages to extract symbols from",
-    )
     exclude_patterns: list[str] = Field(
         default_factory=list,
         description="Glob patterns for files/directories to exclude",
@@ -49,7 +44,6 @@ class RepositoryConfigModel(BaseModel):
             path=self.path,
             url=self.url,
             branches=tuple(self.branches),
-            languages=tuple(self.languages),
             exclude_patterns=tuple(self.exclude_patterns),
         )
 

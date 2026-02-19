@@ -15,7 +15,6 @@ from inxr2.adapters.cli.commands.index_command import (
     _detect_language,
     _dict_to_reference,
     _dict_to_symbol,
-    _filter_files_by_language,
     _write_csv_log,
 )
 from inxr2.domain.value_objects import ReferenceType, SymbolKind
@@ -47,61 +46,6 @@ class TestDetectLanguage:
         """Should return None for unknown file types."""
         assert _detect_language("file.xyz") is None
         assert _detect_language("file.unknown123") is None
-
-
-class TestFilterFilesByLanguage:
-    """Tests for _filter_files_by_language utility function."""
-
-    def test_include_all_text_files(self) -> None:
-        """With include_all_text=True, should include all text files."""
-        files = ["main.py", "README.md", "config.yaml", "image.png"]
-        result = _filter_files_by_language(files, ["python"], include_all_text=True)
-        # Should include text files, exclude binary
-        assert "main.py" in result
-        assert "README.md" in result
-        assert "config.yaml" in result
-        assert "image.png" not in result
-
-    def test_filter_by_specific_languages(self) -> None:
-        """With include_all_text=False, should only include specified languages."""
-        files = ["main.py", "app.ts", "README.md", "style.css"]
-        result = _filter_files_by_language(
-            files, ["python", "typescript"], include_all_text=False
-        )
-        assert "main.py" in result
-        assert "app.ts" in result
-        assert "README.md" not in result
-        assert "style.css" not in result
-
-    def test_filter_python_only(self) -> None:
-        """Should filter to Python files only."""
-        files = ["main.py", "test.pyi", "app.ts", "index.js"]
-        result = _filter_files_by_language(files, ["python"], include_all_text=False)
-        assert result == ["main.py", "test.pyi"]
-
-    def test_filter_javascript_only(self) -> None:
-        """Should filter to JavaScript files only."""
-        files = ["main.py", "app.js", "component.jsx", "index.mjs", "config.cjs"]
-        result = _filter_files_by_language(
-            files, ["javascript"], include_all_text=False
-        )
-        assert "app.js" in result
-        assert "component.jsx" in result
-        assert "index.mjs" in result
-        assert "config.cjs" in result
-        assert "main.py" not in result
-
-    def test_empty_files_list(self) -> None:
-        """Should handle empty file list."""
-        result = _filter_files_by_language([], ["python"], include_all_text=True)
-        assert result == []
-
-    def test_unknown_language(self) -> None:
-        """Should handle unknown language gracefully."""
-        files = ["main.py", "app.rs"]
-        result = _filter_files_by_language(files, ["rust"], include_all_text=False)
-        # Rust not in predefined extensions, so nothing matches
-        assert result == []
 
 
 class TestIndexingStats:

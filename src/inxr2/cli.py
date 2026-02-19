@@ -49,7 +49,6 @@ def validate_positive_days(
 def _run_single_repo_index(
     path: Path,
     branch: str | None,
-    languages: str,
     verbose: bool,
     index_func: Callable[..., Any],
     index_type: str,
@@ -63,27 +62,9 @@ def _run_single_repo_index(
         console.print("Please specify a valid git repository path.")
         sys.exit(1)
 
-    # Parse languages
-    from inxr2.adapters.external.treesitter.service import TreeSitterService
-
-    lang_list = [lang.strip().lower() for lang in languages.split(",")]
-    supported_languages = set(TreeSitterService.SUPPORTED_LANGUAGES.keys())
-    unsupported = set(lang_list) - supported_languages
-    if unsupported:
-        console.print(
-            f"[yellow]Warning:[/yellow] Unsupported languages skipped: {unsupported}"
-        )
-        lang_list = [lang for lang in lang_list if lang in supported_languages]
-
-    if not lang_list:
-        console.print("[red]Error:[/red] No supported languages specified.")
-        console.print(f"Supported languages: {', '.join(sorted(supported_languages))}")
-        sys.exit(1)
-
     console.print(f"\n[bold blue]INXR2 {index_type} Index[/bold blue]")
     console.print(f"  Repository: {path.absolute()}")
     console.print(f"  Branch: {branch or '(current)'}")
-    console.print(f"  Languages: {', '.join(lang_list)}")
     if days is not None:
         console.print(f"  Date filter: last {days} days")
     console.print()
@@ -92,7 +73,6 @@ def _run_single_repo_index(
         kwargs: dict[str, Any] = {
             "repo_path": path,
             "branch": branch,
-            "languages": lang_list,
             "console": console,
         }
         if days is not None:
@@ -109,7 +89,6 @@ def _run_config_based_index(
     config_path: Path,
     repo_filter: str | None,
     branch_override: str | None,
-    languages_override: str | None,
     verbose: bool,
     index_func: Callable[..., Any],
     index_type: str,
@@ -184,25 +163,6 @@ def _run_config_based_index(
         else:
             branches_to_index = [None]  # Will use current branch
 
-        # Determine languages (override > config)
-        if languages_override:
-            lang_list = [lang.strip().lower() for lang in languages_override.split(",")]
-        else:
-            lang_list = [lang.lower() for lang in repo.languages]
-
-        # Filter to supported languages (from TreeSitterService)
-        from inxr2.adapters.external.treesitter.service import TreeSitterService
-
-        supported_languages = set(TreeSitterService.SUPPORTED_LANGUAGES.keys())
-        lang_list = [lang for lang in lang_list if lang in supported_languages]
-
-        if not lang_list:
-            console.print(
-                f"[yellow]Skipping[/yellow] [{idx}/{total_repos}] {repo.name}: "
-                "no supported languages"
-            )
-            continue
-
         # Create git service for branch activity checks
         from inxr2.adapters.external.git_service import GitService
 
@@ -272,7 +232,6 @@ def _run_config_based_index(
                 kwargs: dict[str, Any] = {
                     "repo_path": resolved_path,
                     "branch": branch,
-                    "languages": lang_list,
                     "console": console,
                 }
                 if days is not None:
@@ -414,12 +373,6 @@ def main() -> None:
     help="Branch to index (default: from config or current branch)",
 )
 @click.option(
-    "--languages",
-    "-l",
-    default=None,
-    help="Comma-separated list of languages to index (default: from config or python,typescript)",
-)
-@click.option(
     "--days",
     "-d",
     type=int,
@@ -457,7 +410,6 @@ def index(
     config: Path | None,
     repo: str | None,
     branch: str | None,
-    languages: str | None,
     days: int | None,
     verbose: bool,
     log_level: str,
@@ -524,7 +476,6 @@ def index(
             config_path=config,
             repo_filter=repo,
             branch_override=branch,
-            languages_override=languages,
             verbose=verbose,
             index_func=run_full_index,
             index_type="Indexing",
@@ -536,7 +487,6 @@ def index(
         _run_single_repo_index(
             path=path,
             branch=branch,
-            languages=languages or "python,typescript",
             verbose=verbose,
             index_func=run_full_index,
             index_type="Indexing",
@@ -657,13 +607,11 @@ def config_show(config_path: Path) -> None:
     repo_table.add_column("Name", style="cyan")
     repo_table.add_column("Path/URL")
     repo_table.add_column("Branches")
-    repo_table.add_column("Languages")
 
     for repo in app_config.repositories:
         location = repo.path or repo.url or "(none)"
         branches = ", ".join(repo.branches)
-        languages = ", ".join(repo.languages)
-        repo_table.add_row(repo.name, location, branches, languages)
+        repo_table.add_row(repo.name, location, branches)
 
     console.print(repo_table)
     console.print()

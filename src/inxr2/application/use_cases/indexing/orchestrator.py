@@ -51,7 +51,6 @@ class IndexRepositoryRequest:
     Attributes:
         repository_path: Path to the git repository
         branch: Branch to index (None = current branch)
-        languages: List of programming languages to parse
         days: Index commits from last N days (None = forward fill only)
         base_branch: Base branch to compare against for feature branch indexing.
                      When set, only commits unique to this branch (after merge-base)
@@ -60,7 +59,6 @@ class IndexRepositoryRequest:
 
     repository_path: Path
     branch: str | None = None
-    languages: list[str] | None = None
     days: int | None = None
     base_branch: str | None = None
 

@@ -73,7 +73,6 @@ class TestIndexingOrchestratorPort:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python", "typescript"],
         )
 
         # Act
@@ -103,7 +102,6 @@ class TestIndexingOrchestratorPort:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="develop",
-            languages=["java"],
             days=30,
         )
 
@@ -123,7 +121,6 @@ class TestIndexingOrchestratorPort:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
             days=30,
         )
 
@@ -175,7 +172,6 @@ class TestIndexingOrchestratorPort:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act
@@ -196,7 +192,6 @@ class TestIndexingOrchestratorPort:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act
@@ -228,7 +223,6 @@ class TestIndexingOrchestratorPort:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/polyglot-repo"),
             branch="main",
-            languages=["python", "typescript", "java", "c"],
         )
 
         # Act

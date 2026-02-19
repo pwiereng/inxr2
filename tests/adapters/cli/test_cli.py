@@ -57,7 +57,6 @@ class TestIndexCommands:
         assert result.exit_code == 0
         assert "--path" in result.output
         assert "--branch" in result.output
-        assert "--languages" in result.output
         assert "--verbose" in result.output
 
     def test_index_status_help(self, runner: CliRunner) -> None:
@@ -246,8 +245,6 @@ repositories:
     branches:
       - main
       - old-branch
-    languages:
-      - python
 
 indexing:
   max_commit_history: 100
@@ -377,8 +374,6 @@ repositories:
     path: {temp_git_repo_primary_old}
     branches:
       - main
-    languages:
-      - python
 
 indexing:
   max_commit_history: 100
