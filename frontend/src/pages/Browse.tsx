@@ -279,7 +279,11 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
         {/* Back to file browser (show when file is loaded or file-level error) */}
         {(fileContent || rawContent || (error && filePath)) && (
           <Tooltip title="Back to file browser">
-            <IconButton size="small" aria-label="Back to file browser" onClick={actions.resetToFileTree}>
+            <IconButton
+              size="small"
+              aria-label="Back to file browser"
+              onClick={actions.resetToFileTree}
+            >
               <ArrowBackIcon fontSize="small" />
             </IconButton>
           </Tooltip>
