@@ -396,6 +396,7 @@ def get_search_text_use_case(
     repository_adapter: RepositoryAdapter,
     commit_adapter: CommitAdapter,
     file_adapter: FileAdapter,
+    reference_adapter: ReferenceAdapter,
 ) -> SearchTextUseCase:
     """Provide SearchTextUseCase with dependencies."""
     return SearchTextUseCase(
@@ -403,6 +404,7 @@ def get_search_text_use_case(
         repository_repo=repository_adapter,
         commit_repo=commit_adapter,
         file_repo=file_adapter,
+        reference_repo=reference_adapter,
     )
 
 

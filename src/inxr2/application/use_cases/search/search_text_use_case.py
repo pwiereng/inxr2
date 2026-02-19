@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from ...ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
+    ReferenceRepositoryPort,
     RepositoryPort,
 )
 from ...ports.services import TextSearchPort, TextSearchQuery
@@ -114,6 +115,7 @@ class SearchTextUseCase:
         repository_repo: RepositoryPort,
         commit_repo: CommitRepositoryPort,
         file_repo: FileRepositoryPort,
+        reference_repo: ReferenceRepositoryPort | None = None,
     ):
         """Initialize use case.
 
@@ -122,11 +124,13 @@ class SearchTextUseCase:
             repository_repo: Repository repository for fetching repository info
             commit_repo: Commit repository for fetching commit info
             file_repo: File repository for fetching file info
+            reference_repo: Reference repository for searching references (optional)
         """
         self._text_search = text_search
         self._repository_repo = repository_repo
         self._commit_repo = commit_repo
         self._file_repo = file_repo
+        self._reference_repo = reference_repo
 
     async def execute(self, request: SearchTextRequest) -> SearchTextResponse:
         """Execute text search.
@@ -159,110 +163,195 @@ class SearchTextUseCase:
                     offset=request.offset,
                 )
 
-        # Build search query
-        search_query = TextSearchQuery(
-            query=request.query,
-            mode=request.mode,
-            repository_id=request.repository_id,
-            branch=request.branch,
-            commit_id=commit_id,
-            source_types=request.source_types,
-            languages=request.languages,
-            scope=request.scope if request.repository_id is None else None,
-            limit=request.limit,
-            offset=request.offset,
-        )
+        # Separate "reference" from text source types
+        has_reference = False
+        text_source_types = request.source_types
+        if request.source_types and "reference" in request.source_types:
+            has_reference = True
+            text_source_types = [st for st in request.source_types if st != "reference"]
+            if not text_source_types:
+                text_source_types = None
 
-        # Execute search
-        results, total = await self._text_search.search(search_query)
+        # Determine if we need to run text search
+        reference_only = has_reference and text_source_types is None
+        run_text_search = not reference_only
 
-        # Collect unique IDs for bulk fetching
-        repo_ids = {r.text_content.repository_id for r in results}
-        file_ids = {
-            r.text_content.source_file_id
-            for r in results
-            if r.text_content.source_file_id is not None
-        }
-        commit_ids = {
-            r.text_content.commit_id
-            for r in results
-            if r.text_content.commit_id is not None
-        }
+        text_results = []
+        text_total = 0
 
-        # Bulk fetch repositories, files, and commits (single query each)
-        repositories = await self._repository_repo.find_by_ids(list(repo_ids))
-        repo_map = {r.id: r.name for r in repositories if r.id is not None}
-
-        files = await self._file_repo.find_by_ids(list(file_ids))
-        # files is already a dict[int, File]
-
-        commits = await self._commit_repo.find_by_ids(list(commit_ids))
-        commit_map = {c.id: c for c in commits if c.id is not None}
-
-        # Bulk fetch branches for all commits
-        branches_map = await self._commit_repo.get_branches_for_commits(
-            list(commit_ids)
-        )
-
-        # Hydrate results with repository, file, and commit info
-        enriched_results = []
-        for result in results:
-            text_content = result.text_content
-
-            # Get repository name from bulk-fetched data
-            repository_name = repo_map.get(text_content.repository_id, "unknown")
-
-            # Get file path from bulk-fetched data
-            file_path = None
-            if text_content.source_file_id:
-                file = files.get(text_content.source_file_id)
-                if file:
-                    file_path = file.path
-
-            # Get commit hash from bulk-fetched data
-            commit = (
-                commit_map.get(text_content.commit_id)
-                if text_content.commit_id is not None
-                else None
+        if run_text_search:
+            # Build search query
+            search_query = TextSearchQuery(
+                query=request.query,
+                mode=request.mode,
+                repository_id=request.repository_id,
+                branch=request.branch,
+                commit_id=commit_id,
+                source_types=text_source_types,
+                languages=request.languages,
+                scope=request.scope if request.repository_id is None else None,
+                limit=request.limit,
+                offset=request.offset,
             )
-            commit_hash = commit.commit_hash.value if commit else None
 
-            # Get branch from bulk-fetched data
-            # Note: A commit can be on multiple branches, we'll take the first one
-            branch = None
-            branches = (
-                branches_map.get(text_content.commit_id, [])
-                if text_content.commit_id is not None
-                else []
+            # Execute search
+            raw_results, text_total = await self._text_search.search(search_query)
+
+            # Collect unique IDs for bulk fetching
+            repo_ids = {r.text_content.repository_id for r in raw_results}
+            file_ids = {
+                r.text_content.source_file_id
+                for r in raw_results
+                if r.text_content.source_file_id is not None
+            }
+            commit_ids = {
+                r.text_content.commit_id
+                for r in raw_results
+                if r.text_content.commit_id is not None
+            }
+
+            # Bulk fetch repositories, files, and commits (single query each)
+            repositories = await self._repository_repo.find_by_ids(list(repo_ids))
+            repo_map = {r.id: r.name for r in repositories if r.id is not None}
+
+            files = await self._file_repo.find_by_ids(list(file_ids))
+
+            commits = await self._commit_repo.find_by_ids(list(commit_ids))
+            commit_map = {c.id: c for c in commits if c.id is not None}
+
+            # Bulk fetch branches for all commits
+            branches_map = await self._commit_repo.get_branches_for_commits(
+                list(commit_ids)
             )
-            if branches:
-                branch = branches[0]
 
-            # For file-derived content (commit_id=None), use request branch as fallback
-            if branch is None and request.branch:
-                branch = request.branch
+            # Hydrate results with repository, file, and commit info
+            for result in raw_results:
+                text_content = result.text_content
 
-            enriched_results.append(
-                SearchTextResultItem(
-                    id=text_content.id or 0,
-                    repository_id=text_content.repository_id,
-                    repository_name=repository_name,
-                    file_path=file_path,
-                    source_line=text_content.source_line,
-                    source_end_line=text_content.source_end_line,
-                    source_type=text_content.source_type,
-                    content=text_content.content,
-                    content_type=text_content.content_type,
-                    language=text_content.language,
-                    commit_hash=commit_hash,
-                    branch=branch,
-                    rank=result.rank,
-                    headline=result.headline,
+                repository_name = repo_map.get(text_content.repository_id, "unknown")
+
+                file_path = None
+                if text_content.source_file_id:
+                    file = files.get(text_content.source_file_id)
+                    if file:
+                        file_path = file.path
+
+                commit = (
+                    commit_map.get(text_content.commit_id)
+                    if text_content.commit_id is not None
+                    else None
                 )
-            )
+                commit_hash = commit.commit_hash.value if commit else None
+
+                branch = None
+                branches = (
+                    branches_map.get(text_content.commit_id, [])
+                    if text_content.commit_id is not None
+                    else []
+                )
+                if branches:
+                    branch = branches[0]
+
+                if branch is None and request.branch:
+                    branch = request.branch
+
+                text_results.append(
+                    SearchTextResultItem(
+                        id=text_content.id or 0,
+                        repository_id=text_content.repository_id,
+                        repository_name=repository_name,
+                        file_path=file_path,
+                        source_line=text_content.source_line,
+                        source_end_line=text_content.source_end_line,
+                        source_type=text_content.source_type,
+                        content=text_content.content,
+                        content_type=text_content.content_type,
+                        language=text_content.language,
+                        commit_hash=commit_hash,
+                        branch=branch,
+                        rank=result.rank,
+                        headline=result.headline,
+                    )
+                )
+
+        # Reference search
+        ref_results: list[SearchTextResultItem] = []
+        ref_total = 0
+
+        if has_reference and self._reference_repo is not None:
+            # Reference-only: use request pagination directly
+            # Mixed: only fetch on first page (offset=0) as supplementary results
+            if reference_only:
+                ref_limit = request.limit
+                ref_offset = request.offset
+            else:
+                ref_limit = request.limit
+                ref_offset = 0
+
+            if reference_only or request.offset == 0:
+                scope = request.scope if request.repository_id is None else None
+                refs, ref_total = await self._reference_repo.search_by_text(
+                    query=request.query,
+                    repository_id=request.repository_id,
+                    branch=request.branch,
+                    scope=scope,
+                    limit=ref_limit,
+                    offset=ref_offset,
+                )
+
+                if refs:
+                    # Hydrate reference results with file paths and repo names
+                    ref_repo_ids = {r.repository_id for r in refs}
+                    ref_file_ids = {r.source_file_id for r in refs}
+
+                    ref_repositories = await self._repository_repo.find_by_ids(
+                        list(ref_repo_ids)
+                    )
+                    ref_repo_map = {
+                        r.id: r.name for r in ref_repositories if r.id is not None
+                    }
+
+                    ref_files = await self._file_repo.find_by_ids(list(ref_file_ids))
+
+                    for ref in refs:
+                        repository_name = ref_repo_map.get(ref.repository_id, "unknown")
+                        file_path = None
+                        language = None
+                        file = ref_files.get(ref.source_file_id)
+                        if file:
+                            file_path = file.path
+                            language = file.language
+
+                        ref_results.append(
+                            SearchTextResultItem(
+                                id=ref.id or 0,
+                                repository_id=ref.repository_id,
+                                repository_name=repository_name,
+                                file_path=file_path,
+                                source_line=ref.source_line,
+                                source_end_line=ref.source_line,
+                                source_type="reference",
+                                content=ref.reference_text,
+                                content_type=ref.reference_type.value,
+                                language=language,
+                                commit_hash=None,
+                                branch=request.branch,
+                                rank=1.0,
+                                headline=None,
+                            )
+                        )
+
+        # Combine results
+        all_results = ref_results + text_results
+
+        # Pagination total: reference-only uses ref_total, mixed uses text_total
+        if reference_only:
+            total = ref_total
+        else:
+            total = text_total
 
         return SearchTextResponse(
-            results=enriched_results,
+            results=all_results,
             total=total,
             query=request.query,
             mode=request.mode,

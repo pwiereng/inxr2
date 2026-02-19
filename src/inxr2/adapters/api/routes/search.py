@@ -103,8 +103,15 @@ async def search_text(
         None, alias="commit_hash", description="Commit hash filter"
     ),
     source_types: (
-        list[Literal["comment", "docstring", "commit_message", "file_content"]] | None
-    ) = Query(None, description="Source types filter (e.g., comment, docstring)"),
+        list[
+            Literal[
+                "comment", "docstring", "commit_message", "file_content", "reference"
+            ]
+        ]
+        | None
+    ) = Query(
+        None, description="Source types filter (e.g., comment, docstring, reference)"
+    ),
     languages: list[str] | None = Query(
         None, description="Languages filter (e.g., python, typescript)"
     ),

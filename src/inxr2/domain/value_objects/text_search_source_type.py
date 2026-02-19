@@ -18,3 +18,4 @@ class TextSearchSourceType(StrEnum):
     DOCSTRING = "docstring"
     COMMIT_MESSAGE = "commit_message"
     FILE_CONTENT = "file_content"
+    REFERENCE = "reference"
