@@ -48,7 +48,8 @@ type UnifiedResult = { kind: 'text'; data: TextSearchResult } | { kind: 'symbol'
 
 // Source type options
 const SOURCE_TYPES = [
-  { value: 'symbol', label: 'Symbols' },
+  { value: 'symbol', label: 'Definitions' },
+  { value: 'reference', label: 'References' },
   { value: 'comment', label: 'Comments' },
   { value: 'docstring', label: 'Docstrings' },
   { value: 'commit_message', label: 'Commit Messages' },
@@ -70,7 +71,10 @@ const LANGUAGES = [
 ]
 
 const ALL_SOURCE_TYPE_VALUES = SOURCE_TYPES.map((t) => t.value)
-const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => t.value !== 'symbol').map((t) => t.value)
+const NON_TEXT_TYPES = new Set(['symbol', 'reference'])
+const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => !NON_TEXT_TYPES.has(t.value)).map(
+  (t) => t.value
+)
 
 const RESULTS_PER_PAGE = 20
 
@@ -182,10 +186,11 @@ export default function Search() {
           setTotalResults(response.total_count)
           setPaginationTotal(response.total_count)
         } else {
-          // Text/symbol search mode
-          const textSourceTypes = selectedSourceTypes.filter((t) => t !== 'symbol')
+          // Text/symbol/reference search mode
+          const textSourceTypes = selectedSourceTypes.filter((t) => !NON_TEXT_TYPES.has(t))
           const hasSymbol = selectedSourceTypes.includes('symbol')
-          const callText = textSourceTypes.length > 0
+          const hasReference = selectedSourceTypes.includes('reference')
+          const callText = textSourceTypes.length > 0 || hasReference
           const allTextTypesSelected = ALL_TEXT_TYPE_VALUES.every((v) =>
             textSourceTypes.includes(v)
           )
@@ -216,12 +221,21 @@ export default function Search() {
           }
 
           if (callText) {
+            // Build source_types for the API:
+            // - When all standard text types are selected AND no reference, pass undefined (backend default)
+            // - Otherwise pass the explicit list including "reference" if selected
+            let apiSourceTypes: string[] | undefined
+            if (allTextTypesSelected && !hasReference) {
+              apiSourceTypes = undefined
+            } else {
+              apiSourceTypes = [...textSourceTypes, ...(hasReference ? ['reference'] : [])]
+            }
             const params: TextSearchParams = {
               q: query,
               mode: mode as 'keyword' | 'phrase' | 'regex',
               repo: selectedRepoId,
               branch: branchParam || undefined,
-              source_types: allTextTypesSelected ? undefined : textSourceTypes,
+              source_types: apiSourceTypes,
               languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
               scope,
               limit: RESULTS_PER_PAGE,
@@ -460,10 +474,12 @@ export default function Search() {
 
   const getSourceTypeBadgeColor = (
     sourceType: string
-  ): 'default' | 'primary' | 'secondary' | 'info' | 'success' => {
+  ): 'default' | 'primary' | 'secondary' | 'info' | 'success' | 'warning' => {
     switch (sourceType) {
       case 'symbol':
         return 'primary'
+      case 'reference':
+        return 'warning'
       case 'comment':
         return 'info'
       case 'docstring':

@@ -637,6 +637,35 @@ class ReferenceRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def search_by_text(
+        self,
+        query: str,
+        repository_id: int | None = None,
+        branch: str | None = None,
+        scope: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[Reference], int]:
+        """Search references by substring match on reference_text.
+
+        Uses case-insensitive substring matching (ILIKE) to find references
+        whose text contains the query string.
+
+        Args:
+            query: Substring to search for in reference_text
+            repository_id: Filter by repository (optional)
+            branch: Filter by branch name (optional)
+            scope: Search scope for global search (e.g. "latest") when no
+                repository_id is specified. Ignored when repository_id is set.
+            limit: Maximum results to return (default 20)
+            offset: Pagination offset (default 0)
+
+        Returns:
+            Tuple of (matching references, total count) for pagination
+        """
+        pass
+
+    @abstractmethod
     async def count_by_repository(self, repository_id: int) -> int:
         """Count total references in a repository."""
         pass

@@ -290,13 +290,15 @@ describe('Search', () => {
     render(<Search />)
 
     await waitFor(() => {
-      const symbolsCheckbox = screen.getByLabelText('Symbols') as HTMLInputElement
+      const symbolsCheckbox = screen.getByLabelText('Definitions') as HTMLInputElement
+      const referencesCheckbox = screen.getByLabelText('References') as HTMLInputElement
       const commentsCheckbox = screen.getByLabelText('Comments') as HTMLInputElement
       const docstringsCheckbox = screen.getByLabelText('Docstrings') as HTMLInputElement
       const commitMsgsCheckbox = screen.getByLabelText('Commit Messages') as HTMLInputElement
       const fileContentCheckbox = screen.getByLabelText('File Content') as HTMLInputElement
 
       expect(symbolsCheckbox.checked).toBe(true)
+      expect(referencesCheckbox.checked).toBe(true)
       expect(commentsCheckbox.checked).toBe(true)
       expect(docstringsCheckbox.checked).toBe(true)
       expect(commitMsgsCheckbox.checked).toBe(true)
@@ -313,7 +315,8 @@ describe('Search', () => {
       expect(mockSearchText).toHaveBeenCalledWith(
         expect.objectContaining({
           q: 'test',
-          source_types: undefined, // All text types = no filter
+          // With reference selected by default, source_types is sent explicitly
+          source_types: ['comment', 'docstring', 'commit_message', 'file_content', 'reference'],
         })
       )
     })
@@ -336,15 +339,15 @@ describe('Search', () => {
     })
   })
 
-  it('should render Symbols checkbox in source types', async () => {
+  it('should render Definitions checkbox in source types', async () => {
     render(<Search />)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Symbols')).toBeInTheDocument()
+      expect(screen.getByLabelText('Definitions')).toBeInTheDocument()
     })
   })
 
-  it('should call searchSymbols when Symbols source type is selected', async () => {
+  it('should call searchSymbols when Definitions source type is selected', async () => {
     mockSearchSymbols.mockResolvedValue({
       items: [
         {

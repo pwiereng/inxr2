@@ -11,6 +11,7 @@ from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.reference import ReferenceModel
+from ..models.repository import RepositoryModel
 
 
 class PostgresReferenceRepository(ReferenceRepositoryPort):
@@ -208,6 +209,91 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
             )
         inner = inner_query.subquery()
         return select(inner.c.file_id.label("max_id")).where(inner.c.rn == 1).subquery()
+
+    async def search_by_text(
+        self,
+        query: str,
+        repository_id: int | None = None,
+        branch: str | None = None,
+        scope: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[Reference], int]:
+        """Search references by substring match on reference_text."""
+        base_query = select(ReferenceModel).where(
+            ReferenceModel.reference_text.ilike(f"%{query}%")
+        )
+
+        if repository_id is not None:
+            base_query = base_query.where(ReferenceModel.repository_id == repository_id)
+            # Scope to latest files for this repo/branch
+            latest_sq = self._latest_file_ids_subquery(repository_id, branch=branch)
+            base_query = base_query.where(
+                ReferenceModel.source_file_id.in_(select(latest_sq.c.max_id))
+            )
+        elif scope == "latest":
+            # Global scope: filter to HEAD files across all repos
+            head_fids = self._head_file_ids_subquery()
+            base_query = base_query.where(
+                ReferenceModel.source_file_id.in_(select(head_fids.c.file_id))
+            )
+
+        # Get total count
+        count_query = select(func.count()).select_from(base_query.subquery())
+        count_result = await self.session.execute(count_query)
+        total = count_result.scalar_one()
+
+        # Fetch paginated results
+        results_query = (
+            base_query.order_by(
+                ReferenceModel.repository_id,
+                ReferenceModel.source_file_id,
+                ReferenceModel.source_line,
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+
+        result = await self.session.execute(results_query)
+        models = result.scalars().all()
+        return [self.mapper.to_domain(model) for model in models], total
+
+    def _head_file_ids_subquery(self) -> Subquery:
+        """File IDs at HEAD of each repo's default branch.
+
+        Replicates the pattern from PostgresTextSearch for global scope filtering.
+        """
+        # Step 1: HEAD commit per repo (latest commit on default branch)
+        inner = (
+            select(
+                RepositoryModel.id.label("repo_id"),
+                BranchCommitModel.commit_id.label("commit_id"),
+                func.row_number()
+                .over(
+                    partition_by=RepositoryModel.id,
+                    order_by=[
+                        CommitModel.commit_date.desc(),
+                        CommitModel.id.desc(),
+                    ],
+                )
+                .label("rn"),
+            )
+            .join(
+                BranchCommitModel,
+                (BranchCommitModel.repository_id == RepositoryModel.id)
+                & (BranchCommitModel.branch == RepositoryModel.default_branch),
+            )
+            .join(CommitModel, CommitModel.id == BranchCommitModel.commit_id)
+            .subquery()
+        )
+        head_commits = select(inner.c.commit_id).where(inner.c.rn == 1).subquery()
+
+        # Step 2: File IDs at those HEAD commits
+        return (
+            select(CommitFileModel.file_id.label("file_id"))
+            .where(CommitFileModel.commit_id.in_(select(head_commits.c.commit_id)))
+            .subquery()
+        )
 
     async def list_by_file(self, file_id: int) -> list[Reference]:
         """List all references in a file."""

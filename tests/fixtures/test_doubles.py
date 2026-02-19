@@ -1376,6 +1376,35 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
         return refs[:limit]
 
+    async def search_by_text(
+        self,
+        query: str,
+        repository_id: int | None = None,
+        branch: str | None = None,
+        scope: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[Reference], int]:
+        """Search references by substring match on reference_text."""
+        refs = [
+            r
+            for r in self._references.values()
+            if query.lower() in r.reference_text.lower()
+        ]
+
+        if repository_id is not None:
+            refs = [r for r in refs if r.repository_id == repository_id]
+            # Scope to latest file versions
+            if self._file_repo is not None:
+                latest_ids = self._file_repo._compute_latest_file_ids(
+                    repository_id, branch=branch
+                )
+                refs = [r for r in refs if r.source_file_id in latest_ids]
+
+        refs.sort(key=lambda r: (r.repository_id, r.source_file_id, r.source_line))
+        total = len(refs)
+        return refs[offset : offset + limit], total
+
     async def count_by_repository(self, repository_id: int) -> int:
         """Count references for a repository."""
         return len(
