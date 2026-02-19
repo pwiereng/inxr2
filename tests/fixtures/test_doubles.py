@@ -171,33 +171,22 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         only symbols from the latest version of each file (matching Postgres).
         When scope is "latest" and repository_id is None, filters to symbols
         from files at HEAD of each repo's default branch.
+
+        Note: ``branch`` only takes effect when ``repository_id`` is
+        provided, since branch-scoped dedup requires a repository context.
         """
         # Global scope: filter to HEAD file IDs across all repos
         head_file_ids: set[int] | None = None
         if repository_id is None and scope == "latest" and self._file_repo is not None:
             head_file_ids = self._file_repo._compute_head_file_ids()
 
-        # Compute latest file IDs for filtering (matches Postgres behavior)
+        # Compute latest file IDs for filtering (matches Postgres behavior).
+        # When branch is set, dedup is scoped to that branch.
         latest_file_ids: set[int] | None = None
         if repository_id is not None and self._file_repo is not None:
-            latest_file_ids = self._file_repo._compute_latest_file_ids(repository_id)
-
-        # Compute branch file IDs if branch filter is set
-        branch_file_ids: set[int] | None = None
-        if branch is not None and self._file_repo is not None:
-            commit_repo = getattr(self._file_repo, "_commit_repo", None)
-            if commit_repo is not None:
-                branch_commit_ids: set[int] = set()
-                for (repo_id, b, cid), _ in commit_repo._branch_commits.items():
-                    if b == branch and (
-                        repository_id is None or repo_id == repository_id
-                    ):
-                        branch_commit_ids.add(cid)
-                branch_file_ids = {
-                    fid
-                    for cid, fid in self._file_repo._commit_files
-                    if cid in branch_commit_ids
-                }
+            latest_file_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=branch
+            )
 
         # Compute language file IDs if language filter is set
         language_file_ids: set[int] | None = None
@@ -220,11 +209,6 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 if (
                     latest_file_ids is not None
                     and symbol.file_id not in latest_file_ids
-                ):
-                    continue
-                if (
-                    branch_file_ids is not None
-                    and symbol.file_id not in branch_file_ids
                 ):
                     continue
                 if (
@@ -763,17 +747,33 @@ class InMemoryFileRepository(FileRepositoryPort):
             result[fid] = commit_ids
         return result
 
-    def _compute_latest_file_ids(self, repository_id: int) -> set[int]:
+    def _compute_latest_file_ids(
+        self, repository_id: int, branch: str | None = None
+    ) -> set[int]:
         """Compute the latest file IDs for a repository.
 
         Returns the latest version of each unique (repository_id, path) pair,
         determined by the newest commit date (not file ID). This handles
         HEAD-first indexing where newer commits may have lower file IDs.
+
+        When branch is provided, only considers files from commits on that
+        branch, so "latest" is scoped to the branch rather than global.
         """
+        # When branch is set, restrict to commit_files from branch commits
+        branch_commit_ids: set[int] | None = None
+        if branch is not None and self._commit_repo is not None:
+            branch_commit_ids = set()
+            for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
+                if repo_id == repository_id and b == branch:
+                    branch_commit_ids.add(cid)
+
         # Build file_id → max commit date mapping
         file_max_date: dict[int, tuple] = {}  # file_id → (commit_date, commit_id)
         if self._commit_repo is not None:
             for cid, fid in self._commit_files:
+                # Skip commits not on the requested branch
+                if branch_commit_ids is not None and cid not in branch_commit_ids:
+                    continue
                 commit = self._commit_repo._commits.get(cid)
                 if commit is not None and commit.commit_date is not None:
                     existing = file_max_date.get(fid)
@@ -796,6 +796,11 @@ class InMemoryFileRepository(FileRepositoryPort):
 
         if latest_by_path:
             return {fid for fid, _ in latest_by_path.values()}
+
+        # When branch is specified but no files found, return empty set
+        # (don't fall back to all files — the branch simply has no files)
+        if branch is not None:
+            return set()
 
         # Fallback: return all file_ids for this repository
         return {
@@ -1316,38 +1321,14 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 fid for cid, fid in self._file_repo._commit_files if cid == commit_id
             }
             refs = [r for r in refs if r.source_file_id in commit_file_ids]
-        elif (
-            branch is not None
-            and self._commit_repo is not None
-            and self._file_repo is not None
-        ):
-            # Get commit IDs on this branch
-            branch_commit_ids: set[int] = set()
-            # Infer repository_id from first ref's file
-            for ref in refs:
-                file = self._file_repo._files.get(ref.source_file_id)
-                if file is not None:
-                    for (
-                        repo_id,
-                        b,
-                        cid,
-                    ), _ in self._commit_repo._branch_commits.items():
-                        if repo_id == file.repository_id and b == branch:
-                            branch_commit_ids.add(cid)
-                    break
-
-            # Get file_ids linked to branch commits
-            branch_file_ids = {
-                fid
-                for cid, fid in self._file_repo._commit_files
-                if cid in branch_commit_ids
-            }
-            refs = [r for r in refs if r.source_file_id in branch_file_ids]
         elif commit_id is None and self._file_repo is not None:
-            # Default mode: filter to latest file versions (matches Postgres)
+            # Default mode: filter to latest file versions (matches Postgres).
+            # When branch is set, dedup is scoped to that branch.
             inferred_repo_id = self._get_repo_id_from_refs(refs)
             if inferred_repo_id is not None:
-                latest_ids = self._file_repo._compute_latest_file_ids(inferred_repo_id)
+                latest_ids = self._file_repo._compute_latest_file_ids(
+                    inferred_repo_id, branch=branch
+                )
                 refs = [r for r in refs if r.source_file_id in latest_ids]
 
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
@@ -1384,27 +1365,12 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 fid for cid, fid in self._file_repo._commit_files if cid == commit_id
             }
             refs = [r for r in refs if r.source_file_id in commit_file_ids]
-        elif (
-            branch is not None
-            and self._commit_repo is not None
-            and self._file_repo is not None
-        ):
-            # Get commit IDs on this branch
-            branch_commit_ids: set[int] = set()
-            for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
-                if repo_id == repository_id and b == branch:
-                    branch_commit_ids.add(cid)
-
-            # Get file_ids linked to branch commits
-            branch_file_ids = {
-                fid
-                for cid, fid in self._file_repo._commit_files
-                if cid in branch_commit_ids
-            }
-            refs = [r for r in refs if r.source_file_id in branch_file_ids]
         elif commit_id is None and self._file_repo is not None:
-            # Default mode: filter to latest file versions (matches Postgres)
-            latest_ids = self._file_repo._compute_latest_file_ids(repository_id)
+            # Default mode: filter to latest file versions (matches Postgres).
+            # When branch is set, dedup is scoped to that branch.
+            latest_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=branch
+            )
             refs = [r for r in refs if r.source_file_id in latest_ids]
 
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
