@@ -22,6 +22,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import HistoryToggleOffIcon from '@mui/icons-material/HistoryToggleOff'
 import CodeIcon from '@mui/icons-material/Code'
 import DescriptionIcon from '@mui/icons-material/Description'
+import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop'
 
 import { BranchSelector } from '@/components/BranchSelector'
 import { CodeViewer } from '@/components/CodeViewer'
@@ -265,6 +266,11 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
             <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
               {fileContent.line_count} lines
             </Typography>
+            <Tooltip title="Jump to top of file">
+              <IconButton size="small" onClick={() => actions.navigateToLine(1)}>
+                <VerticalAlignTopIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </>
         )}
 
