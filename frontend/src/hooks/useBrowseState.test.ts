@@ -1505,6 +1505,93 @@ describe('useBrowseState', () => {
     })
   })
 
+  describe('resetToFileTree action', () => {
+    it('should navigate to repo root preserving branch, drawer, and changedOnly', async () => {
+      mockSearchParams = new URLSearchParams(
+        'branch=feature&drawer=0&co=1&commit=abc123&line=42&refs=1&q=MyClass'
+      )
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.resetToFileTree()
+      })
+
+      expect(mockNavigate).toHaveBeenCalled()
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      // Should navigate to repo root (no file path)
+      expect(navigatedUrl).toMatch(/^\/browse\/test-repo\?/)
+      expect(navigatedUrl).not.toContain('src/main.py')
+      // Should preserve branch, drawer, changedOnly
+      expect(navigatedUrl).toContain('branch=feature')
+      expect(navigatedUrl).toContain('drawer=0')
+      expect(navigatedUrl).toContain('co=1')
+      // Should NOT preserve line, commit, diff, refs, search query
+      expect(navigatedUrl).not.toContain('line=')
+      expect(navigatedUrl).not.toContain('commit=')
+      expect(navigatedUrl).not.toContain('refs=')
+      expect(navigatedUrl).not.toContain('q=')
+    })
+
+    it('should clear line, commit, diff, refs, and search params', async () => {
+      mockSearchParams = new URLSearchParams(
+        'commit=abc123&diff=def456&line=10&refs=1&q=Test&tp=r&rp=r&ap=r&diffBranch=other'
+      )
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.resetToFileTree()
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).not.toContain('commit=')
+      expect(navigatedUrl).not.toContain('diff=')
+      expect(navigatedUrl).not.toContain('line=')
+      expect(navigatedUrl).not.toContain('refs=')
+      expect(navigatedUrl).not.toContain('q=')
+      expect(navigatedUrl).not.toContain('tp=')
+      expect(navigatedUrl).not.toContain('rp=')
+      expect(navigatedUrl).not.toContain('ap=')
+      expect(navigatedUrl).not.toContain('diffBranch=')
+    })
+
+    it('should reset refs panel state and navigate without refs params', async () => {
+      mockSearchParams = new URLSearchParams('refs=1&q=TestSymbol')
+      const { result } = await renderBrowseStateHook()
+
+      // Wait for repository to load
+      await vi.waitFor(() => {
+        expect(result.current.dataState.repository).not.toBeNull()
+      })
+
+      act(() => {
+        result.current.actions.resetToFileTree()
+      })
+
+      // Should clear selectedSymbol
+      expect(result.current.refsState.selectedSymbol).toBeNull()
+      // Navigate URL should not contain refs or q params
+      // (Note: in tests, the URL doesn't actually change so the refs restoration
+      // effect may re-set searchByName. In real usage, navigation would change the
+      // URL and refs panel would close. Verify via navigate call.)
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).not.toContain('refs=')
+      expect(navigatedUrl).not.toContain('q=')
+    })
+
+    it('should navigate to repo root with no params when defaults are used', async () => {
+      mockSearchParams = new URLSearchParams('')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.resetToFileTree()
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      // Should navigate to bare repo root with no query string
+      expect(navigatedUrl).toBe('/browse/test-repo')
+    })
+  })
+
   describe('fileChangedInCommit computed state', () => {
     const mockVersions = [
       {
