@@ -57,14 +57,19 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
 
-    def _latest_file_ids_subquery(self, repository_id: int) -> Subquery:
+    def _latest_file_ids_subquery(
+        self, repository_id: int, branch: str | None = None
+    ) -> Subquery:
         """Subquery returning the latest file ID per (repository_id, path).
 
         Uses commit dates via commit_files junction to determine "latest",
         which is correct even for HEAD-first indexing where newer commits
         may have lower file IDs.
+
+        When branch is provided, only considers files from commits on that
+        branch, so "latest" is scoped to the branch rather than global.
         """
-        inner = (
+        inner_query = (
             select(
                 FileModel.id.label("file_id"),
                 func.row_number()
@@ -80,8 +85,15 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
             .join(CommitFileModel, CommitFileModel.file_id == FileModel.id)
             .join(CommitModel, CommitModel.id == CommitFileModel.commit_id)
             .where(FileModel.repository_id == repository_id)
-            .subquery()
         )
+        if branch is not None:
+            inner_query = inner_query.join(
+                BranchCommitModel,
+                (BranchCommitModel.commit_id == CommitFileModel.commit_id)
+                & (BranchCommitModel.repository_id == repository_id)
+                & (BranchCommitModel.branch == branch),
+            )
+        inner = inner_query.subquery()
         return select(inner.c.file_id.label("max_id")).where(inner.c.rn == 1).subquery()
 
     def _head_file_ids_subquery(self) -> Subquery:
@@ -138,28 +150,13 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
             query = query.where(SymbolModel.file_id.in_(select(head_fids.c.file_id)))
         elif repository_id is not None:
             query = query.where(SymbolModel.repository_id == repository_id)
-            # Deduplicate: only symbols from latest file version per path
-            latest_sq = self._latest_file_ids_subquery(repository_id)
+            # Deduplicate: only symbols from latest file version per path.
+            # When branch is set, dedup is scoped to that branch.
+            latest_sq = self._latest_file_ids_subquery(repository_id, branch=branch)
             query = query.where(SymbolModel.file_id.in_(select(latest_sq.c.max_id)))
 
         if kind is not None:
             query = query.where(SymbolModel.kind == kind)
-
-        if branch is not None:
-            # Filter to symbols from files that exist on this branch
-            branch_file_ids = (
-                select(CommitFileModel.file_id)
-                .join(
-                    BranchCommitModel,
-                    BranchCommitModel.commit_id == CommitFileModel.commit_id,
-                )
-                .where(BranchCommitModel.branch == branch)
-            )
-            if repository_id is not None:
-                branch_file_ids = branch_file_ids.where(
-                    BranchCommitModel.repository_id == repository_id
-                )
-            query = query.where(SymbolModel.file_id.in_(branch_file_ids))
 
         if language is not None:
             query = query.where(

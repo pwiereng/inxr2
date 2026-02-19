@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....application.ports.repositories import ReferenceRepositoryPort
 from ....domain.entities import Reference
 from ..mappers import ReferenceMapper
+from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
@@ -90,8 +91,8 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
 
         # Default: get from latest version of each file.
         # Deduplicate by filtering to only the latest file version per path.
-        # Use commit dates (not file IDs) for correct HEAD-first indexing.
-        latest_sq = self._latest_file_ids_subquery()
+        # When branch is set, dedup is scoped to that branch.
+        latest_sq = self._latest_file_ids_subquery(branch=branch)
         result = await self.session.execute(
             select(ReferenceModel)
             .where(
@@ -140,9 +141,9 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
             models = result.scalars().all()
             return [self.mapper.to_domain(model) for model in models]
 
-        # Default: deduplicate by filtering to latest file version per path
-        # Use commit dates (not file IDs) for correct HEAD-first indexing.
-        latest_sq = self._latest_file_ids_subquery(repository_id)
+        # Default: deduplicate by filtering to latest file version per path.
+        # When branch is set, dedup is scoped to that branch.
+        latest_sq = self._latest_file_ids_subquery(repository_id, branch=branch)
         result = await self.session.execute(
             select(ReferenceModel)
             .where(
@@ -156,12 +157,19 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
 
-    def _latest_file_ids_subquery(self, repository_id: int | None = None) -> Subquery:
+    def _latest_file_ids_subquery(
+        self,
+        repository_id: int | None = None,
+        branch: str | None = None,
+    ) -> Subquery:
         """Subquery returning the latest file ID per (repository_id, path).
 
         Uses commit dates via commit_files junction to determine "latest",
         which is correct even for HEAD-first indexing where newer commits
         may have lower file IDs.
+
+        When branch is provided, only considers files from commits on that
+        branch, so "latest" is scoped to the branch rather than global.
         """
         inner_query = (
             select(
@@ -181,6 +189,16 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         )
         if repository_id is not None:
             inner_query = inner_query.where(FileModel.repository_id == repository_id)
+        if branch is not None:
+            join_cond = BranchCommitModel.commit_id == CommitFileModel.commit_id
+            if repository_id is not None:
+                join_cond = join_cond & (
+                    BranchCommitModel.repository_id == repository_id
+                )
+            inner_query = inner_query.join(
+                BranchCommitModel,
+                join_cond & (BranchCommitModel.branch == branch),
+            )
         inner = inner_query.subquery()
         return select(inner.c.file_id.label("max_id")).where(inner.c.rn == 1).subquery()
 
