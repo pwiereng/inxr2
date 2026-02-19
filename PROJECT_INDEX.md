@@ -17,7 +17,7 @@ src/inxr2/
     value_objects/   # SymbolKind, CommitHash, ReferenceType, QueryMode, SymbolLocation, Config
     exceptions/      # DomainException, RepositoryNotFound, SymbolNotFound, CommitNotFound, FileNotFound
     services/        # LanguageDetector (60+ languages by extension)
-    constants.py     # SUPPORTED_LANGUAGES_WITH_PARSERS, DEFAULT_INDEXING_LANGUAGES
+    constants.py     # SUPPORTED_LANGUAGES_WITH_PARSERS
   application/       # Layer 2: Use cases + ports (ABCs)
     ports/
       repositories.py  # 7 repository port ABCs (Repository, Commit, File, Symbol, Reference, IndexStatus, TextContent)

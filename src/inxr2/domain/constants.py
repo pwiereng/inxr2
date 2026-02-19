@@ -14,10 +14,3 @@ SUPPORTED_LANGUAGES_WITH_PARSERS = (
     "java",
     "csharp",
 )
-
-# Default languages to index when not specified in config
-DEFAULT_INDEXING_LANGUAGES = (
-    "python",
-    "typescript",
-    "javascript",
-)

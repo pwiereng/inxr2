@@ -27,10 +27,11 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
    - Minimum 80% test coverage
    - ⚠️ **Test Independence**: Tests MUST be self-contained and NOT depend on:
      - Specific test repositories in `/repos/test-repos/`
+     - Any repositories that exist on the filesystem (e.g., `../test-repos/`, `/repos/`)
      - The actual workspace git history
      - Any external data that could change
    - Use `tmp_path` fixtures and create controlled test data (e.g., temp git repos)
-   - Tests must pass regardless of which repositories are configured
+   - Tests must pass regardless of which repositories are configured or present on disk
    - **TDD Approach**: Follow Test-Driven Development where practical:
      1. Write a failing test first
      2. Implement the minimum code to pass
@@ -772,7 +773,6 @@ inxr2 index --path .
 **Config file (`config.yaml`) defines:**
 - Repository names and paths under `/repos/test-repos/`
 - Branches to index
-- Languages to parse
 
 See `config.yaml` for the current repository configuration.
 

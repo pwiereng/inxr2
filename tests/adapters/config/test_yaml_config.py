@@ -39,8 +39,6 @@ repositories:
     path: {temp_dir}
     branches:
       - main
-    languages:
-      - python
 
 indexing:
   incremental: true
@@ -56,7 +54,6 @@ indexing:
         assert config.repositories[0].name == "test-repo"
         assert config.repositories[0].path == str(temp_dir)
         assert config.repositories[0].branches == ("main",)
-        assert config.repositories[0].languages == ("python",)
         assert config.indexing.incremental is True
         assert config.indexing.max_commit_history == 500
 
@@ -76,11 +73,6 @@ repositories:
 
         # Check defaults
         assert config.repositories[0].branches == ("main",)
-        assert config.repositories[0].languages == (
-            "python",
-            "typescript",
-            "javascript",
-        )
         assert config.indexing.incremental is True
         assert config.indexing.max_commit_history == 1000
         assert config.indexing.batch_size == 100

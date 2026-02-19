@@ -195,7 +195,6 @@ class TestDefaultIndexingOrchestrator:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act
@@ -219,7 +218,6 @@ class TestDefaultIndexingOrchestrator:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
             days=30,  # Include all commits in last 30 days
         )
 
@@ -243,7 +241,6 @@ class TestDefaultIndexingOrchestrator:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act
@@ -266,7 +263,6 @@ class TestDefaultIndexingOrchestrator:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act
@@ -289,7 +285,6 @@ class TestDefaultIndexingOrchestrator:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act
@@ -315,7 +310,6 @@ class TestDefaultIndexingOrchestrator:
         first_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
         response1 = await orchestrator.index_repository(first_request)
         assert response1.commits_indexed == 1  # Just HEAD
@@ -344,7 +338,6 @@ class TestDefaultIndexingOrchestrator:
         second_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
         response2 = await orchestrator.index_repository(second_request)
 
@@ -360,7 +353,6 @@ class TestDefaultIndexingOrchestrator:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
             days=30,
         )
 
@@ -390,7 +382,6 @@ class TestDefaultIndexingOrchestrator:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act
@@ -466,7 +457,6 @@ class TestGitServiceIntegration:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
             days=15,
         )
 
@@ -525,7 +515,6 @@ class TestGitServiceIntegration:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
             days=30,
         )
 
@@ -604,7 +593,6 @@ class TestGitServiceIntegration:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
             days=15,  # No commits in last 15 days
         )
 
@@ -674,7 +662,6 @@ class TestGitServiceIntegration:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act
@@ -745,7 +732,6 @@ class TestGitServiceIntegration:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act - should not raise "can't subtract offset-naive and offset-aware datetimes"
@@ -827,7 +813,6 @@ class TestGitServiceIntegration:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act - should not raise "'dict' object has no attribute 'name'"
@@ -918,7 +903,6 @@ class TestGitServiceIntegration:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["c"],
         )
 
         # Act - should not raise "'source_end_column'" KeyError
@@ -1017,7 +1001,6 @@ class TestGitServiceIntegration:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["c"],
         )
 
         # Act - should not raise "'str' object has no attribute 'value'"
@@ -1074,7 +1057,6 @@ class TestGitServiceIntegration:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # First indexing run — fresh, indexes HEAD only
@@ -1162,7 +1144,6 @@ class TestFullSnapshotIndexing:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
             days=30,
         )
 
@@ -1235,7 +1216,6 @@ class TestFullSnapshotIndexing:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act
@@ -1307,7 +1287,6 @@ class TestBranchCommitsPopulation:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act
@@ -1356,7 +1335,6 @@ class TestBranchCommitsPopulation:
         first_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
         await orchestrator.index_repository(first_request)
 
@@ -1364,7 +1342,6 @@ class TestBranchCommitsPopulation:
         second_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
         await orchestrator.index_repository(second_request)
 
@@ -1406,7 +1383,6 @@ class TestBranchCommitsPopulation:
         main_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
         await orchestrator.index_repository(main_request)
 
@@ -1414,7 +1390,6 @@ class TestBranchCommitsPopulation:
         feature_request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="feature",
-            languages=["python"],
         )
         await orchestrator.index_repository(feature_request)
 
@@ -1461,7 +1436,6 @@ class TestBranchIndexingOptimization:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="feature",
-            languages=["python"],
             base_branch="main",  # Different from branch
             days=30,
         )
@@ -1507,7 +1481,6 @@ class TestBranchIndexingOptimization:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
             base_branch="main",  # Same as branch
             days=30,
         )
@@ -1551,7 +1524,6 @@ class TestBranchIndexingOptimization:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="feature",
-            languages=["python"],
             base_branch=None,  # No base branch
             days=30,
         )
@@ -1597,7 +1569,6 @@ class TestBranchIndexingOptimization:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="feature",
-            languages=["python"],
             base_branch="main",
             days=30,
         )
@@ -1636,7 +1607,6 @@ class TestBranchIndexingOptimization:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
             days=30,  # Index all commits to get more content
         )
 
@@ -1683,7 +1653,6 @@ class TestBranchIndexingOptimization:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
             days=30,  # Index all commits to get both commit messages
         )
 
@@ -1735,7 +1704,6 @@ class TestBranchIndexingOptimization:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
             days=30,  # Index all commits
         )
 
@@ -1822,7 +1790,6 @@ class TestBranchIndexingOptimization:
         request = IndexRepositoryRequest(
             repository_path=Path("/repos/test-repo"),
             branch="main",
-            languages=["python"],
         )
 
         # Act

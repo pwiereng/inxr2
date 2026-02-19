@@ -19,10 +19,6 @@ repositories:
     path: "/repos/my-project"             # /repos is mounted from INXR2_REPOS_DIR
     branches:
       - main
-    languages:
-      - python
-      - typescript
-      - javascript
     exclude_patterns:
       - "**/node_modules/**"
       - "**/__pycache__/**"
