@@ -444,6 +444,8 @@ class TextSearchQuery:
         commit_id: Optional commit filter (for time travel)
         source_types: Optional list of source types to filter by
         languages: Optional list of languages to filter by
+        scope: Search scope for cross-repo search (e.g. "latest").
+            Only applies when repository_id is not provided.
         limit: Maximum results to return (default: 20)
         offset: Pagination offset (default: 0)
     """
@@ -455,6 +457,7 @@ class TextSearchQuery:
     commit_id: int | None = None
     source_types: list[str] | None = None
     languages: list[str] | None = None
+    scope: str | None = None
     limit: int = 20
     offset: int = 0
 

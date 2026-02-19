@@ -22,6 +22,8 @@ class SearchTextRequest:
         commit_hash: Optional commit hash filter (for time travel)
         source_types: Optional list of source types to filter by
         languages: Optional list of languages to filter by
+        scope: Search scope for cross-repo search (default: "latest").
+            Only applies when repository_id is not provided.
         limit: Maximum results to return (default: 20)
         offset: Pagination offset (default: 0)
     """
@@ -33,6 +35,7 @@ class SearchTextRequest:
     commit_hash: str | None = None
     source_types: list[str] | None = None
     languages: list[str] | None = None
+    scope: str = "latest"
     limit: int = 20
     offset: int = 0
 
@@ -165,6 +168,7 @@ class SearchTextUseCase:
             commit_id=commit_id,
             source_types=request.source_types,
             languages=request.languages,
+            scope=request.scope if request.repository_id is None else None,
             limit=request.limit,
             offset=request.offset,
         )

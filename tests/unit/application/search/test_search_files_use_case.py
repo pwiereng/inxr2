@@ -73,10 +73,15 @@ class TestSearchFilesUseCase:
                 language="typescript",
             )
         )
-        # Link files to commit 1 (abc123)
+        # Link files to the saved commit (abc123)
         assert f1.id is not None and f2.id is not None
-        await repo.link_file_to_commit(f1.id, commit_id=1)
-        await repo.link_file_to_commit(f2.id, commit_id=1)
+        # Use the actual commit ID from the commit_repo fixture
+        saved_commits = list(commit_repo._commits.values())
+        assert len(saved_commits) == 1
+        commit_id = saved_commits[0].id
+        assert commit_id is not None
+        await repo.link_file_to_commit(f1.id, commit_id=commit_id)
+        await repo.link_file_to_commit(f2.id, commit_id=commit_id)
         return repo
 
     @pytest.fixture
@@ -209,3 +214,130 @@ class TestSearchFilesUseCase:
 
         assert response.files[0].name == "utils.py"
         assert response.files[0].path == "src/utils.py"
+
+
+class TestSearchFilesGlobalScope:
+    """Tests for global file search (scope=latest, no repository)."""
+
+    @pytest.fixture
+    def repository_repo(self) -> InMemoryRepositoryRepository:
+        repo = InMemoryRepositoryRepository()
+        repo.add(
+            Repository(
+                id=1,
+                name="repo-a",
+                url="/repos/repo-a",
+                default_branch="main",
+            )
+        )
+        repo.add(
+            Repository(
+                id=2,
+                name="repo-b",
+                url="/repos/repo-b",
+                default_branch="main",
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    async def commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        c1 = await repo.save(
+            Commit(
+                id=None,
+                repository_id=1,
+                commit_hash=CommitHash("aaa111"),
+                author_date=datetime(2024, 1, 1, tzinfo=UTC),
+                commit_date=datetime(2024, 1, 1, tzinfo=UTC),
+            )
+        )
+        assert c1.id is not None
+        await repo.link_commit_to_branch(1, c1.id, "main")
+
+        c2 = await repo.save(
+            Commit(
+                id=None,
+                repository_id=2,
+                commit_hash=CommitHash("bbb222"),
+                author_date=datetime(2024, 1, 2, tzinfo=UTC),
+                commit_date=datetime(2024, 1, 2, tzinfo=UTC),
+            )
+        )
+        assert c2.id is not None
+        await repo.link_commit_to_branch(2, c2.id, "main")
+        return repo
+
+    @pytest.fixture
+    async def file_repo(
+        self,
+        commit_repo: InMemoryCommitRepository,
+        repository_repo: InMemoryRepositoryRepository,
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        repo._repository_repo = repository_repo  # type: ignore[attr-defined]
+        f1 = await repo.save(
+            File(
+                repository_id=1,
+                path="src/utils.py",
+                content_hash="h1",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        f2 = await repo.save(
+            File(
+                repository_id=2,
+                path="src/helpers.rs",
+                content_hash="h2",
+                size_bytes=200,
+                language="rust",
+            )
+        )
+        assert f1.id is not None and f2.id is not None
+        # Use actual commit IDs from the commit_repo fixture
+        commits_by_repo: dict[int, int] = {}
+        for c in commit_repo._commits.values():
+            assert c.id is not None
+            commits_by_repo[c.repository_id] = c.id
+        await repo.link_file_to_commit(f1.id, commit_id=commits_by_repo[1])
+        await repo.link_file_to_commit(f2.id, commit_id=commits_by_repo[2])
+        return repo
+
+    @pytest.fixture
+    def use_case(
+        self,
+        file_repo: InMemoryFileRepository,
+        repository_repo: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> SearchFilesUseCase:
+        return SearchFilesUseCase(
+            file_repo=file_repo,
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_global_file_search_returns_multiple_repos(
+        self, use_case: SearchFilesUseCase
+    ) -> None:
+        """Global file search returns files from multiple repos."""
+        request = SearchFilesRequest(query="src", scope="latest")
+        response = await use_case.execute(request)
+
+        assert response.total_count == 2
+        repo_names = {f.repository_name for f in response.files}
+        assert repo_names == {"repo-a", "repo-b"}
+
+    @pytest.mark.asyncio
+    async def test_branch_without_repo_still_raises_in_non_global_mode(
+        self, use_case: SearchFilesUseCase
+    ) -> None:
+        """branch without repository_name still raises when specified."""
+        request = SearchFilesRequest(query="src", branch="main")
+
+        with pytest.raises(
+            ValueError,
+            match="repository parameter is required when using branch or commit_hash",
+        ):
+            await use_case.execute(request)

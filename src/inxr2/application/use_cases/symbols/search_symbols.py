@@ -40,6 +40,8 @@ class SearchSymbolsRequest:
         exact_match: If True, match exact name instead of partial
         limit: Maximum results to return
         offset: Offset for pagination
+        scope: Search scope for cross-repo search (default: "latest").
+            Only applies when repository_id is not provided.
     """
 
     query: str = ""
@@ -51,6 +53,7 @@ class SearchSymbolsRequest:
     offset: int = 0
     branch: str | None = None
     language: str | None = None
+    scope: str = "latest"
 
 
 @dataclass
@@ -147,6 +150,7 @@ class SearchSymbolsUseCase:
                 limit=request.limit + request.offset,
                 branch=request.branch,
                 language=request.language,
+                scope=request.scope if request.repository_id is None else None,
             )
 
         # Apply offset for pagination

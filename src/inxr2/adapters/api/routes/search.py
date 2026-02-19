@@ -108,6 +108,10 @@ async def search_text(
     languages: list[str] | None = Query(
         None, description="Languages filter (e.g., python, typescript)"
     ),
+    scope: Literal["latest"] = Query(
+        "latest",
+        description="Search scope when no repository is specified",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ) -> SearchTextListResponse:
@@ -127,6 +131,7 @@ async def search_text(
     - commit_hash: Filter by specific commit (time travel)
     - source_types: Filter by source type (comment, docstring, commit_message, file_content)
     - languages: Filter by language (python, typescript, markdown, etc.)
+    - scope: Search scope for global search (latest, all_branches, all_history)
     - limit: Results per page (1-100, default 20)
     - offset: Pagination offset (default 0)
 
@@ -148,6 +153,7 @@ async def search_text(
                 commit_hash=commit,
                 source_types=list(source_types) if source_types else None,
                 languages=languages,
+                scope=scope,
                 limit=limit,
                 offset=offset,
             )
@@ -196,6 +202,10 @@ async def search_files(
     branch: str | None = Query(None, description="Branch filter"),
     commit_hash: str | None = Query(None, description="Commit hash filter"),
     language: str | None = Query(None, description="Language filter"),
+    scope: Literal["latest"] = Query(
+        "latest",
+        description="Search scope when no repository is specified",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Maximum results"),
 ) -> FileSearchListResponse:
     """
@@ -210,6 +220,7 @@ async def search_files(
     - branch: Filter by branch name
     - commit_hash: Filter by specific commit (time travel)
     - language: Filter by programming language
+    - scope: Search scope for global search (latest, all_branches, all_history)
     - limit: Maximum number of results (1-100, default 20)
 
     Returns:
@@ -224,6 +235,7 @@ async def search_files(
                 branch=branch,
                 commit_hash=commit_hash,
                 language=language,
+                scope=scope,
                 limit=limit,
             )
         )

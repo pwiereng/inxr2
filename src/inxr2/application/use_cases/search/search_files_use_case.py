@@ -20,6 +20,8 @@ class SearchFilesRequest:
         branch: Optional branch name filter
         commit_hash: Optional commit hash filter (for time travel)
         language: Optional programming language filter
+        scope: Search scope for cross-repo search (default: "latest").
+            Only applies when repository_name is not provided.
         limit: Maximum results to return (default: 20)
     """
 
@@ -28,6 +30,7 @@ class SearchFilesRequest:
     branch: str | None = None
     commit_hash: str | None = None
     language: str | None = None
+    scope: str = "latest"
     limit: int = 20
 
 
@@ -142,6 +145,7 @@ class SearchFilesUseCase:
             commit_id=commit_id,
             language=request.language,
             limit=request.limit,
+            scope=request.scope if repository_id is None else None,
         )
 
         # Collect unique repo IDs for bulk lookup

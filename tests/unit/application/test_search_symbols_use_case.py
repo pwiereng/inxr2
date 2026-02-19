@@ -273,3 +273,134 @@ class TestSearchSymbolsUseCase:
         paths = {s.file_path for s in result.symbols}
         assert "src/main.py" in paths
         assert "src/utils.py" in paths
+
+
+class TestSearchSymbolsGlobalScope:
+    """Tests for global symbol search (scope=latest, no repository_id)."""
+
+    @pytest.fixture
+    def commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        # Repo 1 commit on main
+        c1 = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("aaa111"),
+            author_date=datetime(2025, 1, 1, 12, 0, 0),
+            commit_date=datetime(2025, 1, 1, 12, 0, 0),
+        )
+        repo._commits[1] = c1
+        repo._branch_commits[(1, "main", 1)] = True
+
+        # Repo 2 commit on main
+        c2 = Commit(
+            id=2,
+            repository_id=2,
+            commit_hash=CommitHash("bbb222"),
+            author_date=datetime(2025, 1, 2, 12, 0, 0),
+            commit_date=datetime(2025, 1, 2, 12, 0, 0),
+        )
+        repo._commits[2] = c2
+        repo._branch_commits[(2, "main", 2)] = True
+        return repo
+
+    @pytest.fixture
+    def file_repo(
+        self, commit_repo: InMemoryCommitRepository
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/app.py",
+                content_hash="h1",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        repo.add(
+            File(
+                id=2,
+                repository_id=2,
+                path="src/lib.rs",
+                content_hash="h2",
+                size_bytes=200,
+                language="rust",
+            )
+        )
+        # Link files to commits
+        repo._commit_files.add((1, 1))
+        repo._commit_files.add((2, 2))
+        return repo
+
+    @pytest.fixture
+    def symbol_repo(
+        self, file_repo: InMemoryFileRepository
+    ) -> InMemorySymbolRepository:
+        repo = InMemorySymbolRepository(file_repo=file_repo)
+        repo.add(
+            Symbol(
+                id=1,
+                repository_id=1,
+                file_id=1,
+                name="parse",
+                qualified_name="parse",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            )
+        )
+        repo.add(
+            Symbol(
+                id=2,
+                repository_id=2,
+                file_id=2,
+                name="parse_input",
+                qualified_name="parse_input",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    def use_case(
+        self,
+        symbol_repo: InMemorySymbolRepository,
+        file_repo: InMemoryFileRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> SearchSymbolsUseCase:
+        return SearchSymbolsUseCase(
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_global_symbol_search_returns_multiple_repos(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """Global symbol search returns symbols from multiple repos."""
+        request = SearchSymbolsRequest(query="parse", scope="latest")
+        result = await use_case.execute(request)
+
+        assert result.total == 2
+        repo_ids = {s.symbol.repository_id for s in result.symbols}
+        assert repo_ids == {1, 2}
+
+    @pytest.mark.asyncio
+    async def test_global_search_scope_ignored_with_repo_id(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """scope is ignored when repository_id is set."""
+        request = SearchSymbolsRequest(query="parse", repository_id=1, scope="latest")
+        result = await use_case.execute(request)
+
+        assert result.total == 1
+        assert result.symbols[0].symbol.repository_id == 1

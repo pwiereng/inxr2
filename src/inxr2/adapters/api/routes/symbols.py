@@ -1,5 +1,7 @@
 """Symbol API endpoints for code browsing."""
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
@@ -81,6 +83,10 @@ async def search_symbols(
     language: str | None = Query(
         default=None, description="Filter by programming language"
     ),
+    scope: Literal["latest"] = Query(
+        default="latest",
+        description="Search scope when no repository is specified",
+    ),
     limit: int = Query(default=50, ge=1, le=200, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ) -> SymbolListResponse:
@@ -98,6 +104,7 @@ async def search_symbols(
             offset=offset,
             branch=branch,
             language=language,
+            scope=scope,
         )
     )
 

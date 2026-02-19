@@ -163,12 +163,20 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         limit: int = 50,
         branch: str | None = None,
         language: str | None = None,
+        scope: str | None = None,
     ) -> list[Symbol]:
         """Search symbols by name with optional filters.
 
         When repository_id is set and file_repo is available, filters to
         only symbols from the latest version of each file (matching Postgres).
+        When scope is "latest" and repository_id is None, filters to symbols
+        from files at HEAD of each repo's default branch.
         """
+        # Global scope: filter to HEAD file IDs across all repos
+        head_file_ids: set[int] | None = None
+        if repository_id is None and scope == "latest" and self._file_repo is not None:
+            head_file_ids = self._file_repo._compute_head_file_ids()
+
         # Compute latest file IDs for filtering (matches Postgres behavior)
         latest_file_ids: set[int] | None = None
         if repository_id is not None and self._file_repo is not None:
@@ -206,6 +214,8 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 if repository_id is not None and symbol.repository_id != repository_id:
                     continue
                 if kind is not None and symbol.kind.value != kind:
+                    continue
+                if head_file_ids is not None and symbol.file_id not in head_file_ids:
                     continue
                 if (
                     latest_file_ids is not None
@@ -655,11 +665,14 @@ class InMemoryFileRepository(FileRepositoryPort):
         commit_id: int | None = None,
         language: str | None = None,
         limit: int = 20,
+        scope: str | None = None,
     ) -> list[File]:
         """Search files by name/path pattern.
 
         When commit_id is set, filters via commit_files junction.
         When commit_id is None, deduplicates by (repository_id, path).
+        When scope is "latest" and repository_id is None, filters to files
+        at HEAD of each repo's default branch.
         """
         query_lower = query.lower()
 
@@ -688,17 +701,23 @@ class InMemoryFileRepository(FileRepositoryPort):
 
             results.append(file)
 
-        # When no commit_id, deduplicate by (repository_id, path) keeping latest
+        # Dedup/scope filtering when no commit_id
         if commit_id is None:
-            latest_by_repo_path: dict[tuple[int | None, str], File] = {}
-            for f in results:
-                key = (f.repository_id, f.path)
-                existing = latest_by_repo_path.get(key)
-                if existing is None or (
-                    f.id is not None and (existing.id is None or f.id > existing.id)
-                ):
-                    latest_by_repo_path[key] = f
-            results = list(latest_by_repo_path.values())
+            if repository_id is None and scope == "latest":
+                # Global search: only files at HEAD of each repo's default branch
+                head_file_ids = self._compute_head_file_ids()
+                results = [f for f in results if f.id in head_file_ids]
+            else:
+                # Deduplicate by (repository_id, path) keeping latest
+                latest_by_repo_path: dict[tuple[int | None, str], File] = {}
+                for f in results:
+                    key = (f.repository_id, f.path)
+                    existing = latest_by_repo_path.get(key)
+                    if existing is None or (
+                        f.id is not None and (existing.id is None or f.id > existing.id)
+                    ):
+                        latest_by_repo_path[key] = f
+                results = list(latest_by_repo_path.values())
 
         # Sort by relevance (exact filename match first, then prefix, then contains)
         def relevance_key(f: File) -> tuple[int, str]:
@@ -784,6 +803,88 @@ class InMemoryFileRepository(FileRepositoryPort):
             for f in self._files.values()
             if f.repository_id == repository_id and f.id is not None
         }
+
+    def _compute_head_file_ids(self) -> set[int]:
+        """Compute file IDs at HEAD of each repo's default branch.
+
+        For global search: finds the latest commit on each repo's default
+        branch and returns file IDs linked to those commits.
+        """
+        if self._commit_repo is None:
+            # No commit repo, can't determine HEAD - return all file IDs
+            return {f.id for f in self._files.values() if f.id is not None}
+
+        # We need repository info to know default branches.
+        # Look up via the commit_repo's repository links.
+        # Build repo_id → default_branch from the repository_repo if available.
+        # For simplicity, we scan branch_commits to find HEAD per repo.
+
+        # Step 1: Find all repo IDs from files
+        repo_ids = {f.repository_id for f in self._files.values() if f.repository_id}
+
+        # Step 2: For each repo, find the default branch and HEAD commit
+        head_commit_ids: set[int] = set()
+        for repo_id in repo_ids:
+            # Find the default branch for this repo
+            # We need to look up from a repository repository, but the file repo
+            # doesn't have one. Instead, look for branch "main" or "master" as common defaults.
+            # However, the proper way is to get the repo's default_branch.
+            # For the test double, we'll look at the repository repo if available
+            # through the commit repo, or fall back to finding the latest commit
+            # on any branch.
+            default_branch = self._get_default_branch_for_repo(repo_id)
+            if default_branch is None:
+                continue
+
+            # Find the latest commit on the default branch for this repo
+            latest_commit_id = None
+            latest_date: tuple[datetime, int] | None = None
+            for (r_id, branch, c_id), _ in self._commit_repo._branch_commits.items():
+                if r_id == repo_id and branch == default_branch:
+                    commit = self._commit_repo._commits.get(c_id)
+                    if commit is not None:
+                        key = (commit.commit_date, c_id)
+                        if latest_date is None or key > latest_date:
+                            latest_date = key
+                            latest_commit_id = c_id
+
+            if latest_commit_id is not None:
+                head_commit_ids.add(latest_commit_id)
+
+        # Step 3: Collect file IDs at those HEAD commits
+        return {fid for cid, fid in self._commit_files if cid in head_commit_ids}
+
+    def _get_default_branch_for_repo(self, repo_id: int) -> str | None:
+        """Get the default branch for a repository.
+
+        Tries to look it up from a repository repository (if accessible),
+        falling back to "main" if the repo exists in branch_commits with "main",
+        then "master".
+        """
+        if self._commit_repo is None:
+            return None
+
+        # Check if we have a _repository_repo attached (set by tests)
+        repository_repo: InMemoryRepositoryRepository | None = getattr(
+            self, "_repository_repo", None
+        )
+        if repository_repo is not None:
+            repo = repository_repo._repositories.get(repo_id)
+            if repo is not None and repo.default_branch:
+                return repo.default_branch
+
+        # Fallback: check what branches exist for this repo
+        branches_for_repo: set[str] = set()
+        for (r_id, branch, _), _ in self._commit_repo._branch_commits.items():
+            if r_id == repo_id:
+                branches_for_repo.add(branch)
+
+        if "main" in branches_for_repo:
+            return "main"
+        if "master" in branches_for_repo:
+            return "master"
+        # Return first available branch
+        return next(iter(branches_for_repo), None)
 
     # Test helper methods
     def add(self, file: File) -> None:
@@ -2148,13 +2249,19 @@ class FakeTextSearch(TextSearchPort):
         r"\([^)]*\*\)\*",  # (x*)*
     ]
 
-    def __init__(self, text_content_repo: InMemoryTextContentRepository):
+    def __init__(
+        self,
+        text_content_repo: InMemoryTextContentRepository,
+        file_repo: "InMemoryFileRepository | None" = None,
+    ):
         """Initialize with a text content repository.
 
         Args:
             text_content_repo: Text content repository to search in
+            file_repo: Optional file repository for global scope filtering
         """
         self._text_content_repo = text_content_repo
+        self._file_repo = file_repo
 
     def _validate_regex_pattern(self, pattern: str) -> None:
         """Validate regex pattern for safety (matches production behavior).
@@ -2203,6 +2310,30 @@ class FakeTextSearch(TextSearchPort):
         # Get all text contents
         all_contents = self._text_content_repo.get_all()
 
+        # Compute head file IDs for global scope filtering
+        head_file_ids: set[int] | None = None
+        default_branch_commit_ids: set[int] | None = None
+        if (
+            query.repository_id is None
+            and query.scope == "latest"
+            and self._file_repo is not None
+        ):
+            head_file_ids = self._file_repo._compute_head_file_ids()
+            # Also compute default branch commit IDs for commit messages.
+            # We include ALL commits on the default branch (not just HEAD)
+            # because commit messages are tied to specific commits —
+            # filtering to only HEAD would return at most one per repo.
+            if self._file_repo._commit_repo is not None:
+                default_branch_commit_ids = set()
+                for (
+                    r_id,
+                    branch,
+                    c_id,
+                ), _ in self._file_repo._commit_repo._branch_commits.items():
+                    default_branch = self._file_repo._get_default_branch_for_repo(r_id)
+                    if default_branch and branch == default_branch:
+                        default_branch_commit_ids.add(c_id)
+
         # Apply filters
         filtered = []
         for tc in all_contents:
@@ -2212,6 +2343,19 @@ class FakeTextSearch(TextSearchPort):
                 and tc.repository_id != query.repository_id
             ):
                 continue
+
+            # Global scope filter
+            if head_file_ids is not None:
+                file_ok = (
+                    tc.source_file_id is not None and tc.source_file_id in head_file_ids
+                )
+                commit_ok = (
+                    default_branch_commit_ids is not None
+                    and tc.commit_id is not None
+                    and tc.commit_id in default_branch_commit_ids
+                )
+                if not (file_ok or commit_ok):
+                    continue
 
             # Commit filter
             if query.commit_id is not None and tc.commit_id != query.commit_id:

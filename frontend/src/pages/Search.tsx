@@ -163,6 +163,9 @@ export default function Search() {
       setError(null)
 
       try {
+        // scope is only passed when no repository is selected (global search)
+        const scope = selectedRepoId ? undefined : 'latest'
+
         if (isFileMode) {
           // File search mode
           const response = await searchFiles({
@@ -171,6 +174,7 @@ export default function Search() {
             branch: branchParam || undefined,
             commit_hash: commitParam || undefined,
             language: selectedLanguages[0] || undefined,
+            scope,
             limit: RESULTS_PER_PAGE,
           })
           setFileResults(response.files)
@@ -201,6 +205,7 @@ export default function Search() {
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
                 language: selectedLanguages[0] || undefined,
+                scope,
                 limit: RESULTS_PER_PAGE,
                 offset: 0,
               }).then((response) => {
@@ -218,6 +223,7 @@ export default function Search() {
               branch: branchParam || undefined,
               source_types: allTextTypesSelected ? undefined : textSourceTypes,
               languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
+              scope,
               limit: RESULTS_PER_PAGE,
               offset,
             }
@@ -275,8 +281,18 @@ export default function Search() {
 
   // CodeHeader handlers
   const handleHeaderRepoChange = (newRepoName: string) => {
-    // Navigate to new repo, resetting to default branch and HEAD
-    navigate(`/search?repo=${newRepoName}`)
+    if (newRepoName) {
+      // Navigate to specific repo, resetting to default branch and HEAD
+      navigate(`/search?repo=${newRepoName}`)
+    } else {
+      // "All Repositories" selected — remove repo/branch/commit from URL
+      const newParams = new URLSearchParams(searchParams)
+      newParams.delete('repo')
+      newParams.delete('branch')
+      newParams.delete('commit')
+      if (query) newParams.set('query', query)
+      setSearchParams(newParams, { replace: true })
+    }
   }
 
   const handleHeaderBranchChange = (newBranch: string) => {

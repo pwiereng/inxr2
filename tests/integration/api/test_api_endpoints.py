@@ -548,6 +548,11 @@ class TestSymbolsAPI:
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
 
+        # Link commit to default branch (required for scope=latest global search)
+        await commit_adapter.link_commit_to_branch(
+            saved_repo.id, saved_commit.id, "main"
+        )
+
         file_adapter = PostgresFileRepository(db_session)
         file = File(
             repository_id=saved_repo.id,
@@ -1874,6 +1879,11 @@ class TestFileSearchAPI:
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
 
+        # Link commit to default branch (required for scope=latest global search)
+        await commit_adapter.link_commit_to_branch(
+            saved_repo.id, saved_commit.id, "main"
+        )
+
         file_adapter = PostgresFileRepository(db_session)
         files = [
             File(
@@ -1898,7 +1908,11 @@ class TestFileSearchAPI:
                 language="python",
             ),
         ]
-        await file_adapter.save_many(files)
+        saved_files = await file_adapter.save_many(files)
+
+        # Link files to commit (required for scope=latest global search)
+        file_ids = [f.id for f in saved_files if f.id is not None]
+        await file_adapter.link_files_to_commit(file_ids, saved_commit.id)
 
         # Act
         async with AsyncClient(
@@ -2013,8 +2027,13 @@ class TestFileSearchAPI:
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
 
+        # Link commit to default branch (required for scope=latest global search)
+        await commit_adapter.link_commit_to_branch(
+            saved_repo.id, saved_commit.id, "main"
+        )
+
         file_adapter = PostgresFileRepository(db_session)
-        await file_adapter.save(
+        saved_f1 = await file_adapter.save(
             File(
                 repository_id=saved_repo.id,
                 path="src/utils.py",
@@ -2023,7 +2042,7 @@ class TestFileSearchAPI:
                 language="python",
             )
         )
-        await file_adapter.save(
+        saved_f2 = await file_adapter.save(
             File(
                 repository_id=saved_repo.id,
                 path="src/utils.ts",
@@ -2031,6 +2050,12 @@ class TestFileSearchAPI:
                 size_bytes=100,
                 language="typescript",
             )
+        )
+
+        # Link files to commit (required for scope=latest global search)
+        assert saved_f1.id is not None and saved_f2.id is not None
+        await file_adapter.link_files_to_commit(
+            [saved_f1.id, saved_f2.id], saved_commit.id
         )
 
         # Act - search for python files only
@@ -2072,8 +2097,13 @@ class TestFileSearchAPI:
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
 
+        # Link commit to default branch (required for scope=latest global search)
+        await commit_adapter.link_commit_to_branch(
+            saved_repo.id, saved_commit.id, "main"
+        )
+
         file_adapter = PostgresFileRepository(db_session)
-        await file_adapter.save(
+        saved_file = await file_adapter.save(
             File(
                 repository_id=saved_repo.id,
                 path="src/module/helper.py",
@@ -2082,6 +2112,10 @@ class TestFileSearchAPI:
                 language="python",
             )
         )
+
+        # Link file to commit (required for scope=latest global search)
+        assert saved_file.id is not None
+        await file_adapter.link_file_to_commit(saved_file.id, saved_commit.id)
 
         # Act
         async with AsyncClient(
