@@ -249,6 +249,55 @@ describe('ReferencesPanel', () => {
     })
   })
 
+  describe('search globally link', () => {
+    it('should render link with correct URL when symbol is provided', async () => {
+      mockGetSymbolReferences.mockResolvedValue({
+        items: [],
+        total: 0,
+        symbol_name: 'TestClass',
+      })
+
+      render(<ReferencesPanel symbol={mockSymbol} isDirectDefinition={true} />)
+
+      await waitFor(() => {
+        const link = screen.getByText(/Search globally for/).closest('a')
+        expect(link).toBeInTheDocument()
+        expect(link).toHaveAttribute(
+          'href',
+          '/search?query=TestClass&source_types=symbol'
+        )
+      })
+    })
+
+    it('should render link when using searchByName', async () => {
+      mockGetSymbolsByName.mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      })
+
+      render(
+        <ReferencesPanel symbol={null} searchByName={{ name: 'myFunction', repositoryId: 1 }} />
+      )
+
+      await waitFor(() => {
+        const link = screen.getByText(/Search globally for/).closest('a')
+        expect(link).toBeInTheDocument()
+        expect(link).toHaveAttribute(
+          'href',
+          '/search?query=myFunction&source_types=symbol'
+        )
+      })
+    })
+
+    it('should not render link when no symbol or searchByName', () => {
+      render(<ReferencesPanel symbol={null} />)
+
+      expect(screen.queryByText(/Search globally for/)).not.toBeInTheDocument()
+    })
+  })
+
   describe('empty state', () => {
     it('should show prompt when no symbol or searchByName provided', () => {
       render(<ReferencesPanel symbol={null} />)

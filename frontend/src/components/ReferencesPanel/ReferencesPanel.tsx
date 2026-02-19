@@ -20,6 +20,9 @@ import CodeIcon from '@mui/icons-material/Code'
 import DataObjectIcon from '@mui/icons-material/DataObject'
 import PushPinIcon from '@mui/icons-material/PushPin'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
+import SearchIcon from '@mui/icons-material/Search'
+
+import { Link } from 'react-router-dom'
 
 import { getSymbolReferences, getSymbolsByName, type Reference, type Symbol } from '@/lib/api'
 
@@ -495,6 +498,37 @@ export function ReferencesPanel({
           </List>
         )}
       </Box>
+
+      {/* Search globally link */}
+      {displayName && (
+        <Box
+          sx={{
+            px: 1.5,
+            py: 1,
+            borderTop: 1,
+            borderColor: 'divider',
+          }}
+        >
+          <Link
+            to={`/search?query=${encodeURIComponent(displayName)}&source_types=symbol`}
+            style={{ textDecoration: 'none' }}
+          >
+            <Typography
+              variant="caption"
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                color: 'primary.main',
+                '&:hover': { textDecoration: 'underline' },
+              }}
+            >
+              <SearchIcon sx={{ fontSize: 14 }} />
+              Search globally for &ldquo;{displayName}&rdquo;
+            </Typography>
+          </Link>
+        </Box>
+      )}
     </Box>
   )
 }
