@@ -305,7 +305,7 @@ use the container command shown above.
 
 **Pre-commit Checklist:**
 - [ ] `./scripts/run-all-tests.sh` passes with zero errors
-- [ ] All tests pass (21+ backend, 17+ frontend)
+- [ ] All tests pass
 - [ ] Code is formatted (Black, Prettier)
 - [ ] No linting errors (Ruff, ESLint)
 - [ ] Type checks pass (mypy, tsc --noEmit)
@@ -573,7 +573,7 @@ describe('CodeViewer', () => {
   });
 
   it('calls onLineClick when line number is clicked', () => {
-    const handleLineClick = jest.fn();
+    const handleLineClick = vi.fn();
 
     render(
       <CodeViewer
@@ -600,8 +600,8 @@ describe('CodeViewer', () => {
     "build": "tsc && vite build",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
-    "lint": "eslint . --ext .ts,.tsx",
-    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
     "type-check": "tsc --noEmit"
@@ -621,25 +621,28 @@ describe('CodeViewer', () => {
 }
 ```
 
-**.eslintrc.json:**
-```json
-{
-  "extends": [
-    "eslint:recommended",
-    "plugin:@typescript-eslint/recommended",
-    "plugin:react/recommended",
-    "plugin:react-hooks/recommended",
-    "prettier"
-  ],
-  "parser": "@typescript-eslint/parser",
-  "plugins": ["@typescript-eslint", "react", "react-hooks"],
-  "rules": {
-    "@typescript-eslint/no-explicit-any": "error",
-    "@typescript-eslint/explicit-function-return-type": "warn",
-    "react/prop-types": "off",
-    "react/react-in-jsx-scope": "off"
+**eslint.config.js (ESLint 9 flat config):**
+```javascript
+import js from '@eslint/js'
+import tseslint from 'typescript-eslint'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+
+export default tseslint.config(
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    plugins: {
+      'react-hooks': reactHooks,
+      'react-refresh': reactRefresh,
+    },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+      '@typescript-eslint/no-explicit-any': 'error',
+    },
   }
-}
+)
 ```
 
 ## Git Commit Guidelines

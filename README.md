@@ -48,7 +48,7 @@ INXR2 is similar to LXR (Linux Cross Reference) but built specifically for git-b
 - **Code Parser**: Tree-sitter
 - **Deployment**: Docker
 
-For detailed architecture and design decisions, see [DESIGN.md](DESIGN.md).
+For detailed architecture decisions, see [CLAUDE.md](CLAUDE.md).
 
 ## Quick Start
 
@@ -188,7 +188,7 @@ See [Deployment](#deployment) section below for complete production setup instru
 
 ## Documentation
 
-- **[DESIGN.md](DESIGN.md)** - Complete design document including architecture, requirements, data model, and deployment strategy
+- **[CLAUDE.md](CLAUDE.md)** - Architecture, project structure, development guidelines, and AI assistant instructions
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Coding standards, testing requirements, and contribution guidelines
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Quick reference for common development tasks and workflows
 
@@ -474,7 +474,7 @@ The container includes:
 - PostgreSQL database
 - Tree-sitter parsers for all supported languages
 
-See [DESIGN.md - Section 9](DESIGN.md#9-deployment) for detailed deployment options.
+See [CLAUDE.md](CLAUDE.md) for detailed architecture and deployment information.
 
 ## Configuration
 
@@ -544,36 +544,23 @@ See `config.example.yaml` for a complete example.
 
 ## Project Status
 
-**Current Phase**: Phase 1.11 Complete (Multi-Branch Support)
+**Current Phase**: Active development — all core features implemented
 
-INXR2 has completed Phase 1.11 with multi-branch support. You can now browse and compare code across different branches, with full URL state management for bookmarkable views.
+INXR2 has completed all core phases (1.1–1.11) including multi-branch support, temporal navigation, full-text search, and URL state management. Current work focuses on bug fixes, search improvements, and UI polish.
 
-### Roadmap
-
-**Completed Phases:**
-- [x] Phase 1.1: Project Setup
-- [x] Phase 1.2: React Frontend and Development Infrastructure
-- [x] Phase 1.3: Database Foundation and Environment Configuration (2026-01-04)
-- [x] Phase 1.4: Vertical Slice - Basic File Indexing (2026-01-05)
-- [x] Phase 1.5: CLI Indexing Engine - Python & TypeScript (2026-01-10)
-- [x] Phase 1.6: Cross-Reference Code Browser UI (2026-01-11)
-- [x] Phase 1.7: Configuration System (2026-01-13)
-- [x] Phase 1.8: Tree-sitter Integration (2026-01-14)
-  - AST-based parsing for Python, TypeScript, JavaScript, Java, C
-  - Proper scope tracking for nested symbols
-- [x] Phase 1.9: Time Travel & Temporal Navigation (2026-01-17)
-  - Browse code at any indexed commit
-  - Side-by-side diff viewer
-- [x] Phase 1.10: URL State & Permalinks (2026-01-20)
-  - Full URL state management for bookmarkable views
-  - Line numbers, commit, diff mode in URL
-- [x] Phase 1.11: Multi-Branch Support (2026-01-24)
-  - Branch selector component
-  - Cross-branch diff comparison
-  - File history filtered by branch
-
-**Next Phase:**
-- [ ] Phase 1.12: Remote Repository Support (clone and index from URLs)
+### Completed Features
+- Project setup, React frontend, and development infrastructure
+- Database foundation with PostgreSQL and environment configuration
+- File indexing with Tree-sitter AST parsing (Python, TypeScript, JavaScript, Java, C)
+- Cross-reference code browser UI with symbol search
+- Configuration system (YAML-based multi-repository support)
+- Time travel and temporal navigation (browse code at any indexed commit)
+- Side-by-side diff viewer with syntax highlighting
+- Full URL state management for bookmarkable views and permalinks
+- Multi-branch support with branch selector and cross-branch diffs
+- Full-text search (keyword, phrase, regex) across all files
+- Git blame integration
+- Light and dark theme support
 
 ## Contributing
 
@@ -598,7 +585,7 @@ TBD
 
 For questions or issues:
 - Open an issue on GitHub
-- See [DESIGN.md](DESIGN.md) for architectural questions
+- See [CLAUDE.md](CLAUDE.md) for architectural questions
 - See [DEVELOPMENT.md](DEVELOPMENT.md) for development help
 
 ---

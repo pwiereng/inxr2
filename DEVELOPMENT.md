@@ -28,7 +28,7 @@ This is the easiest way to get started:
 3. **You're ready!** The container includes:
    - Python 3.11 with all dev tools
    - Node.js 18 with npm
-   - PostgreSQL database (running in separate container)
+   - PostgreSQL database (embedded inside the dev container)
    - All dependencies auto-installed on startup
    - VS Code extensions configured
 
@@ -59,7 +59,7 @@ If you prefer to run Docker manually without the dev container:
 
 When running, the following services are available:
 
-- **PostgreSQL**: `localhost:5432`
+- **PostgreSQL**: Embedded inside the dev container (`localhost:5432` from within container)
   - Database: `inxr2_dev`
   - User: `inxr2_user`
   - Password: `inxr2_dev_password`
@@ -89,9 +89,9 @@ docker-compose -f docker-compose.dev.yml build --no-cache
 ```
 
 **Database connection issues?**
+PostgreSQL is embedded inside the dev container. Check it's running:
 ```bash
-# Check database is healthy
-docker-compose -f docker-compose.dev.yml ps
+docker exec inxr2-dev pg_isready -h localhost
 
 # Reset the database
 ./scripts/dev-reset-db.sh

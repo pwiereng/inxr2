@@ -20,7 +20,6 @@ docker exec -d inxr2-dev bash -c 'cd frontend && npm run dev'  # Frontend on :51
 ```bash
 docker logs -f inxr2-dev             # Backend access + error logs
 ./scripts/dev-logs.sh                # All container logs
-./scripts/dev-logs.sh postgres       # PostgreSQL logs only
 ```
 
 ## Scripts Reference
@@ -46,8 +45,7 @@ docker logs -f inxr2-dev             # Backend access + error logs
 | File | Purpose |
 |------|---------|
 | `verify-setup.sh` | Check containers, env vars, DB connection, migrations, imports |
-| `docker-entrypoint.sh` | Container entrypoint — installs deps, fixes permissions |
-| `init-test-db.sql` | Creates `inxr2_test` database on first postgres boot |
+| `docker-entrypoint.sh` | Container entrypoint — starts embedded PostgreSQL, creates databases, installs deps |
 
 ## Common Workflows
 
@@ -66,9 +64,8 @@ docker exec -it inxr2-dev ./scripts/dev-serve.sh          # Start servers
 
 ### Clean Rebuild (fresh database)
 ```bash
-docker-compose -f docker-compose.dev.yml down -v          # Stop + delete volumes
-docker-compose -f docker-compose.dev.yml up -d --build    # Rebuild + start
-docker exec inxr2-dev alembic upgrade head                # Apply migrations
+docker-compose -f docker-compose.dev.yml down -v          # Stop + delete volumes (including DB data)
+docker-compose -f docker-compose.dev.yml up -d --build    # Rebuild + start (entrypoint creates DBs + runs migrations)
 ```
 
 ### Before Committing

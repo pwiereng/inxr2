@@ -435,8 +435,8 @@ qa-agent/                      # Browser automation for exploratory testing
 
 ## Important Files
 
-- **DESIGN.md** - Complete design document with architecture decisions
-- **docs/archived/IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.12)
+- **docs/archived/2026-01-31-design.md** - Original design document (archived, for historical reference)
+- **docs/archived/2026-01-24-IMPLEMENTATION_PLAN.md** - Phase-by-phase implementation plan (currently in Phase 1.12)
 - **CONTRIBUTING.md** - Coding standards, testing philosophy, git workflow
 - **docs/database-schema.md** - Complete database schema with design rationale
 - **qa-agent/README.md** - QA agent API documentation for exploratory testing
@@ -698,7 +698,7 @@ Recent achievements:
 
 **Next Phase:** 1.12 Remote Repository Support - Clone and index repositories from URLs
 
-See `docs/archived/IMPLEMENTATION_PLAN.md` for complete roadmap.
+See `docs/archived/2026-01-24-IMPLEMENTATION_PLAN.md` for complete roadmap.
 
 ## Special Considerations
 
@@ -814,8 +814,8 @@ See `config.yaml` for the current repository configuration.
 
 ## Getting Help
 
-- **Architecture questions:** See DESIGN.md
-- **Implementation plan:** See docs/archived/IMPLEMENTATION_PLAN.md
+- **Architecture questions:** See this file (CLAUDE.md) — Architecture section
+- **Implementation plan:** See docs/archived/2026-01-24-IMPLEMENTATION_PLAN.md
 - **Database schema:** See docs/database-schema.md
 - **Coding standards:** See CONTRIBUTING.md
 - **Development tasks:** See README.md

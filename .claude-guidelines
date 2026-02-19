@@ -196,6 +196,6 @@ When working on this codebase:
 ## References
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Complete contributing guidelines
-- [DESIGN.md](DESIGN.md) - Architecture and design decisions
+- [CLAUDE.md](CLAUDE.md) - Architecture, project structure, and development guidelines
 - [scripts/README.md](scripts/README.md) - Documentation for all scripts
 - [DEVELOPMENT.md](DEVELOPMENT.md) - Development environment setup

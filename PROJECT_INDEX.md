@@ -129,7 +129,7 @@ Delta indexing: only changed files re-indexed per commit.
 - `pyproject.toml` - Python deps, tool config (black, isort, ruff, mypy, pytest)
 - `.env.dev` - Dev database credentials (committed)
 - `.env.prod` - Prod secrets (NOT committed)
-- `docker-compose.dev.yml` - 3 services: postgres, dev, playwright (QA profile)
+- `docker-compose.dev.yml` - 2 services: dev (with embedded PostgreSQL), playwright (QA profile)
 
 ## Testing Philosophy
 
