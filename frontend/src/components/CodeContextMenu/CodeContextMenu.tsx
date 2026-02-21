@@ -74,6 +74,9 @@ export function CodeContextMenu({ contextMenu, onSearch, onClose }: CodeContextM
           <MenuList autoFocusItem={false}>
             <MenuItem
               onClick={() => {
+                // Close before navigating: onSearch() triggers React Router navigation
+                // which unmounts this component. Closing first ensures clean teardown
+                // and avoids stale Popper DOM state during unmount.
                 onClose()
                 onSearch()
               }}
