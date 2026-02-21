@@ -139,7 +139,7 @@ async def search_text(
     ),
     case_sensitive: bool = Query(
         True,
-        description="Case-sensitive regex matching (only applies in regex mode)",
+        description="Case-sensitive matching (applies to all search modes)",
     ),
     scope: Literal["latest"] = Query(
         "latest",

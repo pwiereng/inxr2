@@ -93,7 +93,7 @@ async def search_symbols(
     ),
     case_sensitive: bool = Query(
         default=True,
-        description="Case-sensitive regex matching (only applies in regex mode)",
+        description="Case-sensitive matching (applies to all search modes)",
     ),
     scope: Literal["latest"] = Query(
         default="latest",

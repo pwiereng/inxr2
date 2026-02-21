@@ -567,8 +567,7 @@ class SymbolRepositoryPort(ABC):
         """Search symbols by name (supports autocomplete).
 
         Args:
-            name: Search pattern (case-insensitive substring match, or regex
-                when mode="regex")
+            name: Search pattern (substring match or regex when mode="regex")
             repository_id: Filter by repository (optional)
             kind: Filter by symbol kind (optional)
             limit: Maximum results
@@ -578,9 +577,9 @@ class SymbolRepositoryPort(ABC):
             scope: Search scope for global search (e.g. "latest") when no
                 repository_id is specified. Ignored when repository_id is set.
             mode: Search mode - "regex" for regex matching on symbol names,
-                otherwise case-insensitive substring match (optional)
-            case_sensitive: Case-sensitive regex matching (only applies in
-                regex mode, default True)
+                otherwise substring match (optional)
+            case_sensitive: Case-sensitive matching (applies to all modes,
+                default True)
         """
         pass
 
@@ -701,8 +700,8 @@ class ReferenceRepositoryPort(ABC):
     ) -> tuple[list[Reference], int]:
         """Search references by text match on reference_text.
 
-        Uses case-insensitive substring matching (ILIKE) by default, or
-        regex matching when mode="regex".
+        Uses substring matching by default, or regex matching when
+        mode="regex". Case sensitivity is controlled by case_sensitive.
 
         Args:
             query: Substring or regex pattern to search for in reference_text
@@ -714,9 +713,9 @@ class ReferenceRepositoryPort(ABC):
             limit: Maximum results to return (default 20)
             offset: Pagination offset (default 0)
             mode: Search mode - "regex" for regex matching, otherwise
-                case-insensitive substring match (optional)
-            case_sensitive: Case-sensitive regex matching (only applies in
-                regex mode, default True)
+                substring match (optional)
+            case_sensitive: Case-sensitive matching (applies to all modes,
+                default True)
 
         Returns:
             Tuple of (matching references, total count) for pagination
