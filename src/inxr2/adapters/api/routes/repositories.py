@@ -10,12 +10,14 @@ from ....application.use_cases.repositories import (
 from ....application.use_cases.repositories.get_repository_files import (
     GetRepositoryFilesRequest,
 )
+from ....application.use_cases.repositories.get_repository_stats import RepositoryStats
 from ....application.use_cases.repositories.get_repository_tree import (
     GetRepositoryTreeRequest,
     TreeNode,
 )
 from ....domain.exceptions import RepositoryNotFound
 from ....infrastructure.dependencies import (
+    GetAllRepositoryStatsUseCaseDep,
     GetRepositoryBranchesUseCaseDep,
     GetRepositoryFilesUseCaseDep,
     GetRepositoryStatsUseCaseDep,
@@ -88,6 +90,11 @@ class RepositoryStatsResponse(BaseModel):
     total_symbols: int
     total_references: int
     languages: dict[str, int]
+    total_lines: int = 0
+    total_references_resolved: int = 0
+    total_references_unresolved: int = 0
+    commit_date_earliest: str | None = None
+    commit_date_latest: str | None = None
 
 
 class BranchInfoResponse(BaseModel):
@@ -208,6 +215,40 @@ async def get_repository_tree_by_name(
     )
 
 
+def _stats_to_response(
+    stats: RepositoryStats,
+) -> RepositoryStatsResponse:
+    """Convert RepositoryStats domain object to response model."""
+    return RepositoryStatsResponse(
+        repository_id=stats.repository_id,
+        name=stats.name,
+        total_files=stats.total_files,
+        total_symbols=stats.total_symbols,
+        total_references=stats.total_references,
+        languages=stats.language_distribution,
+        total_lines=stats.total_lines,
+        total_references_resolved=stats.total_references_resolved,
+        total_references_unresolved=stats.total_references_unresolved,
+        commit_date_earliest=(
+            stats.commit_date_earliest.isoformat()
+            if stats.commit_date_earliest
+            else None
+        ),
+        commit_date_latest=(
+            stats.commit_date_latest.isoformat() if stats.commit_date_latest else None
+        ),
+    )
+
+
+@router.get("/stats", response_model=list[RepositoryStatsResponse])
+async def get_all_repository_stats(
+    use_case: GetAllRepositoryStatsUseCaseDep,
+) -> list[RepositoryStatsResponse]:
+    """Get statistics for all repositories in a single batch call."""
+    all_stats = await use_case.execute()
+    return [_stats_to_response(s) for s in all_stats]
+
+
 @router.get("/{repository_id}", response_model=RepositoryResponse)
 async def get_repository(
     repository_id: int,
@@ -312,14 +353,7 @@ async def get_repository_stats(
     except RepositoryNotFound as e:
         raise HTTPException(status_code=404, detail="Repository not found") from e
 
-    return RepositoryStatsResponse(
-        repository_id=stats.repository_id,
-        name=stats.name,
-        total_files=stats.total_files,
-        total_symbols=stats.total_symbols,
-        total_references=stats.total_references,
-        languages=stats.language_distribution,
-    )
+    return _stats_to_response(stats)
 
 
 @router.get("/{repository_id}/branches", response_model=BranchListResponse)

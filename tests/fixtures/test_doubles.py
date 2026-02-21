@@ -1189,6 +1189,19 @@ class InMemoryCommitRepository(CommitRepositoryPort):
         }
         return stored_hashes & set(commit_hashes)
 
+    async def get_commit_date_range(
+        self, repository_id: int
+    ) -> tuple[datetime, datetime] | None:
+        """Get the earliest and latest author_date for a repository's commits."""
+        dates = [
+            c.author_date
+            for c in self._commits.values()
+            if c.repository_id == repository_id
+        ]
+        if not dates:
+            return None
+        return (min(dates), max(dates))
+
     async def find_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> Commit | None:

@@ -135,6 +135,11 @@ export interface RepositoryStats {
   total_symbols: number
   total_references: number
   languages: Record<string, number>
+  total_lines: number
+  total_references_resolved: number
+  total_references_unresolved: number
+  commit_date_earliest: string | null
+  commit_date_latest: string | null
 }
 
 // Time Travel types
@@ -234,6 +239,10 @@ export async function getRepositoryTree(id: number, commit?: string): Promise<Tr
 
 export async function getRepositoryStats(id: number): Promise<RepositoryStats> {
   return fetchApi<RepositoryStats>(`/repositories/${id}/stats`)
+}
+
+export async function getAllRepositoryStats(): Promise<RepositoryStats[]> {
+  return fetchApi<RepositoryStats[]>('/repositories/stats')
 }
 
 export async function getRepositoryByName(name: string): Promise<Repository> {

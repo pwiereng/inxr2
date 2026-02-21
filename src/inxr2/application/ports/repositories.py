@@ -6,6 +6,7 @@ mechanisms like PostgreSQL.
 """
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from ...domain.entities import (
     Commit,
@@ -208,6 +209,22 @@ class CommitRepositoryPort(ABC):
 
         Returns:
             Set of commit hashes that exist in the database
+        """
+        pass
+
+    @abstractmethod
+    async def get_commit_date_range(
+        self, repository_id: int
+    ) -> tuple[datetime, datetime] | None:
+        """Get the earliest and latest author_date for a repository's commits.
+
+        Uses MIN/MAX aggregation for efficiency.
+
+        Args:
+            repository_id: The repository ID
+
+        Returns:
+            Tuple of (earliest_date, latest_date) or None if no commits exist
         """
         pass
 

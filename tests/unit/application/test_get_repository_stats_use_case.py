@@ -46,10 +46,50 @@ class TestGetRepositoryStatsUseCase:
         return repo
 
     @pytest.fixture
-    def file_repo(self) -> InMemoryFileRepository:
+    def commit_repo(self) -> InMemoryCommitRepository:
+        """Create commit repository with test data."""
+        repo = InMemoryCommitRepository()
+        # Commits for repo 1
+        c1 = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("a" * 40),
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+        )
+        repo.add(c1)
+        repo._branch_commits[(1, "main", 1)] = True
+
+        c2 = Commit(
+            id=2,
+            repository_id=1,
+            commit_hash=CommitHash("b" * 40),
+            author_date=datetime(2025, 6, 15),
+            commit_date=datetime(2025, 6, 15),
+        )
+        repo.add(c2)
+        repo._branch_commits[(1, "main", 2)] = True
+
+        # Commit for repo 2
+        c3 = Commit(
+            id=3,
+            repository_id=2,
+            commit_hash=CommitHash("c" * 40),
+            author_date=datetime(2025, 3, 10),
+            commit_date=datetime(2025, 3, 10),
+        )
+        repo.add(c3)
+        repo._branch_commits[(2, "main", 3)] = True
+        return repo
+
+    @pytest.fixture
+    def file_repo(
+        self, commit_repo: InMemoryCommitRepository
+    ) -> InMemoryFileRepository:
         """Create file repository with test data."""
-        repo = InMemoryFileRepository()
-        # Files for repo 1
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        # Files for repo 1 (linked to latest commit id=2)
+        # _commit_files tuples are (commit_id, file_id)
         repo.add(
             File(
                 id=1,
@@ -58,8 +98,10 @@ class TestGetRepositoryStatsUseCase:
                 content_hash="hash1",
                 size_bytes=100,
                 language="Python",
+                line_count=50,
             )
         )
+        repo._commit_files.add((2, 1))
         repo.add(
             File(
                 id=2,
@@ -68,8 +110,10 @@ class TestGetRepositoryStatsUseCase:
                 content_hash="hash2",
                 size_bytes=200,
                 language="Python",
+                line_count=80,
             )
         )
+        repo._commit_files.add((2, 2))
         repo.add(
             File(
                 id=3,
@@ -78,8 +122,10 @@ class TestGetRepositoryStatsUseCase:
                 content_hash="hash3",
                 size_bytes=300,
                 language="TypeScript",
+                line_count=120,
             )
         )
+        repo._commit_files.add((2, 3))
         repo.add(
             File(
                 id=4,
@@ -88,9 +134,11 @@ class TestGetRepositoryStatsUseCase:
                 content_hash="hash4",
                 size_bytes=50,
                 language=None,  # Unknown language
+                line_count=None,  # No line count
             )
         )
-        # Files for repo 2
+        repo._commit_files.add((2, 4))
+        # Files for repo 2 (linked to commit id=3)
         repo.add(
             File(
                 id=5,
@@ -99,8 +147,10 @@ class TestGetRepositoryStatsUseCase:
                 content_hash="hash5",
                 size_bytes=150,
                 language="JavaScript",
+                line_count=40,
             )
         )
+        repo._commit_files.add((3, 5))
         return repo
 
     @pytest.fixture
@@ -178,6 +228,7 @@ class TestGetRepositoryStatsUseCase:
                 source_end_column=17,
                 reference_text="utility",
                 reference_type=ReferenceType.CALL,
+                target_symbol_id=3,  # Resolved
             )
         )
         repo.add(
@@ -190,6 +241,7 @@ class TestGetRepositoryStatsUseCase:
                 source_end_column=10,
                 reference_text="Helper",
                 reference_type=ReferenceType.INSTANTIATION,
+                target_symbol_id=None,  # Unresolved
             )
         )
         # Reference for repo 2
@@ -203,6 +255,7 @@ class TestGetRepositoryStatsUseCase:
                 source_end_column=7,
                 reference_text="console",
                 reference_type=ReferenceType.CALL,
+                target_symbol_id=None,  # Unresolved
             )
         )
         return repo
@@ -214,6 +267,7 @@ class TestGetRepositoryStatsUseCase:
         file_repo: InMemoryFileRepository,
         symbol_repo: InMemorySymbolRepository,
         reference_repo: InMemoryReferenceRepository,
+        commit_repo: InMemoryCommitRepository,
     ) -> GetRepositoryStatsUseCase:
         """Create use case with test repositories."""
         return GetRepositoryStatsUseCase(
@@ -221,6 +275,7 @@ class TestGetRepositoryStatsUseCase:
             file_repo=file_repo,
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
+            commit_repo=commit_repo,
         )
 
     # === Repository Resolution Tests ===
@@ -335,6 +390,43 @@ class TestGetRepositoryStatsUseCase:
             "unknown": 1,  # README.md has no language
         }
 
+    @pytest.mark.asyncio
+    async def test_returns_correct_total_lines(
+        self, use_case: GetRepositoryStatsUseCase
+    ) -> None:
+        """Should return total lines summed from all files."""
+        request = GetRepositoryStatsRequest(repository_id=1)
+
+        stats = await use_case.execute(request)
+
+        # 50 + 80 + 120 + 0 (None) = 250
+        assert stats.total_lines == 250
+
+    @pytest.mark.asyncio
+    async def test_returns_correct_resolved_unresolved_counts(
+        self, use_case: GetRepositoryStatsUseCase
+    ) -> None:
+        """Should return resolved and unresolved reference counts."""
+        request = GetRepositoryStatsRequest(repository_id=1)
+
+        stats = await use_case.execute(request)
+
+        # 2 total refs, 1 unresolved (no target_symbol_id)
+        assert stats.total_references_unresolved == 1
+        assert stats.total_references_resolved == 1
+
+    @pytest.mark.asyncio
+    async def test_returns_commit_date_range(
+        self, use_case: GetRepositoryStatsUseCase
+    ) -> None:
+        """Should return the earliest and latest commit dates."""
+        request = GetRepositoryStatsRequest(repository_id=1)
+
+        stats = await use_case.execute(request)
+
+        assert stats.commit_date_earliest == datetime(2025, 1, 1)
+        assert stats.commit_date_latest == datetime(2025, 6, 15)
+
     # === Repository Isolation Tests ===
 
     @pytest.mark.asyncio
@@ -352,6 +444,11 @@ class TestGetRepositoryStatsUseCase:
         assert stats.total_symbols == 1
         assert stats.total_references == 1
         assert stats.language_distribution == {"JavaScript": 1}
+        assert stats.total_lines == 40
+        assert stats.total_references_unresolved == 1
+        assert stats.total_references_resolved == 0
+        assert stats.commit_date_earliest == datetime(2025, 3, 10)
+        assert stats.commit_date_latest == datetime(2025, 3, 10)
 
 
 class TestGetRepositoryStatsUseCaseEdgeCases:
@@ -368,12 +465,14 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
         file_repo = InMemoryFileRepository()
         symbol_repo = InMemorySymbolRepository()
         reference_repo = InMemoryReferenceRepository()
+        commit_repo = InMemoryCommitRepository()
 
         use_case = GetRepositoryStatsUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
+            commit_repo=commit_repo,
         )
 
         request = GetRepositoryStatsRequest(repository_id=1)
@@ -383,6 +482,11 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
         assert stats.total_symbols == 0
         assert stats.total_references == 0
         assert stats.language_distribution == {}
+        assert stats.total_lines == 0
+        assert stats.total_references_resolved == 0
+        assert stats.total_references_unresolved == 0
+        assert stats.commit_date_earliest is None
+        assert stats.commit_date_latest is None
 
     @pytest.mark.asyncio
     async def test_all_files_same_language(self) -> None:

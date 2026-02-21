@@ -61,6 +61,9 @@ from ..application.use_cases.files import (
 from ..application.use_cases.indexing.index_local_directory import (
     IndexLocalDirectoryUseCase,
 )
+from ..application.use_cases.repositories.get_all_repository_stats import (
+    GetAllRepositoryStatsUseCase,
+)
 from ..application.use_cases.repositories.get_repository_branches import (
     GetRepositoryBranchesUseCase,
 )
@@ -263,6 +266,23 @@ def get_repository_stats_use_case(
     )
 
 
+def get_all_repository_stats_use_case(
+    repository_adapter: RepositoryAdapter,
+    file_adapter: FileAdapter,
+    symbol_adapter: SymbolAdapter,
+    reference_adapter: ReferenceAdapter,
+    commit_adapter: CommitAdapter,
+) -> GetAllRepositoryStatsUseCase:
+    """Provide GetAllRepositoryStatsUseCase with dependencies."""
+    return GetAllRepositoryStatsUseCase(
+        repository_repo=repository_adapter,
+        file_repo=file_adapter,
+        symbol_repo=symbol_adapter,
+        reference_repo=reference_adapter,
+        commit_repo=commit_adapter,
+    )
+
+
 def get_repository_branches_use_case(
     repository_adapter: RepositoryAdapter,
     index_status_adapter: IndexStatusAdapter,
@@ -322,6 +342,9 @@ ResolveFileUseCaseDep = Annotated[
 ]
 GetRepositoryStatsUseCaseDep = Annotated[
     GetRepositoryStatsUseCase, Depends(get_repository_stats_use_case)
+]
+GetAllRepositoryStatsUseCaseDep = Annotated[
+    GetAllRepositoryStatsUseCase, Depends(get_all_repository_stats_use_case)
 ]
 GetRepositoryBranchesUseCaseDep = Annotated[
     GetRepositoryBranchesUseCase, Depends(get_repository_branches_use_case)

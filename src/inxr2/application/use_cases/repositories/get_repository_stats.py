@@ -5,7 +5,8 @@ symbol counts, reference counts, and language distribution.
 """
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 
 from ....domain.entities import File, Repository
 from ....domain.exceptions import RepositoryNotFound
@@ -30,7 +31,12 @@ class RepositoryStats:
     total_files: int
     total_symbols: int
     total_references: int
-    language_distribution: dict[str, int]
+    language_distribution: dict[str, int] = field(default_factory=dict)
+    total_lines: int = 0
+    total_references_resolved: int = 0
+    total_references_unresolved: int = 0
+    commit_date_earliest: datetime | None = None
+    commit_date_latest: datetime | None = None
 
 
 @dataclass
@@ -99,10 +105,34 @@ class GetRepositoryStatsUseCase:
 
         repository_id = repository.id if repository.id is not None else 0
 
-        # 2. Get counts in parallel
-        symbol_count, reference_count = await asyncio.gather(
-            self._symbol_repo.count_by_repository(repository_id),
-            self._reference_repo.count_by_repository(repository_id),
+        # 2. Get counts and date range in parallel
+        gather_tasks: list[asyncio.Task[object]] = []
+        gather_tasks.append(
+            asyncio.ensure_future(self._symbol_repo.count_by_repository(repository_id))
+        )
+        gather_tasks.append(
+            asyncio.ensure_future(
+                self._reference_repo.count_by_repository(repository_id)
+            )
+        )
+        gather_tasks.append(
+            asyncio.ensure_future(
+                self._reference_repo.count_unresolved_references(repository_id)
+            )
+        )
+        if self._commit_repo is not None:
+            gather_tasks.append(
+                asyncio.ensure_future(
+                    self._commit_repo.get_commit_date_range(repository_id)
+                )
+            )
+
+        results = await asyncio.gather(*gather_tasks)
+        symbol_count: int = results[0]  # type: ignore[assignment]
+        reference_count: int = results[1]  # type: ignore[assignment]
+        unresolved_count: int = results[2]  # type: ignore[assignment]
+        date_range: tuple[datetime, datetime] | None = (
+            results[3] if len(results) > 3 else None  # type: ignore[assignment]
         )
 
         # 3. Get files at HEAD commit (preferred) or fall back to deduplication
@@ -111,6 +141,9 @@ class GetRepositoryStatsUseCase:
         # 4. Compute language distribution from deduplicated files
         language_distribution = self._compute_language_distribution(unique_files)
 
+        # 5. Compute total lines from files
+        total_lines = sum(f.line_count or 0 for f in unique_files)
+
         return RepositoryStats(
             repository_id=repository_id,
             name=repository.name,
@@ -118,6 +151,11 @@ class GetRepositoryStatsUseCase:
             total_symbols=symbol_count,
             total_references=reference_count,
             language_distribution=language_distribution,
+            total_lines=total_lines,
+            total_references_resolved=reference_count - unresolved_count,
+            total_references_unresolved=unresolved_count,
+            commit_date_earliest=date_range[0] if date_range else None,
+            commit_date_latest=date_range[1] if date_range else None,
         )
 
     async def _resolve_repository(
