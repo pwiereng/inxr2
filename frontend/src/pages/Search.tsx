@@ -519,10 +519,12 @@ export default function Search() {
     setSearchParams(newParams, { replace: true })
   }
 
+  const extensionsLoaded = availableExtensions.length > 0
+
   const handleHideAll = () => {
     const newParams = new URLSearchParams(searchParams)
     newParams.set('exclude_types', ALL_SOURCE_TYPE_VALUES.join(','))
-    if (availableExtensions.length > 0) {
+    if (extensionsLoaded) {
       newParams.set('exclude_ext', availableExtensions.join(','))
     }
     newParams.delete('page')
@@ -829,7 +831,7 @@ export default function Search() {
                   onClick={handleHideAll}
                   variant="outlined"
                   size="small"
-                  disabled={isFileMode}
+                  disabled={isFileMode || !extensionsLoaded}
                 >
                   Hide All
                 </Button>

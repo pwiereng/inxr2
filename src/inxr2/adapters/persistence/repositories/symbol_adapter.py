@@ -155,10 +155,15 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
             op = "~" if case_sensitive else "~*"
             query = select(SymbolModel).where(SymbolModel.name.op(op)(pg_pattern))
         else:
+            escaped = name.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
             if case_sensitive:
-                query = select(SymbolModel).where(SymbolModel.name.like(f"%{name}%"))
+                query = select(SymbolModel).where(
+                    SymbolModel.name.like(f"%{escaped}%", escape="\\")
+                )
             else:
-                query = select(SymbolModel).where(SymbolModel.name.ilike(f"%{name}%"))
+                query = select(SymbolModel).where(
+                    SymbolModel.name.ilike(f"%{escaped}%", escape="\\")
+                )
 
         if repository_id is None and scope == "latest":
             # Global search: only symbols from HEAD of each repo's default branch

@@ -232,13 +232,16 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                 ReferenceModel.reference_text.op(op)(pg_pattern)
             )
         else:
+            escaped = (
+                query.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+            )
             if case_sensitive:
                 base_query = select(ReferenceModel).where(
-                    ReferenceModel.reference_text.like(f"%{query}%")
+                    ReferenceModel.reference_text.like(f"%{escaped}%", escape="\\")
                 )
             else:
                 base_query = select(ReferenceModel).where(
-                    ReferenceModel.reference_text.ilike(f"%{query}%")
+                    ReferenceModel.reference_text.ilike(f"%{escaped}%", escape="\\")
                 )
 
         if repository_id is not None:

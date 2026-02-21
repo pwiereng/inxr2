@@ -1,5 +1,6 @@
 """Search API endpoints for free text search."""
 
+import re
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -23,6 +24,23 @@ VALID_SOURCE_TYPES = [s.value for s in TextSearchSourceType]
 # Query length limits
 MAX_TEXT_QUERY_LENGTH = 500
 MAX_FILE_QUERY_LENGTH = 200
+
+# Extension validation pattern: must start with dot, alphanumeric/dash/underscore, max 20 chars
+_EXTENSION_RE = re.compile(r"^\.[a-zA-Z0-9_-]{1,19}$")
+
+
+def _validate_extensions(extensions: list[str] | None) -> None:
+    """Validate extension format. Raises HTTPException 422 for invalid values."""
+    if extensions is None:
+        return
+    for ext in extensions:
+        if not _EXTENSION_RE.match(ext):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid extension format: '{ext}'. "
+                "Extensions must start with '.' and contain only "
+                "alphanumeric characters, dashes, or underscores (max 20 chars).",
+            )
 
 
 # Response models
@@ -158,6 +176,7 @@ async def search_text(
     - limit: The limit used
     - offset: The offset used
     """
+    _validate_extensions(extensions)
     try:
         response = await use_case.execute(
             SearchTextRequest(
@@ -247,6 +266,7 @@ async def search_files(
     - files: List of matching files with metadata
     - total_count: Number of files returned (at most ``limit``)
     """
+    _validate_extensions(extensions)
     try:
         response = await use_case.execute(
             SearchFilesRequest(
