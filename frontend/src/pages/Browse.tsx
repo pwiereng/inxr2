@@ -65,9 +65,23 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
   const { selectedSymbol, isDirectDefinition, searchByName } = refsState
   const { leftCommit, rightCommit, fileChangedInCommit } = computedState
 
+  // Auto-disable blame when entering rendered mode (markdown/images)
+  const isRenderedContent =
+    !!rawContent ||
+    (!!fileContent &&
+      isMarkdownFile(fileContent.path, fileContent.language) &&
+      urlState.viewMode !== 'raw')
+
+  useEffect(() => {
+    if (isRenderedContent && blameEnabled) {
+      setBlameEnabled(false)
+      setBlameData([])
+    }
+  }, [isRenderedContent, blameEnabled])
+
   // Fetch blame data when enabled and file is loaded
   useEffect(() => {
-    if (!blameEnabled || !repoName || !filePath || !fileContent) {
+    if (!blameEnabled || !repoName || !filePath || !fileContent || isRenderedContent) {
       setBlameData([])
       return
     }
@@ -91,7 +105,15 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
     }
 
     loadBlame()
-  }, [blameEnabled, repoName, filePath, fileContent, urlState.selectedCommit, selectedBranch])
+  }, [
+    blameEnabled,
+    repoName,
+    filePath,
+    fileContent,
+    urlState.selectedCommit,
+    selectedBranch,
+    isRenderedContent,
+  ])
 
   // Get short hash for display
   const getShortHash = (hash: string | null | undefined) => {
@@ -164,18 +186,12 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
   )
 
   const handleJumpToTop = useCallback(() => {
-    const isRenderedMarkdown =
-      fileContent &&
-      isMarkdownFile(fileContent.path, fileContent.language) &&
-      urlState.viewMode !== 'raw'
-    const isImage = !!rawContent
-
-    if (isRenderedMarkdown || isImage) {
+    if (isRenderedContent) {
       scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
     } else {
       actions.navigateToLine(1)
     }
-  }, [fileContent, rawContent, urlState.viewMode, actions])
+  }, [isRenderedContent, actions])
 
   // Keyboard shortcut: Cmd+Shift+F (Mac) / Ctrl+Shift+F (Win/Linux)
   useEffect(() => {
@@ -334,23 +350,17 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
           )}
 
         {/* Blame toggle (only when file is loaded, NOT in diff mode, and NOT rendered markdown) */}
-        {repoName &&
-          filePath &&
-          fileContent &&
-          !diffMode &&
-          !(
-            isMarkdownFile(fileContent.path, fileContent.language) && urlState.viewMode !== 'raw'
-          ) && (
-            <Tooltip title={blameEnabled ? 'Hide blame annotations' : 'Show blame annotations'}>
-              <IconButton
-                size="small"
-                onClick={() => setBlameEnabled(!blameEnabled)}
-                color={blameEnabled ? 'primary' : 'default'}
-              >
-                <HistoryToggleOffIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
+        {repoName && filePath && fileContent && !diffMode && !isRenderedContent && (
+          <Tooltip title={blameEnabled ? 'Hide blame annotations' : 'Show blame annotations'}>
+            <IconButton
+              size="small"
+              onClick={() => setBlameEnabled(!blameEnabled)}
+              color={blameEnabled ? 'primary' : 'default'}
+            >
+              <HistoryToggleOffIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
 
         {/* Compare button (only when file is loaded and NOT in diff mode) */}
         {repoName && filePath && repository && fileContent && !diffMode && (
