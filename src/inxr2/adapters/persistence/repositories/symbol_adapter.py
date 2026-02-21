@@ -154,10 +154,11 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
             pg_pattern = translate_word_boundaries(name)
             op = "~" if case_sensitive else "~*"
             query = select(SymbolModel).where(SymbolModel.name.op(op)(pg_pattern))
-        elif case_sensitive:
-            query = select(SymbolModel).where(SymbolModel.name.like(f"%{name}%"))
         else:
-            query = select(SymbolModel).where(SymbolModel.name.ilike(f"%{name}%"))
+            if case_sensitive:
+                query = select(SymbolModel).where(SymbolModel.name.like(f"%{name}%"))
+            else:
+                query = select(SymbolModel).where(SymbolModel.name.ilike(f"%{name}%"))
 
         if repository_id is None and scope == "latest":
             # Global search: only symbols from HEAD of each repo's default branch

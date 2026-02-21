@@ -189,15 +189,20 @@ export default function Search() {
         const scope = selectedRepoId ? undefined : 'latest'
 
         // Compute inclusion extensions from exclusions (send remaining to backend)
-        const includedExtensions =
+        const apiExtensions =
           excludedExtensions.length > 0
             ? availableExtensions.filter((ext) => !excludedExtensions.includes(ext))
             : undefined
-        // Empty inclusion list means "match nothing" - don't send as undefined
-        const apiExtensions =
-          includedExtensions !== undefined && includedExtensions.length === 0
-            ? ['__none__'] // Sentinel: no extension will match this
-            : includedExtensions
+
+        // All extensions excluded — no results possible, skip search entirely
+        if (apiExtensions !== undefined && apiExtensions.length === 0) {
+          setResults([])
+          setFileResults([])
+          setTotalResults(0)
+          setPaginationTotal(0)
+          setLoading(false)
+          return
+        }
 
         if (isFileMode) {
           // File search mode
@@ -717,7 +722,7 @@ export default function Search() {
             </Box>
 
             {/* Exclusion Filters */}
-            <Box sx={{ mt: 2, opacity: isFileMode ? 0.5 : 1 }}>
+            <Box sx={{ mt: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                   Filters
@@ -789,7 +794,7 @@ export default function Search() {
                     ))}
                   </Select>
                 </FormControl>
-                <FormGroup row>
+                <FormGroup row sx={{ opacity: isFileMode ? 0.5 : 1 }}>
                   {SOURCE_TYPES.map((type) => (
                     <FormControlLabel
                       key={type.value}

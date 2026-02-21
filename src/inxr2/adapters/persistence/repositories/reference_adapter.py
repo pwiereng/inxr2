@@ -231,14 +231,15 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
             base_query = select(ReferenceModel).where(
                 ReferenceModel.reference_text.op(op)(pg_pattern)
             )
-        elif case_sensitive:
-            base_query = select(ReferenceModel).where(
-                ReferenceModel.reference_text.like(f"%{query}%")
-            )
         else:
-            base_query = select(ReferenceModel).where(
-                ReferenceModel.reference_text.ilike(f"%{query}%")
-            )
+            if case_sensitive:
+                base_query = select(ReferenceModel).where(
+                    ReferenceModel.reference_text.like(f"%{query}%")
+                )
+            else:
+                base_query = select(ReferenceModel).where(
+                    ReferenceModel.reference_text.ilike(f"%{query}%")
+                )
 
         if repository_id is not None:
             base_query = base_query.where(ReferenceModel.repository_id == repository_id)
