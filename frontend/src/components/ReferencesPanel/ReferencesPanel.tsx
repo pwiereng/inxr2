@@ -510,7 +510,7 @@ export function ReferencesPanel({
           }}
         >
           <Link
-            to={`/search?query=${encodeURIComponent(displayName)}&source_types=symbol,reference`}
+            to={`/search?query=${encodeURIComponent(displayName)}&exclude_types=comment,docstring,commit_message,file_content`}
             style={{ textDecoration: 'none' }}
           >
             <Typography

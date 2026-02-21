@@ -751,7 +751,7 @@ class TestSymbolsAPI:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            response = await client.get("/api/symbols?q=my")
+            response = await client.get("/api/symbols?q=my&case_sensitive=false")
 
         # Assert
         assert response.status_code == 200

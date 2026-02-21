@@ -23,6 +23,9 @@ class SearchTextRequest:
         commit_hash: Optional commit hash filter (for time travel)
         source_types: Optional list of source types to filter by
         languages: Optional list of languages to filter by
+        extensions: Optional list of file extensions to filter by (e.g. [".py", ".ts"])
+        case_sensitive: Case-sensitive matching for regex mode (keyword/phrase
+            use tsvector which is inherently case-insensitive; default: True)
         scope: Search scope for cross-repo search (default: "latest").
             Only applies when repository_id is not provided.
         limit: Maximum results to return (default: 20)
@@ -36,6 +39,8 @@ class SearchTextRequest:
     commit_hash: str | None = None
     source_types: list[str] | None = None
     languages: list[str] | None = None
+    extensions: list[str] | None = None
+    case_sensitive: bool = True
     scope: str = "latest"
     limit: int = 20
     offset: int = 0
@@ -189,6 +194,8 @@ class SearchTextUseCase:
                 commit_id=commit_id,
                 source_types=text_source_types,
                 languages=request.languages,
+                extensions=request.extensions,
+                case_sensitive=request.case_sensitive,
                 scope=request.scope if request.repository_id is None else None,
                 limit=request.limit,
                 offset=request.offset,
@@ -295,8 +302,11 @@ class SearchTextUseCase:
                     repository_id=request.repository_id,
                     branch=request.branch,
                     scope=scope,
+                    extensions=request.extensions,
                     limit=ref_limit,
                     offset=ref_offset,
+                    mode=request.mode,
+                    case_sensitive=request.case_sensitive,
                 )
 
                 if refs:

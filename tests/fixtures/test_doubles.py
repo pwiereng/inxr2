@@ -163,7 +163,10 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         limit: int = 50,
         branch: str | None = None,
         language: str | None = None,
+        extensions: list[str] | None = None,
         scope: str | None = None,
+        mode: str | None = None,
+        case_sensitive: bool = True,
     ) -> list[Symbol]:
         """Search symbols by name with optional filters.
 
@@ -197,26 +200,48 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 if f.language == language and f.id is not None
             }
 
+        # Compute extension file IDs if extensions filter is set
+        extension_file_ids: set[int] | None = None
+        if extensions is not None and self._file_repo is not None:
+            extension_file_ids = {
+                f.id
+                for f in self._file_repo._files.values()
+                if f.extension in extensions and f.id is not None
+            }
+
         results = []
         for symbol in self._symbols.values():
-            if name.lower() in symbol.name.lower():
-                if repository_id is not None and symbol.repository_id != repository_id:
+            # Name matching: regex or substring
+            if mode == "regex":
+                try:
+                    flags = 0 if case_sensitive else re.IGNORECASE
+                    if not re.search(name, symbol.name, flags):
+                        continue
+                except re.error:
                     continue
-                if kind is not None and symbol.kind.value != kind:
-                    continue
-                if head_file_ids is not None and symbol.file_id not in head_file_ids:
-                    continue
-                if (
-                    latest_file_ids is not None
-                    and symbol.file_id not in latest_file_ids
-                ):
-                    continue
-                if (
-                    language_file_ids is not None
-                    and symbol.file_id not in language_file_ids
-                ):
-                    continue
-                results.append(symbol)
+            elif case_sensitive and name not in symbol.name:
+                continue
+            elif not case_sensitive and name.lower() not in symbol.name.lower():
+                continue
+            if repository_id is not None and symbol.repository_id != repository_id:
+                continue
+            if kind is not None and symbol.kind.value != kind:
+                continue
+            if head_file_ids is not None and symbol.file_id not in head_file_ids:
+                continue
+            if latest_file_ids is not None and symbol.file_id not in latest_file_ids:
+                continue
+            if (
+                language_file_ids is not None
+                and symbol.file_id not in language_file_ids
+            ):
+                continue
+            if (
+                extension_file_ids is not None
+                and symbol.file_id not in extension_file_ids
+            ):
+                continue
+            results.append(symbol)
         results.sort(key=lambda s: s.name)
         return results[:limit]
 
@@ -385,6 +410,7 @@ class InMemoryFileRepository(FileRepositoryPort):
                 content_hash=file.content_hash,
                 size_bytes=file.size_bytes,
                 language=file.language,
+                extension=file.extension,
                 encoding=file.encoding,
                 is_binary=file.is_binary,
                 line_count=file.line_count,
@@ -418,6 +444,7 @@ class InMemoryFileRepository(FileRepositoryPort):
         content_hash: str,
         size_bytes: int,
         language: str | None = None,
+        extension: str | None = None,
         encoding: str = "utf-8",
         is_binary: bool = False,
         line_count: int | None = None,
@@ -442,6 +469,7 @@ class InMemoryFileRepository(FileRepositoryPort):
             content_hash=content_hash,
             size_bytes=size_bytes,
             language=language,
+            extension=extension,
             encoding=encoding,
             is_binary=is_binary,
             line_count=line_count,
@@ -648,6 +676,7 @@ class InMemoryFileRepository(FileRepositoryPort):
         repository_id: int | None = None,
         commit_id: int | None = None,
         language: str | None = None,
+        extensions: list[str] | None = None,
         limit: int = 20,
         scope: str | None = None,
     ) -> list[File]:
@@ -681,6 +710,9 @@ class InMemoryFileRepository(FileRepositoryPort):
                 continue
 
             if language is not None and file.language != language:
+                continue
+
+            if extensions is not None and file.extension not in extensions:
                 continue
 
             results.append(file)
@@ -746,6 +778,32 @@ class InMemoryFileRepository(FileRepositoryPort):
 
             result[fid] = commit_ids
         return result
+
+    async def get_distinct_extensions(
+        self,
+        repository_id: int | None = None,
+        branch: str | None = None,
+        scope: str | None = None,
+    ) -> list[str]:
+        """Get distinct file extensions across indexed files."""
+        extensions: set[str] = set()
+
+        # Determine which files to consider
+        if repository_id is None and scope == "latest":
+            head_file_ids = self._compute_head_file_ids()
+            candidate_files = [f for f in self._files.values() if f.id in head_file_ids]
+        elif repository_id is not None:
+            candidate_files = [
+                f for f in self._files.values() if f.repository_id == repository_id
+            ]
+        else:
+            candidate_files = list(self._files.values())
+
+        for f in candidate_files:
+            if f.extension is not None:
+                extensions.add(f.extension)
+
+        return sorted(extensions)
 
     def _compute_latest_file_ids(
         self, repository_id: int, branch: str | None = None
@@ -1395,15 +1453,30 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         repository_id: int | None = None,
         branch: str | None = None,
         scope: str | None = None,
+        extensions: list[str] | None = None,
         limit: int = 20,
         offset: int = 0,
+        mode: str | None = None,
+        case_sensitive: bool = True,
     ) -> tuple[list[Reference], int]:
-        """Search references by substring match on reference_text."""
-        refs = [
-            r
-            for r in self._references.values()
-            if query.lower() in r.reference_text.lower()
-        ]
+        """Search references by text match on reference_text."""
+        if mode == "regex":
+            refs = []
+            flags = 0 if case_sensitive else re.IGNORECASE
+            for r in self._references.values():
+                try:
+                    if re.search(query, r.reference_text, flags):
+                        refs.append(r)
+                except re.error:
+                    pass
+        elif case_sensitive:
+            refs = [r for r in self._references.values() if query in r.reference_text]
+        else:
+            refs = [
+                r
+                for r in self._references.values()
+                if query.lower() in r.reference_text.lower()
+            ]
 
         if repository_id is not None:
             refs = [r for r in refs if r.repository_id == repository_id]
@@ -1413,6 +1486,19 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                     repository_id, branch=branch
                 )
                 refs = [r for r in refs if r.source_file_id in latest_ids]
+
+        # Extension filter (via file lookup)
+        if (
+            extensions is not None
+            and len(extensions) > 0
+            and self._file_repo is not None
+        ):
+            refs = [
+                r
+                for r in refs
+                if r.source_file_id in self._file_repo._files
+                and self._file_repo._files[r.source_file_id].extension in extensions
+            ]
 
         refs.sort(key=lambda r: (r.repository_id, r.source_file_id, r.source_line))
         total = len(refs)
@@ -2377,21 +2463,33 @@ class FakeTextSearch(TextSearchPort):
             if query.languages and tc.language not in query.languages:
                 continue
 
+            # Extension filter (via file lookup)
+            if query.extensions and self._file_repo is not None:
+                if tc.source_file_id is None:
+                    continue
+                file = self._file_repo._files.get(tc.source_file_id)
+                if file is None or file.extension not in query.extensions:
+                    continue
+
             # Text matching based on mode
             if query.mode == "regex":
                 # Validate regex pattern (matches production behavior)
                 self._validate_regex_pattern(query.query)
                 # Use actual regex matching
+                flags = 0 if query.case_sensitive else re.IGNORECASE
                 try:
-                    if re.search(query.query, tc.content, re.IGNORECASE):
+                    if re.search(query.query, tc.content, flags):
                         filtered.append(tc)
                 except re.error:
                     # Should not happen after validation, but be defensive
                     pass
             else:  # keyword or phrase
-                # Simple contains match for testing
-                if query.query.lower() in tc.content.lower():
-                    filtered.append(tc)
+                if query.case_sensitive:
+                    if query.query in tc.content:
+                        filtered.append(tc)
+                else:
+                    if query.query.lower() in tc.content.lower():
+                        filtered.append(tc)
 
         # Calculate total before pagination
         total = len(filtered)

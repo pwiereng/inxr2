@@ -165,6 +165,9 @@ class ProcessFileUseCase:
         # Detect language using full LanguageDetector (60+ extensions, fixes #35)
         language = LanguageDetector.detect(request.file_path)
 
+        # Extract file extension (e.g., ".py", ".tsx")
+        extension = Path(request.file_path).suffix.lower() or None
+
         # Find or create file version
         content_bytes = content.encode("utf-8")
         line_count = content.count("\n") + 1
@@ -174,6 +177,7 @@ class ProcessFileUseCase:
             content_hash=content_hash,
             size_bytes=len(content_bytes),
             language=language,
+            extension=extension,
             line_count=line_count,
         )
         file_id = file_entity.id

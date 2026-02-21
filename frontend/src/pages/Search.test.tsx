@@ -33,6 +33,7 @@ vi.mock('@/lib/api', async () => {
     getRepositories: vi.fn(),
     getRepositoryBranches: vi.fn(),
     getCommits: vi.fn(),
+    getFileExtensions: vi.fn(),
   }
 })
 
@@ -41,6 +42,7 @@ const mockSearchSymbols = vi.mocked(api.searchSymbols)
 const mockGetRepositories = vi.mocked(api.getRepositories)
 const mockGetRepositoryBranches = vi.mocked(api.getRepositoryBranches)
 const mockGetCommits = vi.mocked(api.getCommits)
+const mockGetFileExtensions = vi.mocked(api.getFileExtensions)
 
 describe('Search', () => {
   beforeEach(() => {
@@ -87,6 +89,10 @@ describe('Search', () => {
         },
       ],
       total: 1,
+    })
+
+    mockGetFileExtensions.mockResolvedValue({
+      extensions: ['.py', '.ts', '.tsx', '.js'],
     })
 
     mockSearchText.mockResolvedValue({
@@ -181,7 +187,7 @@ describe('Search', () => {
       offset: 0,
     })
 
-    window.history.pushState({}, '', '?query=get_file_symbols_by_path&source_types=commit_message')
+    window.history.pushState({}, '', '?query=get_file_symbols_by_path')
     render(<Search />)
 
     // Wait for results to appear
@@ -286,7 +292,7 @@ describe('Search', () => {
     })
   })
 
-  it('should have all source type checkboxes checked by default', async () => {
+  it('should have all source type checkboxes unchecked by default (nothing excluded)', async () => {
     render(<Search />)
 
     await waitFor(() => {
@@ -297,12 +303,12 @@ describe('Search', () => {
       const commitMsgsCheckbox = screen.getByLabelText('Commit Messages') as HTMLInputElement
       const fileContentCheckbox = screen.getByLabelText('File Content') as HTMLInputElement
 
-      expect(symbolsCheckbox.checked).toBe(true)
-      expect(referencesCheckbox.checked).toBe(true)
-      expect(commentsCheckbox.checked).toBe(true)
-      expect(docstringsCheckbox.checked).toBe(true)
-      expect(commitMsgsCheckbox.checked).toBe(true)
-      expect(fileContentCheckbox.checked).toBe(true)
+      expect(symbolsCheckbox.checked).toBe(false)
+      expect(referencesCheckbox.checked).toBe(false)
+      expect(commentsCheckbox.checked).toBe(false)
+      expect(docstringsCheckbox.checked).toBe(false)
+      expect(commitMsgsCheckbox.checked).toBe(false)
+      expect(fileContentCheckbox.checked).toBe(false)
     })
   })
 
@@ -322,19 +328,15 @@ describe('Search', () => {
     })
   })
 
-  it('should exclude unchecked source types from results', async () => {
-    // URL has all types except symbol
-    window.history.pushState(
-      {},
-      '',
-      '?query=test&source_types=comment,docstring,commit_message,file_content'
-    )
+  it('should exclude checked source types from results', async () => {
+    // URL excludes symbol type (checked = excluded)
+    window.history.pushState({}, '', '?query=test&exclude_types=symbol')
     render(<Search />)
 
     await waitFor(() => {
-      // searchText should be called with the specified types
+      // searchText should be called (other text types still active)
       expect(mockSearchText).toHaveBeenCalled()
-      // searchSymbols should NOT be called since symbol is unchecked
+      // searchSymbols should NOT be called since symbol is excluded
       expect(mockSearchSymbols).not.toHaveBeenCalled()
     })
   })
@@ -372,7 +374,11 @@ describe('Search', () => {
       offset: 0,
     })
 
-    window.history.pushState({}, '', '?query=get_file_symbols_by_path&source_types=symbol')
+    window.history.pushState(
+      {},
+      '',
+      '?query=get_file_symbols_by_path&exclude_types=reference,comment,docstring,commit_message,file_content'
+    )
     render(<Search />)
 
     await waitFor(() => {
@@ -383,7 +389,7 @@ describe('Search', () => {
       )
     })
 
-    // Should NOT call searchText when only symbol is selected
+    // Should NOT call searchText when everything except symbol is excluded
     expect(mockSearchText).not.toHaveBeenCalled()
   })
 
@@ -412,7 +418,11 @@ describe('Search', () => {
       offset: 0,
     })
 
-    window.history.pushState({}, '', '?query=MyClass&source_types=symbol')
+    window.history.pushState(
+      {},
+      '',
+      '?query=MyClass&exclude_types=reference,comment,docstring,commit_message,file_content'
+    )
     render(<Search />)
 
     await waitFor(() => {
@@ -447,7 +457,11 @@ describe('Search', () => {
       offset: 0,
     })
 
-    window.history.pushState({}, '', '?query=my_function&source_types=symbol')
+    window.history.pushState(
+      {},
+      '',
+      '?query=my_function&exclude_types=reference,comment,docstring,commit_message,file_content'
+    )
     render(<Search />)
 
     await waitFor(() => {
@@ -470,7 +484,11 @@ describe('Search', () => {
       offset: 0,
     })
 
-    window.history.pushState({}, '', '?query=test&source_types=symbol,comment')
+    window.history.pushState(
+      {},
+      '',
+      '?query=test&exclude_types=reference,docstring,commit_message,file_content'
+    )
     render(<Search />)
 
     await waitFor(() => {

@@ -272,6 +272,9 @@ export async function searchSymbols(params: {
   repository_id?: number
   branch?: string
   language?: string
+  extensions?: string[]
+  mode?: string
+  case_sensitive?: boolean
   scope?: 'latest' | 'all_branches' | 'all_history'
   limit?: number
   offset?: number
@@ -282,6 +285,12 @@ export async function searchSymbols(params: {
   if (params.repository_id) searchParams.set('repository_id', params.repository_id.toString())
   if (params.branch) searchParams.set('branch', params.branch)
   if (params.language) searchParams.set('language', params.language)
+  if (params.extensions) {
+    params.extensions.forEach((ext) => searchParams.append('extensions', ext))
+  }
+  if (params.mode) searchParams.set('mode', params.mode)
+  if (params.case_sensitive !== undefined)
+    searchParams.set('case_sensitive', params.case_sensitive.toString())
   if (params.scope) searchParams.set('scope', params.scope)
   if (params.limit) searchParams.set('limit', params.limit.toString())
   if (params.offset) searchParams.set('offset', params.offset.toString())
@@ -445,6 +454,8 @@ export interface TextSearchParams {
   commit?: string
   source_types?: string[]
   languages?: string[]
+  extensions?: string[]
+  case_sensitive?: boolean
   scope?: 'latest' | 'all_branches' | 'all_history'
   limit?: number
   offset?: number
@@ -489,6 +500,11 @@ export async function searchText(params: TextSearchParams): Promise<TextSearchRe
   if (params.languages) {
     params.languages.forEach((lang) => searchParams.append('languages', lang))
   }
+  if (params.extensions) {
+    params.extensions.forEach((ext) => searchParams.append('extensions', ext))
+  }
+  if (params.case_sensitive !== undefined)
+    searchParams.set('case_sensitive', params.case_sensitive.toString())
   if (params.scope) searchParams.set('scope', params.scope)
   if (params.limit) searchParams.set('limit', params.limit.toString())
   if (params.offset) searchParams.set('offset', params.offset.toString())
@@ -503,6 +519,7 @@ export interface FileSearchParams {
   branch?: string
   commit_hash?: string
   language?: string
+  extensions?: string[]
   scope?: 'latest' | 'all_branches' | 'all_history'
   limit?: number
 }
@@ -530,8 +547,29 @@ export async function searchFiles(params: FileSearchParams): Promise<FileSearchR
   if (params.branch) searchParams.set('branch', params.branch)
   if (params.commit_hash) searchParams.set('commit_hash', params.commit_hash)
   if (params.language) searchParams.set('language', params.language)
+  if (params.extensions) {
+    params.extensions.forEach((ext) => searchParams.append('extensions', ext))
+  }
   if (params.scope) searchParams.set('scope', params.scope)
   if (params.limit) searchParams.set('limit', params.limit.toString())
 
   return fetchApi<FileSearchResponse>(`/search/files?${searchParams}`)
+}
+
+// File Extensions
+export interface ExtensionsResponse {
+  extensions: string[]
+}
+
+export async function getFileExtensions(params?: {
+  repository_id?: number
+  branch?: string
+  scope?: 'latest'
+}): Promise<ExtensionsResponse> {
+  const searchParams = new URLSearchParams()
+  if (params?.repository_id) searchParams.set('repository_id', params.repository_id.toString())
+  if (params?.branch) searchParams.set('branch', params.branch)
+  if (params?.scope) searchParams.set('scope', params.scope)
+  const query = searchParams.toString()
+  return fetchApi<ExtensionsResponse>(`/search/extensions${query ? `?${query}` : ''}`)
 }

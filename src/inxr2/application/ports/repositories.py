@@ -286,6 +286,7 @@ class FileRepositoryPort(ABC):
         content_hash: str,
         size_bytes: int,
         language: str | None = None,
+        extension: str | None = None,
         encoding: str = "utf-8",
         is_binary: bool = False,
         line_count: int | None = None,
@@ -301,6 +302,7 @@ class FileRepositoryPort(ABC):
             content_hash: SHA-1 hash of file content
             size_bytes: File size in bytes
             language: Detected programming language
+            extension: File extension (e.g., ".py", ".tsx")
             encoding: File encoding
             is_binary: Whether file is binary
             line_count: Number of lines
@@ -459,6 +461,7 @@ class FileRepositoryPort(ABC):
         repository_id: int | None = None,
         commit_id: int | None = None,
         language: str | None = None,
+        extensions: list[str] | None = None,
         limit: int = 20,
         scope: str | None = None,
     ) -> list[File]:
@@ -480,12 +483,33 @@ class FileRepositoryPort(ABC):
             commit_id: Filter by specific commit for time travel (optional).
                 When None, returns latest version per (repo, path).
             language: Filter by programming language (optional)
+            extensions: Filter by file extensions (e.g., [".py", ".ts"]) (optional)
             limit: Maximum number of results (default 20)
             scope: Search scope for global search (e.g. "latest") when no
                 repository_id is specified. Ignored when repository_id is set.
 
         Returns:
             List of matching files, ordered by relevance.
+        """
+        pass
+
+    @abstractmethod
+    async def get_distinct_extensions(
+        self,
+        repository_id: int | None = None,
+        branch: str | None = None,
+        scope: str | None = None,
+    ) -> list[str]:
+        """Get distinct file extensions across indexed files.
+
+        Args:
+            repository_id: Filter by repository (optional)
+            branch: Filter by branch (optional, requires repository_id)
+            scope: Search scope for global search (e.g. "latest") when no
+                repository_id is specified.
+
+        Returns:
+            Sorted list of distinct file extensions (e.g., [".css", ".py", ".ts"])
         """
         pass
 
@@ -535,19 +559,27 @@ class SymbolRepositoryPort(ABC):
         limit: int = 50,
         branch: str | None = None,
         language: str | None = None,
+        extensions: list[str] | None = None,
         scope: str | None = None,
+        mode: str | None = None,
+        case_sensitive: bool = True,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
         Args:
-            name: Search pattern (case-insensitive substring match)
+            name: Search pattern (substring match or regex when mode="regex")
             repository_id: Filter by repository (optional)
             kind: Filter by symbol kind (optional)
             limit: Maximum results
             branch: Filter by branch name via commit_files → branch_commits (optional)
             language: Filter by programming language via files (optional)
+            extensions: Filter by file extensions (e.g., [".py", ".ts"]) (optional)
             scope: Search scope for global search (e.g. "latest") when no
                 repository_id is specified. Ignored when repository_id is set.
+            mode: Search mode - "regex" for regex matching on symbol names,
+                otherwise substring match (optional)
+            case_sensitive: Case-sensitive matching (applies to all modes,
+                default True)
         """
         pass
 
@@ -660,22 +692,30 @@ class ReferenceRepositoryPort(ABC):
         repository_id: int | None = None,
         branch: str | None = None,
         scope: str | None = None,
+        extensions: list[str] | None = None,
         limit: int = 20,
         offset: int = 0,
+        mode: str | None = None,
+        case_sensitive: bool = True,
     ) -> tuple[list[Reference], int]:
-        """Search references by substring match on reference_text.
+        """Search references by text match on reference_text.
 
-        Uses case-insensitive substring matching (ILIKE) to find references
-        whose text contains the query string.
+        Uses substring matching by default, or regex matching when
+        mode="regex". Case sensitivity is controlled by case_sensitive.
 
         Args:
-            query: Substring to search for in reference_text
+            query: Substring or regex pattern to search for in reference_text
             repository_id: Filter by repository (optional)
             branch: Filter by branch name (optional)
             scope: Search scope for global search (e.g. "latest") when no
                 repository_id is specified. Ignored when repository_id is set.
+            extensions: Filter by file extensions (e.g. [".py", ".ts"]) (optional)
             limit: Maximum results to return (default 20)
             offset: Pagination offset (default 0)
+            mode: Search mode - "regex" for regex matching, otherwise
+                substring match (optional)
+            case_sensitive: Case-sensitive matching (applies to all modes,
+                default True)
 
         Returns:
             Tuple of (matching references, total count) for pagination

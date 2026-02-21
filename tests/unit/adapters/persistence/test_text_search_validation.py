@@ -5,8 +5,8 @@ These tests verify the regex validation logic without requiring PostgreSQL.
 
 import pytest
 
-from inxr2.adapters.persistence.repositories.postgres_text_search import (
-    _validate_regex_pattern,
+from inxr2.adapters.persistence.repositories.regex_utils import (
+    validate_regex_pattern as _validate_regex_pattern,
 )
 
 

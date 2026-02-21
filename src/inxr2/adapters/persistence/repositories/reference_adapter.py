@@ -12,6 +12,7 @@ from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.reference import ReferenceModel
 from ..models.repository import RepositoryModel
+from .regex_utils import translate_word_boundaries, validate_regex_pattern
 
 
 class PostgresReferenceRepository(ReferenceRepositoryPort):
@@ -216,13 +217,32 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         repository_id: int | None = None,
         branch: str | None = None,
         scope: str | None = None,
+        extensions: list[str] | None = None,
         limit: int = 20,
         offset: int = 0,
+        mode: str | None = None,
+        case_sensitive: bool = True,
     ) -> tuple[list[Reference], int]:
-        """Search references by substring match on reference_text."""
-        base_query = select(ReferenceModel).where(
-            ReferenceModel.reference_text.ilike(f"%{query}%")
-        )
+        """Search references by text match on reference_text."""
+        if mode == "regex":
+            validate_regex_pattern(query)
+            pg_pattern = translate_word_boundaries(query)
+            op = "~" if case_sensitive else "~*"
+            base_query = select(ReferenceModel).where(
+                ReferenceModel.reference_text.op(op)(pg_pattern)
+            )
+        else:
+            escaped = (
+                query.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+            )
+            if case_sensitive:
+                base_query = select(ReferenceModel).where(
+                    ReferenceModel.reference_text.like(f"%{escaped}%", escape="\\")
+                )
+            else:
+                base_query = select(ReferenceModel).where(
+                    ReferenceModel.reference_text.ilike(f"%{escaped}%", escape="\\")
+                )
 
         if repository_id is not None:
             base_query = base_query.where(ReferenceModel.repository_id == repository_id)
@@ -236,6 +256,14 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
             head_fids = self._head_file_ids_subquery()
             base_query = base_query.where(
                 ReferenceModel.source_file_id.in_(select(head_fids.c.file_id))
+            )
+
+        # Apply extension filter via files table
+        if extensions is not None and len(extensions) > 0:
+            base_query = base_query.where(
+                ReferenceModel.source_file_id.in_(
+                    select(FileModel.id).where(FileModel.extension.in_(extensions))
+                )
             )
 
         # Get total count

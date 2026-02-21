@@ -12,6 +12,7 @@ from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.repository import RepositoryModel
 from ..models.symbol import SymbolModel
+from .regex_utils import translate_word_boundaries, validate_regex_pattern
 
 
 class PostgresSymbolRepository(SymbolRepositoryPort):
@@ -133,7 +134,10 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         limit: int = 50,
         branch: str | None = None,
         language: str | None = None,
+        extensions: list[str] | None = None,
         scope: str | None = None,
+        mode: str | None = None,
+        case_sensitive: bool = True,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
@@ -145,7 +149,21 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         Note: ``branch`` only takes effect when ``repository_id`` is
         provided, since branch-scoped dedup requires a repository context.
         """
-        query = select(SymbolModel).where(SymbolModel.name.ilike(f"%{name}%"))
+        if mode == "regex":
+            validate_regex_pattern(name)
+            pg_pattern = translate_word_boundaries(name)
+            op = "~" if case_sensitive else "~*"
+            query = select(SymbolModel).where(SymbolModel.name.op(op)(pg_pattern))
+        else:
+            escaped = name.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+            if case_sensitive:
+                query = select(SymbolModel).where(
+                    SymbolModel.name.like(f"%{escaped}%", escape="\\")
+                )
+            else:
+                query = select(SymbolModel).where(
+                    SymbolModel.name.ilike(f"%{escaped}%", escape="\\")
+                )
 
         if repository_id is None and scope == "latest":
             # Global search: only symbols from HEAD of each repo's default branch
@@ -165,6 +183,13 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
             query = query.where(
                 SymbolModel.file_id.in_(
                     select(FileModel.id).where(FileModel.language == language)
+                )
+            )
+
+        if extensions is not None and len(extensions) > 0:
+            query = query.where(
+                SymbolModel.file_id.in_(
+                    select(FileModel.id).where(FileModel.extension.in_(extensions))
                 )
             )
 

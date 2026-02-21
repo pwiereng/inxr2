@@ -341,3 +341,153 @@ class TestSearchFilesGlobalScope:
             match="repository parameter is required when using branch or commit_hash",
         ):
             await use_case.execute(request)
+
+
+class TestSearchFilesExtensionFilter:
+    """Tests for file search with extension filtering."""
+
+    @pytest.fixture
+    def repository_repo(self) -> InMemoryRepositoryRepository:
+        repo = InMemoryRepositoryRepository()
+        repo.add(
+            Repository(
+                id=1,
+                name="test-repo",
+                url="/repos/test-repo",
+                default_branch="main",
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    async def commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        c = await repo.save(
+            Commit(
+                id=None,
+                repository_id=1,
+                commit_hash=CommitHash("ext111"),
+                author_date=datetime(2024, 1, 1, tzinfo=UTC),
+                commit_date=datetime(2024, 1, 1, tzinfo=UTC),
+            )
+        )
+        assert c.id is not None
+        await repo.link_commit_to_branch(1, c.id, "main")
+        return repo
+
+    @pytest.fixture
+    async def file_repo(
+        self,
+        commit_repo: InMemoryCommitRepository,
+        repository_repo: InMemoryRepositoryRepository,
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        repo._repository_repo = repository_repo  # type: ignore[attr-defined]
+        f1 = await repo.save(
+            File(
+                repository_id=1,
+                path="src/utils.py",
+                content_hash="h1",
+                size_bytes=100,
+                language="python",
+                extension=".py",
+            )
+        )
+        f2 = await repo.save(
+            File(
+                repository_id=1,
+                path="src/main.ts",
+                content_hash="h2",
+                size_bytes=200,
+                language="typescript",
+                extension=".ts",
+            )
+        )
+        f3 = await repo.save(
+            File(
+                repository_id=1,
+                path="src/app.tsx",
+                content_hash="h3",
+                size_bytes=300,
+                language="typescript",
+                extension=".tsx",
+            )
+        )
+        assert f1.id is not None and f2.id is not None and f3.id is not None
+        commit_id = list(commit_repo._commits.values())[0].id
+        assert commit_id is not None
+        await repo.link_file_to_commit(f1.id, commit_id=commit_id)
+        await repo.link_file_to_commit(f2.id, commit_id=commit_id)
+        await repo.link_file_to_commit(f3.id, commit_id=commit_id)
+        return repo
+
+    @pytest.fixture
+    def use_case(
+        self,
+        file_repo: InMemoryFileRepository,
+        repository_repo: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> SearchFilesUseCase:
+        return SearchFilesUseCase(
+            file_repo=file_repo,
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_extension_filter_single(self, use_case: SearchFilesUseCase) -> None:
+        """Extension filter returns only matching files."""
+        request = SearchFilesRequest(query="src", extensions=[".py"])
+        response = await use_case.execute(request)
+
+        assert response.total_count == 1
+        assert response.files[0].path == "src/utils.py"
+
+    @pytest.mark.asyncio
+    async def test_extension_filter_multiple(
+        self, use_case: SearchFilesUseCase
+    ) -> None:
+        """Multiple extensions returns union of matches."""
+        request = SearchFilesRequest(query="src", extensions=[".ts", ".tsx"])
+        response = await use_case.execute(request)
+
+        assert response.total_count == 2
+        paths = {f.path for f in response.files}
+        assert paths == {"src/main.ts", "src/app.tsx"}
+
+    @pytest.mark.asyncio
+    async def test_extension_filter_with_no_match(
+        self, use_case: SearchFilesUseCase
+    ) -> None:
+        """Extension filter with no match returns empty."""
+        request = SearchFilesRequest(query="src", extensions=[".rs"])
+        response = await use_case.execute(request)
+
+        assert response.total_count == 0
+
+    @pytest.mark.asyncio
+    async def test_no_extension_filter_returns_all(
+        self, use_case: SearchFilesUseCase
+    ) -> None:
+        """No extension filter returns all matching files."""
+        request = SearchFilesRequest(query="src")
+        response = await use_case.execute(request)
+
+        assert response.total_count == 3
+
+    @pytest.mark.asyncio
+    async def test_get_distinct_extensions(
+        self, file_repo: InMemoryFileRepository
+    ) -> None:
+        """get_distinct_extensions returns sorted unique extensions."""
+        extensions = await file_repo.get_distinct_extensions(repository_id=1)
+
+        assert extensions == [".py", ".ts", ".tsx"]
+
+    @pytest.mark.asyncio
+    async def test_get_distinct_extensions_empty(self) -> None:
+        """get_distinct_extensions returns empty list when no files exist."""
+        repo = InMemoryFileRepository()
+        extensions = await repo.get_distinct_extensions()
+
+        assert extensions == []

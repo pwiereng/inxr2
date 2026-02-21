@@ -40,8 +40,13 @@ class SearchSymbolsRequest:
         exact_match: If True, match exact name instead of partial
         limit: Maximum results to return
         offset: Offset for pagination
+        branch: Optional branch name filter
+        language: Optional programming language filter
+        extensions: Optional list of file extensions to filter by (e.g. [".py", ".ts"])
         scope: Search scope for cross-repo search (default: "latest").
             Only applies when repository_id is not provided.
+        mode: Search mode - "regex" for regex matching, otherwise substring match
+        case_sensitive: Case-sensitive matching (applies to all modes, default: True)
     """
 
     query: str = ""
@@ -53,7 +58,10 @@ class SearchSymbolsRequest:
     offset: int = 0
     branch: str | None = None
     language: str | None = None
+    extensions: list[str] | None = None
     scope: str = "latest"
+    mode: str | None = None
+    case_sensitive: bool = True
 
 
 @dataclass
@@ -150,7 +158,10 @@ class SearchSymbolsUseCase:
                 limit=request.limit + request.offset,
                 branch=request.branch,
                 language=request.language,
+                extensions=request.extensions,
                 scope=request.scope if request.repository_id is None else None,
+                mode=request.mode,
+                case_sensitive=request.case_sensitive,
             )
 
         # Apply offset for pagination

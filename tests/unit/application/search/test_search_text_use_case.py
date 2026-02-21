@@ -599,3 +599,321 @@ class TestSearchTextWithReferences:
         # Should match "processFile" via substring
         assert response.total == 2
         assert all(r.content == "processFile" for r in response.results)
+
+
+class TestSearchTextExtensionFilter:
+    """Tests for text search with extension filtering."""
+
+    @pytest.fixture
+    def repository_repo(self) -> InMemoryRepositoryRepository:
+        repo = InMemoryRepositoryRepository()
+        repo.add(
+            Repository(
+                id=1,
+                name="test-repo",
+                url="/repos/test-repo",
+                default_branch="main",
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    async def commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        c = await repo.save(
+            Commit(
+                id=None,
+                repository_id=1,
+                commit_hash=CommitHash("ext111"),
+                author_date=datetime(2024, 1, 1, tzinfo=UTC),
+                commit_date=datetime(2024, 1, 1, tzinfo=UTC),
+            )
+        )
+        assert c.id is not None
+        await repo.link_commit_to_branch(1, c.id, "main")
+        return repo
+
+    @pytest.fixture
+    async def file_repo(
+        self, commit_repo: InMemoryCommitRepository
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        f1 = await repo.save(
+            File(
+                repository_id=1,
+                path="src/utils.py",
+                content_hash="h1",
+                size_bytes=100,
+                language="python",
+                extension=".py",
+            )
+        )
+        f2 = await repo.save(
+            File(
+                repository_id=1,
+                path="src/main.ts",
+                content_hash="h2",
+                size_bytes=200,
+                language="typescript",
+                extension=".ts",
+            )
+        )
+        assert f1.id is not None and f2.id is not None
+        commit_id = list(commit_repo._commits.values())[0].id
+        assert commit_id is not None
+        await repo.link_file_to_commit(f1.id, commit_id=commit_id)
+        await repo.link_file_to_commit(f2.id, commit_id=commit_id)
+        repo._test_file_ids = (f1.id, f2.id)  # type: ignore[attr-defined]
+        return repo
+
+    @pytest.fixture
+    async def text_content_repo(
+        self, file_repo: InMemoryFileRepository
+    ) -> InMemoryTextContentRepository:
+        f1_id, f2_id = file_repo._test_file_ids  # type: ignore[attr-defined]
+        repo = InMemoryTextContentRepository()
+        await repo.save(
+            TextContent(
+                repository_id=1,
+                commit_id=None,
+                source_type="comment",
+                content="TODO: fix python logic",
+                source_file_id=f1_id,
+                source_line=10,
+                source_end_line=10,
+                language="python",
+                content_type="single_line_comment",
+            )
+        )
+        await repo.save(
+            TextContent(
+                repository_id=1,
+                commit_id=None,
+                source_type="comment",
+                content="TODO: fix typescript handler",
+                source_file_id=f2_id,
+                source_line=20,
+                source_end_line=20,
+                language="typescript",
+                content_type="single_line_comment",
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    def text_search(
+        self,
+        text_content_repo: InMemoryTextContentRepository,
+        file_repo: InMemoryFileRepository,
+    ) -> FakeTextSearch:
+        return FakeTextSearch(text_content_repo, file_repo=file_repo)
+
+    @pytest.fixture
+    def use_case(
+        self,
+        text_search: FakeTextSearch,
+        repository_repo: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+    ) -> SearchTextUseCase:
+        return SearchTextUseCase(
+            text_search=text_search,
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_extension_filter_single(self, use_case: SearchTextUseCase) -> None:
+        """Extension filter returns only text from matching file extensions."""
+        request = SearchTextRequest(query="TODO", extensions=[".py"])
+        response = await use_case.execute(request)
+
+        assert response.total == 1
+        assert "python" in response.results[0].content
+
+    @pytest.mark.asyncio
+    async def test_extension_filter_multiple(self, use_case: SearchTextUseCase) -> None:
+        """Multiple extensions returns union of matches."""
+        request = SearchTextRequest(query="TODO", extensions=[".py", ".ts"])
+        response = await use_case.execute(request)
+
+        assert response.total == 2
+
+    @pytest.mark.asyncio
+    async def test_extension_filter_no_match(self, use_case: SearchTextUseCase) -> None:
+        """Extension filter with no match returns empty."""
+        request = SearchTextRequest(query="TODO", extensions=[".rs"])
+        response = await use_case.execute(request)
+
+        assert response.total == 0
+
+    @pytest.mark.asyncio
+    async def test_no_extension_filter_returns_all(
+        self, use_case: SearchTextUseCase
+    ) -> None:
+        """No extension filter returns all matching text."""
+        request = SearchTextRequest(query="TODO")
+        response = await use_case.execute(request)
+
+        assert response.total == 2
+
+
+class TestSearchTextReferenceExtensionFilter:
+    """Tests for extension filtering on reference results."""
+
+    @pytest.fixture
+    def repository_repo(self) -> InMemoryRepositoryRepository:
+        repo = InMemoryRepositoryRepository()
+        repo.add(
+            Repository(
+                id=1,
+                name="test-repo",
+                url="/repos/test-repo",
+                default_branch="main",
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    async def commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        c = await repo.save(
+            Commit(
+                id=None,
+                repository_id=1,
+                commit_hash=CommitHash("ref111"),
+                author_date=datetime(2024, 1, 1, tzinfo=UTC),
+                commit_date=datetime(2024, 1, 1, tzinfo=UTC),
+            )
+        )
+        assert c.id is not None
+        await repo.link_commit_to_branch(1, c.id, "main")
+        return repo
+
+    @pytest.fixture
+    async def file_repo(
+        self, commit_repo: InMemoryCommitRepository
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        f1 = await repo.save(
+            File(
+                repository_id=1,
+                path="src/parser.py",
+                content_hash="h1",
+                size_bytes=100,
+                language="python",
+                extension=".py",
+            )
+        )
+        f2 = await repo.save(
+            File(
+                repository_id=1,
+                path="src/main.ts",
+                content_hash="h2",
+                size_bytes=200,
+                language="typescript",
+                extension=".ts",
+            )
+        )
+        assert f1.id is not None and f2.id is not None
+        commit_id = list(commit_repo._commits.values())[0].id
+        assert commit_id is not None
+        await repo.link_file_to_commit(f1.id, commit_id=commit_id)
+        await repo.link_file_to_commit(f2.id, commit_id=commit_id)
+        repo._test_file_ids = (f1.id, f2.id)  # type: ignore[attr-defined]
+        return repo
+
+    @pytest.fixture
+    async def reference_repo(
+        self, file_repo: InMemoryFileRepository
+    ) -> InMemoryReferenceRepository:
+        f1_id, f2_id = file_repo._test_file_ids  # type: ignore[attr-defined]
+        repo = InMemoryReferenceRepository(file_repo=file_repo)
+        await repo.save(
+            Reference(
+                repository_id=1,
+                source_file_id=f1_id,
+                source_line=10,
+                source_column=4,
+                source_end_column=15,
+                reference_text="Console",
+                reference_type=ReferenceType.CALL,
+            )
+        )
+        await repo.save(
+            Reference(
+                repository_id=1,
+                source_file_id=f2_id,
+                source_line=25,
+                source_column=0,
+                source_end_column=7,
+                reference_text="Console",
+                reference_type=ReferenceType.USAGE,
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    def use_case(
+        self,
+        repository_repo: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        reference_repo: InMemoryReferenceRepository,
+    ) -> SearchTextUseCase:
+        text_search = FakeTextSearch(
+            InMemoryTextContentRepository(), file_repo=file_repo
+        )
+        return SearchTextUseCase(
+            text_search=text_search,
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            reference_repo=reference_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_reference_extension_filter(
+        self, use_case: SearchTextUseCase
+    ) -> None:
+        """Extension filter applies to reference results."""
+        request = SearchTextRequest(
+            query="Console",
+            source_types=["reference"],
+            extensions=[".ts"],
+        )
+        response = await use_case.execute(request)
+
+        assert len(response.results) == 1
+        assert response.results[0].source_type == "reference"
+        assert response.results[0].file_path == "src/main.ts"
+
+    @pytest.mark.asyncio
+    async def test_reference_no_extension_filter_returns_all(
+        self, use_case: SearchTextUseCase
+    ) -> None:
+        """No extension filter returns all reference results."""
+        request = SearchTextRequest(
+            query="Console",
+            source_types=["reference"],
+        )
+        response = await use_case.execute(request)
+
+        assert len(response.results) == 2
+
+    @pytest.mark.asyncio
+    async def test_reference_extension_filter_excludes_py(
+        self, use_case: SearchTextUseCase
+    ) -> None:
+        """Extension filter excluding .py returns only non-.py references."""
+        request = SearchTextRequest(
+            query="Console",
+            source_types=["reference"],
+            extensions=[".ts"],
+        )
+        response = await use_case.execute(request)
+
+        for r in response.results:
+            assert r.file_path is not None
+            assert r.file_path.endswith(".ts")

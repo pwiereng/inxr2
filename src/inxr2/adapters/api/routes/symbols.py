@@ -16,6 +16,7 @@ from ....infrastructure.dependencies import (
     SearchSymbolsUseCaseDep,
     SymbolAdapter,
 )
+from .search import _validate_extensions
 
 router = APIRouter(prefix="/symbols", tags=["symbols"])
 
@@ -83,6 +84,17 @@ async def search_symbols(
     language: str | None = Query(
         default=None, description="Filter by programming language"
     ),
+    extensions: list[str] | None = Query(
+        default=None, description="Filter by file extension (e.g., .py, .ts)"
+    ),
+    mode: str | None = Query(
+        default=None,
+        description="Search mode: 'regex' for regex matching on symbol names",
+    ),
+    case_sensitive: bool = Query(
+        default=True,
+        description="Case-sensitive matching (applies to all search modes)",
+    ),
     scope: Literal["latest"] = Query(
         default="latest",
         description="Search scope when no repository is specified",
@@ -95,18 +107,25 @@ async def search_symbols(
 
     Returns paginated list of symbols matching the query.
     """
-    result = await use_case.execute(
-        SearchSymbolsRequest(
-            query=q,
-            repository_id=repository_id,
-            kind=kind,
-            limit=limit,
-            offset=offset,
-            branch=branch,
-            language=language,
-            scope=scope,
+    extensions = _validate_extensions(extensions)
+    try:
+        result = await use_case.execute(
+            SearchSymbolsRequest(
+                query=q,
+                repository_id=repository_id,
+                kind=kind,
+                limit=limit,
+                offset=offset,
+                branch=branch,
+                language=language,
+                extensions=extensions,
+                scope=scope,
+                mode=mode,
+                case_sensitive=case_sensitive,
+            )
         )
-    )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     return SymbolListResponse(
         items=[
