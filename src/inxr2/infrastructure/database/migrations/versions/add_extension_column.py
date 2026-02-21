@@ -29,12 +29,12 @@ def upgrade() -> None:
 
     # Backfill: extract last .xxx from path, lowercased.
     # Aligns with Python's Path(path).suffix semantics:
-    #   "src/main.py" → ".py", "Makefile" → NULL, ".bashrc" → NULL
-    # The regex captures a dot-group at the end only when preceded by a
-    # non-dot/non-slash character. We use a two-char match ([^./]\\.)
-    # instead of lookbehind since PostgreSQL doesn't support lookbehind.
+    #   "src/main.py" → ".py", "Makefile" → NULL, ".bashrc" → NULL, "foo..bar" → ".bar"
+    # The regex captures a dot-group at the end preceded by any non-slash
+    # character. We use [^/] (not [^./]) so "foo..bar" correctly yields ".bar",
+    # matching Path('foo..bar').suffix behavior.
     op.execute(
-        "UPDATE files SET extension = lower(substring(path from '[^./](\\.[^./]+)$'))"
+        "UPDATE files SET extension = lower(substring(path from '[^/](\\.[^./]+)$'))"
     )
 
 

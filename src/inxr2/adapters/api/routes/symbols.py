@@ -108,21 +108,24 @@ async def search_symbols(
     Returns paginated list of symbols matching the query.
     """
     extensions = _validate_extensions(extensions)
-    result = await use_case.execute(
-        SearchSymbolsRequest(
-            query=q,
-            repository_id=repository_id,
-            kind=kind,
-            limit=limit,
-            offset=offset,
-            branch=branch,
-            language=language,
-            extensions=extensions,
-            scope=scope,
-            mode=mode,
-            case_sensitive=case_sensitive,
+    try:
+        result = await use_case.execute(
+            SearchSymbolsRequest(
+                query=q,
+                repository_id=repository_id,
+                kind=kind,
+                limit=limit,
+                offset=offset,
+                branch=branch,
+                language=language,
+                extensions=extensions,
+                scope=scope,
+                mode=mode,
+                case_sensitive=case_sensitive,
+            )
         )
-    )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     return SymbolListResponse(
         items=[
