@@ -22,10 +22,15 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     # Process utilities (pkill, pgrep, ps, top)
     procps \
-    # Node.js (install from NodeSource)
+    # Node.js (install from NodeSource via signed apt repo)
     curl \
     gnupg \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+       > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
     && apt-get install -y nodejs \
     # Tree-sitter build dependencies
     && apt-get clean \

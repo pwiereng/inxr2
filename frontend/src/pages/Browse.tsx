@@ -86,6 +86,8 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
       return
     }
 
+    let cancelled = false
+
     const loadBlame = async () => {
       setBlameLoading(true)
       try {
@@ -95,16 +97,25 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
           urlState.selectedCommit || undefined,
           selectedBranch || undefined
         )
-        setBlameData(result.lines)
+        if (!cancelled) {
+          setBlameData(result.lines)
+        }
       } catch (err) {
-        console.error('Failed to load blame:', err)
-        setBlameData([])
+        if (!cancelled) {
+          console.error('Failed to load blame:', err)
+          setBlameData([])
+        }
       } finally {
-        setBlameLoading(false)
+        if (!cancelled) {
+          setBlameLoading(false)
+        }
       }
     }
 
     loadBlame()
+    return () => {
+      cancelled = true
+    }
   }, [
     blameEnabled,
     repoName,
@@ -349,7 +360,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
             </Tooltip>
           )}
 
-        {/* Blame toggle (only when file is loaded, NOT in diff mode, and NOT rendered markdown) */}
+        {/* Blame toggle (only when file is loaded, NOT in diff mode, and NOT in a rendered view) */}
         {repoName && filePath && fileContent && !diffMode && !isRenderedContent && (
           <Tooltip title={blameEnabled ? 'Hide blame annotations' : 'Show blame annotations'}>
             <IconButton
