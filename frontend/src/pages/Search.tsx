@@ -921,7 +921,7 @@ export default function Search() {
                       ))
                     : results.map((result, index) => (
                         <ListItem
-                          key={`${result.kind}-${result.data.id}`}
+                          key={`${result.kind}-${result.kind === 'text' ? result.data.source_type : 'sym'}-${result.data.id}`}
                           disablePadding
                           divider={index < results.length - 1}
                         >
