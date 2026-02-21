@@ -1,6 +1,8 @@
 """Commit repository adapter."""
 
-from sqlalchemy import delete, select
+from datetime import datetime
+
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -270,6 +272,21 @@ class PostgresCommitRepository(CommitRepositoryPort):
             )
         )
         return {row[0].strip() for row in result.all()}
+
+    async def get_commit_date_range(
+        self, repository_id: int
+    ) -> tuple[datetime, datetime] | None:
+        """Get the earliest and latest author_date for a repository's commits."""
+        result = await self.session.execute(
+            select(
+                func.min(CommitModel.author_date),
+                func.max(CommitModel.author_date),
+            ).where(CommitModel.repository_id == repository_id)
+        )
+        row = result.one()
+        if row[0] is None or row[1] is None:
+            return None
+        return (row[0], row[1])
 
     async def find_latest_by_branch(
         self, repository_id: int, branch: str

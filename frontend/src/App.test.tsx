@@ -6,6 +6,7 @@ import App from './App'
 // Mock the API module
 vi.mock('@/lib/api', () => ({
   getRepositories: vi.fn(),
+  getAllRepositoryStats: vi.fn(),
 }))
 
 const mockRepositories = [
@@ -37,6 +38,7 @@ describe('App', () => {
     vi.clearAllMocks()
     const api = await import('@/lib/api')
     vi.mocked(api.getRepositories).mockResolvedValue(mockRepositories)
+    vi.mocked(api.getAllRepositoryStats).mockResolvedValue([])
   })
 
   it('should render home page by default', async () => {

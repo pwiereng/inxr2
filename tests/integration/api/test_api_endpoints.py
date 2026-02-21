@@ -458,6 +458,12 @@ class TestRepositoriesAPI:
         self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
         """Test getting statistics for a repository."""
+        from inxr2.adapters.persistence.repositories.reference_adapter import (
+            PostgresReferenceRepository,
+        )
+        from inxr2.domain.entities import Reference
+        from inxr2.domain.value_objects import ReferenceType
+
         # Arrange
         repo_adapter = PostgresRepositoryAdapter(db_session)
         repository = Repository(
@@ -467,18 +473,33 @@ class TestRepositoriesAPI:
         saved_repo = await repo_adapter.save(repository)
         assert saved_repo.id is not None
 
-        # Create commit
+        # Create commits with different dates
         commit_adapter = PostgresCommitRepository(db_session)
-        commit = Commit(
+        commit1 = Commit(
             repository_id=saved_repo.id,
             commit_hash=make_test_commit_hash("stats12"),
             author_date=datetime(2025, 1, 1),
             commit_date=datetime(2025, 1, 1),
         )
-        saved_commit = await commit_adapter.save(commit)
-        assert saved_commit.id is not None
+        saved_commit1 = await commit_adapter.save(commit1)
+        assert saved_commit1.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_repo.id, saved_commit1.id, "main"
+        )
 
-        # Create files with different languages
+        commit2 = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=make_test_commit_hash("stats13"),
+            author_date=datetime(2025, 6, 15),
+            commit_date=datetime(2025, 6, 15),
+        )
+        saved_commit2 = await commit_adapter.save(commit2)
+        assert saved_commit2.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_repo.id, saved_commit2.id, "main"
+        )
+
+        # Create files with different languages and line counts
         file_adapter = PostgresFileRepository(db_session)
         files = [
             File(
@@ -487,6 +508,7 @@ class TestRepositoriesAPI:
                 content_hash="hash1",
                 size_bytes=100,
                 language="python",
+                line_count=50,
             ),
             File(
                 repository_id=saved_repo.id,
@@ -494,6 +516,7 @@ class TestRepositoriesAPI:
                 content_hash="hash2",
                 size_bytes=200,
                 language="typescript",
+                line_count=80,
             ),
             File(
                 repository_id=saved_repo.id,
@@ -501,9 +524,60 @@ class TestRepositoriesAPI:
                 content_hash="hash3",
                 size_bytes=150,
                 language="python",
+                line_count=30,
             ),
         ]
-        await file_adapter.save_many(files)
+        saved_files = await file_adapter.save_many(files)
+        file_ids = [f.id for f in saved_files if f.id is not None]
+        await file_adapter.link_files_to_commit(file_ids, saved_commit2.id)
+
+        # Create references (some resolved, some not)
+        ref_adapter = PostgresReferenceRepository(db_session)
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Symbol
+        from inxr2.domain.value_objects import SymbolKind
+
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        first_file_id = saved_files[0].id
+        assert first_file_id is not None
+        sym = await symbol_adapter.save(
+            Symbol(
+                file_id=first_file_id,
+                repository_id=saved_repo.id,
+                name="helper",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        await ref_adapter.save_many(
+            [
+                Reference(
+                    source_file_id=first_file_id,
+                    repository_id=saved_repo.id,
+                    source_line=10,
+                    source_column=0,
+                    source_end_column=6,
+                    reference_text="helper",
+                    reference_type=ReferenceType.CALL,
+                    target_symbol_id=sym.id,  # resolved
+                ),
+                Reference(
+                    source_file_id=first_file_id,
+                    repository_id=saved_repo.id,
+                    source_line=12,
+                    source_column=0,
+                    source_end_column=8,
+                    reference_text="external",
+                    reference_type=ReferenceType.CALL,
+                    target_symbol_id=None,  # unresolved
+                ),
+            ]
+        )
 
         # Act
         async with AsyncClient(
@@ -520,6 +594,53 @@ class TestRepositoriesAPI:
         assert "languages" in data
         assert data["languages"]["python"] == 2
         assert data["languages"]["typescript"] == 1
+        # New fields
+        assert data["total_lines"] == 160  # 50 + 80 + 30
+        assert data["total_references_resolved"] == 1
+        assert data["total_references_unresolved"] == 1
+        assert data["commit_date_earliest"] is not None
+        assert data["commit_date_latest"] is not None
+
+    async def test_get_all_repository_stats_batch(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
+        """Test batch stats endpoint returns stats for all repositories."""
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repo1 = Repository(
+            name="batch-stats-repo-1",
+            url="https://github.com/test/batch1.git",
+        )
+        repo2 = Repository(
+            name="batch-stats-repo-2",
+            url="https://github.com/test/batch2.git",
+        )
+        saved1 = await repo_adapter.save(repo1)
+        saved2 = await repo_adapter.save(repo2)
+        assert saved1.id is not None
+        assert saved2.id is not None
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/repositories/stats")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        names = {s["name"] for s in data}
+        assert "batch-stats-repo-1" in names
+        assert "batch-stats-repo-2" in names
+
+        # Each entry has the new fields
+        for entry in data:
+            assert "total_lines" in entry
+            assert "total_references_resolved" in entry
+            assert "total_references_unresolved" in entry
+            assert "commit_date_earliest" in entry
+            assert "commit_date_latest" in entry
 
 
 @pytest.mark.asyncio

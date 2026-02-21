@@ -1,5 +1,6 @@
 """Repository use cases."""
 
+from .get_all_repository_stats import GetAllRepositoryStatsUseCase
 from .get_repository_branches import (
     BranchInfo,
     GetRepositoryBranchesRequest,
@@ -26,6 +27,7 @@ from .list_repositories import ListRepositoriesResponse, ListRepositoriesUseCase
 
 __all__ = [
     "BranchInfo",
+    "GetAllRepositoryStatsUseCase",
     "GetRepositoryBranchesRequest",
     "GetRepositoryBranchesResponse",
     "GetRepositoryBranchesUseCase",
