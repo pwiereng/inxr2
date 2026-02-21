@@ -29,7 +29,10 @@ class BranchCommitModel(Base):
     )
     branch: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     commit_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("commits.id", ondelete="CASCADE"), nullable=False
+        Integer,
+        ForeignKey("commits.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # Unique constraint: a commit can only be linked to a branch once per repo

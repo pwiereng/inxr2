@@ -25,12 +25,18 @@ class ReferenceModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     repository_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+        Integer,
+        ForeignKey("repositories.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # Source location
     source_file_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("files.id", ondelete="CASCADE"), nullable=False
+        Integer,
+        ForeignKey("files.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     source_line: Mapped[int] = mapped_column(Integer, nullable=False)
     source_column: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -39,10 +45,16 @@ class ReferenceModel(Base):
 
     # Target symbol
     target_symbol_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("symbols.id", ondelete="SET NULL"), nullable=True
+        Integer,
+        ForeignKey("symbols.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     target_repository_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("repositories.id", ondelete="SET NULL"), nullable=True
+        Integer,
+        ForeignKey("repositories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     # Reference metadata

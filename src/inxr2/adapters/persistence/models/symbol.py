@@ -25,10 +25,13 @@ class SymbolModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     file_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("files.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("files.id", ondelete="CASCADE"), nullable=False, index=True
     )
     repository_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+        Integer,
+        ForeignKey("repositories.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # Symbol identification
@@ -44,7 +47,10 @@ class SymbolModel(Base):
 
     # Scope and context
     parent_symbol_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("symbols.id", ondelete="SET NULL"), nullable=True
+        Integer,
+        ForeignKey("symbols.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     scope: Mapped[str | None] = mapped_column(Text, nullable=True)
 
