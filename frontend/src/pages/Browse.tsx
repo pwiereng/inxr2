@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -55,6 +55,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
   const [blameEnabled, setBlameEnabled] = useState(false)
   const [blameData, setBlameData] = useState<BlameLine[]>([])
   const [blameLoading, setBlameLoading] = useState(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const { repoName, filePath, highlightLine, diffMode, diffCommit, diffBranch, selectedBranch } =
     urlState
@@ -162,6 +163,20 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
     [repoName, selectedBranch, urlState.selectedCommit, navigate]
   )
 
+  const handleJumpToTop = useCallback(() => {
+    const isRenderedMarkdown =
+      fileContent &&
+      isMarkdownFile(fileContent.path, fileContent.language) &&
+      urlState.viewMode !== 'raw'
+    const isImage = !!rawContent
+
+    if (isRenderedMarkdown || isImage) {
+      scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    } else {
+      actions.navigateToLine(1)
+    }
+  }, [fileContent, rawContent, urlState.viewMode, actions])
+
   // Keyboard shortcut: Cmd+Shift+F (Mac) / Ctrl+Shift+F (Win/Linux)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -268,12 +283,16 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
             <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
               {fileContent.line_count} lines
             </Typography>
-            <Tooltip title="Jump to top of file">
-              <IconButton size="small" onClick={() => actions.navigateToLine(1)}>
-                <VerticalAlignTopIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
           </>
+        )}
+
+        {/* Jump to top of file - visible for all file types */}
+        {(fileContent || rawContent) && (
+          <Tooltip title="Jump to top of file">
+            <IconButton size="small" onClick={handleJumpToTop}>
+              <VerticalAlignTopIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         )}
 
         {/* Back to file browser (show when file is loaded or file-level error) */}
@@ -314,18 +333,24 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
             </Tooltip>
           )}
 
-        {/* Blame toggle (only when file is loaded and NOT in diff mode) */}
-        {repoName && filePath && fileContent && !diffMode && (
-          <Tooltip title={blameEnabled ? 'Hide blame annotations' : 'Show blame annotations'}>
-            <IconButton
-              size="small"
-              onClick={() => setBlameEnabled(!blameEnabled)}
-              color={blameEnabled ? 'primary' : 'default'}
-            >
-              <HistoryToggleOffIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        )}
+        {/* Blame toggle (only when file is loaded, NOT in diff mode, and NOT rendered markdown) */}
+        {repoName &&
+          filePath &&
+          fileContent &&
+          !diffMode &&
+          !(
+            isMarkdownFile(fileContent.path, fileContent.language) && urlState.viewMode !== 'raw'
+          ) && (
+            <Tooltip title={blameEnabled ? 'Hide blame annotations' : 'Show blame annotations'}>
+              <IconButton
+                size="small"
+                onClick={() => setBlameEnabled(!blameEnabled)}
+                color={blameEnabled ? 'primary' : 'default'}
+              >
+                <HistoryToggleOffIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
 
         {/* Compare button (only when file is loaded and NOT in diff mode) */}
         {repoName && filePath && repository && fileContent && !diffMode && (
@@ -473,7 +498,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
               </Button>
             </Box>
           ) : rawContent ? (
-            <Box sx={{ flex: 1, overflow: 'auto', display: 'flex' }}>
+            <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto', display: 'flex' }}>
               <ImageViewer rawContent={rawContent} />
             </Box>
           ) : fileContent ? (
@@ -674,7 +699,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                   </Box>
                 ) : isMarkdownFile(fileContent.path, fileContent.language) &&
                   urlState.viewMode !== 'raw' ? (
-                  <Box sx={{ flex: 1, overflow: 'auto' }}>
+                  <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto' }}>
                     <MarkdownViewer content={fileContent.content} />
                   </Box>
                 ) : (

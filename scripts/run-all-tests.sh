@@ -40,6 +40,21 @@ run_cmd() {
     fi
 }
 
+# Wait for PostgreSQL to be ready (handles container rebuild timing)
+echo "⏳ Waiting for PostgreSQL..."
+for i in $(seq 1 30); do
+    if run_cmd "pg_isready -h localhost -q 2>/dev/null"; then
+        echo "✅ PostgreSQL is ready"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "❌ PostgreSQL failed to become ready after 15s"
+        exit 1
+    fi
+    sleep 0.5
+done
+echo ""
+
 # Track overall status
 BACKEND_STATUS=0
 FRONTEND_STATUS=0
