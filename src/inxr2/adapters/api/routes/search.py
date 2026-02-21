@@ -9,6 +9,7 @@ from ....application.use_cases.search import SearchFilesRequest, SearchTextReque
 from ....domain.exceptions import CommitNotFound, RepositoryNotFound
 from ....domain.value_objects import QueryMode, TextSearchSourceType
 from ....infrastructure.dependencies import (
+    FileAdapter,
     SearchFilesUseCaseDep,
     SearchTextUseCaseDep,
 )
@@ -115,6 +116,9 @@ async def search_text(
     languages: list[str] | None = Query(
         None, description="Languages filter (e.g., python, typescript)"
     ),
+    extensions: list[str] | None = Query(
+        None, description="File extension filter (e.g., .py, .ts)"
+    ),
     scope: Literal["latest"] = Query(
         "latest",
         description="Search scope when no repository is specified",
@@ -160,6 +164,7 @@ async def search_text(
                 commit_hash=commit,
                 source_types=list(source_types) if source_types else None,
                 languages=languages,
+                extensions=extensions,
                 scope=scope,
                 limit=limit,
                 offset=offset,
@@ -209,6 +214,9 @@ async def search_files(
     branch: str | None = Query(None, description="Branch filter"),
     commit_hash: str | None = Query(None, description="Commit hash filter"),
     language: str | None = Query(None, description="Language filter"),
+    extensions: list[str] | None = Query(
+        None, description="File extension filter (e.g., .py, .ts)"
+    ),
     scope: Literal["latest"] = Query(
         "latest",
         description="Search scope when no repository is specified",
@@ -242,6 +250,7 @@ async def search_files(
                 branch=branch,
                 commit_hash=commit_hash,
                 language=language,
+                extensions=extensions,
                 scope=scope,
                 limit=limit,
             )
@@ -269,3 +278,33 @@ async def search_files(
         ],
         total_count=response.total_count,
     )
+
+
+class ExtensionsResponse(BaseModel):
+    """Response containing available file extensions."""
+
+    extensions: list[str]
+
+
+@router.get("/extensions", response_model=ExtensionsResponse)
+async def get_extensions(
+    file_adapter: FileAdapter,
+    repository_id: int | None = Query(None, description="Repository ID filter"),
+    branch: str | None = Query(None, description="Branch filter"),
+    scope: Literal["latest"] = Query(
+        "latest",
+        description="Search scope when no repository is specified",
+    ),
+) -> ExtensionsResponse:
+    """
+    Get distinct file extensions available for filtering.
+
+    Returns sorted list of file extensions (e.g., [".css", ".py", ".ts"]).
+    Can be scoped by repository and/or branch.
+    """
+    extensions = await file_adapter.get_distinct_extensions(
+        repository_id=repository_id,
+        branch=branch,
+        scope=scope,
+    )
+    return ExtensionsResponse(extensions=extensions)

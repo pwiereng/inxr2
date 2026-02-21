@@ -76,6 +76,7 @@ class PostgresFileRepository(FileRepositoryPort):
         content_hash: str,
         size_bytes: int,
         language: str | None = None,
+        extension: str | None = None,
         encoding: str = "utf-8",
         is_binary: bool = False,
         line_count: int | None = None,
@@ -104,6 +105,7 @@ class PostgresFileRepository(FileRepositoryPort):
             content_hash=content_hash,
             size_bytes=size_bytes,
             language=language,
+            extension=extension,
             encoding=encoding,
             is_binary=is_binary,
             line_count=line_count,
@@ -413,6 +415,7 @@ class PostgresFileRepository(FileRepositoryPort):
         repository_id: int | None = None,
         commit_id: int | None = None,
         language: str | None = None,
+        extensions: list[str] | None = None,
         limit: int = 20,
         scope: str | None = None,
     ) -> list["File"]:
@@ -450,6 +453,9 @@ class PostgresFileRepository(FileRepositoryPort):
         if language is not None:
             query_stmt = query_stmt.where(FileModel.language == language)
 
+        if extensions is not None and len(extensions) > 0:
+            query_stmt = query_stmt.where(FileModel.extension.in_(extensions))
+
         # Deduplicate / scope filtering when no commit_id
         if commit_id is None:
             if repository_id is None and scope == "latest":
@@ -469,6 +475,10 @@ class PostgresFileRepository(FileRepositoryPort):
                     )
                 if language is not None:
                     latest_select = latest_select.where(FileModel.language == language)
+                if extensions is not None and len(extensions) > 0:
+                    latest_select = latest_select.where(
+                        FileModel.extension.in_(extensions)
+                    )
                 latest_sq = latest_select.group_by(
                     FileModel.repository_id, FileModel.path
                 ).subquery()
@@ -508,3 +518,48 @@ class PostgresFileRepository(FileRepositoryPort):
         for file_id, commit_id in rows:
             commit_map.setdefault(file_id, []).append(commit_id)
         return commit_map
+
+    async def get_distinct_extensions(
+        self,
+        repository_id: int | None = None,
+        branch: str | None = None,
+        scope: str | None = None,
+    ) -> list[str]:
+        """Get distinct file extensions across indexed files."""
+        query_stmt = select(FileModel.extension).where(FileModel.extension.isnot(None))
+
+        if repository_id is not None:
+            query_stmt = query_stmt.where(FileModel.repository_id == repository_id)
+
+            if branch is not None:
+                # Filter to files at the latest commit on this branch
+                latest_commit = (
+                    select(CommitModel.id)
+                    .join(
+                        BranchCommitModel,
+                        BranchCommitModel.commit_id == CommitModel.id,
+                    )
+                    .where(
+                        CommitModel.repository_id == repository_id,
+                        BranchCommitModel.branch == branch,
+                        BranchCommitModel.repository_id == repository_id,
+                    )
+                    .order_by(CommitModel.commit_date.desc(), CommitModel.id.desc())
+                    .limit(1)
+                    .scalar_subquery()
+                )
+                query_stmt = query_stmt.where(
+                    FileModel.id.in_(
+                        select(CommitFileModel.file_id).where(
+                            CommitFileModel.commit_id == latest_commit
+                        )
+                    )
+                )
+        elif scope == "latest":
+            head_fids = self._head_file_ids_subquery()
+            query_stmt = query_stmt.where(FileModel.id.in_(select(head_fids.c.file_id)))
+
+        query_stmt = query_stmt.distinct().order_by(FileModel.extension)
+
+        result = await self.session.execute(query_stmt)
+        return [row[0] for row in result.all() if row[0] is not None]

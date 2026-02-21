@@ -264,7 +264,7 @@ describe('ReferencesPanel', () => {
         expect(link).toBeInTheDocument()
         expect(link).toHaveAttribute(
           'href',
-          '/search?query=TestClass&source_types=symbol,reference'
+          '/search?query=TestClass&exclude_types=comment,docstring,commit_message,file_content'
         )
       })
     })
@@ -286,7 +286,7 @@ describe('ReferencesPanel', () => {
         expect(link).toBeInTheDocument()
         expect(link).toHaveAttribute(
           'href',
-          '/search?query=myFunction&source_types=symbol,reference'
+          '/search?query=myFunction&exclude_types=comment,docstring,commit_message,file_content'
         )
       })
     })

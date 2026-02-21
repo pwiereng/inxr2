@@ -43,6 +43,7 @@ class FileModel(Base):
     content_hash: Mapped[str] = mapped_column(CHAR(40), nullable=False, index=True)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     language: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    extension: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     encoding: Mapped[str] = mapped_column(String(50), nullable=False, default="utf-8")
     is_binary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

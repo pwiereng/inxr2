@@ -35,6 +35,7 @@ class File:
     size_bytes: int
     id: int | None = None
     language: str | None = None
+    extension: str | None = None
     encoding: str = "utf-8"
     is_binary: bool = False
     line_count: int | None = None

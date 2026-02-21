@@ -404,3 +404,169 @@ class TestSearchSymbolsGlobalScope:
 
         assert result.total == 1
         assert result.symbols[0].symbol.repository_id == 1
+
+
+class TestSearchSymbolsExtensionFilter:
+    """Tests for symbol search with extension filtering."""
+
+    @pytest.fixture
+    def commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        c = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("ext111"),
+            author_date=datetime(2025, 1, 1, 12, 0, 0),
+            commit_date=datetime(2025, 1, 1, 12, 0, 0),
+        )
+        repo._commits[1] = c
+        repo._branch_commits[(1, "main", 1)] = True
+        return repo
+
+    @pytest.fixture
+    def file_repo(
+        self, commit_repo: InMemoryCommitRepository
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/app.py",
+                content_hash="h1",
+                size_bytes=100,
+                language="python",
+                extension=".py",
+            )
+        )
+        repo.add(
+            File(
+                id=2,
+                repository_id=1,
+                path="src/main.ts",
+                content_hash="h2",
+                size_bytes=200,
+                language="typescript",
+                extension=".ts",
+            )
+        )
+        repo.add(
+            File(
+                id=3,
+                repository_id=1,
+                path="src/app.tsx",
+                content_hash="h3",
+                size_bytes=300,
+                language="typescript",
+                extension=".tsx",
+            )
+        )
+        repo._commit_files.add((1, 1))
+        repo._commit_files.add((1, 2))
+        repo._commit_files.add((1, 3))
+        return repo
+
+    @pytest.fixture
+    def symbol_repo(
+        self, file_repo: InMemoryFileRepository
+    ) -> InMemorySymbolRepository:
+        repo = InMemorySymbolRepository(file_repo=file_repo)
+        repo.add(
+            Symbol(
+                id=1,
+                repository_id=1,
+                file_id=1,
+                name="run",
+                qualified_name="run",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            )
+        )
+        repo.add(
+            Symbol(
+                id=2,
+                repository_id=1,
+                file_id=2,
+                name="render",
+                qualified_name="render",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            )
+        )
+        repo.add(
+            Symbol(
+                id=3,
+                repository_id=1,
+                file_id=3,
+                name="App",
+                qualified_name="App",
+                kind=SymbolKind.CLASS,
+                start_line=1,
+                start_column=0,
+                end_line=20,
+                end_column=0,
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    def use_case(
+        self,
+        symbol_repo: InMemorySymbolRepository,
+        file_repo: InMemoryFileRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> SearchSymbolsUseCase:
+        return SearchSymbolsUseCase(
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_extension_filter_single(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """Extension filter returns only symbols from matching files."""
+        request = SearchSymbolsRequest(query="", extensions=[".py"], limit=10)
+        result = await use_case.execute(request)
+
+        assert result.total == 1
+        assert result.symbols[0].symbol.name == "run"
+
+    @pytest.mark.asyncio
+    async def test_extension_filter_multiple(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """Multiple extensions returns union of matches."""
+        request = SearchSymbolsRequest(query="", extensions=[".ts", ".tsx"], limit=10)
+        result = await use_case.execute(request)
+
+        assert result.total == 2
+        names = {s.symbol.name for s in result.symbols}
+        assert names == {"render", "App"}
+
+    @pytest.mark.asyncio
+    async def test_extension_filter_no_match(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """Extension filter with no match returns empty."""
+        request = SearchSymbolsRequest(query="", extensions=[".rs"], limit=10)
+        result = await use_case.execute(request)
+
+        assert result.total == 0
+
+    @pytest.mark.asyncio
+    async def test_no_extension_filter_returns_all(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """No extension filter returns all symbols."""
+        request = SearchSymbolsRequest(query="", limit=10)
+        result = await use_case.execute(request)
+
+        assert result.total == 3

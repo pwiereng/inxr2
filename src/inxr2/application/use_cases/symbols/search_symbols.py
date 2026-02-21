@@ -53,6 +53,7 @@ class SearchSymbolsRequest:
     offset: int = 0
     branch: str | None = None
     language: str | None = None
+    extensions: list[str] | None = None
     scope: str = "latest"
 
 
@@ -150,6 +151,7 @@ class SearchSymbolsUseCase:
                 limit=request.limit + request.offset,
                 branch=request.branch,
                 language=request.language,
+                extensions=request.extensions,
                 scope=request.scope if request.repository_id is None else None,
             )
 

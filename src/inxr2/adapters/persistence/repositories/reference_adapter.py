@@ -216,6 +216,7 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         repository_id: int | None = None,
         branch: str | None = None,
         scope: str | None = None,
+        extensions: list[str] | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Reference], int]:
@@ -236,6 +237,14 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
             head_fids = self._head_file_ids_subquery()
             base_query = base_query.where(
                 ReferenceModel.source_file_id.in_(select(head_fids.c.file_id))
+            )
+
+        # Apply extension filter via files table
+        if extensions is not None and len(extensions) > 0:
+            base_query = base_query.where(
+                ReferenceModel.source_file_id.in_(
+                    select(FileModel.id).where(FileModel.extension.in_(extensions))
+                )
             )
 
         # Get total count

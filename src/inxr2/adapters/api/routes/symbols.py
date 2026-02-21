@@ -83,6 +83,9 @@ async def search_symbols(
     language: str | None = Query(
         default=None, description="Filter by programming language"
     ),
+    extensions: list[str] | None = Query(
+        default=None, description="Filter by file extension (e.g., .py, .ts)"
+    ),
     scope: Literal["latest"] = Query(
         default="latest",
         description="Search scope when no repository is specified",
@@ -104,6 +107,7 @@ async def search_symbols(
             offset=offset,
             branch=branch,
             language=language,
+            extensions=extensions,
             scope=scope,
         )
     )

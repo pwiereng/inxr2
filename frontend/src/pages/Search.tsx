@@ -21,8 +21,10 @@ import {
   Checkbox,
   FormControlLabel,
   FormGroup,
+  Tooltip,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 
@@ -33,6 +35,7 @@ import {
   searchFiles,
   searchSymbols,
   getRepositories,
+  getFileExtensions,
   type TextSearchParams,
   type TextSearchResult,
   type FileSearchResult,
@@ -54,20 +57,6 @@ const SOURCE_TYPES = [
   { value: 'docstring', label: 'Docstrings' },
   { value: 'commit_message', label: 'Commit Messages' },
   { value: 'file_content', label: 'File Content' },
-]
-
-// Common language options (can be expanded)
-const LANGUAGES = [
-  'python',
-  'typescript',
-  'javascript',
-  'java',
-  'go',
-  'rust',
-  'cpp',
-  'markdown',
-  'json',
-  'yaml',
 ]
 
 const ALL_SOURCE_TYPE_VALUES = SOURCE_TYPES.map((t) => t.value)
@@ -94,31 +83,31 @@ export default function Search() {
   const page = parseInt(searchParams.get('page') || '1')
   const offset = (page - 1) * RESULTS_PER_PAGE
 
-  // Parse array params
-  // No source_types param = all selected (default). Param present = only those selected.
-  const sourceTypesParam = searchParams.get('source_types')
-  const languagesParam = searchParams.get('languages')
-  const selectedSourceTypes: string[] =
-    sourceTypesParam === null
-      ? ALL_SOURCE_TYPE_VALUES
-      : sourceTypesParam
-        ? sourceTypesParam.split(',')
-        : []
-  const selectedLanguages = languagesParam ? languagesParam.split(',') : []
-  const sourceTypesKey = selectedSourceTypes.join(',')
-  const languagesKey = selectedLanguages.join(',')
+  // Parse exclusion params
+  // No param = nothing excluded = all shown. Param present = those types are hidden.
+  const excludeTypesParam = searchParams.get('exclude_types')
+  const excludeExtParam = searchParams.get('exclude_ext')
+  const excludedSourceTypes = excludeTypesParam ? excludeTypesParam.split(',') : []
+  const excludedExtensions = excludeExtParam ? excludeExtParam.split(',') : []
+  // Active types = everything not excluded
+  const activeSourceTypes = ALL_SOURCE_TYPE_VALUES.filter((t) => !excludedSourceTypes.includes(t))
+  const excludeTypesKey = excludedSourceTypes.join(',')
+  const excludeExtKey = excludedExtensions.join(',')
 
   // Local state for input (debouncing)
   const [inputQuery, setInputQuery] = useState(query)
 
   // Data state
   const [repositories, setRepositories] = useState<Repository[]>([])
+  const [availableExtensions, setAvailableExtensions] = useState<string[]>([])
   const [results, setResults] = useState<UnifiedResult[]>([])
   const [fileResults, setFileResults] = useState<FileSearchResult[]>([])
   const [totalResults, setTotalResults] = useState(0)
   const [paginationTotal, setPaginationTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const availableExtKey = availableExtensions.join(',')
 
   // Look up repo ID from repoName param
   const selectedRepoId = repoNameParam
@@ -152,6 +141,24 @@ export default function Search() {
     loadRepos()
   }, [])
 
+  // Load available extensions when repo/branch changes
+  useEffect(() => {
+    const loadExtensions = async () => {
+      try {
+        const response = await getFileExtensions({
+          repository_id: selectedRepoId,
+          branch: branchParam || undefined,
+          scope: selectedRepoId ? undefined : 'latest',
+        })
+        setAvailableExtensions(response.extensions)
+      } catch (err) {
+        console.error('Failed to load extensions:', err)
+        setAvailableExtensions([])
+      }
+    }
+    loadExtensions()
+  }, [selectedRepoId, branchParam])
+
   // Perform search when query or filters change
   useEffect(() => {
     if (!query.trim()) {
@@ -170,6 +177,12 @@ export default function Search() {
         // scope is only passed when no repository is selected (global search)
         const scope = selectedRepoId ? undefined : 'latest'
 
+        // Compute inclusion extensions from exclusions (send remaining to backend)
+        const apiExtensions =
+          excludedExtensions.length > 0
+            ? availableExtensions.filter((ext) => !excludedExtensions.includes(ext))
+            : undefined
+
         if (isFileMode) {
           // File search mode
           const response = await searchFiles({
@@ -177,7 +190,7 @@ export default function Search() {
             repository: repoNameParam || undefined,
             branch: branchParam || undefined,
             commit_hash: commitParam || undefined,
-            language: selectedLanguages[0] || undefined,
+            extensions: apiExtensions,
             scope,
             limit: RESULTS_PER_PAGE,
           })
@@ -187,9 +200,9 @@ export default function Search() {
           setPaginationTotal(response.total_count)
         } else {
           // Text/symbol/reference search mode
-          const textSourceTypes = selectedSourceTypes.filter((t) => !NON_TEXT_TYPES.has(t))
-          const hasSymbol = selectedSourceTypes.includes('symbol')
-          const hasReference = selectedSourceTypes.includes('reference')
+          const textSourceTypes = activeSourceTypes.filter((t) => !NON_TEXT_TYPES.has(t))
+          const hasSymbol = activeSourceTypes.includes('symbol')
+          const hasReference = activeSourceTypes.includes('reference')
           const callText = textSourceTypes.length > 0 || hasReference
           const allTextTypesSelected = ALL_TEXT_TYPE_VALUES.every((v) =>
             textSourceTypes.includes(v)
@@ -209,7 +222,7 @@ export default function Search() {
                 q: query,
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
-                language: selectedLanguages[0] || undefined,
+                extensions: apiExtensions,
                 scope,
                 limit: RESULTS_PER_PAGE,
                 offset: 0,
@@ -236,7 +249,7 @@ export default function Search() {
               repo: selectedRepoId,
               branch: branchParam || undefined,
               source_types: apiSourceTypes,
-              languages: selectedLanguages.length > 0 ? selectedLanguages : undefined,
+              extensions: apiExtensions,
               scope,
               limit: RESULTS_PER_PAGE,
               offset,
@@ -288,8 +301,9 @@ export default function Search() {
     repoNameParam,
     branchParam,
     commitParam,
-    sourceTypesKey,
-    languagesKey,
+    excludeTypesKey,
+    excludeExtKey,
+    availableExtKey,
     offset,
   ])
 
@@ -350,37 +364,34 @@ export default function Search() {
     const newParams = new URLSearchParams(searchParams)
     newParams.set('mode', newMode)
     newParams.delete('page')
-    // Clear source_types when switching to file mode (they don't apply)
+    // Clear exclude_types when switching to file mode (they don't apply)
     if (newMode === 'file') {
-      newParams.delete('source_types')
+      newParams.delete('exclude_types')
     }
     setSearchParams(newParams, { replace: true })
   }
 
   const handleSourceTypeToggle = (type: string) => {
     const newParams = new URLSearchParams(searchParams)
-    const current = selectedSourceTypes
+    const current = excludedSourceTypes
     const updated = current.includes(type) ? current.filter((t) => t !== type) : [...current, type]
 
-    // If all types re-selected, remove param (back to default)
-    if (
-      updated.length === ALL_SOURCE_TYPE_VALUES.length &&
-      ALL_SOURCE_TYPE_VALUES.every((v) => updated.includes(v))
-    ) {
-      newParams.delete('source_types')
+    // If nothing excluded, remove param (back to default)
+    if (updated.length === 0) {
+      newParams.delete('exclude_types')
     } else {
-      newParams.set('source_types', updated.join(','))
+      newParams.set('exclude_types', updated.join(','))
     }
     newParams.delete('page')
     setSearchParams(newParams, { replace: true })
   }
 
-  const handleLanguageChange = (lang: string) => {
+  const handleExcludeExtensionChange = (excluded: string[]) => {
     const newParams = new URLSearchParams(searchParams)
-    if (lang) {
-      newParams.set('languages', lang)
+    if (excluded.length > 0) {
+      newParams.set('exclude_ext', excluded.join(','))
     } else {
-      newParams.delete('languages')
+      newParams.delete('exclude_ext')
     }
     newParams.delete('page')
     setSearchParams(newParams, { replace: true })
@@ -464,10 +475,20 @@ export default function Search() {
     )
   }
 
-  const handleSelectAll = () => {
+  const handleClearFilters = () => {
     const newParams = new URLSearchParams(searchParams)
-    newParams.delete('source_types')
-    newParams.delete('languages')
+    newParams.delete('exclude_types')
+    newParams.delete('exclude_ext')
+    newParams.delete('page')
+    setSearchParams(newParams, { replace: true })
+  }
+
+  const handleHideAll = () => {
+    const newParams = new URLSearchParams(searchParams)
+    newParams.set('exclude_types', ALL_SOURCE_TYPE_VALUES.join(','))
+    if (availableExtensions.length > 0) {
+      newParams.set('exclude_ext', availableExtensions.join(','))
+    }
     newParams.delete('page')
     setSearchParams(newParams, { replace: true })
   }
@@ -498,7 +519,7 @@ export default function Search() {
   }
 
   const totalPages = Math.ceil(paginationTotal / RESULTS_PER_PAGE)
-  const hasFilters = sourceTypesParam !== null || selectedLanguages.length > 0
+  const hasFilters = excludedSourceTypes.length > 0 || excludedExtensions.length > 0
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -546,65 +567,126 @@ export default function Search() {
               </FormControl>
             </Box>
 
-            {/* Filters */}
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              <FormControl sx={{ minWidth: 150 }}>
-                <InputLabel>Language</InputLabel>
-                <Select
-                  value={selectedLanguages[0] || ''}
-                  label="Language"
-                  onChange={(e) => handleLanguageChange(e.target.value)}
-                >
-                  <MenuItem value="">All Languages</MenuItem>
-                  {LANGUAGES.map((lang) => (
-                    <MenuItem key={lang} value={lang}>
-                      {lang}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              {hasFilters && (
-                <Button onClick={handleSelectAll} variant="outlined" size="small">
-                  Select All
-                </Button>
-              )}
-            </Box>
-
-            {/* Source Type Filters */}
+            {/* Exclusion Filters */}
             <Box sx={{ mt: 2, opacity: isFileMode ? 0.5 : 1 }}>
-              <Typography
-                variant="caption"
-                sx={{ display: 'block', mb: 0.5, color: 'text.secondary' }}
-              >
-                Source Types:
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Filters
+                </Typography>
+                <Tooltip
+                  title="Check items to hide them from results. Unchecked items are shown."
+                  arrow
+                  placement="right"
+                >
+                  <HelpOutlineIcon sx={{ fontSize: 14, color: 'text.disabled', cursor: 'help' }} />
+                </Tooltip>
                 {isFileMode && (
                   <Typography
-                    component="span"
                     variant="caption"
-                    sx={{ ml: 1, fontStyle: 'italic' }}
+                    sx={{ ml: 0.5, fontStyle: 'italic', color: 'text.secondary' }}
                   >
-                    (not applicable in File mode)
+                    (source types not applicable in File mode)
                   </Typography>
                 )}
-              </Typography>
-              <FormGroup row>
-                {SOURCE_TYPES.map((type) => (
-                  <FormControlLabel
-                    key={type.value}
-                    control={
-                      <Checkbox
-                        checked={selectedSourceTypes.includes(type.value)}
-                        onChange={() => handleSourceTypeToggle(type.value)}
-                        size="small"
-                        disabled={isFileMode}
-                      />
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <FormControl size="small" sx={{ minWidth: 180 }}>
+                  <InputLabel>Hide Extensions</InputLabel>
+                  <Select
+                    multiple
+                    value={excludedExtensions}
+                    label="Hide Extensions"
+                    onChange={(e) => {
+                      const value = e.target.value
+                      handleExcludeExtensionChange(
+                        typeof value === 'string' ? value.split(',') : value
+                      )
+                    }}
+                    renderValue={(selected) =>
+                      selected.length === 0 ? (
+                        <em>None hidden</em>
+                      ) : (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {selected.map((ext) => (
+                            <Chip
+                              key={ext}
+                              label={ext}
+                              size="small"
+                              color="default"
+                              sx={{ textDecoration: 'line-through' }}
+                            />
+                          ))}
+                        </Box>
+                      )
                     }
-                    label={type.label}
-                    sx={{ cursor: isFileMode ? 'not-allowed' : 'pointer' }}
-                  />
-                ))}
-              </FormGroup>
+                  >
+                    {availableExtensions.map((ext) => (
+                      <MenuItem key={ext} value={ext}>
+                        <Checkbox checked={excludedExtensions.includes(ext)} size="small" />
+                        <Typography
+                          sx={{
+                            textDecoration: excludedExtensions.includes(ext)
+                              ? 'line-through'
+                              : 'none',
+                            color: excludedExtensions.includes(ext)
+                              ? 'text.disabled'
+                              : 'text.primary',
+                          }}
+                        >
+                          {ext}
+                        </Typography>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormGroup row>
+                  {SOURCE_TYPES.map((type) => (
+                    <FormControlLabel
+                      key={type.value}
+                      control={
+                        <Checkbox
+                          checked={excludedSourceTypes.includes(type.value)}
+                          onChange={() => handleSourceTypeToggle(type.value)}
+                          size="small"
+                          disabled={isFileMode}
+                        />
+                      }
+                      label={
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            textDecoration: excludedSourceTypes.includes(type.value)
+                              ? 'line-through'
+                              : 'none',
+                            color: excludedSourceTypes.includes(type.value)
+                              ? 'text.disabled'
+                              : 'text.primary',
+                          }}
+                        >
+                          {type.label}
+                        </Typography>
+                      }
+                      sx={{ cursor: isFileMode ? 'not-allowed' : 'pointer' }}
+                    />
+                  ))}
+                </FormGroup>
+                <Button
+                  onClick={handleHideAll}
+                  variant="outlined"
+                  size="small"
+                  disabled={isFileMode}
+                >
+                  Hide All
+                </Button>
+                <Button
+                  onClick={handleClearFilters}
+                  variant="outlined"
+                  size="small"
+                  disabled={!hasFilters}
+                >
+                  Clear Filters
+                </Button>
+              </Box>
             </Box>
           </Paper>
 

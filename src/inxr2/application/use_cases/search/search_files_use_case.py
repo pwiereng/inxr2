@@ -30,6 +30,7 @@ class SearchFilesRequest:
     branch: str | None = None
     commit_hash: str | None = None
     language: str | None = None
+    extensions: list[str] | None = None
     scope: str = "latest"
     limit: int = 20
 
@@ -144,6 +145,7 @@ class SearchFilesUseCase:
             repository_id=repository_id,
             commit_id=commit_id,
             language=request.language,
+            extensions=request.extensions,
             limit=request.limit,
             scope=request.scope if repository_id is None else None,
         )

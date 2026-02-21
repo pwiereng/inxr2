@@ -163,6 +163,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         limit: int = 50,
         branch: str | None = None,
         language: str | None = None,
+        extensions: list[str] | None = None,
         scope: str | None = None,
     ) -> list[Symbol]:
         """Search symbols by name with optional filters.
@@ -197,6 +198,15 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 if f.language == language and f.id is not None
             }
 
+        # Compute extension file IDs if extensions filter is set
+        extension_file_ids: set[int] | None = None
+        if extensions is not None and self._file_repo is not None:
+            extension_file_ids = {
+                f.id
+                for f in self._file_repo._files.values()
+                if f.extension in extensions and f.id is not None
+            }
+
         results = []
         for symbol in self._symbols.values():
             if name.lower() in symbol.name.lower():
@@ -214,6 +224,11 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 if (
                     language_file_ids is not None
                     and symbol.file_id not in language_file_ids
+                ):
+                    continue
+                if (
+                    extension_file_ids is not None
+                    and symbol.file_id not in extension_file_ids
                 ):
                     continue
                 results.append(symbol)
@@ -385,6 +400,7 @@ class InMemoryFileRepository(FileRepositoryPort):
                 content_hash=file.content_hash,
                 size_bytes=file.size_bytes,
                 language=file.language,
+                extension=file.extension,
                 encoding=file.encoding,
                 is_binary=file.is_binary,
                 line_count=file.line_count,
@@ -418,6 +434,7 @@ class InMemoryFileRepository(FileRepositoryPort):
         content_hash: str,
         size_bytes: int,
         language: str | None = None,
+        extension: str | None = None,
         encoding: str = "utf-8",
         is_binary: bool = False,
         line_count: int | None = None,
@@ -442,6 +459,7 @@ class InMemoryFileRepository(FileRepositoryPort):
             content_hash=content_hash,
             size_bytes=size_bytes,
             language=language,
+            extension=extension,
             encoding=encoding,
             is_binary=is_binary,
             line_count=line_count,
@@ -648,6 +666,7 @@ class InMemoryFileRepository(FileRepositoryPort):
         repository_id: int | None = None,
         commit_id: int | None = None,
         language: str | None = None,
+        extensions: list[str] | None = None,
         limit: int = 20,
         scope: str | None = None,
     ) -> list[File]:
@@ -681,6 +700,9 @@ class InMemoryFileRepository(FileRepositoryPort):
                 continue
 
             if language is not None and file.language != language:
+                continue
+
+            if extensions is not None and file.extension not in extensions:
                 continue
 
             results.append(file)
@@ -746,6 +768,32 @@ class InMemoryFileRepository(FileRepositoryPort):
 
             result[fid] = commit_ids
         return result
+
+    async def get_distinct_extensions(
+        self,
+        repository_id: int | None = None,
+        branch: str | None = None,
+        scope: str | None = None,
+    ) -> list[str]:
+        """Get distinct file extensions across indexed files."""
+        extensions: set[str] = set()
+
+        # Determine which files to consider
+        if repository_id is None and scope == "latest":
+            head_file_ids = self._compute_head_file_ids()
+            candidate_files = [f for f in self._files.values() if f.id in head_file_ids]
+        elif repository_id is not None:
+            candidate_files = [
+                f for f in self._files.values() if f.repository_id == repository_id
+            ]
+        else:
+            candidate_files = list(self._files.values())
+
+        for f in candidate_files:
+            if f.extension is not None:
+                extensions.add(f.extension)
+
+        return sorted(extensions)
 
     def _compute_latest_file_ids(
         self, repository_id: int, branch: str | None = None
@@ -1395,6 +1443,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         repository_id: int | None = None,
         branch: str | None = None,
         scope: str | None = None,
+        extensions: list[str] | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Reference], int]:
@@ -1413,6 +1462,19 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                     repository_id, branch=branch
                 )
                 refs = [r for r in refs if r.source_file_id in latest_ids]
+
+        # Extension filter (via file lookup)
+        if (
+            extensions is not None
+            and len(extensions) > 0
+            and self._file_repo is not None
+        ):
+            refs = [
+                r
+                for r in refs
+                if r.source_file_id in self._file_repo._files
+                and self._file_repo._files[r.source_file_id].extension in extensions
+            ]
 
         refs.sort(key=lambda r: (r.repository_id, r.source_file_id, r.source_line))
         total = len(refs)
@@ -2376,6 +2438,14 @@ class FakeTextSearch(TextSearchPort):
             # Language filter
             if query.languages and tc.language not in query.languages:
                 continue
+
+            # Extension filter (via file lookup)
+            if query.extensions and self._file_repo is not None:
+                if tc.source_file_id is None:
+                    continue
+                file = self._file_repo._files.get(tc.source_file_id)
+                if file is None or file.extension not in query.extensions:
+                    continue
 
             # Text matching based on mode
             if query.mode == "regex":

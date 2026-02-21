@@ -36,6 +36,7 @@ class SearchTextRequest:
     commit_hash: str | None = None
     source_types: list[str] | None = None
     languages: list[str] | None = None
+    extensions: list[str] | None = None
     scope: str = "latest"
     limit: int = 20
     offset: int = 0
@@ -189,6 +190,7 @@ class SearchTextUseCase:
                 commit_id=commit_id,
                 source_types=text_source_types,
                 languages=request.languages,
+                extensions=request.extensions,
                 scope=request.scope if request.repository_id is None else None,
                 limit=request.limit,
                 offset=request.offset,
@@ -295,6 +297,7 @@ class SearchTextUseCase:
                     repository_id=request.repository_id,
                     branch=request.branch,
                     scope=scope,
+                    extensions=request.extensions,
                     limit=ref_limit,
                     offset=ref_offset,
                 )

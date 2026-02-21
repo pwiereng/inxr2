@@ -17,6 +17,7 @@ from ..mappers import TextContentMapper
 from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
+from ..models.file import FileModel
 from ..models.repository import RepositoryModel
 from ..models.text_content import TextContentModel
 
@@ -169,6 +170,16 @@ class PostgresTextSearch(TextSearchPort):
         if query.languages:
             base_query = base_query.where(
                 TextContentModel.language.in_(query.languages)
+            )
+
+        # Apply extension filters via files table
+        if query.extensions:
+            base_query = base_query.where(
+                TextContentModel.source_file_id.in_(
+                    select(FileModel.id).where(
+                        FileModel.extension.in_(query.extensions)
+                    )
+                )
             )
 
         # Apply global scope filter (when no repository_id is specified)

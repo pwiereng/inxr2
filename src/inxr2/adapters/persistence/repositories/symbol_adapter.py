@@ -133,6 +133,7 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         limit: int = 50,
         branch: str | None = None,
         language: str | None = None,
+        extensions: list[str] | None = None,
         scope: str | None = None,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
@@ -165,6 +166,13 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
             query = query.where(
                 SymbolModel.file_id.in_(
                     select(FileModel.id).where(FileModel.language == language)
+                )
+            )
+
+        if extensions is not None and len(extensions) > 0:
+            query = query.where(
+                SymbolModel.file_id.in_(
+                    select(FileModel.id).where(FileModel.extension.in_(extensions))
                 )
             )
 
