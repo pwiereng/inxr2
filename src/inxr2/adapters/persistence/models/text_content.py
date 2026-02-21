@@ -34,10 +34,16 @@ class TextContentModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     repository_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+        Integer,
+        ForeignKey("repositories.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     commit_id: Mapped[int | None] = mapped_column(
-        BIGINT, ForeignKey("commits.id", ondelete="CASCADE"), nullable=True
+        BIGINT,
+        ForeignKey("commits.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
 
     # Source information
