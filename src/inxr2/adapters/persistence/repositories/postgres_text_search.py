@@ -1,6 +1,5 @@
 """PostgreSQL text search implementation."""
 
-import re
 from typing import Any
 
 from sqlalchemy import column, exists, func, select, text
@@ -20,50 +19,7 @@ from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.repository import RepositoryModel
 from ..models.text_content import TextContentModel
-
-# Regex validation constants
-MAX_REGEX_LENGTH = 500
-# Patterns that can cause catastrophic backtracking (ReDoS)
-DANGEROUS_REGEX_PATTERNS = [
-    r"\(\.\*\)\+",  # (.*)+
-    r"\(\.\+\)\+",  # (.+)+
-    r"\([^)]*\+\)\+",  # (x+)+ pattern
-    r"\([^)]*\*\)\+",  # (x*)+
-    r"\([^)]*\+\)\*",  # (x+)*
-    r"\([^)]*\*\)\*",  # (x*)*
-]
-
-
-def _validate_regex_pattern(pattern: str) -> None:
-    """
-    Validate regex pattern for safety.
-
-    Args:
-        pattern: The regex pattern to validate
-
-    Raises:
-        ValueError: If pattern is invalid or potentially dangerous
-    """
-    # Check length
-    if len(pattern) > MAX_REGEX_LENGTH:
-        raise ValueError(
-            f"Regex pattern too long: {len(pattern)} characters "
-            f"(max {MAX_REGEX_LENGTH})"
-        )
-
-    # Check for dangerous patterns that can cause catastrophic backtracking
-    for dangerous in DANGEROUS_REGEX_PATTERNS:
-        if re.search(dangerous, pattern):
-            raise ValueError(
-                "Regex pattern contains potentially dangerous nested quantifiers "
-                "that could cause performance issues"
-            )
-
-    # Try to compile the regex to catch syntax errors early
-    try:
-        re.compile(pattern)
-    except re.error as e:
-        raise ValueError(f"Invalid regex pattern: {e}") from None
+from .regex_utils import translate_word_boundaries, validate_regex_pattern
 
 
 class PostgresTextSearch(TextSearchPort):
@@ -285,10 +241,11 @@ class PostgresTextSearch(TextSearchPort):
         elif query.mode == QueryMode.REGEX.value:
             # Regex search bypasses tsvector, uses PostgreSQL ~ operator
             # Validate pattern for safety before sending to database
-            _validate_regex_pattern(query.query)
+            validate_regex_pattern(query.query)
             # Translate \b (common word boundary) to \y (PostgreSQL word boundary)
-            pg_pattern = query.query.replace(r"\b", r"\y")
-            return query_builder.where(TextContentModel.content.op("~")(pg_pattern))
+            pg_pattern = translate_word_boundaries(query.query)
+            op = "~" if query.case_sensitive else "~*"
+            return query_builder.where(TextContentModel.content.op(op)(pg_pattern))
         else:
             # Default to keyword search
             tsquery = self._build_tsquery(query)

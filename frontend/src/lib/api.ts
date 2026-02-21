@@ -274,6 +274,7 @@ export async function searchSymbols(params: {
   language?: string
   extensions?: string[]
   mode?: string
+  case_sensitive?: boolean
   scope?: 'latest' | 'all_branches' | 'all_history'
   limit?: number
   offset?: number
@@ -288,6 +289,8 @@ export async function searchSymbols(params: {
     params.extensions.forEach((ext) => searchParams.append('extensions', ext))
   }
   if (params.mode) searchParams.set('mode', params.mode)
+  if (params.case_sensitive !== undefined)
+    searchParams.set('case_sensitive', params.case_sensitive.toString())
   if (params.scope) searchParams.set('scope', params.scope)
   if (params.limit) searchParams.set('limit', params.limit.toString())
   if (params.offset) searchParams.set('offset', params.offset.toString())
@@ -452,6 +455,7 @@ export interface TextSearchParams {
   source_types?: string[]
   languages?: string[]
   extensions?: string[]
+  case_sensitive?: boolean
   scope?: 'latest' | 'all_branches' | 'all_history'
   limit?: number
   offset?: number
@@ -499,6 +503,8 @@ export async function searchText(params: TextSearchParams): Promise<TextSearchRe
   if (params.extensions) {
     params.extensions.forEach((ext) => searchParams.append('extensions', ext))
   }
+  if (params.case_sensitive !== undefined)
+    searchParams.set('case_sensitive', params.case_sensitive.toString())
   if (params.scope) searchParams.set('scope', params.scope)
   if (params.limit) searchParams.set('limit', params.limit.toString())
   if (params.offset) searchParams.set('offset', params.offset.toString())

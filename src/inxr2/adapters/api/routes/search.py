@@ -119,6 +119,10 @@ async def search_text(
     extensions: list[str] | None = Query(
         None, description="File extension filter (e.g., .py, .ts)"
     ),
+    case_sensitive: bool = Query(
+        True,
+        description="Case-sensitive regex matching (only applies in regex mode)",
+    ),
     scope: Literal["latest"] = Query(
         "latest",
         description="Search scope when no repository is specified",
@@ -165,6 +169,7 @@ async def search_text(
                 source_types=list(source_types) if source_types else None,
                 languages=languages,
                 extensions=extensions,
+                case_sensitive=case_sensitive,
                 scope=scope,
                 limit=limit,
                 offset=offset,

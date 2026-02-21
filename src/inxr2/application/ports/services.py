@@ -458,6 +458,7 @@ class TextSearchQuery:
     source_types: list[str] | None = None
     languages: list[str] | None = None
     extensions: list[str] | None = None
+    case_sensitive: bool = True
     scope: str | None = None
     limit: int = 20
     offset: int = 0

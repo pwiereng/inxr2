@@ -23,6 +23,7 @@ class File:
         size_bytes: File size in bytes
         id: Database ID (None for new entities)
         language: Detected programming language (python, java, etc.)
+        extension: File extension (e.g. ".py", ".ts")
         encoding: File encoding (default: utf-8)
         is_binary: True if file is binary (skip parsing)
         line_count: Number of lines in file

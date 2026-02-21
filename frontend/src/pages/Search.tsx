@@ -21,6 +21,7 @@ import {
   Checkbox,
   FormControlLabel,
   FormGroup,
+  ToggleButton,
   Tooltip,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
@@ -88,6 +89,7 @@ export default function Search() {
   // State from URL for search
   const query = searchParams.get('query') || ''
   const mode = (searchParams.get('mode') as SearchMode) || 'keyword'
+  const caseSensitive = searchParams.get('case_sensitive') !== 'false' // default: true
   const isFileMode = mode === 'file'
   const page = parseInt(searchParams.get('page') || '1')
   const offset = (page - 1) * RESULTS_PER_PAGE
@@ -187,10 +189,15 @@ export default function Search() {
         const scope = selectedRepoId ? undefined : 'latest'
 
         // Compute inclusion extensions from exclusions (send remaining to backend)
-        const apiExtensions =
+        const includedExtensions =
           excludedExtensions.length > 0
             ? availableExtensions.filter((ext) => !excludedExtensions.includes(ext))
             : undefined
+        // Empty inclusion list means "match nothing" - don't send as undefined
+        const apiExtensions =
+          includedExtensions !== undefined && includedExtensions.length === 0
+            ? ['__none__'] // Sentinel: no extension will match this
+            : includedExtensions
 
         if (isFileMode) {
           // File search mode
@@ -233,6 +240,7 @@ export default function Search() {
                 branch: branchParam || undefined,
                 extensions: apiExtensions,
                 mode: mode === 'regex' ? 'regex' : undefined,
+                case_sensitive: caseSensitive,
                 scope,
                 limit: RESULTS_PER_PAGE,
                 offset: 0,
@@ -260,6 +268,7 @@ export default function Search() {
               branch: branchParam || undefined,
               source_types: apiSourceTypes,
               extensions: apiExtensions,
+              case_sensitive: caseSensitive,
               scope,
               limit: RESULTS_PER_PAGE,
               offset,
@@ -307,6 +316,7 @@ export default function Search() {
   }, [
     query,
     mode,
+    caseSensitive,
     selectedRepoId,
     repoNameParam,
     branchParam,
@@ -378,6 +388,17 @@ export default function Search() {
     if (newMode === 'file') {
       newParams.delete('exclude_types')
     }
+    setSearchParams(newParams, { replace: true })
+  }
+
+  const handleCaseSensitiveToggle = () => {
+    const newParams = new URLSearchParams(searchParams)
+    if (caseSensitive) {
+      newParams.set('case_sensitive', 'false')
+    } else {
+      newParams.delete('case_sensitive') // default is true, so remove param
+    }
+    newParams.delete('page')
     setSearchParams(newParams, { replace: true })
   }
 
@@ -666,6 +687,32 @@ export default function Search() {
                 >
                   <HelpOutlineIcon sx={{ fontSize: 16, color: 'text.disabled', cursor: 'help' }} />
                 </Tooltip>
+                {!isFileMode && (
+                  <Tooltip
+                    title={
+                      caseSensitive
+                        ? 'Case-sensitive (click to toggle)'
+                        : 'Case-insensitive (click to toggle)'
+                    }
+                  >
+                    <ToggleButton
+                      value="case-sensitive"
+                      selected={caseSensitive}
+                      onChange={handleCaseSensitiveToggle}
+                      size="small"
+                      sx={{
+                        px: 1,
+                        py: 0.5,
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        textTransform: 'none',
+                        minWidth: 32,
+                      }}
+                    >
+                      Aa
+                    </ToggleButton>
+                  </Tooltip>
+                )}
               </Box>
             </Box>
 

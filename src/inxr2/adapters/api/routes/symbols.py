@@ -90,6 +90,10 @@ async def search_symbols(
         default=None,
         description="Search mode: 'regex' for regex matching on symbol names",
     ),
+    case_sensitive: bool = Query(
+        default=True,
+        description="Case-sensitive regex matching (only applies in regex mode)",
+    ),
     scope: Literal["latest"] = Query(
         default="latest",
         description="Search scope when no repository is specified",
@@ -114,6 +118,7 @@ async def search_symbols(
             extensions=extensions,
             scope=scope,
             mode=mode,
+            case_sensitive=case_sensitive,
         )
     )
 

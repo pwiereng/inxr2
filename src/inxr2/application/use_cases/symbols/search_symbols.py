@@ -56,6 +56,7 @@ class SearchSymbolsRequest:
     extensions: list[str] | None = None
     scope: str = "latest"
     mode: str | None = None
+    case_sensitive: bool = True
 
 
 @dataclass
@@ -155,6 +156,7 @@ class SearchSymbolsUseCase:
                 extensions=request.extensions,
                 scope=request.scope if request.repository_id is None else None,
                 mode=request.mode,
+                case_sensitive=request.case_sensitive,
             )
 
         # Apply offset for pagination

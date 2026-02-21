@@ -12,6 +12,7 @@ from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.repository import RepositoryModel
 from ..models.symbol import SymbolModel
+from .regex_utils import translate_word_boundaries, validate_regex_pattern
 
 
 class PostgresSymbolRepository(SymbolRepositoryPort):
@@ -136,6 +137,7 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         extensions: list[str] | None = None,
         scope: str | None = None,
         mode: str | None = None,
+        case_sensitive: bool = True,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
@@ -148,10 +150,12 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         provided, since branch-scoped dedup requires a repository context.
         """
         if mode == "regex":
-            # Regex mode: case-insensitive regex match on symbol name
-            # Translate \b (PCRE word boundary) to \y (PostgreSQL word boundary)
-            pg_pattern = name.replace(r"\b", r"\y")
-            query = select(SymbolModel).where(SymbolModel.name.op("~*")(pg_pattern))
+            validate_regex_pattern(name)
+            pg_pattern = translate_word_boundaries(name)
+            op = "~" if case_sensitive else "~*"
+            query = select(SymbolModel).where(SymbolModel.name.op(op)(pg_pattern))
+        elif case_sensitive:
+            query = select(SymbolModel).where(SymbolModel.name.like(f"%{name}%"))
         else:
             query = select(SymbolModel).where(SymbolModel.name.ilike(f"%{name}%"))
 

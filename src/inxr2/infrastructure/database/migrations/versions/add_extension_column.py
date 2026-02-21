@@ -1,7 +1,7 @@
 """Add extension column to files table
 
 Revision ID: add_extension_001
-Revises: normalize_branch_commits_001
+Revises: 8c8caa7883cc
 Create Date: 2026-02-21
 
 Adds an indexed `extension` column to the files table for efficient
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "add_extension_001"
-down_revision = "content_addressable_001"
+down_revision = "8c8caa7883cc"
 branch_labels = None
 depends_on = None
 

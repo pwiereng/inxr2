@@ -562,6 +562,7 @@ class SymbolRepositoryPort(ABC):
         extensions: list[str] | None = None,
         scope: str | None = None,
         mode: str | None = None,
+        case_sensitive: bool = True,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
@@ -578,6 +579,8 @@ class SymbolRepositoryPort(ABC):
                 repository_id is specified. Ignored when repository_id is set.
             mode: Search mode - "regex" for regex matching on symbol names,
                 otherwise case-insensitive substring match (optional)
+            case_sensitive: Case-sensitive regex matching (only applies in
+                regex mode, default True)
         """
         pass
 
@@ -694,6 +697,7 @@ class ReferenceRepositoryPort(ABC):
         limit: int = 20,
         offset: int = 0,
         mode: str | None = None,
+        case_sensitive: bool = True,
     ) -> tuple[list[Reference], int]:
         """Search references by text match on reference_text.
 
@@ -711,6 +715,8 @@ class ReferenceRepositoryPort(ABC):
             offset: Pagination offset (default 0)
             mode: Search mode - "regex" for regex matching, otherwise
                 case-insensitive substring match (optional)
+            case_sensitive: Case-sensitive regex matching (only applies in
+                regex mode, default True)
 
         Returns:
             Tuple of (matching references, total count) for pagination

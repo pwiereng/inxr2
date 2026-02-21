@@ -166,6 +166,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         extensions: list[str] | None = None,
         scope: str | None = None,
         mode: str | None = None,
+        case_sensitive: bool = True,
     ) -> list[Symbol]:
         """Search symbols by name with optional filters.
 
@@ -213,11 +214,14 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
             # Name matching: regex or substring
             if mode == "regex":
                 try:
-                    if not re.search(name, symbol.name, re.IGNORECASE):
+                    flags = 0 if case_sensitive else re.IGNORECASE
+                    if not re.search(name, symbol.name, flags):
                         continue
                 except re.error:
                     continue
-            elif name.lower() not in symbol.name.lower():
+            elif case_sensitive and name not in symbol.name:
+                continue
+            elif not case_sensitive and name.lower() not in symbol.name.lower():
                 continue
             if repository_id is not None and symbol.repository_id != repository_id:
                 continue
@@ -1453,16 +1457,20 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         limit: int = 20,
         offset: int = 0,
         mode: str | None = None,
+        case_sensitive: bool = True,
     ) -> tuple[list[Reference], int]:
         """Search references by text match on reference_text."""
         if mode == "regex":
             refs = []
+            flags = 0 if case_sensitive else re.IGNORECASE
             for r in self._references.values():
                 try:
-                    if re.search(query, r.reference_text, re.IGNORECASE):
+                    if re.search(query, r.reference_text, flags):
                         refs.append(r)
                 except re.error:
                     pass
+        elif case_sensitive:
+            refs = [r for r in self._references.values() if query in r.reference_text]
         else:
             refs = [
                 r

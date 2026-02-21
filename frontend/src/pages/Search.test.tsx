@@ -187,7 +187,7 @@ describe('Search', () => {
       offset: 0,
     })
 
-    window.history.pushState({}, '', '?query=get_file_symbols_by_path&source_types=commit_message')
+    window.history.pushState({}, '', '?query=get_file_symbols_by_path')
     render(<Search />)
 
     // Wait for results to appear

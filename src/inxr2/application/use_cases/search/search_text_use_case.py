@@ -37,6 +37,7 @@ class SearchTextRequest:
     source_types: list[str] | None = None
     languages: list[str] | None = None
     extensions: list[str] | None = None
+    case_sensitive: bool = True
     scope: str = "latest"
     limit: int = 20
     offset: int = 0
@@ -191,6 +192,7 @@ class SearchTextUseCase:
                 source_types=text_source_types,
                 languages=request.languages,
                 extensions=request.extensions,
+                case_sensitive=request.case_sensitive,
                 scope=request.scope if request.repository_id is None else None,
                 limit=request.limit,
                 offset=request.offset,
@@ -301,6 +303,7 @@ class SearchTextUseCase:
                     limit=ref_limit,
                     offset=ref_offset,
                     mode=request.mode,
+                    case_sensitive=request.case_sensitive,
                 )
 
                 if refs:
