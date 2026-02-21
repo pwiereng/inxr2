@@ -48,7 +48,7 @@ for i in $(seq 1 30); do
         break
     fi
     if [ "$i" -eq 30 ]; then
-        echo "❌ PostgreSQL failed to become ready after 15s"
+        echo "❌ PostgreSQL failed to become ready after 30 retries (15s)"
         exit 1
     fi
     sleep 0.5

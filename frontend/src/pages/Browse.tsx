@@ -507,7 +507,9 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                 Back to file browser
               </Button>
             </Box>
-          ) : rawContent ? (
+          ) : // scrollContainerRef is shared with the markdown viewer below.
+          // These branches are mutually exclusive, so only one is mounted at a time.
+          rawContent ? (
             <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto', display: 'flex' }}>
               <ImageViewer rawContent={rawContent} />
             </Box>
