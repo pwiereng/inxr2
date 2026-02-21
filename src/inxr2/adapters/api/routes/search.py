@@ -29,18 +29,25 @@ MAX_FILE_QUERY_LENGTH = 200
 _EXTENSION_RE = re.compile(r"^\.[a-zA-Z0-9_-]{1,19}$")
 
 
-def _validate_extensions(extensions: list[str] | None) -> None:
-    """Validate extension format. Raises HTTPException 422 for invalid values."""
+def _validate_extensions(extensions: list[str] | None) -> list[str] | None:
+    """Validate and normalize extensions to lowercase.
+
+    Raises HTTPException 422 for invalid values.
+    """
     if extensions is None:
-        return
+        return None
+    normalized = []
     for ext in extensions:
-        if not _EXTENSION_RE.match(ext):
+        lower_ext = ext.lower()
+        if not _EXTENSION_RE.match(lower_ext):
             raise HTTPException(
                 status_code=422,
                 detail=f"Invalid extension format: '{ext}'. "
                 "Extensions must start with '.' and contain only "
                 "alphanumeric characters, dashes, or underscores (max 20 chars).",
             )
+        normalized.append(lower_ext)
+    return normalized
 
 
 # Response models
@@ -176,7 +183,7 @@ async def search_text(
     - limit: The limit used
     - offset: The offset used
     """
-    _validate_extensions(extensions)
+    extensions = _validate_extensions(extensions)
     try:
         response = await use_case.execute(
             SearchTextRequest(
@@ -266,7 +273,7 @@ async def search_files(
     - files: List of matching files with metadata
     - total_count: Number of files returned (at most ``limit``)
     """
-    _validate_extensions(extensions)
+    extensions = _validate_extensions(extensions)
     try:
         response = await use_case.execute(
             SearchFilesRequest(

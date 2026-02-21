@@ -27,12 +27,14 @@ def upgrade() -> None:
     )
     op.create_index("ix_files_extension", "files", ["extension"])
 
-    # Backfill: extract last .xxx from path, lowercased
-    # e.g., "src/main.py" → ".py", "Makefile" → NULL (no dot), ".bashrc" → NULL
-    # Uses lookbehind to require a non-dot character before the extension,
-    # aligning with Python's Path.suffix semantics for dotfiles.
+    # Backfill: extract last .xxx from path, lowercased.
+    # Aligns with Python's Path(path).suffix semantics:
+    #   "src/main.py" → ".py", "Makefile" → NULL, ".bashrc" → NULL
+    # The regex captures a dot-group at the end only when preceded by a
+    # non-dot/non-slash character. We use a two-char match ([^./]\\.)
+    # instead of lookbehind since PostgreSQL doesn't support lookbehind.
     op.execute(
-        "UPDATE files SET extension = lower(substring(path from '(?<=[^./])(\\.[^./]+)$'))"
+        "UPDATE files SET extension = lower(substring(path from '[^./](\\.[^./]+)$'))"
     )
 
 

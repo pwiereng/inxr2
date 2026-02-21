@@ -8,6 +8,7 @@ import {
   ListItemText,
   ClickAwayListener,
 } from '@mui/material'
+import type { VirtualElement } from '@popperjs/core'
 import SearchIcon from '@mui/icons-material/Search'
 
 import type { ContextMenuState } from '@/hooks/useCodeContextMenu'
@@ -34,7 +35,7 @@ export function CodeContextMenu({ contextMenu, onSearch, onClose }: CodeContextM
 
   // Virtual anchor element for Popper positioning at mouse coordinates.
   // useRef persists the object across renders so Popper always has a stable reference.
-  const anchorRef = useRef<{ getBoundingClientRect: () => DOMRect }>({
+  const anchorRef = useRef<VirtualElement>({
     getBoundingClientRect: () => new DOMRect(0, 0, 0, 0),
   })
 
@@ -65,7 +66,7 @@ export function CodeContextMenu({ contextMenu, onSearch, onClose }: CodeContextM
   return (
     <Popper
       open={open}
-      anchorEl={anchorRef.current as unknown as HTMLElement}
+      anchorEl={anchorRef.current}
       placement="bottom-start"
       style={{ zIndex: 1300 }}
     >

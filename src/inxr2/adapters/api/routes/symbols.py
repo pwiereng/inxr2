@@ -107,7 +107,7 @@ async def search_symbols(
 
     Returns paginated list of symbols matching the query.
     """
-    _validate_extensions(extensions)
+    extensions = _validate_extensions(extensions)
     result = await use_case.execute(
         SearchSymbolsRequest(
             query=q,
