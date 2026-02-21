@@ -40,8 +40,13 @@ class SearchSymbolsRequest:
         exact_match: If True, match exact name instead of partial
         limit: Maximum results to return
         offset: Offset for pagination
+        branch: Optional branch name filter
+        language: Optional programming language filter
+        extensions: Optional list of file extensions to filter by (e.g. [".py", ".ts"])
         scope: Search scope for cross-repo search (default: "latest").
             Only applies when repository_id is not provided.
+        mode: Search mode - "regex" for regex matching, otherwise substring match
+        case_sensitive: Case-sensitive matching (applies to all modes, default: True)
     """
 
     query: str = ""

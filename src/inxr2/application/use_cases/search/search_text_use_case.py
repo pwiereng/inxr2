@@ -23,6 +23,8 @@ class SearchTextRequest:
         commit_hash: Optional commit hash filter (for time travel)
         source_types: Optional list of source types to filter by
         languages: Optional list of languages to filter by
+        extensions: Optional list of file extensions to filter by (e.g. [".py", ".ts"])
+        case_sensitive: Case-sensitive matching (applies to all modes, default: True)
         scope: Search scope for cross-repo search (default: "latest").
             Only applies when repository_id is not provided.
         limit: Maximum results to return (default: 20)
