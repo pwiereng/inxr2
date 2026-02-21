@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -55,6 +55,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
   const [blameEnabled, setBlameEnabled] = useState(false)
   const [blameData, setBlameData] = useState<BlameLine[]>([])
   const [blameLoading, setBlameLoading] = useState(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const { repoName, filePath, highlightLine, diffMode, diffCommit, diffBranch, selectedBranch } =
     urlState
@@ -64,12 +65,28 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
   const { selectedSymbol, isDirectDefinition, searchByName } = refsState
   const { leftCommit, rightCommit, fileChangedInCommit } = computedState
 
+  // Auto-disable blame when entering rendered mode (markdown/images)
+  const isRenderedContent =
+    !!rawContent ||
+    (!!fileContent &&
+      isMarkdownFile(fileContent.path, fileContent.language) &&
+      urlState.viewMode !== 'raw')
+
+  useEffect(() => {
+    if (isRenderedContent && blameEnabled) {
+      setBlameEnabled(false)
+      setBlameData([])
+    }
+  }, [isRenderedContent, blameEnabled])
+
   // Fetch blame data when enabled and file is loaded
   useEffect(() => {
-    if (!blameEnabled || !repoName || !filePath || !fileContent) {
+    if (!blameEnabled || !repoName || !filePath || !fileContent || isRenderedContent) {
       setBlameData([])
       return
     }
+
+    let cancelled = false
 
     const loadBlame = async () => {
       setBlameLoading(true)
@@ -80,17 +97,34 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
           urlState.selectedCommit || undefined,
           selectedBranch || undefined
         )
-        setBlameData(result.lines)
+        if (!cancelled) {
+          setBlameData(result.lines)
+        }
       } catch (err) {
-        console.error('Failed to load blame:', err)
-        setBlameData([])
+        if (!cancelled) {
+          console.error('Failed to load blame:', err)
+          setBlameData([])
+        }
       } finally {
-        setBlameLoading(false)
+        if (!cancelled) {
+          setBlameLoading(false)
+        }
       }
     }
 
     loadBlame()
-  }, [blameEnabled, repoName, filePath, fileContent, urlState.selectedCommit, selectedBranch])
+    return () => {
+      cancelled = true
+    }
+  }, [
+    blameEnabled,
+    repoName,
+    filePath,
+    fileContent,
+    urlState.selectedCommit,
+    selectedBranch,
+    isRenderedContent,
+  ])
 
   // Get short hash for display
   const getShortHash = (hash: string | null | undefined) => {
@@ -161,6 +195,14 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
     },
     [repoName, selectedBranch, urlState.selectedCommit, navigate]
   )
+
+  const handleJumpToTop = useCallback(() => {
+    if (isRenderedContent) {
+      scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    } else {
+      actions.navigateToLine(1)
+    }
+  }, [isRenderedContent, actions])
 
   // Keyboard shortcut: Cmd+Shift+F (Mac) / Ctrl+Shift+F (Win/Linux)
   useEffect(() => {
@@ -268,12 +310,16 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
             <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
               {fileContent.line_count} lines
             </Typography>
-            <Tooltip title="Jump to top of file">
-              <IconButton size="small" onClick={() => actions.navigateToLine(1)}>
-                <VerticalAlignTopIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
           </>
+        )}
+
+        {/* Jump to top of file - visible for all file types */}
+        {(fileContent || rawContent) && (
+          <Tooltip title="Jump to top of file">
+            <IconButton size="small" onClick={handleJumpToTop}>
+              <VerticalAlignTopIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         )}
 
         {/* Back to file browser (show when file is loaded or file-level error) */}
@@ -314,8 +360,8 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
             </Tooltip>
           )}
 
-        {/* Blame toggle (only when file is loaded and NOT in diff mode) */}
-        {repoName && filePath && fileContent && !diffMode && (
+        {/* Blame toggle (only when file is loaded, NOT in diff mode, and NOT in a rendered view) */}
+        {repoName && filePath && fileContent && !diffMode && !isRenderedContent && (
           <Tooltip title={blameEnabled ? 'Hide blame annotations' : 'Show blame annotations'}>
             <IconButton
               size="small"
@@ -472,8 +518,10 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                 Back to file browser
               </Button>
             </Box>
-          ) : rawContent ? (
-            <Box sx={{ flex: 1, overflow: 'auto', display: 'flex' }}>
+          ) : // scrollContainerRef is shared with the markdown viewer below.
+          // These branches are mutually exclusive, so only one is mounted at a time.
+          rawContent ? (
+            <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto', display: 'flex' }}>
               <ImageViewer rawContent={rawContent} />
             </Box>
           ) : fileContent ? (
@@ -674,7 +722,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                   </Box>
                 ) : isMarkdownFile(fileContent.path, fileContent.language) &&
                   urlState.viewMode !== 'raw' ? (
-                  <Box sx={{ flex: 1, overflow: 'auto' }}>
+                  <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto' }}>
                     <MarkdownViewer content={fileContent.content} />
                   </Box>
                 ) : (
