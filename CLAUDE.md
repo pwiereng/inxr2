@@ -828,15 +828,15 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 
 - PostgreSQL is **embedded** inside each dev container (no separate postgres service)
 - Each worktree gets its own Docker stack with unique ports
-- Slot 0 = main worktree (default ports), slots 1-2 = worktrees
+- Slot 0 = main worktree (default ports), slots 1-3 = worktrees
 
 ### Port Allocation
 
-| Service    | Slot 0 (main) | Slot 1 | Slot 2 |
-|------------|---------------|--------|--------|
-| Backend    | 8000          | 8010   | 8020   |
-| Frontend   | 5173          | 5183   | 5193   |
-| Playwright | 9222          | 9232   | 9242   |
+| Service    | Slot 0 (main) | Slot 1 | Slot 2 | Slot 3 |
+|------------|---------------|--------|--------|--------|
+| Backend    | 8000          | 8010   | 8020   | 8030   |
+| Frontend   | 5173          | 5183   | 5193   | 5203   |
+| Playwright | 9222          | 9232   | 9242   | 9252   |
 
 ### Worktree Commands
 

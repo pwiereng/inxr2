@@ -12,7 +12,7 @@ set -e
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 SLOTS_FILE="$HOME/.inxr2-worktree-slots"
-MAX_SLOTS=2   # slots 1 and 2 (slot 0 is the main worktree)
+MAX_SLOTS=3   # slots 1, 2, and 3 (slot 0 is the main worktree)
 
 # Derive main repo path from this script's location
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

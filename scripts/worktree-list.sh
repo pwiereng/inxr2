@@ -20,9 +20,9 @@ fi
 
 printf "%-6s %-24s %-20s %-28s %s\n" "0" "main" "8000/5173/9222" "$MAIN_CONTAINER" "$STATUS"
 
-# ── Slots 1-2 ─────────────────────────────────────────────────────────────
+# ── Slots 1-3 ─────────────────────────────────────────────────────────────
 
-for slot in 1 2; do
+for slot in 1 2 3; do
     if [ -f "$SLOTS_FILE" ] && grep -q "^${slot}:" "$SLOTS_FILE" 2>/dev/null; then
         LINE=$(grep "^${slot}:" "$SLOTS_FILE")
         BRANCH=$(echo "$LINE" | cut -d: -f2)
