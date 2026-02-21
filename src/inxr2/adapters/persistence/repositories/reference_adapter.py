@@ -219,11 +219,20 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         extensions: list[str] | None = None,
         limit: int = 20,
         offset: int = 0,
+        mode: str | None = None,
     ) -> tuple[list[Reference], int]:
-        """Search references by substring match on reference_text."""
-        base_query = select(ReferenceModel).where(
-            ReferenceModel.reference_text.ilike(f"%{query}%")
-        )
+        """Search references by text match on reference_text."""
+        if mode == "regex":
+            # Regex mode: case-insensitive regex match
+            # Translate \b (PCRE word boundary) to \y (PostgreSQL word boundary)
+            pg_pattern = query.replace(r"\b", r"\y")
+            base_query = select(ReferenceModel).where(
+                ReferenceModel.reference_text.op("~*")(pg_pattern)
+            )
+        else:
+            base_query = select(ReferenceModel).where(
+                ReferenceModel.reference_text.ilike(f"%{query}%")
+            )
 
         if repository_id is not None:
             base_query = base_query.where(ReferenceModel.repository_id == repository_id)

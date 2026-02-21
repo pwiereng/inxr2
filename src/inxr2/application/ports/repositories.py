@@ -561,11 +561,13 @@ class SymbolRepositoryPort(ABC):
         language: str | None = None,
         extensions: list[str] | None = None,
         scope: str | None = None,
+        mode: str | None = None,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
         Args:
-            name: Search pattern (case-insensitive substring match)
+            name: Search pattern (case-insensitive substring match, or regex
+                when mode="regex")
             repository_id: Filter by repository (optional)
             kind: Filter by symbol kind (optional)
             limit: Maximum results
@@ -574,6 +576,8 @@ class SymbolRepositoryPort(ABC):
             extensions: Filter by file extensions (e.g., [".py", ".ts"]) (optional)
             scope: Search scope for global search (e.g. "latest") when no
                 repository_id is specified. Ignored when repository_id is set.
+            mode: Search mode - "regex" for regex matching on symbol names,
+                otherwise case-insensitive substring match (optional)
         """
         pass
 
@@ -689,14 +693,15 @@ class ReferenceRepositoryPort(ABC):
         extensions: list[str] | None = None,
         limit: int = 20,
         offset: int = 0,
+        mode: str | None = None,
     ) -> tuple[list[Reference], int]:
-        """Search references by substring match on reference_text.
+        """Search references by text match on reference_text.
 
-        Uses case-insensitive substring matching (ILIKE) to find references
-        whose text contains the query string.
+        Uses case-insensitive substring matching (ILIKE) by default, or
+        regex matching when mode="regex".
 
         Args:
-            query: Substring to search for in reference_text
+            query: Substring or regex pattern to search for in reference_text
             repository_id: Filter by repository (optional)
             branch: Filter by branch name (optional)
             scope: Search scope for global search (e.g. "latest") when no
@@ -704,6 +709,8 @@ class ReferenceRepositoryPort(ABC):
             extensions: Filter by file extensions (e.g. [".py", ".ts"]) (optional)
             limit: Maximum results to return (default 20)
             offset: Pagination offset (default 0)
+            mode: Search mode - "regex" for regex matching, otherwise
+                case-insensitive substring match (optional)
 
         Returns:
             Tuple of (matching references, total count) for pagination

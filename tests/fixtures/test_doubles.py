@@ -165,6 +165,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         language: str | None = None,
         extensions: list[str] | None = None,
         scope: str | None = None,
+        mode: str | None = None,
     ) -> list[Symbol]:
         """Search symbols by name with optional filters.
 
@@ -209,29 +210,34 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
 
         results = []
         for symbol in self._symbols.values():
-            if name.lower() in symbol.name.lower():
-                if repository_id is not None and symbol.repository_id != repository_id:
+            # Name matching: regex or substring
+            if mode == "regex":
+                try:
+                    if not re.search(name, symbol.name, re.IGNORECASE):
+                        continue
+                except re.error:
                     continue
-                if kind is not None and symbol.kind.value != kind:
-                    continue
-                if head_file_ids is not None and symbol.file_id not in head_file_ids:
-                    continue
-                if (
-                    latest_file_ids is not None
-                    and symbol.file_id not in latest_file_ids
-                ):
-                    continue
-                if (
-                    language_file_ids is not None
-                    and symbol.file_id not in language_file_ids
-                ):
-                    continue
-                if (
-                    extension_file_ids is not None
-                    and symbol.file_id not in extension_file_ids
-                ):
-                    continue
-                results.append(symbol)
+            elif name.lower() not in symbol.name.lower():
+                continue
+            if repository_id is not None and symbol.repository_id != repository_id:
+                continue
+            if kind is not None and symbol.kind.value != kind:
+                continue
+            if head_file_ids is not None and symbol.file_id not in head_file_ids:
+                continue
+            if latest_file_ids is not None and symbol.file_id not in latest_file_ids:
+                continue
+            if (
+                language_file_ids is not None
+                and symbol.file_id not in language_file_ids
+            ):
+                continue
+            if (
+                extension_file_ids is not None
+                and symbol.file_id not in extension_file_ids
+            ):
+                continue
+            results.append(symbol)
         results.sort(key=lambda s: s.name)
         return results[:limit]
 
@@ -1446,13 +1452,23 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         extensions: list[str] | None = None,
         limit: int = 20,
         offset: int = 0,
+        mode: str | None = None,
     ) -> tuple[list[Reference], int]:
-        """Search references by substring match on reference_text."""
-        refs = [
-            r
-            for r in self._references.values()
-            if query.lower() in r.reference_text.lower()
-        ]
+        """Search references by text match on reference_text."""
+        if mode == "regex":
+            refs = []
+            for r in self._references.values():
+                try:
+                    if re.search(query, r.reference_text, re.IGNORECASE):
+                        refs.append(r)
+                except re.error:
+                    pass
+        else:
+            refs = [
+                r
+                for r in self._references.values()
+                if query.lower() in r.reference_text.lower()
+            ]
 
         if repository_id is not None:
             refs = [r for r in refs if r.repository_id == repository_id]

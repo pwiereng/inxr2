@@ -43,6 +43,15 @@ import {
   type Symbol,
 } from '@/lib/api'
 
+// Workaround for MUI Select aria-hidden warning (see CodeHeader.tsx for details)
+const MENU_PROPS = {
+  MenuListProps: {
+    onMouseDown: (e: React.MouseEvent) => {
+      e.preventDefault()
+    },
+  },
+}
+
 // Search mode type
 type SearchMode = 'keyword' | 'phrase' | 'regex' | 'file'
 
@@ -223,6 +232,7 @@ export default function Search() {
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
                 extensions: apiExtensions,
+                mode: mode === 'regex' ? 'regex' : undefined,
                 scope,
                 limit: RESULTS_PER_PAGE,
                 offset: 0,
@@ -552,19 +562,111 @@ export default function Search() {
                   startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
                 }}
               />
-              <FormControl sx={{ minWidth: 150 }}>
-                <InputLabel>Mode</InputLabel>
-                <Select
-                  value={mode}
-                  label="Mode"
-                  onChange={(e) => handleModeChange(e.target.value)}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <FormControl sx={{ minWidth: 150 }}>
+                  <InputLabel>Mode</InputLabel>
+                  <Select
+                    value={mode}
+                    label="Mode"
+                    onChange={(e) => handleModeChange(e.target.value)}
+                    MenuProps={MENU_PROPS}
+                  >
+                    <MenuItem value="keyword">Keyword (fuzzy)</MenuItem>
+                    <MenuItem value="phrase">Phrase</MenuItem>
+                    <MenuItem value="regex">Regex</MenuItem>
+                    <MenuItem value="file">File</MenuItem>
+                  </Select>
+                </FormControl>
+                <Tooltip
+                  title={
+                    <Box sx={{ maxWidth: 320 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                        Keyword (fuzzy)
+                      </Typography>
+                      <Typography variant="caption" display="block">
+                        Matches individual words in any order with stemming.
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        sx={{ fontFamily: 'monospace', opacity: 0.8, ml: 1 }}
+                      >
+                        run &rarr; matches &ldquo;run&rdquo;, &ldquo;running&rdquo;,
+                        &ldquo;runner&rdquo;
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{ fontWeight: 600, mt: 0.5 }}
+                        display="block"
+                      >
+                        Phrase
+                      </Typography>
+                      <Typography variant="caption" display="block">
+                        Matches the exact sequence of words. Good for single-word exact match.
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        sx={{ fontFamily: 'monospace', opacity: 0.8, ml: 1 }}
+                      >
+                        File &rarr; matches &ldquo;File&rdquo; but not &ldquo;FileAdapter&rdquo;
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{ fontWeight: 600, mt: 0.5 }}
+                        display="block"
+                      >
+                        Regex
+                      </Typography>
+                      <Typography variant="caption" display="block">
+                        PostgreSQL regular expression for advanced pattern matching.
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        sx={{ fontFamily: 'monospace', opacity: 0.8, ml: 1 }}
+                      >
+                        \bFile\b &rarr; exact word boundary
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        sx={{ fontFamily: 'monospace', opacity: 0.8, ml: 1 }}
+                      >
+                        get_.*_by_id &rarr; wildcard matching
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        sx={{ fontFamily: 'monospace', opacity: 0.8, ml: 1 }}
+                      >
+                        [A-Z][a-z]+Service &rarr; class name patterns
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{ fontWeight: 600, mt: 0.5 }}
+                        display="block"
+                      >
+                        File
+                      </Typography>
+                      <Typography variant="caption" display="block">
+                        Search files by path or name.
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        sx={{ fontFamily: 'monospace', opacity: 0.8, ml: 1 }}
+                      >
+                        utils.py &rarr; find by filename
+                      </Typography>
+                    </Box>
+                  }
+                  arrow
+                  placement="bottom"
                 >
-                  <MenuItem value="keyword">Keyword (fuzzy)</MenuItem>
-                  <MenuItem value="phrase">Phrase</MenuItem>
-                  <MenuItem value="regex">Regex</MenuItem>
-                  <MenuItem value="file">File</MenuItem>
-                </Select>
-              </FormControl>
+                  <HelpOutlineIcon sx={{ fontSize: 16, color: 'text.disabled', cursor: 'help' }} />
+                </Tooltip>
+              </Box>
             </Box>
 
             {/* Exclusion Filters */}
@@ -596,6 +698,7 @@ export default function Search() {
                     multiple
                     value={excludedExtensions}
                     label="Hide Extensions"
+                    MenuProps={MENU_PROPS}
                     onChange={(e) => {
                       const value = e.target.value
                       handleExcludeExtensionChange(

@@ -300,6 +300,7 @@ class SearchTextUseCase:
                     extensions=request.extensions,
                     limit=ref_limit,
                     offset=ref_offset,
+                    mode=request.mode,
                 )
 
                 if refs:

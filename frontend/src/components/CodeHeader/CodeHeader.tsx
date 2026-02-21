@@ -23,6 +23,7 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
+import type { SelectProps } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '@/contexts/AppContext'
 import {
@@ -35,6 +36,19 @@ import {
 } from '@/lib/api'
 
 import { formatDateTimeUTC } from '@/lib/dateUtils'
+
+// Workaround for MUI Select aria-hidden warning:
+// When a Select menu closes, the Popover sets aria-hidden on its container
+// while a MenuItem descendant still has focus, triggering a browser warning.
+// Preventing default on mousedown stops focus from moving to the MenuItem
+// on click, while the click event still fires normally for selection.
+const MENU_PROPS: Partial<SelectProps['MenuProps']> = {
+  MenuListProps: {
+    onMouseDown: (e: React.MouseEvent) => {
+      e.preventDefault()
+    },
+  },
+}
 
 export type TabValue = 'browse' | 'search' | 'history'
 
@@ -207,6 +221,7 @@ export function CodeHeader({
               value={repoName || ''}
               onChange={(e) => onRepoChange(e.target.value as string)}
               displayEmpty
+              MenuProps={MENU_PROPS}
               sx={{
                 '& .MuiSelect-select': {
                   display: 'flex',
@@ -251,6 +266,7 @@ export function CodeHeader({
                   value={branch || defaultBranch}
                   onChange={(e) => onBranchChange(e.target.value as string)}
                   displayEmpty
+                  MenuProps={MENU_PROPS}
                   sx={{
                     '& .MuiSelect-select': {
                       display: 'flex',
@@ -286,6 +302,7 @@ export function CodeHeader({
                   value={commitDisplayValue}
                   onChange={(e) => onCommitChange(e.target.value as string)}
                   displayEmpty
+                  MenuProps={MENU_PROPS}
                   sx={{
                     '& .MuiSelect-select': {
                       display: 'flex',

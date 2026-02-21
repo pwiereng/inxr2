@@ -273,6 +273,7 @@ export async function searchSymbols(params: {
   branch?: string
   language?: string
   extensions?: string[]
+  mode?: string
   scope?: 'latest' | 'all_branches' | 'all_history'
   limit?: number
   offset?: number
@@ -286,6 +287,7 @@ export async function searchSymbols(params: {
   if (params.extensions) {
     params.extensions.forEach((ext) => searchParams.append('extensions', ext))
   }
+  if (params.mode) searchParams.set('mode', params.mode)
   if (params.scope) searchParams.set('scope', params.scope)
   if (params.limit) searchParams.set('limit', params.limit.toString())
   if (params.offset) searchParams.set('offset', params.offset.toString())

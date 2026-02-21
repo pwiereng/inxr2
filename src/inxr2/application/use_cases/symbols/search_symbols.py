@@ -55,6 +55,7 @@ class SearchSymbolsRequest:
     language: str | None = None
     extensions: list[str] | None = None
     scope: str = "latest"
+    mode: str | None = None
 
 
 @dataclass
@@ -153,6 +154,7 @@ class SearchSymbolsUseCase:
                 language=request.language,
                 extensions=request.extensions,
                 scope=request.scope if request.repository_id is None else None,
+                mode=request.mode,
             )
 
         # Apply offset for pagination

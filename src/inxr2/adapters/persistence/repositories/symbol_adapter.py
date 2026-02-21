@@ -135,6 +135,7 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         language: str | None = None,
         extensions: list[str] | None = None,
         scope: str | None = None,
+        mode: str | None = None,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
@@ -146,7 +147,13 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         Note: ``branch`` only takes effect when ``repository_id`` is
         provided, since branch-scoped dedup requires a repository context.
         """
-        query = select(SymbolModel).where(SymbolModel.name.ilike(f"%{name}%"))
+        if mode == "regex":
+            # Regex mode: case-insensitive regex match on symbol name
+            # Translate \b (PCRE word boundary) to \y (PostgreSQL word boundary)
+            pg_pattern = name.replace(r"\b", r"\y")
+            query = select(SymbolModel).where(SymbolModel.name.op("~*")(pg_pattern))
+        else:
+            query = select(SymbolModel).where(SymbolModel.name.ilike(f"%{name}%"))
 
         if repository_id is None and scope == "latest":
             # Global search: only symbols from HEAD of each repo's default branch

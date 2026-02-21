@@ -14,6 +14,15 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import EditIcon from '@mui/icons-material/Edit'
 import { getRepositoryBranches, getFileHistory, type BranchInfo } from '@/lib/api'
 
+// Workaround for MUI Select aria-hidden warning (see CodeHeader.tsx for details)
+const MENU_PROPS = {
+  MenuListProps: {
+    onMouseDown: (e: React.MouseEvent) => {
+      e.preventDefault()
+    },
+  },
+}
+
 interface BranchSelectorProps {
   repositoryId: number
   selectedBranch: string | null
@@ -164,6 +173,7 @@ export function BranchSelector({
     <FormControl size="small">
       <Select
         value={currentValue}
+        MenuProps={MENU_PROPS}
         onChange={(e) => {
           const value = e.target.value as string
           // Always pass the branch name for URL bookmarkability

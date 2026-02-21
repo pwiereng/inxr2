@@ -286,7 +286,9 @@ class PostgresTextSearch(TextSearchPort):
             # Regex search bypasses tsvector, uses PostgreSQL ~ operator
             # Validate pattern for safety before sending to database
             _validate_regex_pattern(query.query)
-            return query_builder.where(TextContentModel.content.op("~")(query.query))
+            # Translate \b (common word boundary) to \y (PostgreSQL word boundary)
+            pg_pattern = query.query.replace(r"\b", r"\y")
+            return query_builder.where(TextContentModel.content.op("~")(pg_pattern))
         else:
             # Default to keyword search
             tsquery = self._build_tsquery(query)

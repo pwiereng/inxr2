@@ -13,6 +13,15 @@ import EditIcon from '@mui/icons-material/Edit'
 import { getFileHistory, type FileVersion } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
 
+// Workaround for MUI Select aria-hidden warning (see CodeHeader.tsx for details)
+const MENU_PROPS = {
+  MenuListProps: {
+    onMouseDown: (e: React.MouseEvent) => {
+      e.preventDefault()
+    },
+  },
+}
+
 interface VersionSelectorProps {
   repoName: string
   filePath: string
@@ -96,6 +105,7 @@ export function VersionSelector({
     <FormControl size="small">
       <Select
         value={effectiveValue}
+        MenuProps={MENU_PROPS}
         onChange={(e) => {
           const value = e.target.value as string
           // Always pass the commit hash to include it in the URL
