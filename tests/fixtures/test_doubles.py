@@ -2476,16 +2476,20 @@ class FakeTextSearch(TextSearchPort):
                 # Validate regex pattern (matches production behavior)
                 self._validate_regex_pattern(query.query)
                 # Use actual regex matching
+                flags = 0 if query.case_sensitive else re.IGNORECASE
                 try:
-                    if re.search(query.query, tc.content, re.IGNORECASE):
+                    if re.search(query.query, tc.content, flags):
                         filtered.append(tc)
                 except re.error:
                     # Should not happen after validation, but be defensive
                     pass
             else:  # keyword or phrase
-                # Simple contains match for testing
-                if query.query.lower() in tc.content.lower():
-                    filtered.append(tc)
+                if query.case_sensitive:
+                    if query.query in tc.content:
+                        filtered.append(tc)
+                else:
+                    if query.query.lower() in tc.content.lower():
+                        filtered.append(tc)
 
         # Calculate total before pagination
         total = len(filtered)
