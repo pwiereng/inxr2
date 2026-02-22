@@ -194,7 +194,8 @@ class ProcessCommitUseCase:
             if progress_callback and (files_seen == 1 or files_seen % 100 == 0):
                 progress_callback(result)
 
-        # Final progress update for any remainder not on a 100-file boundary
+        # Send a final progress update if total files isn't on a 100-file boundary
+        # (updates fire at file 1, every 100 files, and here at the end)
         if progress_callback and files_seen % 100 != 0:
             progress_callback(result)
 

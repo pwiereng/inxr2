@@ -459,6 +459,7 @@ async def _run_full_index_async(
             )
 
     finally:
+        git_service.clear_repo_cache()
         await db.close()
 
 
