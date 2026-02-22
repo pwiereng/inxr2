@@ -189,7 +189,9 @@ class ProcessCommitUseCase:
             if file_result.file_id is not None:
                 file_ids.append(file_result.file_id)
 
-            if progress_callback and result.files_processed % 100 == 0:
+            if progress_callback and (
+                result.files_processed == 1 or result.files_processed % 100 == 0
+            ):
                 progress_callback(result)
 
         # Bulk-link all file versions to this commit
