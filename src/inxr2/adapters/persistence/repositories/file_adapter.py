@@ -1,6 +1,6 @@
 """PostgreSQL file repository adapter."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Subquery, case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -101,7 +101,7 @@ class PostgresFileRepository(FileRepositoryPort):
             return self.mapper.to_domain(existing), False
 
         # Create new — set indexed_at client-side to avoid a refresh() round-trip
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         model = FileModel(
             repository_id=repository_id,
             path=path,

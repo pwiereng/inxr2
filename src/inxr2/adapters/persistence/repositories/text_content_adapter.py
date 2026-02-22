@@ -1,6 +1,6 @@
 """PostgreSQL text content repository adapter."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,7 +47,7 @@ class PostgresTextContentRepository(TextContentRepositoryPort):
         Returns:
             List of saved text content entities with IDs populated
         """
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         models = [self.mapper.to_model(tc) for tc in text_contents]
         for model in models:
             model.indexed_at = now
