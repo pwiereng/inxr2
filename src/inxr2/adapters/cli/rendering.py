@@ -114,9 +114,9 @@ class IndexingProgressRenderer:
     ) -> Callable[[IndexingProgress], None]:
         """Return a closure that prints progress at milestone percentages.
 
-        The file-indexing phase uses a manual spinner (updated per callback).
-        The resolution phase uses Rich Status with an auto-animating spinner
-        so the display stays alive between batch callbacks.
+        Both phases use a manual ASCII spinner updated on each callback.
+        The percentage display uses milestone thresholds (every 5%) to
+        avoid noisy jumps, while the spinner and counts update every tick.
 
         Args:
             output: Stream to write progress lines to. Defaults to sys.stdout.
@@ -157,12 +157,13 @@ class IndexingProgressRenderer:
                 out.flush()
             elif p.phase == "resolving":
                 if state.phase != "resolving":
-                    # Finalize file phase at 100%
+                    # Finalize file phase with actual percentage
                     if state.files_started and p.files_total > 0:
+                        final_pct = int((p.files_processed / p.files_total) * 100)
                         out.write(
                             f"\r  Files: {p.files_processed}/{p.files_total} | "
                             f"Symbols: {p.symbols_found} | Refs: {p.references_found} "
-                            f"(100%)    "
+                            f"({final_pct}%)    "
                         )
                         out.flush()
                     state.phase = "resolving"
