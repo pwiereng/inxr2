@@ -2110,4 +2110,336 @@ describe('useBrowseState', () => {
       expect(clearCalls.length).toBe(0)
     })
   })
+
+  describe('leftCommit uses latestBranchCommit fallback', () => {
+    it('should use latestBranchCommit for leftCommit when no selectedCommit', async () => {
+      // Regression: leftCommit fell through to fileVersions[0].commit_hash,
+      // which could differ from the branch HEAD shown in the header.
+      mockSearchParams = new URLSearchParams('branch=feature')
+
+      // latestBranchCommit comes from getCommits — return branch HEAD commit
+      mockGetCommits.mockResolvedValue({
+        commits: [
+          {
+            hash: 'branch-head-abc',
+            short_hash: 'branch',
+            message: 'Branch HEAD commit',
+            author_name: 'Test',
+            author_email: 'test@test.com',
+            commit_date: '2024-01-03',
+            is_indexed: true,
+            tags: [],
+            is_branch_specific: true,
+            is_merge_base: false,
+          },
+        ],
+        total: 1,
+      })
+
+      // fileVersions[0] is a different commit (latest that modified the file)
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 5,
+            commit_hash: 'file-version-xyz',
+            short_hash: 'file-v',
+            commit_date: '2024-01-02',
+            message: 'Last file change',
+            content_hash: 'hash1',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 1,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      // Wait for latestBranchCommit to resolve
+      await vi.waitFor(() => {
+        expect(result.current.computedState.leftCommit).toBe('branch-head-abc')
+      })
+
+      // leftCommit should be the branch HEAD, NOT the file version
+      expect(result.current.computedState.leftCommit).not.toBe('file-version-xyz')
+    })
+
+    it('should use latestBranchCommit for treeCommit in diff mode when treePanel is left', async () => {
+      // In diff mode with treePanel=left, treeCommit = leftCommit.
+      // leftCommit should use latestBranchCommit (branch HEAD), not fileVersions[0].
+      mockSearchParams = new URLSearchParams('diff=other-commit&branch=feature&co=1')
+
+      mockGetCommits.mockResolvedValue({
+        commits: [
+          {
+            hash: 'branch-head-abc',
+            short_hash: 'branch',
+            message: 'Branch HEAD commit',
+            author_name: 'Test',
+            author_email: 'test@test.com',
+            commit_date: '2024-01-03',
+            is_indexed: true,
+            tags: [],
+            is_branch_specific: true,
+            is_merge_base: false,
+          },
+        ],
+        total: 1,
+      })
+
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 5,
+            commit_hash: 'file-version-xyz',
+            short_hash: 'file-v',
+            commit_date: '2024-01-02',
+            message: 'Last file change',
+            content_hash: 'hash1',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 1,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      // Wait for latestBranchCommit to resolve
+      await vi.waitFor(() => {
+        expect(result.current.computedState.leftCommit).toBe('branch-head-abc')
+      })
+
+      // In diff mode with treePanel=left (default), treeCommit should equal leftCommit
+      expect(result.current.computedState.treeCommit).toBe('branch-head-abc')
+    })
+
+    it('should still use selectedCommit for leftCommit when explicitly set', async () => {
+      // When a specific commit is selected, it should take priority over latestBranchCommit
+      mockSearchParams = new URLSearchParams('commit=explicit-commit&branch=feature')
+
+      mockGetCommits.mockResolvedValue({
+        commits: [
+          {
+            hash: 'branch-head-abc',
+            short_hash: 'branch',
+            message: 'Branch HEAD commit',
+            author_name: 'Test',
+            author_email: 'test@test.com',
+            commit_date: '2024-01-03',
+            is_indexed: true,
+            tags: [],
+            is_branch_specific: true,
+            is_merge_base: false,
+          },
+        ],
+        total: 1,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.repository).not.toBeNull()
+      })
+
+      // leftCommit should be the explicitly selected commit
+      expect(result.current.computedState.leftCommit).toBe('explicit-commit')
+    })
+
+    it('should fall back to fileVersions when latestBranchCommit is also null', async () => {
+      // Edge case: no branch selected, no commits loaded, but file history exists
+      mockSearchParams = new URLSearchParams('')
+
+      mockGetCommits.mockResolvedValue({ commits: [], total: 0 })
+
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 5,
+            commit_hash: 'file-version-xyz',
+            short_hash: 'file-v',
+            commit_date: '2024-01-02',
+            message: 'Last file change',
+            content_hash: 'hash1',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 1,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(1)
+      })
+
+      // With no selectedCommit and no latestBranchCommit, falls back to fileVersions[0]
+      expect(result.current.computedState.leftCommit).toBe('file-version-xyz')
+    })
+  })
+
+  describe('changedOnly tree loading timing (issue #89)', () => {
+    it('should not load unfiltered tree when changedOnly is true and treeCommit is pending', async () => {
+      // Regression test: when co=1 is set but no specific commit is selected,
+      // treeCommit falls back to latestBranchCommit which starts as null.
+      // The tree should NOT be loaded unfiltered while waiting for latestBranchCommit.
+      mockSearchParams = new URLSearchParams('co=1&branch=feature')
+
+      // Mock getCommits to return a latest indexed commit
+      mockGetCommits.mockResolvedValue({
+        commits: [
+          {
+            hash: 'latest-abc',
+            short_hash: 'latest',
+            message: 'Latest commit',
+            author_name: 'Test',
+            author_email: 'test@test.com',
+            commit_date: '2024-01-01',
+            is_indexed: true,
+            tags: [],
+            is_branch_specific: true,
+            is_merge_base: false,
+          },
+        ],
+        total: 1,
+      })
+
+      await renderBrowseStateHook()
+
+      // Wait for the tree to be loaded with changedOnly
+      await vi.waitFor(() => {
+        const changedOnlyCall = mockGetRepositoryTreeByName.mock.calls.find(
+          (call) => call[3] === true
+        )
+        expect(changedOnlyCall).toBeDefined()
+      })
+
+      // There should be NO calls that loaded the unfiltered tree
+      // (i.e., no calls where changedOnly was false/undefined)
+      const unfilteredCalls = mockGetRepositoryTreeByName.mock.calls.filter(
+        (call) => call[3] !== true
+      )
+      expect(unfilteredCalls).toHaveLength(0)
+    })
+
+    it('should load filtered tree once latestBranchCommit resolves', async () => {
+      mockSearchParams = new URLSearchParams('co=1&branch=feature')
+
+      mockGetCommits.mockResolvedValue({
+        commits: [
+          {
+            hash: 'commit-xyz',
+            short_hash: 'commit',
+            message: 'Feature commit',
+            author_name: 'Test',
+            author_email: 'test@test.com',
+            commit_date: '2024-01-01',
+            is_indexed: true,
+            tags: [],
+            is_branch_specific: true,
+            is_merge_base: false,
+          },
+        ],
+        total: 1,
+      })
+
+      await renderBrowseStateHook()
+
+      // Once latestBranchCommit resolves, the tree should be loaded with:
+      // - the commit hash as the treeCommit
+      // - changedOnly = true
+      await vi.waitFor(() => {
+        const changedOnlyCall = mockGetRepositoryTreeByName.mock.calls.find(
+          (call) => call[0] === 'test-repo' && call[1] === 'commit-xyz' && call[3] === true
+        )
+        expect(changedOnlyCall).toBeDefined()
+      })
+    })
+
+    it('should load tree normally when changedOnly is false even without treeCommit', async () => {
+      // When changedOnly is false, the tree should load regardless of treeCommit
+      mockSearchParams = new URLSearchParams('branch=feature')
+
+      mockGetCommits.mockResolvedValue({ commits: [], total: 0 })
+
+      await renderBrowseStateHook()
+
+      // Tree should have been loaded (changedOnly=false, so no commit needed)
+      expect(mockGetRepositoryTreeByName).toHaveBeenCalled()
+    })
+
+    it('should fall back to unfiltered tree when getCommits returns no indexed commits', async () => {
+      // Regression test: if getCommits resolves but returns no indexed commits,
+      // latestBranchCommit resolves to null. The tree should load unfiltered
+      // rather than staying empty forever.
+      mockSearchParams = new URLSearchParams('co=1&branch=feature')
+
+      // No indexed commits — latestBranchCommit will resolve to null
+      mockGetCommits.mockResolvedValue({
+        commits: [
+          {
+            hash: 'not-indexed',
+            short_hash: 'not-in',
+            message: 'Not indexed',
+            author_name: 'Test',
+            author_email: 'test@test.com',
+            commit_date: '2024-01-01',
+            is_indexed: false,
+            tags: [],
+            is_branch_specific: true,
+            is_merge_base: false,
+          },
+        ],
+        total: 1,
+      })
+
+      await renderBrowseStateHook()
+
+      // The tree should still load (unfiltered) since latestBranchCommit resolved to null
+      await vi.waitFor(() => {
+        expect(mockGetRepositoryTreeByName).toHaveBeenCalled()
+      })
+
+      // The call should NOT have changedOnly=true (no commit to filter by)
+      const calls = mockGetRepositoryTreeByName.mock.calls
+      const lastCall = calls[calls.length - 1]
+      expect(lastCall![3]).not.toBe(true)
+    })
+
+    it('should fall back to unfiltered tree when getCommits fails', async () => {
+      // If getCommits rejects, latestBranchCommit resolves to null.
+      // The tree should still load unfiltered.
+      mockSearchParams = new URLSearchParams('co=1&branch=feature')
+
+      mockGetCommits.mockRejectedValue(new Error('Network error'))
+
+      await renderBrowseStateHook()
+
+      // The tree should still load (unfiltered)
+      await vi.waitFor(() => {
+        expect(mockGetRepositoryTreeByName).toHaveBeenCalled()
+      })
+
+      // Should not use changedOnly since there's no commit to filter by
+      const calls = mockGetRepositoryTreeByName.mock.calls
+      const lastCall = calls[calls.length - 1]
+      expect(lastCall![3]).not.toBe(true)
+    })
+
+    it('should load filtered tree immediately when selectedCommit is provided', async () => {
+      // When a specific commit is selected, treeCommit doesn't depend on latestBranchCommit
+      mockSearchParams = new URLSearchParams('co=1&commit=abc123&branch=feature')
+
+      await renderBrowseStateHook()
+
+      // Tree should have been loaded with the specific commit and changedOnly=true
+      await vi.waitFor(() => {
+        const call = mockGetRepositoryTreeByName.mock.calls.find(
+          (c) => c[0] === 'test-repo' && c[1] === 'abc123' && c[3] === true
+        )
+        expect(call).toBeDefined()
+      })
+    })
+  })
 })

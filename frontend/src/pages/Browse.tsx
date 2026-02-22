@@ -545,7 +545,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         <BranchSelector
                           repositoryId={repository.id}
-                          selectedBranch={diffBranch}
+                          selectedBranch={diffBranch || selectedBranch}
                           defaultBranch={repository.default_branch}
                           onBranchChange={actions.changeDiffBranch}
                           repoName={repoName!}
@@ -658,7 +658,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps) {
                       >
                         <BranchSelector
                           repositoryId={repository.id}
-                          selectedBranch={diffBranch}
+                          selectedBranch={diffBranch || selectedBranch}
                           defaultBranch={repository.default_branch}
                           onBranchChange={actions.changeDiffBranch}
                           repoName={repoName!}

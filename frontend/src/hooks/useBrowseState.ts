@@ -318,7 +318,7 @@ export function useBrowseState(repoNameProp?: string) {
   const [rawContent, setRawContent] = useState<RawFileContent | null>(null)
 
   // Latest commit hash for the current branch (HEAD fallback for changedOnly)
-  const [latestBranchCommit, setLatestBranchCommit] = useState<string | null>(null)
+  const [latestBranchCommit, setLatestBranchCommit] = useState<string | null | undefined>(undefined)
 
   // ========== Diff state ==========
   const [diffContent, setDiffContent] = useState<FileContent | null>(null)
@@ -342,7 +342,7 @@ export function useBrowseState(repoNameProp?: string) {
 
   // ========== Computed state ==========
   const computedState = useMemo<BrowseComputedState>(() => {
-    const leftCommit = urlState.selectedCommit || fileVersions[0]?.commit_hash
+    const leftCommit = urlState.selectedCommit || latestBranchCommit || fileVersions[0]?.commit_hash
     const rightCommit = urlState.diffCommit || diffFileVersions[0]?.commit_hash || null
     const treeCommit = urlState.diffMode
       ? urlState.treePanel === 'left'
@@ -408,6 +408,9 @@ export function useBrowseState(repoNameProp?: string) {
   useEffect(() => {
     if (!urlState.repoName) return
 
+    // Reset to pending so the tree-loading guard knows we're fetching
+    setLatestBranchCommit(undefined)
+
     const branch = urlState.selectedBranch || repository?.default_branch
     getCommits(urlState.repoName, branch || undefined, 500)
       .then((res) => {
@@ -431,6 +434,14 @@ export function useBrowseState(repoNameProp?: string) {
 
     const loadTree = async () => {
       try {
+        // When changedOnly is requested but latestBranchCommit is still pending
+        // (undefined = not yet resolved), skip loading to avoid showing the full
+        // unfiltered tree. Once it resolves (to a string or null), the effect
+        // re-fires. If it resolved to null (no indexed commits), we fall through
+        // and load the unfiltered tree rather than staying empty forever.
+        if (urlState.changedOnly && !computedState.treeCommit && latestBranchCommit === undefined)
+          return
+
         // changedOnly only applies when viewing a specific commit
         const shouldUseChangedOnly = urlState.changedOnly && !!computedState.treeCommit
         const tree = await getRepositoryTreeByName(
@@ -454,6 +465,7 @@ export function useBrowseState(repoNameProp?: string) {
     urlState.diffMode,
     urlState.treePanel,
     urlState.changedOnly,
+    latestBranchCommit,
   ])
 
   // Clear selected file if it's not in the changed-files tree
