@@ -30,6 +30,22 @@ class GitService(GitServicePort):
     and file content retrieval needed for indexing.
     """
 
+    def __init__(self) -> None:
+        # Bounded cache: typically only a handful of repos are indexed at once.
+        # Call clear_repo_cache() to release resources when done.
+        self._repo_cache: dict[str, Repo] = {}
+
+    def _get_repo(self, repo_path: Path) -> Repo:
+        """Get or create a cached Repo object for the given path."""
+        key = str(repo_path)
+        if key not in self._repo_cache:
+            self._repo_cache[key] = Repo(key)
+        return self._repo_cache[key]
+
+    def clear_repo_cache(self) -> None:
+        """Release all cached Repo instances (call after indexing runs)."""
+        self._repo_cache.clear()
+
     def get_repository_info(self, repo_path: Path) -> RepositoryInfo:
         """
         Get basic repository information.
@@ -41,7 +57,7 @@ class GitService(GitServicePort):
             RepositoryInfo with name, url, current_branch, is_bare
         """
         try:
-            repo = Repo(repo_path)
+            repo = self._get_repo(repo_path)
 
             # Get remote URL if available
             url = None
@@ -80,7 +96,7 @@ class GitService(GitServicePort):
         Returns:
             Full 40-character commit hash
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
 
         if branch:
             try:
@@ -107,7 +123,7 @@ class GitService(GitServicePort):
         Returns:
             CommitInfo with full commit metadata
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
         commit = repo.commit(commit_hash)
 
         message = commit.message
@@ -146,7 +162,7 @@ class GitService(GitServicePort):
         Returns:
             List of commit hashes (newest first)
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
 
         try:
             # Get commits between since_commit and HEAD (or branch)
@@ -183,7 +199,7 @@ class GitService(GitServicePort):
                 - modified: List of modified file paths
                 - deleted: List of deleted file paths
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
 
         try:
             from_c = repo.commit(from_commit)
@@ -235,7 +251,7 @@ class GitService(GitServicePort):
         Returns:
             List of file paths (relative to repo root)
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
         commit = repo.commit(commit_hash)
 
         files: list[str] = []
@@ -266,7 +282,7 @@ class GitService(GitServicePort):
         commit_hash: str,
     ) -> dict[str, str]:
         """List all files with their git blob hashes at a specific commit."""
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
         commit = repo.commit(commit_hash)
 
         result: dict[str, str] = {}
@@ -304,7 +320,7 @@ class GitService(GitServicePort):
             FileNotFoundError: If file doesn't exist at commit
             UnicodeDecodeError: If file is binary
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
         commit = repo.commit(commit_hash)
 
         try:
@@ -350,7 +366,7 @@ class GitService(GitServicePort):
         Raises:
             FileNotFoundError: If file doesn't exist at commit
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
         commit = repo.commit(commit_hash)
 
         try:
@@ -373,7 +389,7 @@ class GitService(GitServicePort):
         Returns:
             True if file is binary, False otherwise
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
         commit = repo.commit(commit_hash)
 
         try:
@@ -398,7 +414,7 @@ class GitService(GitServicePort):
         Returns:
             Git blob SHA-1 hash
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
         commit = repo.commit(commit_hash)
 
         try:
@@ -428,7 +444,7 @@ class GitService(GitServicePort):
         """
         from datetime import UTC, datetime, timedelta
 
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
 
         # Build kwargs for iter_commits
         iter_kwargs: dict[str, Any] = {}
@@ -472,7 +488,7 @@ class GitService(GitServicePort):
         Returns:
             Commit hash of the merge-base, or None if no common ancestor
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
 
         def resolve_branch(branch: str) -> Any:
             """Resolve branch name to commit, trying local then remote."""
@@ -527,7 +543,7 @@ class GitService(GitServicePort):
         Returns:
             List of CommitInfo (oldest first)
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
 
         def resolve_branch(b: str) -> Any:
             try:
@@ -665,7 +681,7 @@ class GitService(GitServicePort):
         Returns:
             Set of file paths (relative to repo root)
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
         commit = repo.commit(commit_hash)
 
         files: set[str] = set()
@@ -696,7 +712,7 @@ class GitService(GitServicePort):
             List of branch names sorted with default branch first,
             then by last commit date descending
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
 
         # Collect branches with their last commit dates
         branch_dates: dict[str, int] = {}
@@ -752,7 +768,7 @@ class GitService(GitServicePort):
 
     def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
         """Return mapping of commit_hash -> [tag_names]."""
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
         result: dict[str, list[str]] = {}
         for tag in repo.tags:
             commit_hash = tag.commit.hexsha
@@ -769,7 +785,7 @@ class GitService(GitServicePort):
         from datetime import UTC, datetime
 
         try:
-            repo = Repo(repo_path)
+            repo = self._get_repo(repo_path)
             commit = repo.commit(commit_hash)
         except Exception as e:
             raise ValueError(
@@ -827,7 +843,7 @@ class GitService(GitServicePort):
         Returns:
             ChangedFiles with added, modified, and deleted file paths
         """
-        repo = Repo(repo_path)
+        repo = self._get_repo(repo_path)
         commit = repo.commit(commit_hash)
 
         added: list[str] = []

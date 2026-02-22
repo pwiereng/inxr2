@@ -32,6 +32,8 @@ class ProcessCommitRequest:
     repo_path: Path
     branch: str
     blob_to_content_hash: dict[str, str] | None = None
+    # Pre-loaded once by orchestrator, shared across all commits.
+    file_version_index: dict[tuple[str, str], int] | None = None
 
 
 @dataclass
@@ -171,6 +173,7 @@ class ProcessCommitUseCase:
 
         # Process each file and collect file IDs for bulk linking
         file_ids: list[int] = []
+        files_seen = 0
         for file_path_str, blob_hash in files_with_hashes.items():
             file_request = ProcessFileRequest(
                 repository_id=request.repository_id,
@@ -179,15 +182,22 @@ class ProcessCommitUseCase:
                 repo_path=request.repo_path,
                 blob_hash=blob_hash,
                 blob_to_content_hash=blob_to_content_hash,
+                file_version_index=request.file_version_index,
             )
             file_result = await self._process_file_use_case.execute(file_request)
             self._aggregate_file_result(result, file_result)
+            files_seen += 1
 
             if file_result.file_id is not None:
                 file_ids.append(file_result.file_id)
 
-            if progress_callback:
+            if progress_callback and (files_seen == 1 or files_seen % 100 == 0):
                 progress_callback(result)
+
+        # Send a final progress update if total files isn't on a 100-file boundary
+        # (updates fire at file 1, every 100 files, and here at the end)
+        if progress_callback and files_seen % 100 != 0:
+            progress_callback(result)
 
         # Bulk-link all file versions to this commit
         if file_ids:

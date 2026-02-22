@@ -1,6 +1,7 @@
 """PostgreSQL reference repository adapter."""
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 from sqlalchemy import Subquery, delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,12 +63,12 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         if not references:
             return []
 
+        now = datetime.now(UTC).replace(tzinfo=None)
         models = [self.mapper.to_model(ref) for ref in references]
+        for model in models:
+            model.indexed_at = now
         self.session.add_all(models)
         await self.session.flush()
-
-        for model in models:
-            await self.session.refresh(model)
 
         return [self.mapper.to_domain(model) for model in models]
 

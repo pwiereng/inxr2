@@ -400,8 +400,40 @@ class FileRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    async def find_by_content_hash(self, content_hash: str) -> list[File]:
-        """Find files with matching content hash (deduplication)."""
+    async def find_by_content_hash(
+        self,
+        content_hash: str,
+        repository_id: int | None = None,
+        path: str | None = None,
+    ) -> list[File]:
+        """Find files with matching content hash.
+
+        Args:
+            content_hash: The SHA-1 content hash to search for
+            repository_id: Filter to a specific repository (recommended for performance)
+            path: Filter to a specific file path (recommended for performance)
+
+        Returns:
+            List of files matching the content hash (and optional filters)
+        """
+        pass
+
+    @abstractmethod
+    async def load_file_version_index(
+        self, repository_id: int
+    ) -> dict[tuple[str, str], int]:
+        """Load all file version keys for a repository in a single query.
+
+        Returns a dict mapping (path, content_hash) to file_id for every
+        file version in the repository. This allows callers to check file
+        existence with a dict lookup instead of individual DB queries.
+
+        Args:
+            repository_id: The repository ID
+
+        Returns:
+            Dict mapping (path, content_hash) to file_id
+        """
         pass
 
     @abstractmethod

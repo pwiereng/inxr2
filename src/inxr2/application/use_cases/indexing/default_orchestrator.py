@@ -94,12 +94,14 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         parser_service: Any,  # ParserServicePort
         plaintext_parser: PlaintextParserPort,
         pre_resolve_callback: Callable[[], Awaitable[None]] | None = None,
+        post_commit_callback: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._repository_repo = repository_repo
         self._index_status_repo = index_status_repo
         self._git_service = git_service
         self._file_repo = file_repo
         self._pre_resolve_callback = pre_resolve_callback
+        self._post_commit_callback = post_commit_callback
 
         # Build internal use cases
         self._process_file_use_case = ProcessFileUseCase(
@@ -166,17 +168,17 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         newest_commit = commits_data[0] if commits_data else None
         oldest_commit = commits_data[-1] if commits_data else None
 
-        # Step 4: Count total files for progress
-        total_files = 0
+        # Step 4: Count files at HEAD for progress estimation.
+        # Only query HEAD commit instead of all commits (saves 133 git ls-tree calls).
+        # Total files is an estimate; corrected from actual counts after processing.
         files_at_head = 0
-        for i, commit_data in enumerate(commits_data):
-            file_paths = self._git_service.list_files(
+        if commits_data:
+            head_files = self._git_service.list_files(
                 repo_path=request.repository_path,
-                commit_hash=commit_data.hash,
+                commit_hash=commits_data[0].hash,
             )
-            total_files += len(file_paths)
-            if i == 0:
-                files_at_head = len(file_paths)
+            files_at_head = len(head_files)
+        total_files = files_at_head * len(commits_data)
 
         if progress_callback:
             progress_callback(
@@ -193,6 +195,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         all_errors: list[str] = []
         # Shared blob→content_hash mapping across all commits
         blob_to_content_hash: dict[str, str] = {}
+        # Pre-load all existing file versions ONCE (1 query replaces 47K per-file queries).
+        # The dict is mutable — new versions are added during processing.
+        file_version_index = await self._file_repo.load_file_version_index(repo_id)
 
         for _i, commit_data in enumerate(commits_data):
             commit_request = ProcessCommitRequest(
@@ -201,6 +206,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 repo_path=request.repository_path,
                 branch=branch,
                 blob_to_content_hash=blob_to_content_hash,
+                file_version_index=file_version_index,
             )
 
             def on_file_progress(cr: ProcessCommitResult) -> None:
@@ -224,6 +230,13 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             if not cr.commit_skipped:
                 commits_indexed += 1
 
+            # Flush pending writes and clear the session identity map between
+            # commits.  File lookups use the in-memory file_version_index dict,
+            # so expunging ORM objects is safe and keeps dirty-checks fast
+            # (~1K objects per commit instead of ~139K cumulative).
+            if self._post_commit_callback is not None:
+                await self._post_commit_callback()
+
         # Step 6: Resolve references
         # Prepare the session before resolution (e.g. flush pending changes
         # and clear the identity map).  The session accumulates ~25K+ ORM
@@ -231,6 +244,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         # checks that slow down the raw-SQL resolution queries.
         if self._pre_resolve_callback is not None:
             await self._pre_resolve_callback()
+
+        # Correct total_files from actual counts (estimate may differ from reality)
+        total_files = agg.files_processed + agg.files_skipped + agg.files_failed
 
         db_stats.selects += 1  # initial count query
         indexing_seconds = time.monotonic() - start_time
