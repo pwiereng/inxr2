@@ -2369,6 +2369,64 @@ describe('useBrowseState', () => {
       expect(mockGetRepositoryTreeByName).toHaveBeenCalled()
     })
 
+    it('should fall back to unfiltered tree when getCommits returns no indexed commits', async () => {
+      // Regression test: if getCommits resolves but returns no indexed commits,
+      // latestBranchCommit resolves to null. The tree should load unfiltered
+      // rather than staying empty forever.
+      mockSearchParams = new URLSearchParams('co=1&branch=feature')
+
+      // No indexed commits — latestBranchCommit will resolve to null
+      mockGetCommits.mockResolvedValue({
+        commits: [
+          {
+            hash: 'not-indexed',
+            short_hash: 'not-in',
+            message: 'Not indexed',
+            author_name: 'Test',
+            author_email: 'test@test.com',
+            commit_date: '2024-01-01',
+            is_indexed: false,
+            tags: [],
+            is_branch_specific: true,
+            is_merge_base: false,
+          },
+        ],
+        total: 1,
+      })
+
+      await renderBrowseStateHook()
+
+      // The tree should still load (unfiltered) since latestBranchCommit resolved to null
+      await vi.waitFor(() => {
+        expect(mockGetRepositoryTreeByName).toHaveBeenCalled()
+      })
+
+      // The call should NOT have changedOnly=true (no commit to filter by)
+      const calls = mockGetRepositoryTreeByName.mock.calls
+      const lastCall = calls[calls.length - 1]
+      expect(lastCall![3]).not.toBe(true)
+    })
+
+    it('should fall back to unfiltered tree when getCommits fails', async () => {
+      // If getCommits rejects, latestBranchCommit resolves to null.
+      // The tree should still load unfiltered.
+      mockSearchParams = new URLSearchParams('co=1&branch=feature')
+
+      mockGetCommits.mockRejectedValue(new Error('Network error'))
+
+      await renderBrowseStateHook()
+
+      // The tree should still load (unfiltered)
+      await vi.waitFor(() => {
+        expect(mockGetRepositoryTreeByName).toHaveBeenCalled()
+      })
+
+      // Should not use changedOnly since there's no commit to filter by
+      const calls = mockGetRepositoryTreeByName.mock.calls
+      const lastCall = calls[calls.length - 1]
+      expect(lastCall![3]).not.toBe(true)
+    })
+
     it('should load filtered tree immediately when selectedCommit is provided', async () => {
       // When a specific commit is selected, treeCommit doesn't depend on latestBranchCommit
       mockSearchParams = new URLSearchParams('co=1&commit=abc123&branch=feature')
