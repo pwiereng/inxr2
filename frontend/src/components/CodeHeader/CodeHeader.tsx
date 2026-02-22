@@ -1,54 +1,15 @@
-import { useState, useEffect } from 'react'
-import {
-  Box,
-  AppBar,
-  Toolbar,
-  Tabs,
-  Tab,
-  Select,
-  MenuItem,
-  FormControl,
-  IconButton,
-  Tooltip,
-  Typography,
-  CircularProgress,
-} from '@mui/material'
+import { Box, AppBar, Toolbar, IconButton, Tooltip } from '@mui/material'
 import HomeIcon from '@mui/icons-material/Home'
-import CodeIcon from '@mui/icons-material/Code'
-import SearchIcon from '@mui/icons-material/Search'
-import HistoryIcon from '@mui/icons-material/History'
-import FolderIcon from '@mui/icons-material/Folder'
-import PublicIcon from '@mui/icons-material/Public'
-import AccountTreeIcon from '@mui/icons-material/AccountTree'
-import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
-import type { SelectProps } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '@/contexts/AppContext'
-import {
-  getRepositories,
-  getRepositoryBranches,
-  getCommits,
-  type Repository,
-  type BranchInfo,
-  type CommitInfo,
-} from '@/lib/api'
-
-import { formatDateTimeUTC } from '@/lib/dateUtils'
-
-// Workaround for MUI Select aria-hidden warning:
-// When a Select menu closes, the Popover sets aria-hidden on its container
-// while a MenuItem descendant still has focus, triggering a browser warning.
-// Preventing default on mousedown stops focus from moving to the MenuItem
-// on click, while the click event still fires normally for selection.
-const MENU_PROPS: Partial<SelectProps['MenuProps']> = {
-  MenuListProps: {
-    onMouseDown: (e: React.MouseEvent) => {
-      e.preventDefault()
-    },
-  },
-}
+import { useRepositorySelector } from '@/hooks/useRepositorySelector'
+import { RepositorySelect } from './RepositorySelect'
+import { BranchSelect } from './BranchSelect'
+import { CommitSelect } from './CommitSelect'
+import { CommitDateIndicator } from './CommitDateIndicator'
+import { NavigationTabs } from './NavigationTabs'
 
 export type TabValue = 'browse' | 'search' | 'history'
 
@@ -76,106 +37,21 @@ export function CodeHeader({
   const navigate = useNavigate()
   const { themeMode, toggleThemeMode } = useApp()
 
-  // Data state
-  const [repositories, setRepositories] = useState<Repository[]>([])
-  const [branches, setBranches] = useState<BranchInfo[]>([])
-  const [commits, setCommits] = useState<CommitInfo[]>([])
-
-  // Loading state
-  const [loadingRepos, setLoadingRepos] = useState(true)
-  const [loadingBranches, setLoadingBranches] = useState(false)
-  const [loadingCommits, setLoadingCommits] = useState(false)
-
-  // Load repositories on mount
-  useEffect(() => {
-    const loadRepos = async () => {
-      setLoadingRepos(true)
-      try {
-        const repos = await getRepositories()
-        setRepositories(repos)
-      } catch (error) {
-        console.error('Failed to load repositories:', error)
-      } finally {
-        setLoadingRepos(false)
-      }
-    }
-    loadRepos()
-  }, [])
-
-  // Load branches when repository changes
-  useEffect(() => {
-    if (!repoName) {
-      setBranches([])
-      return
-    }
-
-    const loadBranches = async () => {
-      setLoadingBranches(true)
-      try {
-        const repo = repositories.find((r) => r.name === repoName)
-        if (!repo) return
-
-        const response = await getRepositoryBranches(repo.id)
-        // Only show indexed branches (those with a last_indexed_commit)
-        const indexedBranches = response.branches.filter((b) => b.last_indexed_commit)
-        setBranches(indexedBranches)
-      } catch (error) {
-        console.error('Failed to load branches:', error)
-        setBranches([])
-      } finally {
-        setLoadingBranches(false)
-      }
-    }
-
-    loadBranches()
-  }, [repoName, repositories])
-
-  // Load commits when repository or branch changes
-  useEffect(() => {
-    if (!repoName) {
-      setCommits([])
-      return
-    }
-
-    const loadCommits = async () => {
-      setLoadingCommits(true)
-      try {
-        const response = await getCommits(repoName, branch || undefined, 500)
-        // Only show indexed commits in the version dropdown (browseable)
-        setCommits(response.commits.filter((c) => c.is_indexed))
-      } catch (error) {
-        console.error('Failed to load commits:', error)
-        setCommits([])
-      } finally {
-        setLoadingCommits(false)
-      }
-    }
-
-    loadCommits()
-  }, [repoName, branch])
+  const {
+    repositories,
+    branches,
+    commits,
+    loadingRepos,
+    loadingBranches,
+    loadingCommits,
+    defaultBranch,
+    commitDisplayValue,
+    currentCommitDate,
+  } = useRepositorySelector({ repoName, branch, commit })
 
   const handleHomeClick = () => {
     navigate('/')
   }
-
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: TabValue) => {
-    onTabChange(newValue)
-  }
-
-  const currentRepo = repositories.find((r) => r.name === repoName)
-  const defaultBranch = currentRepo?.default_branch || 'main'
-
-  // Get short hash for commit display
-  const getShortHash = (hash: string) => hash.substring(0, 7)
-
-  // Find commit display value
-  const commitDisplayValue = commit || (commits[0]?.hash ?? '')
-
-  // Compute the date of the currently viewed commit
-  const currentCommitObj = commit ? commits.find((c) => c.hash === commit) : commits[0]
-  const currentCommitDate = currentCommitObj?.commit_date
-    ? formatDateTimeUTC(currentCommitObj.commit_date)
-    : ''
 
   return (
     <AppBar
@@ -210,265 +86,35 @@ export function CodeHeader({
           </IconButton>
         </Tooltip>
 
-        {/* Repository Selector */}
-        {loadingRepos ? (
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <CircularProgress size={20} />
-          </Box>
-        ) : repositories.length > 1 || currentTab === 'search' ? (
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <Select
-              value={repoName || ''}
-              onChange={(e) => onRepoChange(e.target.value as string)}
-              displayEmpty
-              MenuProps={MENU_PROPS}
-              sx={{
-                '& .MuiSelect-select': {
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.5,
-                  py: 0.5,
-                },
-              }}
-            >
-              {currentTab === 'search' && (
-                <MenuItem value="">
-                  <PublicIcon fontSize="small" sx={{ mr: 1 }} />
-                  All Repositories
-                </MenuItem>
-              )}
-              {repositories.map((repo) => (
-                <MenuItem key={repo.id} value={repo.name}>
-                  <FolderIcon fontSize="small" sx={{ mr: 1 }} />
-                  {repo.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        ) : (
-          repositories.length === 1 &&
-          repositories[0] && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1 }}>
-              <FolderIcon fontSize="small" />
-              {repositories[0].name}
-            </Box>
-          )
-        )}
+        <RepositorySelect
+          repositories={repositories}
+          loading={loadingRepos}
+          repoName={repoName}
+          currentTab={currentTab}
+          onRepoChange={onRepoChange}
+        />
 
-        {/* Branch Selector */}
         {repoName && (
           <>
-            {loadingBranches ? (
-              <CircularProgress size={20} />
-            ) : branches.length > 0 ? (
-              <FormControl size="small" sx={{ minWidth: 120 }}>
-                <Select
-                  value={branch || defaultBranch}
-                  onChange={(e) => onBranchChange(e.target.value as string)}
-                  displayEmpty
-                  MenuProps={MENU_PROPS}
-                  sx={{
-                    '& .MuiSelect-select': {
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 0.5,
-                      py: 0.5,
-                      fontSize: '0.875rem',
-                    },
-                  }}
-                  renderValue={(selected) => (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <AccountTreeIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-                      {selected}
-                    </Box>
-                  )}
-                >
-                  {branches.map((branchInfo) => (
-                    <MenuItem key={branchInfo.name} value={branchInfo.name}>
-                      {branchInfo.name}
-                      {branchInfo.name === defaultBranch && ' (default)'}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            ) : null}
+            <BranchSelect
+              branches={branches}
+              loading={loadingBranches}
+              branch={branch}
+              defaultBranch={defaultBranch}
+              onBranchChange={onBranchChange}
+            />
 
-            {/* Commit Selector */}
-            {loadingCommits ? (
-              <CircularProgress size={20} />
-            ) : commits.length > 0 ? (
-              <FormControl size="small" sx={{ minWidth: 140 }}>
-                <Select
-                  value={commitDisplayValue}
-                  onChange={(e) => onCommitChange(e.target.value as string)}
-                  displayEmpty
-                  MenuProps={MENU_PROPS}
-                  sx={{
-                    '& .MuiSelect-select': {
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 0.5,
-                      py: 0.5,
-                      fontSize: '0.875rem',
-                      fontFamily: 'monospace',
-                    },
-                  }}
-                  renderValue={(selected) => {
-                    if (!selected) return 'latest'
-                    const selectedCommitObj = commits.find((c) => c.hash === selected)
-                    return selectedCommitObj ? getShortHash(selectedCommitObj.hash) : 'latest'
-                  }}
-                >
-                  {commits.map((commitInfo, index) => {
-                    const formattedDate = commitInfo.commit_date
-                      ? formatDateTimeUTC(commitInfo.commit_date)
-                      : ''
-                    return (
-                      <MenuItem
-                        key={commitInfo.hash}
-                        value={commitInfo.hash}
-                        sx={{
-                          ...(commitInfo.is_branch_specific && {
-                            borderLeft: 3,
-                            borderColor: 'success.main',
-                            bgcolor: 'action.hover',
-                          }),
-                          ...(commitInfo.is_merge_base && {
-                            borderBottom: 2,
-                            borderColor: 'info.main',
-                          }),
-                        }}
-                      >
-                        <Tooltip title={commitInfo.message} placement="left">
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Box
-                              component="span"
-                              sx={{
-                                fontFamily: 'monospace',
-                                fontSize: '0.8rem',
-                              }}
-                            >
-                              {getShortHash(commitInfo.hash)}
-                            </Box>
-                            {formattedDate && (
-                              <Box
-                                component="span"
-                                sx={{
-                                  fontSize: '0.75rem',
-                                  color: 'text.secondary',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {formattedDate}
-                              </Box>
-                            )}
-                            <Box
-                              component="span"
-                              sx={{
-                                fontSize: '0.75rem',
-                                color: 'text.secondary',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                maxWidth: 200,
-                              }}
-                            >
-                              {commitInfo.message}
-                            </Box>
-                            {index === 0 && (
-                              <Typography
-                                component="span"
-                                variant="caption"
-                                sx={{
-                                  ml: 0.5,
-                                  px: 0.5,
-                                  py: 0.125,
-                                  bgcolor: 'primary.main',
-                                  color: 'primary.contrastText',
-                                  borderRadius: 0.5,
-                                  fontSize: '0.65rem',
-                                  fontWeight: 600,
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                HEAD
-                              </Typography>
-                            )}
-                            {commitInfo.is_merge_base && (
-                              <Typography
-                                component="span"
-                                variant="caption"
-                                sx={{
-                                  ml: 0.5,
-                                  px: 0.5,
-                                  py: 0.125,
-                                  bgcolor: 'info.main',
-                                  color: 'info.contrastText',
-                                  borderRadius: 0.5,
-                                  fontSize: '0.65rem',
-                                  fontWeight: 600,
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                FORK
-                              </Typography>
-                            )}
-                            {commitInfo.tags?.map((tag) => (
-                              <Typography
-                                key={tag}
-                                component="span"
-                                variant="caption"
-                                sx={{
-                                  ml: 0.5,
-                                  px: 0.5,
-                                  py: 0.125,
-                                  bgcolor: 'warning.main',
-                                  color: 'warning.contrastText',
-                                  borderRadius: 0.5,
-                                  fontSize: '0.65rem',
-                                  fontWeight: 600,
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {tag}
-                              </Typography>
-                            ))}
-                          </Box>
-                        </Tooltip>
-                      </MenuItem>
-                    )
-                  })}
-                </Select>
-              </FormControl>
-            ) : null}
+            <CommitSelect
+              commits={commits}
+              loading={loadingCommits}
+              commitDisplayValue={commitDisplayValue}
+              onCommitChange={onCommitChange}
+            />
           </>
         )}
 
-        {/* Current commit date indicator */}
         {repoName && !loadingCommits && currentCommitDate && (
-          <Tooltip title={`Browsing code as of ${currentCommitDate}`}>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.5,
-                color: 'text.secondary',
-                ml: 0.5,
-              }}
-            >
-              <CalendarTodayIcon sx={{ fontSize: '0.95rem' }} />
-              <Typography
-                variant="body2"
-                sx={{
-                  fontSize: '0.85rem',
-                  fontVariantNumeric: 'tabular-nums',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {currentCommitDate}
-              </Typography>
-            </Box>
-          </Tooltip>
+          <CommitDateIndicator currentCommitDate={currentCommitDate} />
         )}
 
         <Box sx={{ flex: 1 }} />
@@ -486,39 +132,7 @@ export function CodeHeader({
       </Toolbar>
 
       {/* Row 2: Tabs */}
-      <Toolbar sx={{ minHeight: '48px !important', px: 2 }}>
-        <Tabs
-          value={currentTab}
-          onChange={handleTabChange}
-          sx={{
-            minHeight: 48,
-            '& .MuiTab-root': {
-              minHeight: 48,
-              textTransform: 'none',
-              fontWeight: 500,
-            },
-          }}
-        >
-          <Tab
-            value="browse"
-            label="Browse"
-            icon={<CodeIcon fontSize="small" />}
-            iconPosition="start"
-          />
-          <Tab
-            value="search"
-            label="Search"
-            icon={<SearchIcon fontSize="small" />}
-            iconPosition="start"
-          />
-          <Tab
-            value="history"
-            label="History"
-            icon={<HistoryIcon fontSize="small" />}
-            iconPosition="start"
-          />
-        </Tabs>
-      </Toolbar>
+      <NavigationTabs currentTab={currentTab} onTabChange={onTabChange} />
     </AppBar>
   )
 }

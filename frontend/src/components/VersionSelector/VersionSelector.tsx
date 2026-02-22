@@ -12,15 +12,7 @@ import HistoryIcon from '@mui/icons-material/History'
 import EditIcon from '@mui/icons-material/Edit'
 import { getFileHistory, type FileVersion } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
-
-// Workaround for MUI Select aria-hidden warning (see CodeHeader.tsx for details)
-const MENU_PROPS = {
-  MenuListProps: {
-    onMouseDown: (e: React.MouseEvent) => {
-      e.preventDefault()
-    },
-  },
-}
+import { MENU_PROPS } from '@/lib/menuProps'
 
 interface VersionSelectorProps {
   repoName: string
