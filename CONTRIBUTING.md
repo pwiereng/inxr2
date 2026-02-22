@@ -24,12 +24,12 @@ This document outlines the coding standards, development practices, and guidelin
    - ✅ Python packages are installed into system Python at image build time — rebuild the image when `pyproject.toml` changes
    - Node packages: `docker exec inxr2-dev bash -c "cd /workspace/frontend && npm install <package>"`
 
-3. **Volume Permissions**
+2. **Volume Permissions**
    - `node_modules` uses a named Docker volume to avoid Mac/Linux binary incompatibility
    - Changes to package files must be made in the container or via docker exec
    - If you encounter permission errors, check `scripts/docker-entrypoint.sh`
 
-4. **Running Commands**
+3. **Running Commands**
    ```bash
    # Correct - inside container
    docker exec inxr2-dev bash -c "cd /workspace && pytest"
@@ -40,7 +40,7 @@ This document outlines the coding standards, development practices, and guidelin
    ./scripts/dev-shell.sh  # Opens interactive shell in container
    ```
 
-5. **Clean Rebuild Workflow**
+4. **Clean Rebuild Workflow**
    ```bash
    # When things are broken or after major changes
    ./scripts/clean-rebuild.sh
