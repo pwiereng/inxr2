@@ -7,7 +7,7 @@ ProcessCommitUseCase) while keeping the orchestration logic here.
 """
 
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -91,11 +91,13 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         git_service: GitServicePort,
         parser_service: Any,  # ParserServicePort
         plaintext_parser: PlaintextParserPort,
+        pre_resolve_callback: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._repository_repo = repository_repo
         self._index_status_repo = index_status_repo
         self._git_service = git_service
         self._file_repo = file_repo
+        self._pre_resolve_callback = pre_resolve_callback
 
         # Build internal use cases
         self._process_file_use_case = ProcessFileUseCase(
@@ -221,6 +223,13 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 commits_indexed += 1
 
         # Step 6: Resolve references
+        # Prepare the session before resolution (e.g. flush pending changes
+        # and clear the identity map).  The session accumulates ~25K+ ORM
+        # objects during indexing; expunging them avoids per-flush dirty
+        # checks that slow down the raw-SQL resolution queries.
+        if self._pre_resolve_callback is not None:
+            await self._pre_resolve_callback()
+
         db_stats.selects += 1  # initial count query
         indexing_seconds = time.monotonic() - start_time
 
@@ -243,7 +252,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         resolve_response = await self._resolve_refs_use_case.execute_with_progress(
             ResolveReferencesRequest(repository_id=repo_id),
             progress_callback=on_resolution_progress,
-            batch_size=1000,
+            batch_size=100,
         )
         resolving_seconds = time.monotonic() - resolve_start
 

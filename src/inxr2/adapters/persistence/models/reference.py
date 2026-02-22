@@ -3,7 +3,17 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -22,6 +32,13 @@ class ReferenceModel(Base):
     """
 
     __tablename__ = "references"
+    __table_args__ = (
+        Index(
+            "idx_references_repo_unresolved",
+            "repository_id",
+            postgresql_where=text("target_symbol_id IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     repository_id: Mapped[int] = mapped_column(

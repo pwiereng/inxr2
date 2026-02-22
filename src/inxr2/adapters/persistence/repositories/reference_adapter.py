@@ -466,7 +466,6 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
             )
             total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
 
-        await self.session.flush()
         return total_resolved
 
     async def resolve_unlinked_references(self, repository_id: int) -> int:
