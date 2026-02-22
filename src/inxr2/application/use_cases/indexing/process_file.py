@@ -42,6 +42,9 @@ class ProcessFileRequest:
     repo_path: Path
     blob_hash: str | None = None  # git blob hash for fast skip
     blob_to_content_hash: dict[str, str] | None = None  # blob hash -> content hash
+    # Pre-loaded index: (path, content_hash) -> file_id.
+    # When provided, skips individual DB queries for cached file versions.
+    file_version_index: dict[tuple[str, str], int] | None = None
 
 
 @dataclass
@@ -113,26 +116,37 @@ class ProcessFileUseCase:
 
     async def _do_process(self, request: ProcessFileRequest) -> ProcessFileResult:
         """Inner processing logic."""
-        # Fast path: if blob hash maps to a known content hash,
-        # check if file version already exists WITHOUT creating a placeholder.
-        # Using find_by_content_hash (read-only) avoids inserting a row with
-        # size_bytes=0 that would block proper parsing on fall-through.
+        fvi = request.file_version_index  # pre-loaded (path, content_hash)->file_id
+
+        # Fast path 1: blob hash → content hash → file_version_index lookup
+        # Avoids BOTH git content read AND DB query.
         known_content_hash = self._lookup_blob_hash(request)
         if known_content_hash:
+            # Check in-memory index first (O(1) dict lookup)
+            if fvi is not None:
+                cached_id = fvi.get((request.file_path, known_content_hash))
+                if cached_id is not None:
+                    return ProcessFileResult(
+                        processed=True,
+                        skipped=False,
+                        failed=False,
+                        file_id=cached_id,
+                        file_version_created=False,
+                        symbols_found=0,
+                        references_found=0,
+                        lines_indexed=0,
+                        comments_indexed=0,
+                        docstrings_indexed=0,
+                        non_code_file_indexed=False,
+                    )
+            # Fallback to DB query
             existing_files = await self._file_repo.find_by_content_hash(
-                known_content_hash
+                known_content_hash,
+                repository_id=request.repository_id,
+                path=request.file_path,
             )
-            existing_version = next(
-                (
-                    f
-                    for f in existing_files
-                    if f.repository_id == request.repository_id
-                    and f.path == request.file_path
-                ),
-                None,
-            )
+            existing_version = existing_files[0] if existing_files else None
             if existing_version is not None:
-                # File version already exists — skip entirely
                 return ProcessFileResult(
                     processed=True,
                     skipped=False,
@@ -162,6 +176,25 @@ class ProcessFileUseCase:
         if request.blob_hash and request.blob_to_content_hash is not None:
             request.blob_to_content_hash[request.blob_hash] = content_hash
 
+        # Fast path 2: check file_version_index after computing content hash.
+        # Avoids the DB query in find_or_create_version for cached files.
+        if fvi is not None:
+            cached_id = fvi.get((request.file_path, content_hash))
+            if cached_id is not None:
+                return ProcessFileResult(
+                    processed=True,
+                    skipped=False,
+                    failed=False,
+                    file_id=cached_id,
+                    file_version_created=False,
+                    symbols_found=0,
+                    references_found=0,
+                    lines_indexed=0,
+                    comments_indexed=0,
+                    docstrings_indexed=0,
+                    non_code_file_indexed=False,
+                )
+
         # Detect language using full LanguageDetector (60+ extensions, fixes #35)
         language = LanguageDetector.detect(request.file_path)
 
@@ -182,6 +215,10 @@ class ProcessFileUseCase:
         )
         file_id = file_entity.id
         assert file_id is not None
+
+        # Register newly created file in the index for subsequent lookups
+        if created and fvi is not None:
+            fvi[(request.file_path, content_hash)] = file_id
 
         if not created:
             # File version already exists — symbols/references already saved
@@ -218,10 +255,9 @@ class ProcessFileUseCase:
                 )
             )
 
-            # Save symbols
-            symbols_found = 0
-            for symbol_data in symbols_data:
-                symbol = Symbol(
+            # Save symbols (batch)
+            symbols = [
+                Symbol(
                     id=None,
                     file_id=file_id,
                     repository_id=request.repository_id,
@@ -235,11 +271,14 @@ class ProcessFileUseCase:
                     signature=symbol_data.get("signature"),
                     metadata=symbol_data.get("metadata", {}),
                 )
-                await self._symbol_repo.save(symbol)
-                symbols_found += 1
+                for symbol_data in symbols_data
+            ]
+            if symbols:
+                await self._symbol_repo.save_many(symbols)
+            symbols_found = len(symbols)
 
-            # Save references
-            references_found = 0
+            # Save references (batch)
+            references = []
             for ref_data in references_data:
                 reference_text = ref_data.get("text") or ref_data.get(
                     "reference_text", ""
@@ -253,19 +292,22 @@ class ProcessFileUseCase:
                     source_column + len(reference_text),
                 )
 
-                reference = Reference(
-                    id=None,
-                    repository_id=request.repository_id,
-                    source_file_id=file_id,
-                    source_line=ref_data["source_line"],
-                    source_column=source_column,
-                    source_end_column=source_end_column,
-                    reference_text=reference_text,
-                    reference_type=ReferenceType(reference_type),
-                    target_symbol_id=None,
+                references.append(
+                    Reference(
+                        id=None,
+                        repository_id=request.repository_id,
+                        source_file_id=file_id,
+                        source_line=ref_data["source_line"],
+                        source_column=source_column,
+                        source_end_column=source_end_column,
+                        reference_text=reference_text,
+                        reference_type=ReferenceType(reference_type),
+                        target_symbol_id=None,
+                    )
                 )
-                await self._reference_repo.save(reference)
-                references_found += 1
+            if references:
+                await self._reference_repo.save_many(references)
+            references_found = len(references)
 
             return ProcessFileResult(
                 processed=True,
@@ -356,6 +398,7 @@ class ProcessFileUseCase:
                 file_path=file_path_str,
             )
 
+            text_contents: list[TextContent] = []
             for comment_data in comments_data:
                 comment_content = comment_data.get("content", "")
                 if not comment_content or not comment_content.strip():
@@ -369,19 +412,22 @@ class ProcessFileUseCase:
                     source_type = TextSearchSourceType.COMMENT.value
                     comments_indexed += 1
 
-                text_content = TextContent(
-                    id=None,
-                    repository_id=repository_id,
-                    commit_id=None,  # file-derived, not commit-specific
-                    source_type=source_type,
-                    source_file_id=file_id,
-                    source_line=comment_data["source_line"],
-                    source_end_line=comment_data.get("source_end_line"),
-                    content=comment_content,
-                    language=language,
-                    content_type=content_type,
+                text_contents.append(
+                    TextContent(
+                        id=None,
+                        repository_id=repository_id,
+                        commit_id=None,  # file-derived, not commit-specific
+                        source_type=source_type,
+                        source_file_id=file_id,
+                        source_line=comment_data["source_line"],
+                        source_end_line=comment_data.get("source_end_line"),
+                        content=comment_content,
+                        language=language,
+                        content_type=content_type,
+                    )
                 )
-                await self._text_content_repo.save(text_content)
+            if text_contents:
+                await self._text_content_repo.save_batch(text_contents)
 
         except Exception as e:
             return (
@@ -417,24 +463,26 @@ class ProcessFileUseCase:
             if not chunks:
                 return self._NonCodeResult(indexed=False, inserts=0)
 
-            inserts = 0
+            text_contents: list[TextContent] = []
             for chunk in chunks:
-                text_content = TextContent(
-                    id=None,
-                    repository_id=repository_id,
-                    commit_id=None,  # file-derived, not commit-specific
-                    source_type=TextSearchSourceType.FILE_CONTENT.value,
-                    source_file_id=file_id,
-                    source_line=chunk["source_line"],
-                    source_end_line=chunk.get("source_end_line"),
-                    content=chunk["content"],
-                    language=None,
-                    content_type=chunk["content_type"],
+                text_contents.append(
+                    TextContent(
+                        id=None,
+                        repository_id=repository_id,
+                        commit_id=None,  # file-derived, not commit-specific
+                        source_type=TextSearchSourceType.FILE_CONTENT.value,
+                        source_file_id=file_id,
+                        source_line=chunk["source_line"],
+                        source_end_line=chunk.get("source_end_line"),
+                        content=chunk["content"],
+                        language=None,
+                        content_type=chunk["content_type"],
+                    )
                 )
-                await self._text_content_repo.save(text_content)
-                inserts += 1
+            if text_contents:
+                await self._text_content_repo.save_batch(text_contents)
 
-            return self._NonCodeResult(indexed=True, inserts=inserts)
+            return self._NonCodeResult(indexed=True, inserts=len(text_contents))
 
         except Exception as e:
             return self._NonCodeResult(

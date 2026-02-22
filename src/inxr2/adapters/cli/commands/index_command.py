@@ -326,11 +326,10 @@ async def _run_full_index_async(
             index_status_repo = PostgresIndexStatusRepository(session)
             text_content_repo = PostgresTextContentRepository(session)
 
-            # Create pre-resolve callback to flush+expunge the session.
-            # This clears the ~25K+ ORM objects accumulated during indexing
-            # so resolution (which uses raw SQL) isn't slowed by dirty checks,
-            # without committing mid-index (so failures can still roll back).
-            async def pre_resolve() -> None:
+            # Pre-resolve callback: flush+expunge the session before resolution.
+            # This clears the ORM objects accumulated during indexing so
+            # resolution (which uses raw SQL) isn't slowed by dirty checks.
+            async def flush_and_expunge() -> None:
                 await session.flush()
                 session.expunge_all()
 
@@ -346,7 +345,8 @@ async def _run_full_index_async(
                 git_service=git_service,
                 parser_service=parser_service,
                 plaintext_parser=PlaintextParser(),
-                pre_resolve_callback=pre_resolve,
+                pre_resolve_callback=flush_and_expunge,
+                post_commit_callback=flush_and_expunge,
             )
 
             # Get repository info for display

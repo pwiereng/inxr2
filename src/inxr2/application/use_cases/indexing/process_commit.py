@@ -32,6 +32,8 @@ class ProcessCommitRequest:
     repo_path: Path
     branch: str
     blob_to_content_hash: dict[str, str] | None = None
+    # Pre-loaded once by orchestrator, shared across all commits.
+    file_version_index: dict[tuple[str, str], int] | None = None
 
 
 @dataclass
@@ -179,6 +181,7 @@ class ProcessCommitUseCase:
                 repo_path=request.repo_path,
                 blob_hash=blob_hash,
                 blob_to_content_hash=blob_to_content_hash,
+                file_version_index=request.file_version_index,
             )
             file_result = await self._process_file_use_case.execute(file_request)
             self._aggregate_file_result(result, file_result)
@@ -186,7 +189,7 @@ class ProcessCommitUseCase:
             if file_result.file_id is not None:
                 file_ids.append(file_result.file_id)
 
-            if progress_callback:
+            if progress_callback and result.files_processed % 100 == 0:
                 progress_callback(result)
 
         # Bulk-link all file versions to this commit

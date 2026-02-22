@@ -1,5 +1,7 @@
 """PostgreSQL symbol repository adapter."""
 
+from datetime import datetime
+
 from sqlalchemy import Subquery, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,12 +43,12 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         if not symbols:
             return []
 
+        now = datetime.utcnow()
         models = [self.mapper.to_model(symbol) for symbol in symbols]
+        for model in models:
+            model.indexed_at = now
         self.session.add_all(models)
         await self.session.flush()
-
-        for model in models:
-            await self.session.refresh(model)
 
         return [self.mapper.to_domain(model) for model in models]
 

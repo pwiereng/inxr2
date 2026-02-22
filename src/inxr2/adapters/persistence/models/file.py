@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -57,6 +58,11 @@ class FileModel(Base):
             "path",
             "content_hash",
             name="uq_file_version",
+        ),
+        Index(
+            "ix_files_repo_content_hash",
+            "repository_id",
+            "content_hash",
         ),
     )
 

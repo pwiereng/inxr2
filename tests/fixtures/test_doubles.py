@@ -521,9 +521,29 @@ class InMemoryFileRepository(FileRepositoryPort):
         files = await self.list_by_commit(commit_id)
         return [f for f in files if f.repository_id == repository_id]
 
-    async def find_by_content_hash(self, content_hash: str) -> list[File]:
+    async def find_by_content_hash(
+        self,
+        content_hash: str,
+        repository_id: int | None = None,
+        path: str | None = None,
+    ) -> list[File]:
         """Find files by content hash."""
-        return [f for f in self._files.values() if f.content_hash == content_hash]
+        results = [f for f in self._files.values() if f.content_hash == content_hash]
+        if repository_id is not None:
+            results = [f for f in results if f.repository_id == repository_id]
+        if path is not None:
+            results = [f for f in results if f.path == path]
+        return results
+
+    async def load_file_version_index(
+        self, repository_id: int
+    ) -> dict[tuple[str, str], int]:
+        """Load all file version keys for a repository."""
+        return {
+            (f.path, f.content_hash): f.id
+            for f in self._files.values()
+            if f.repository_id == repository_id and f.id is not None
+        }
 
     async def find_by_repository_and_path(
         self, repository_id: int, path: str

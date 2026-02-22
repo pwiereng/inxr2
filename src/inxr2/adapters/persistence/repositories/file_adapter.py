@@ -1,5 +1,7 @@
 """PostgreSQL file repository adapter."""
 
+from datetime import datetime
+
 from sqlalchemy import Subquery, case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -98,7 +100,8 @@ class PostgresFileRepository(FileRepositoryPort):
         if existing is not None:
             return self.mapper.to_domain(existing), False
 
-        # Create new
+        # Create new — set indexed_at client-side to avoid a refresh() round-trip
+        now = datetime.utcnow()
         model = FileModel(
             repository_id=repository_id,
             path=path,
@@ -109,10 +112,10 @@ class PostgresFileRepository(FileRepositoryPort):
             encoding=encoding,
             is_binary=is_binary,
             line_count=line_count,
+            indexed_at=now,
         )
         self.session.add(model)
         await self.session.flush()
-        await self.session.refresh(model)
         return self.mapper.to_domain(model), True
 
     async def link_file_to_commit(self, file_id: int, commit_id: int) -> None:
@@ -123,7 +126,6 @@ class PostgresFileRepository(FileRepositoryPort):
             .on_conflict_do_nothing()
         )
         await self.session.execute(stmt)
-        await self.session.flush()
 
     async def link_files_to_commit(self, file_ids: list[int], commit_id: int) -> None:
         """Bulk link file versions to a commit. Idempotent."""
@@ -189,13 +191,32 @@ class PostgresFileRepository(FileRepositoryPort):
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
 
-    async def find_by_content_hash(self, content_hash: str) -> list[File]:
+    async def find_by_content_hash(
+        self,
+        content_hash: str,
+        repository_id: int | None = None,
+        path: str | None = None,
+    ) -> list[File]:
         """Find files with matching content hash."""
-        result = await self.session.execute(
-            select(FileModel).where(FileModel.content_hash == content_hash)
-        )
+        query = select(FileModel).where(FileModel.content_hash == content_hash)
+        if repository_id is not None:
+            query = query.where(FileModel.repository_id == repository_id)
+        if path is not None:
+            query = query.where(FileModel.path == path)
+        result = await self.session.execute(query)
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
+
+    async def load_file_version_index(
+        self, repository_id: int
+    ) -> dict[tuple[str, str], int]:
+        """Load all file version keys for a repository in a single query."""
+        result = await self.session.execute(
+            select(FileModel.path, FileModel.content_hash, FileModel.id).where(
+                FileModel.repository_id == repository_id
+            )
+        )
+        return {(row[0], row[1]): row[2] for row in result.all()}
 
     async def find_by_repository_and_path(
         self, repository_id: int, path: str
