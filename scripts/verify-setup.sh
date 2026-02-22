@@ -66,7 +66,7 @@ docker exec "$DEV_CONTAINER" pg_isready -h localhost > /dev/null 2>&1 && check "
 
 echo ""
 echo -e "${YELLOW}4. Checking database migrations...${NC}"
-migration_status=$(docker exec "$DEV_CONTAINER" bash -c "source /home/devuser/.venv/bin/activate && cd /workspace && alembic current 2>/dev/null | grep -v INFO | head -1")
+migration_status=$(docker exec "$DEV_CONTAINER" bash -c "cd /workspace && alembic current 2>/dev/null | grep -v INFO | head -1")
 if [ -n "$migration_status" ]; then
     echo -e "${GREEN}✅ Migrations applied: $migration_status${NC}"
 else
@@ -85,7 +85,7 @@ fi
 
 echo ""
 echo -e "${YELLOW}6. Quick test - Backend imports...${NC}"
-docker exec "$DEV_CONTAINER" bash -c "source /home/devuser/.venv/bin/activate && python -c 'from inxr2.domain.entities import Repository; print(\"Imports OK\")'" > /dev/null 2>&1 && check "Python imports working" || check "Python imports working"
+docker exec "$DEV_CONTAINER" bash -c "python -c 'from inxr2.domain.entities import Repository; print(\"Imports OK\")'" > /dev/null 2>&1 && check "Python imports working" || check "Python imports working"
 
 echo ""
 echo -e "${YELLOW}7. Quick test - Frontend build...${NC}"

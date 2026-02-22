@@ -103,20 +103,8 @@ echo "✅ PostgreSQL ready (databases: inxr2_dev, inxr2_test)"
 # Python / Node Setup
 # =============================================================================
 
-# Ensure we're using the virtual environment
-if [ -z "$VIRTUAL_ENV" ]; then
-    export VIRTUAL_ENV="/home/devuser/.venv"
-    export PATH="$VIRTUAL_ENV/bin:$PATH"
-fi
-
-# Check if Python packages are installed
-if ! python -c "import fastapi" 2>/dev/null; then
-    echo "📦 Installing Python packages with uv..."
-    uv pip install -e '.[dev]'
-    echo "✅ Python packages installed"
-else
-    echo "✅ Python packages already installed"
-fi
+# Python packages are pre-installed into system Python at image build time.
+# No venv activation needed — Docker provides isolation.
 
 # Apply database migrations (non-fatal — container still starts on failure)
 if [ "${SKIP_DB_MIGRATIONS:-}" = "true" ]; then

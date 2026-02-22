@@ -91,8 +91,10 @@ The entrypoint automatically handles everything:
 - Starts embedded PostgreSQL
 - Creates databases (`inxr2_dev`, `inxr2_test`) and user role
 - Applies database migrations
-- Installs Python packages (via uv)
 - Installs Node packages (via npm)
+
+Python packages are pre-installed into system Python at image build time.
+Rebuild the image (`docker compose -f docker-compose.dev.yml up -d --build`) when `pyproject.toml` changes.
 
 **Index repositories:**
 ```bash
@@ -134,7 +136,7 @@ For more details, see [DEVELOPMENT.md](DEVELOPMENT.md).
 **BEFORE making any changes, READ and FOLLOW these mandatory guidelines:**
 
 ### 1. Docker-Only Development
-- ❌ **NEVER** run `npm install`, `pip install`, or `uv pip install` on your host machine
+- ❌ **NEVER** run `npm install` or `pip install` on your host machine
 - ✅ **ALWAYS** run package management and development commands in Docker containers
 - All work must be done inside the Docker development container
 
@@ -154,7 +156,7 @@ For more details, see [DEVELOPMENT.md](DEVELOPMENT.md).
 - Only use well-supported, actively maintained packages
 - No deprecated or vulnerable packages allowed
 - Run `npm audit` regularly (zero vulnerabilities required)
-- Python: Use `uv` with virtual environment
+- Python: Packages installed at image build time; rebuild image when `pyproject.toml` changes
 - Node: Check for deprecation warnings
 
 ### 5. Before Every Commit

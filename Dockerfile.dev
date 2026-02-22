@@ -42,6 +42,19 @@ RUN python --version && \
     npm --version && \
     git --version
 
+# Set working directory
+WORKDIR /workspace
+
+# Install Python packages into system Python at build time
+# Docker provides isolation, so no venv is needed.
+# A minimal package structure is created for the editable install; the real
+# source is bind-mounted at runtime and picked up via the .pth file in
+# site-packages.
+COPY pyproject.toml README.md ./
+RUN mkdir -p src/inxr2 && touch src/inxr2/__init__.py && \
+    pip install -e '.[dev]' && \
+    rm -rf src
+
 # Create non-root user for development
 ARG USERNAME=devuser
 ARG USER_UID=1000
@@ -56,29 +69,11 @@ RUN groupadd --gid $USER_GID $USERNAME \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
-WORKDIR /workspace
-
 # Switch to non-root user
 USER $USERNAME
 
-# Ensure cache directories exist with proper permissions
-RUN mkdir -p /home/devuser/.cache /home/devuser/.cargo/bin
-
 # Create PostgreSQL data directory owned by devuser
 RUN mkdir -p /home/devuser/pgdata && chown devuser:devuser /home/devuser/pgdata
-
-# Install uv (modern, fast Python package installer)
-# Using official uv Docker image with SHA256 pinning for security and reproducibility
-# https://docs.astral.sh/uv/guides/integration/docker/
-COPY --from=ghcr.io/astral-sh/uv@sha256:15f68a476b768083505fe1dbfcc998344d0135f0ca1b8465c4760b323904f05a /uv /home/devuser/.cargo/bin/uv
-
-# Create virtual environment in home directory
-RUN python -m venv /home/devuser/.venv
-
-# Add venv and uv to PATH, and set VIRTUAL_ENV
-ENV VIRTUAL_ENV="/home/devuser/.venv" \
-    PATH="/home/devuser/.venv/bin:/home/devuser/.cargo/bin:/home/devuser/.local/bin:${PATH}"
 
 # Copy and set up entrypoint script
 COPY --chown=devuser:devuser scripts/docker-entrypoint.sh /usr/local/bin/
