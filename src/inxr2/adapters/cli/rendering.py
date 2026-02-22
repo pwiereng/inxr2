@@ -58,7 +58,31 @@ def shorten_path(path: str, max_len: int = 50) -> str:
 
 
 # Milestone percentages used for progress reporting (sorted for bisect lookup)
-_MILESTONES = (0, 1, 2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100)
+_MILESTONES = (
+    0,
+    1,
+    2,
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    35,
+    40,
+    45,
+    50,
+    55,
+    60,
+    65,
+    70,
+    75,
+    80,
+    85,
+    90,
+    95,
+    100,
+)
 
 
 class IndexingProgressRenderer:
@@ -90,6 +114,10 @@ class IndexingProgressRenderer:
     ) -> Callable[[IndexingProgress], None]:
         """Return a closure that prints progress at milestone percentages.
 
+        The file-indexing phase uses a manual spinner (updated per callback).
+        The resolution phase uses Rich Status with an auto-animating spinner
+        so the display stays alive between batch callbacks.
+
         Args:
             output: Stream to write progress lines to. Defaults to sys.stdout.
         """
@@ -101,6 +129,7 @@ class IndexingProgressRenderer:
         class _State:
             phase: str = ""
             shown_start: bool = False
+            files_started: bool = False
             tick: int = 0
             last_pct: int = 0
 
@@ -112,6 +141,7 @@ class IndexingProgressRenderer:
                 console.print(f"  [dim]Files to process: {p.files_total}[/dim]")
 
             if p.phase == "files" and p.files_total > 0:
+                state.files_started = True
                 pct = int((p.files_processed / p.files_total) * 100)
                 state.tick += 1
                 spinner = _SPINNER[state.tick % len(_SPINNER)]
@@ -120,13 +150,21 @@ class IndexingProgressRenderer:
                     state.last_pct = milestone
                 # Always update the line with current spinner
                 out.write(
-                    f"\r  {spinner} {state.last_pct}% "
-                    f"({p.files_processed}/{p.files_total}) | "
-                    f"Symbols: {p.symbols_found} | Refs: {p.references_found}    "
+                    f"\r  {spinner} Files: {p.files_processed}/{p.files_total} | "
+                    f"Symbols: {p.symbols_found} | Refs: {p.references_found} "
+                    f"({state.last_pct}%)    "
                 )
                 out.flush()
             elif p.phase == "resolving":
                 if state.phase != "resolving":
+                    # Finalize file phase at 100%
+                    if state.files_started and p.files_total > 0:
+                        out.write(
+                            f"\r  Files: {p.files_processed}/{p.files_total} | "
+                            f"Symbols: {p.symbols_found} | Refs: {p.references_found} "
+                            f"(100%)    "
+                        )
+                        out.flush()
                     state.phase = "resolving"
                     state.tick = 0
                     state.last_pct = 0
@@ -140,11 +178,11 @@ class IndexingProgressRenderer:
                         console.print("  [cyan]Resolving references...[/cyan]")
                 if p.refs_total > 0:
                     pct = int((p.refs_resolved / p.refs_total) * 100)
-                    state.tick += 1
-                    spinner = _SPINNER[state.tick % len(_SPINNER)]
                     milestone = _MILESTONES[bisect.bisect_right(_MILESTONES, pct) - 1]
                     if milestone > state.last_pct:
                         state.last_pct = milestone
+                    state.tick += 1
+                    spinner = _SPINNER[state.tick % len(_SPINNER)]
                     out.write(
                         f"\r  {spinner} Resolved: {p.refs_resolved}/{p.refs_total} "
                         f"({state.last_pct}%)    "
