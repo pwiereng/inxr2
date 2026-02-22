@@ -280,6 +280,36 @@ class TestProgressCallback:
         assert "100/200" in text
         assert "50%" in text
 
+    def test_resolution_milestone_not_skipped(self) -> None:
+        """Milestone updates even when pct jumps over exact milestone values."""
+        console, _ = _capture_console()
+        renderer = IndexingProgressRenderer(console)
+        output = StringIO()
+        callback = renderer.create_progress_callback(output=output)
+
+        # Enter resolving phase
+        callback(
+            IndexingProgress(
+                phase="resolving",
+                files_processed=10,
+                files_total=10,
+                refs_total=1000,
+                refs_resolved=0,
+            )
+        )
+        # Jump from 0% to 37% — should snap to 35% milestone, not stay at 0%
+        callback(
+            IndexingProgress(
+                phase="resolving",
+                files_processed=10,
+                files_total=10,
+                refs_total=1000,
+                refs_resolved=370,
+            )
+        )
+        text = output.getvalue()
+        assert "35%" in text
+
     def test_spinner_rotates_on_each_call(self) -> None:
         """Each callback should show a different spinner character."""
         console, _ = _capture_console()

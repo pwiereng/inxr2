@@ -139,9 +139,10 @@ class IndexingProgressRenderer:
                 pct = int((p.files_processed / p.files_total) * 100)
                 state.tick += 1
                 spinner = _SPINNER[state.tick % len(_SPINNER)]
-                if pct in _MILESTONES and pct not in state.pcts:
-                    state.pcts.add(pct)
-                    state.last_pct = pct
+                reached = {m for m in _MILESTONES if m <= pct} - state.pcts
+                if reached:
+                    state.pcts |= reached
+                    state.last_pct = max(reached)
                 # Always update the line with current spinner
                 out.write(
                     f"\r  {spinner} {state.last_pct}% "
@@ -167,9 +168,10 @@ class IndexingProgressRenderer:
                     pct = int((p.refs_resolved / p.refs_total) * 100)
                     state.tick += 1
                     spinner = _SPINNER[state.tick % len(_SPINNER)]
-                    if pct in _MILESTONES and pct not in state.pcts:
-                        state.pcts.add(pct)
-                        state.last_pct = pct
+                    reached = {m for m in _MILESTONES if m <= pct} - state.pcts
+                    if reached:
+                        state.pcts |= reached
+                        state.last_pct = max(reached)
                     out.write(
                         f"\r  {spinner} Resolved: {p.refs_resolved}/{p.refs_total} "
                         f"({state.last_pct}%)    "
