@@ -604,25 +604,73 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
     async def resolve_unlinked_references(self, repository_id: int) -> int:
         """Resolve references to their target symbols.
 
-        Restricts symbol matching to the latest version of each file path,
-        avoiding false matches from outdated file versions.
+        Uses the same 3-pass priority as resolve_references_batch
+        (same-file > same-language > lowest-id) but without batching.
+        Restricts to latest file versions only.
         """
-        # Ensure latest-file temp table exists (reuses if already created)
         await self._ensure_resolution_tables(repository_id)
 
+        total_resolved = 0
+
+        # Pass 1: Same-file resolution
         result = await self.session.execute(
             text("""
-                UPDATE "references" r
-                SET target_symbol_id = s.id
-                FROM symbols s
-                WHERE r.repository_id = :repo_id
-                  AND s.repository_id = :repo_id
-                  AND r.reference_text = s.name
-                  AND r.target_symbol_id IS NULL
-                  AND s.file_id IN (SELECT file_id FROM _resolve_latest_files)
+                UPDATE "references"
+                SET target_symbol_id = sub.target_id
+                FROM (
+                    SELECT r.id AS ref_id, p1.min_id AS target_id
+                    FROM "references" r
+                    JOIN _resolve_pass1 p1
+                        ON r.reference_text = p1.name
+                        AND r.source_file_id = p1.file_id
+                    WHERE r.repository_id = :repo_id
+                      AND r.target_symbol_id IS NULL
+                ) sub
+                WHERE "references".id = sub.ref_id
             """),
             {"repo_id": repository_id},
         )
+        total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
+
+        # Pass 2: Same-language cross-file resolution
+        result = await self.session.execute(
+            text("""
+                UPDATE "references"
+                SET target_symbol_id = sub.target_id
+                FROM (
+                    SELECT r.id AS ref_id, p2.min_id AS target_id
+                    FROM "references" r
+                    JOIN files rf ON r.source_file_id = rf.id
+                    JOIN _resolve_pass2 p2
+                        ON r.reference_text = p2.name
+                        AND rf.language = p2.language
+                    WHERE r.repository_id = :repo_id
+                      AND r.target_symbol_id IS NULL
+                ) sub
+                WHERE "references".id = sub.ref_id
+            """),
+            {"repo_id": repository_id},
+        )
+        total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
+
+        # Pass 3: Any-match resolution (lowest ID fallback)
+        result = await self.session.execute(
+            text("""
+                UPDATE "references"
+                SET target_symbol_id = sub.target_id
+                FROM (
+                    SELECT r.id AS ref_id, p3.min_id AS target_id
+                    FROM "references" r
+                    JOIN _resolve_pass3 p3
+                        ON r.reference_text = p3.name
+                    WHERE r.repository_id = :repo_id
+                      AND r.target_symbol_id IS NULL
+                ) sub
+                WHERE "references".id = sub.ref_id
+            """),
+            {"repo_id": repository_id},
+        )
+        total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
 
         await self.session.flush()
-        return result.rowcount or 0  # type: ignore[attr-defined]
+        return total_resolved
