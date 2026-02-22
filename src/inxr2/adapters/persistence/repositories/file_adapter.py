@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Subquery, case, delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +13,7 @@ from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
-from ..models.repository import RepositoryModel
+from .shared_queries import head_file_ids_subquery, latest_file_ids_subquery
 
 
 class PostgresFileRepository(FileRepositoryPort):
@@ -401,35 +401,6 @@ class PostgresFileRepository(FileRepositoryPort):
         await self.session.flush()
         return result.rowcount or 0  # type: ignore[attr-defined]
 
-    def _head_file_ids_subquery(self) -> Subquery:
-        """File IDs at HEAD of each repo's default branch (for global search)."""
-        inner = (
-            select(
-                RepositoryModel.id.label("repo_id"),
-                BranchCommitModel.commit_id.label("commit_id"),
-                func.row_number()
-                .over(
-                    partition_by=RepositoryModel.id,
-                    order_by=[CommitModel.commit_date.desc(), CommitModel.id.desc()],
-                )
-                .label("rn"),
-            )
-            .join(
-                BranchCommitModel,
-                (BranchCommitModel.repository_id == RepositoryModel.id)
-                & (BranchCommitModel.branch == RepositoryModel.default_branch),
-            )
-            .join(CommitModel, CommitModel.id == BranchCommitModel.commit_id)
-            .subquery()
-        )
-        head_commits = select(inner.c.commit_id).where(inner.c.rn == 1).subquery()
-
-        return (
-            select(CommitFileModel.file_id.label("file_id"))
-            .where(CommitFileModel.commit_id.in_(select(head_commits.c.commit_id)))
-            .subquery()
-        )
-
     async def search_by_name(
         self,
         query: str,
@@ -481,29 +452,13 @@ class PostgresFileRepository(FileRepositoryPort):
         if commit_id is None:
             if repository_id is None and scope == "latest":
                 # Global search: only files at HEAD of each repo's default branch
-                head_fids = self._head_file_ids_subquery()
+                head_fids = head_file_ids_subquery()
                 query_stmt = query_stmt.where(
                     FileModel.id.in_(select(head_fids.c.file_id))
                 )
             else:
-                # Subquery: latest file ID per (repository_id, path)
-                latest_select = select(func.max(FileModel.id).label("max_id")).where(
-                    func.lower(FileModel.path).contains(query_lower, autoescape=True)
-                )
-                if repository_id is not None:
-                    latest_select = latest_select.where(
-                        FileModel.repository_id == repository_id
-                    )
-                if language is not None:
-                    latest_select = latest_select.where(FileModel.language == language)
-                if extensions is not None and len(extensions) > 0:
-                    latest_select = latest_select.where(
-                        FileModel.extension.in_(extensions)
-                    )
-                latest_sq = latest_select.group_by(
-                    FileModel.repository_id, FileModel.path
-                ).subquery()
-
+                # Deduplicate to latest file version per (repository_id, path)
+                latest_sq = latest_file_ids_subquery(repository_id)
                 query_stmt = query_stmt.where(
                     FileModel.id.in_(select(latest_sq.c.max_id))
                 )
@@ -577,7 +532,7 @@ class PostgresFileRepository(FileRepositoryPort):
                     )
                 )
         elif scope == "latest":
-            head_fids = self._head_file_ids_subquery()
+            head_fids = head_file_ids_subquery()
             query_stmt = query_stmt.where(FileModel.id.in_(select(head_fids.c.file_id)))
 
         query_stmt = query_stmt.distinct().order_by(FileModel.extension)
