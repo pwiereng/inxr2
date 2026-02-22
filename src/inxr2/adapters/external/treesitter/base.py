@@ -18,7 +18,7 @@ class BaseLanguageParser(ABC):
     """
 
     def __init__(self) -> None:
-        self._cached_content_id: int = 0
+        self._cached_content: str | None = None
         self._cached_content_bytes: bytes = b""
 
     @property
@@ -160,10 +160,9 @@ class BaseLanguageParser(ABC):
         encoded bytes are cached per content string to avoid re-encoding
         on every call within the same file.
         """
-        content_id = id(content)
-        if content_id != self._cached_content_id:
+        if content is not self._cached_content:
             self._cached_content_bytes = content.encode("utf-8")
-            self._cached_content_id = content_id
+            self._cached_content = content
         return self._cached_content_bytes[node.start_byte : node.end_byte].decode(
             "utf-8"
         )
