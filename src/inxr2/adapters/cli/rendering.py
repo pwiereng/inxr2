@@ -7,6 +7,7 @@ and summary formatting for the indexing command.
 
 from __future__ import annotations
 
+import bisect
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -56,32 +57,8 @@ def shorten_path(path: str, max_len: int = 50) -> str:
     return f".../{'/'.join(parts[-2:])}"
 
 
-# Milestone percentages used for progress reporting
-_MILESTONES = {
-    0,
-    1,
-    2,
-    5,
-    10,
-    15,
-    20,
-    25,
-    30,
-    35,
-    40,
-    45,
-    50,
-    55,
-    60,
-    65,
-    70,
-    75,
-    80,
-    85,
-    90,
-    95,
-    100,
-}
+# Milestone percentages used for progress reporting (sorted for bisect lookup)
+_MILESTONES = (0, 1, 2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100)
 
 
 class IndexingProgressRenderer:
@@ -122,7 +99,6 @@ class IndexingProgressRenderer:
         _SPINNER = "|/-\\"
 
         class _State:
-            pcts: set[int] = set()
             phase: str = ""
             shown_start: bool = False
             tick: int = 0
@@ -139,9 +115,9 @@ class IndexingProgressRenderer:
                 pct = int((p.files_processed / p.files_total) * 100)
                 state.tick += 1
                 spinner = _SPINNER[state.tick % len(_SPINNER)]
-                if pct in _MILESTONES and pct not in state.pcts:
-                    state.pcts.add(pct)
-                    state.last_pct = pct
+                milestone = _MILESTONES[bisect.bisect_right(_MILESTONES, pct) - 1]
+                if milestone > state.last_pct:
+                    state.last_pct = milestone
                 # Always update the line with current spinner
                 out.write(
                     f"\r  {spinner} {state.last_pct}% "
@@ -152,7 +128,6 @@ class IndexingProgressRenderer:
             elif p.phase == "resolving":
                 if state.phase != "resolving":
                     state.phase = "resolving"
-                    state.pcts = set()
                     state.tick = 0
                     state.last_pct = 0
                     out.write("\n")
@@ -167,12 +142,12 @@ class IndexingProgressRenderer:
                     pct = int((p.refs_resolved / p.refs_total) * 100)
                     state.tick += 1
                     spinner = _SPINNER[state.tick % len(_SPINNER)]
-                    if pct in _MILESTONES and pct not in state.pcts:
-                        state.pcts.add(pct)
-                        state.last_pct = pct
+                    milestone = _MILESTONES[bisect.bisect_right(_MILESTONES, pct) - 1]
+                    if milestone > state.last_pct:
+                        state.last_pct = milestone
                     out.write(
-                        f"\r  {spinner} Resolving: {state.last_pct}% "
-                        f"({p.refs_resolved}/{p.refs_total})    "
+                        f"\r  {spinner} Resolved: {p.refs_resolved}/{p.refs_total} "
+                        f"({state.last_pct}%)    "
                     )
                     out.flush()
 
