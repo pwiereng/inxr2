@@ -223,11 +223,10 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 commits_indexed += 1
 
         # Step 6: Resolve references
-        # Commit indexing data and clear identity map before resolution.
-        # The session accumulates ~25K+ ORM objects during indexing. Each
-        # flush() during resolution iterates all tracked objects to check
-        # for dirty state, even though resolution uses raw SQL.  Expunging
-        # removes the overhead entirely.
+        # Prepare the session before resolution (e.g. flush pending changes
+        # and clear the identity map).  The session accumulates ~25K+ ORM
+        # objects during indexing; expunging them avoids per-flush dirty
+        # checks that slow down the raw-SQL resolution queries.
         if self._pre_resolve_callback is not None:
             await self._pre_resolve_callback()
 

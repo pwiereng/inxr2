@@ -393,6 +393,49 @@ class TestDefaultIndexingOrchestrator:
         status = all_statuses[0]
         assert status.indexing_status == "completed"
 
+    @pytest.mark.asyncio
+    async def test_pre_resolve_callback_is_called_before_resolution(
+        self,
+        repository_adapter: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        text_content_repo: InMemoryTextContentRepository,
+        git_service: FakeGitService,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Test that pre_resolve_callback is invoked before reference resolution."""
+        callback_called = False
+
+        async def track_callback() -> None:
+            nonlocal callback_called
+            callback_called = True
+
+        orchestrator = DefaultIndexingOrchestrator(
+            repository_repo=repository_adapter,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            index_status_repo=index_status_repo,
+            text_content_repo=text_content_repo,
+            git_service=git_service,
+            parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
+            pre_resolve_callback=track_callback,
+        )
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+        )
+
+        await orchestrator.index_repository(request)
+
+        assert callback_called, "pre_resolve_callback should be called during indexing"
+
 
 class TestGitServiceIntegration:
     """Tests for git service integration - regression tests for API compatibility."""
