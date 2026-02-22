@@ -431,6 +431,12 @@ export function useBrowseState(repoNameProp?: string) {
 
     const loadTree = async () => {
       try {
+        // When changedOnly is requested but treeCommit isn't available yet (e.g.,
+        // latestBranchCommit hasn't resolved), skip loading to avoid showing the
+        // full unfiltered tree. The effect will re-fire once computedState.treeCommit
+        // becomes available via the dependency array.
+        if (urlState.changedOnly && !computedState.treeCommit) return
+
         // changedOnly only applies when viewing a specific commit
         const shouldUseChangedOnly = urlState.changedOnly && !!computedState.treeCommit
         const tree = await getRepositoryTreeByName(
