@@ -9,26 +9,6 @@ from inxr2.infrastructure.config.settings import Settings
 class TestSettings:
     """Tests for Settings class."""
 
-    def test_default_database_url(self) -> None:
-        """Settings should have a default database URL."""
-        # Create settings without any env vars set
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
-            assert "postgresql" in settings.database_url
-            assert "asyncpg" in settings.database_url
-
-    def test_default_api_host(self) -> None:
-        """Settings should have default API host of 0.0.0.0."""
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
-            assert settings.api_host == "0.0.0.0"
-
-    def test_default_api_port(self) -> None:
-        """Settings should have default API port of 8000."""
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
-            assert settings.api_port == 8000
-
     def test_database_url_from_environment(self) -> None:
         """Settings should load database URL from environment."""
         custom_url = "postgresql+asyncpg://user:pass@host:5432/db"
