@@ -17,6 +17,10 @@ class BaseLanguageParser(ABC):
     for a specific programming language using Tree-sitter AST traversal.
     """
 
+    def __init__(self) -> None:
+        self._cached_content_id: int = 0
+        self._cached_content_bytes: bytes = b""
+
     @property
     @abstractmethod
     def language_name(self) -> str:
@@ -147,9 +151,6 @@ class BaseLanguageParser(ABC):
                 line = line[1:].strip()
             cleaned.append(line)
         return "\n".join(cleaned).strip()
-
-    _cached_content_id: int = 0
-    _cached_content_bytes: bytes = b""
 
     def _get_text(self, node: Node, content: str) -> str:
         """Get the text content of a node.
