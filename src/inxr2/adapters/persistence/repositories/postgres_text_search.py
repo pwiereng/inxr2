@@ -14,12 +14,12 @@ from ....application.ports.services import (
 from ....domain.value_objects import QueryMode
 from ..mappers import TextContentMapper
 from ..models.branch_commit import BranchCommitModel
-from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.repository import RepositoryModel
 from ..models.text_content import TextContentModel
 from .regex_utils import translate_word_boundaries, validate_regex_pattern
+from .shared_queries import head_file_ids_subquery
 
 
 class PostgresTextSearch(TextSearchPort):
@@ -140,7 +140,7 @@ class PostgresTextSearch(TextSearchPort):
 
         # Apply global scope filter (when no repository_id is specified)
         if query.repository_id is None and query.scope == "latest":
-            head_fids = self._head_file_ids_subquery()
+            head_fids = head_file_ids_subquery()
             # For file-derived content: source_file_id must be at HEAD
             file_scope = TextContentModel.source_file_id.in_(
                 select(head_fids.c.file_id)
@@ -274,37 +274,6 @@ class PostgresTextSearch(TextSearchPort):
             # This safely handles special characters in user input
             # (e.g., "TODO: fix" works without crashing on the colon)
             return func.plainto_tsquery("english", query.query)
-
-    def _head_file_ids_subquery(self) -> Any:
-        """File IDs at HEAD of each repo's default branch."""
-        # Step 1: HEAD commit per repo (latest commit on default branch)
-        inner = (
-            select(
-                RepositoryModel.id.label("repo_id"),
-                BranchCommitModel.commit_id.label("commit_id"),
-                func.row_number()
-                .over(
-                    partition_by=RepositoryModel.id,
-                    order_by=[CommitModel.commit_date.desc(), CommitModel.id.desc()],
-                )
-                .label("rn"),
-            )
-            .join(
-                BranchCommitModel,
-                (BranchCommitModel.repository_id == RepositoryModel.id)
-                & (BranchCommitModel.branch == RepositoryModel.default_branch),
-            )
-            .join(CommitModel, CommitModel.id == BranchCommitModel.commit_id)
-            .subquery()
-        )
-        head_commits = select(inner.c.commit_id).where(inner.c.rn == 1).subquery()
-
-        # Step 2: File IDs at those HEAD commits
-        return (
-            select(CommitFileModel.file_id.label("file_id"))
-            .where(CommitFileModel.commit_id.in_(select(head_commits.c.commit_id)))
-            .subquery()
-        )
 
     def _default_branch_commit_ids_subquery(self) -> Any:
         """All commit IDs on each repo's default branch."""

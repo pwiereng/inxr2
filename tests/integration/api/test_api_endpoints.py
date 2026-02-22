@@ -2091,7 +2091,7 @@ class TestFileSearchAPI:
         assert saved_commit2.id is not None
 
         file_adapter = PostgresFileRepository(db_session)
-        await file_adapter.save(
+        file1 = await file_adapter.save(
             File(
                 repository_id=saved_repo1.id,
                 path="src/config.py",
@@ -2100,7 +2100,7 @@ class TestFileSearchAPI:
                 language="python",
             )
         )
-        await file_adapter.save(
+        file2 = await file_adapter.save(
             File(
                 repository_id=saved_repo2.id,
                 path="src/config.py",
@@ -2109,6 +2109,10 @@ class TestFileSearchAPI:
                 language="python",
             )
         )
+        assert file1.id is not None
+        assert file2.id is not None
+        await file_adapter.link_file_to_commit(file1.id, saved_commit1.id)
+        await file_adapter.link_file_to_commit(file2.id, saved_commit2.id)
 
         # Act - search within repo1 only
         async with AsyncClient(
