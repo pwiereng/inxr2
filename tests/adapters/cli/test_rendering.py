@@ -276,6 +276,8 @@ class TestProgressCallback:
             )
         )
         text = output.getvalue()
+        assert "Resolved:" in text
+        assert "100/200" in text
         assert "50%" in text
 
     def test_spinner_rotates_on_each_call(self) -> None:

@@ -171,8 +171,8 @@ class IndexingProgressRenderer:
                         state.pcts.add(pct)
                         state.last_pct = pct
                     out.write(
-                        f"\r  {spinner} Resolving: {state.last_pct}% "
-                        f"({p.refs_resolved}/{p.refs_total})    "
+                        f"\r  {spinner} Resolved: {p.refs_resolved}/{p.refs_total} "
+                        f"({state.last_pct}%)    "
                     )
                     out.flush()
 
