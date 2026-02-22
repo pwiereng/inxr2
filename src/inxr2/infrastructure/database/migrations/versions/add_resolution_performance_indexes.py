@@ -14,6 +14,7 @@ Create Date: 2026-02-21
 from collections.abc import Sequence
 
 from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision: str = "add_resolution_indexes_001"
@@ -35,7 +36,7 @@ def upgrade() -> None:
         "idx_references_repo_unresolved",
         "references",
         ["repository_id"],
-        postgresql_where="target_symbol_id IS NULL",
+        postgresql_where=text("target_symbol_id IS NULL"),
     )
 
 
