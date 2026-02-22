@@ -173,6 +173,7 @@ class ProcessCommitUseCase:
 
         # Process each file and collect file IDs for bulk linking
         file_ids: list[int] = []
+        files_seen = 0
         for file_path_str, blob_hash in files_with_hashes.items():
             file_request = ProcessFileRequest(
                 repository_id=request.repository_id,
@@ -185,17 +186,16 @@ class ProcessCommitUseCase:
             )
             file_result = await self._process_file_use_case.execute(file_request)
             self._aggregate_file_result(result, file_result)
+            files_seen += 1
 
             if file_result.file_id is not None:
                 file_ids.append(file_result.file_id)
 
-            if progress_callback and (
-                result.files_processed == 1 or result.files_processed % 100 == 0
-            ):
+            if progress_callback and (files_seen == 1 or files_seen % 100 == 0):
                 progress_callback(result)
 
         # Final progress update for any remainder not on a 100-file boundary
-        if progress_callback and result.files_processed % 100 != 0:
+        if progress_callback and files_seen % 100 != 0:
             progress_callback(result)
 
         # Bulk-link all file versions to this commit

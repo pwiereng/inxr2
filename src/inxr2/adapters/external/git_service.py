@@ -31,6 +31,8 @@ class GitService(GitServicePort):
     """
 
     def __init__(self) -> None:
+        # Bounded cache: typically only a handful of repos are indexed at once.
+        # Call clear_repo_cache() to release resources when done.
         self._repo_cache: dict[str, Repo] = {}
 
     def _get_repo(self, repo_path: Path) -> Repo:
@@ -39,6 +41,10 @@ class GitService(GitServicePort):
         if key not in self._repo_cache:
             self._repo_cache[key] = Repo(key)
         return self._repo_cache[key]
+
+    def clear_repo_cache(self) -> None:
+        """Release all cached Repo instances (call after indexing runs)."""
+        self._repo_cache.clear()
 
     def get_repository_info(self, repo_path: Path) -> RepositoryInfo:
         """

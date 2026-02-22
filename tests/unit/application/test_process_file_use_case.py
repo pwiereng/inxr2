@@ -372,3 +372,122 @@ class TestProcessFileUseCase:
         )
         assert result_ts.processed is True
         assert result_ts.symbols_found > 0
+
+    @pytest.mark.asyncio
+    async def test_file_version_index_cache_hit(
+        self,
+        git_service: FakeGitService,
+        use_case: ProcessFileUseCase,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+    ) -> None:
+        """Test that file_version_index enables O(1) cache hit without DB query."""
+        # Set identical content for both commits so content hashes match
+        git_service.set_file_content(
+            repo_path="/repos/test-repo",
+            commit_hash="abc123",
+            file_path="src/main.py",
+            content="def hello():\n    print('hi')\n",
+        )
+        git_service.set_file_content(
+            repo_path="/repos/test-repo",
+            commit_hash="def456",
+            file_path="src/main.py",
+            content="def hello():\n    print('hi')\n",
+        )
+
+        # First: process normally to create a file version
+        request1 = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/main.py",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+        )
+        result1 = await use_case.execute(request1)
+        assert result1.file_version_created is True
+        assert result1.file_id is not None
+
+        # Build a file_version_index with the created file
+        fvi = await file_repo.load_file_version_index(1)
+        assert len(fvi) > 0
+
+        # Second: same file with file_version_index → cache hit, no DB query
+        request2 = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/main.py",
+            commit_hash="def456",
+            repo_path=Path("/repos/test-repo"),
+            file_version_index=fvi,
+        )
+        result2 = await use_case.execute(request2)
+        assert result2.processed is True
+        assert result2.file_version_created is False
+        assert result2.file_id == result1.file_id
+        # No new symbols should be created (cached path skips parsing)
+        assert result2.symbols_found == 0
+
+    @pytest.mark.asyncio
+    async def test_file_version_index_updated_on_create(
+        self,
+        use_case: ProcessFileUseCase,
+        git_service: FakeGitService,
+    ) -> None:
+        """Test that file_version_index is updated when a new file version is created."""
+        fvi: dict[tuple[str, str], int] = {}
+
+        request = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/new_file.py",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+            file_version_index=fvi,
+        )
+        result = await use_case.execute(request)
+        assert result.file_version_created is True
+        assert result.file_id is not None
+
+        # The fvi dict should now contain the new entry
+        matching = [v for k, v in fvi.items() if k[0] == "src/new_file.py"]
+        assert len(matching) == 1
+        assert matching[0] == result.file_id
+
+    @pytest.mark.asyncio
+    async def test_file_version_index_blob_hash_fast_path(
+        self,
+        use_case: ProcessFileUseCase,
+        git_service: FakeGitService,
+    ) -> None:
+        """Test fast path 1: blob hash → content hash → fvi lookup skips git read."""
+        # First: process to populate blob_to_content_hash mapping
+        blob_map: dict[str, str] = {}
+        request1 = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/main.py",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+            blob_hash="blob_aaa",
+            blob_to_content_hash=blob_map,
+        )
+        result1 = await use_case.execute(request1)
+        assert result1.file_version_created is True
+        assert "blob_aaa" in blob_map
+
+        # Build fvi from the created file
+        fvi: dict[tuple[str, str], int] = {
+            ("src/main.py", blob_map["blob_aaa"]): result1.file_id,  # type: ignore[dict-item]
+        }
+
+        # Second: same blob hash + fvi → fast path 1, no git content read
+        request2 = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/main.py",
+            commit_hash="def456",
+            repo_path=Path("/repos/test-repo"),
+            blob_hash="blob_aaa",
+            blob_to_content_hash=blob_map,
+            file_version_index=fvi,
+        )
+        result2 = await use_case.execute(request2)
+        assert result2.processed is True
+        assert result2.file_version_created is False
+        assert result2.file_id == result1.file_id

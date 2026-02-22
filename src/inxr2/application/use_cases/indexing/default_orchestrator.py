@@ -170,7 +170,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
         # Step 4: Count files at HEAD for progress estimation.
         # Only query HEAD commit instead of all commits (saves 133 git ls-tree calls).
-        # Total files is estimated and corrected after processing.
+        # Total files is an estimate; corrected from actual counts after processing.
         files_at_head = 0
         if commits_data:
             head_files = self._git_service.list_files(
@@ -244,6 +244,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         # checks that slow down the raw-SQL resolution queries.
         if self._pre_resolve_callback is not None:
             await self._pre_resolve_callback()
+
+        # Correct total_files from actual counts (estimate may differ from reality)
+        total_files = agg.files_processed + agg.files_skipped + agg.files_failed
 
         db_stats.selects += 1  # initial count query
         indexing_seconds = time.monotonic() - start_time
