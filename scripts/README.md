@@ -94,10 +94,11 @@ docker exec inxr2-dev inxr2 index --config config.yaml --force        # Force re
 
 ## Package Management
 
-All package management must happen inside the container:
+Python dependencies are baked into the image — rebuild when `pyproject.toml` changes.
+Node packages are installed inside the container at startup.
 
 ```bash
-# Python (rebuild the image when pyproject.toml changes)
+# Python — rebuild the image
 docker compose -f docker-compose.dev.yml up -d --build
 
 # Node.js

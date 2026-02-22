@@ -50,7 +50,7 @@ WORKDIR /workspace
 # A minimal package structure is created for the editable install; the real
 # source is bind-mounted at runtime and picked up via the .pth file in
 # site-packages.
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 RUN mkdir -p src/inxr2 && touch src/inxr2/__init__.py && \
     pip install -e '.[dev]' && \
     rm -rf src

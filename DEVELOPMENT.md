@@ -431,7 +431,7 @@ If CI fails, fix issues locally and push again.
 ### Python
 
 ```bash
-# Install dependencies (inside Docker container or locally)
+# Dependencies are pre-installed in the Docker dev container
 pip install -e ".[dev]"
 
 # Verify setup
