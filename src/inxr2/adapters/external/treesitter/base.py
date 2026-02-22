@@ -17,6 +17,10 @@ class BaseLanguageParser(ABC):
     for a specific programming language using Tree-sitter AST traversal.
     """
 
+    def __init__(self) -> None:
+        self._cached_content: str | None = None
+        self._cached_content_bytes: bytes = b""
+
     @property
     @abstractmethod
     def language_name(self) -> str:
@@ -149,8 +153,19 @@ class BaseLanguageParser(ABC):
         return "\n".join(cleaned).strip()
 
     def _get_text(self, node: Node, content: str) -> str:
-        """Get the text content of a node."""
-        return content[node.start_byte : node.end_byte]
+        """Get the text content of a node.
+
+        Tree-sitter byte offsets refer to the UTF-8 encoded representation,
+        so we must slice the encoded bytes and decode back to str.  The
+        encoded bytes are cached per content string to avoid re-encoding
+        on every call within the same file.
+        """
+        if content is not self._cached_content:
+            self._cached_content_bytes = content.encode("utf-8")
+            self._cached_content = content
+        return self._cached_content_bytes[node.start_byte : node.end_byte].decode(
+            "utf-8"
+        )
 
     def _node_location(self, node: Node) -> dict[str, int]:
         """Get the location information for a node."""

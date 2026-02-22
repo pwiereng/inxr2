@@ -155,6 +155,7 @@ class TypeScriptParser(BaseLanguageParser):
         Args:
             language: Either "typescript" or "javascript"
         """
+        super().__init__()
         self._language = language
 
     @property
