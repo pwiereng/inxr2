@@ -43,15 +43,7 @@ import {
   type Repository,
   type Symbol,
 } from '@/lib/api'
-
-// Workaround for MUI Select aria-hidden warning (see CodeHeader.tsx for details)
-const MENU_PROPS = {
-  MenuListProps: {
-    onMouseDown: (e: React.MouseEvent) => {
-      e.preventDefault()
-    },
-  },
-}
+import { MENU_PROPS } from '@/lib/menuProps'
 
 // Search mode type
 type SearchMode = 'keyword' | 'phrase' | 'regex' | 'file'

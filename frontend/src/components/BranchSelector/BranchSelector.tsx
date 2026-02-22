@@ -13,15 +13,7 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import EditIcon from '@mui/icons-material/Edit'
 import { getRepositoryBranches, getFileHistory, type BranchInfo } from '@/lib/api'
-
-// Workaround for MUI Select aria-hidden warning (see CodeHeader.tsx for details)
-const MENU_PROPS = {
-  MenuListProps: {
-    onMouseDown: (e: React.MouseEvent) => {
-      e.preventDefault()
-    },
-  },
-}
+import { MENU_PROPS } from '@/lib/menuProps'
 
 interface BranchSelectorProps {
   repositoryId: number
