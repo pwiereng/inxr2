@@ -125,7 +125,7 @@ async def search_symbols(
             )
         )
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from None
 
     return SymbolListResponse(
         items=[

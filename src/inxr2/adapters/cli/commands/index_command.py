@@ -614,6 +614,7 @@ def _write_csv_log(
                     round(db_size_added_bytes / 1_048_576, 1),
                 ]
             )
+            f.flush()
     except Exception:
         logger.debug("Failed to write CSV log to %s", log_path, exc_info=True)
 
