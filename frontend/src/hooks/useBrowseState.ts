@@ -1148,7 +1148,10 @@ export function useBrowseState(repoNameProp?: string) {
         const commitToUse = isRightPanel
           ? urlState.diffCommit || computedState.rightCommit
           : urlState.selectedCommit
-        const branchToUse = isRightPanel ? urlState.diffBranch : urlState.selectedBranch
+        // Fall back to selectedBranch for same-branch diff mode where diffBranch is unset
+        const branchToUse = isRightPanel
+          ? (urlState.diffBranch ?? urlState.selectedBranch)
+          : urlState.selectedBranch
         if (commitToUse) params.set('commit', commitToUse)
         if (branchToUse) params.set('branch', branchToUse)
         // Preserve drawer state only - navigating to reference clears search context
@@ -1176,7 +1179,10 @@ export function useBrowseState(repoNameProp?: string) {
         const commitToUse = isRightPanel
           ? urlState.diffCommit || computedState.rightCommit
           : urlState.selectedCommit
-        const branchToUse = isRightPanel ? urlState.diffBranch : urlState.selectedBranch
+        // Fall back to selectedBranch for same-branch diff mode where diffBranch is unset
+        const branchToUse = isRightPanel
+          ? (urlState.diffBranch ?? urlState.selectedBranch)
+          : urlState.selectedBranch
         if (commitToUse) params.set('commit', commitToUse)
         if (branchToUse) params.set('branch', branchToUse)
         // Preserve drawer state only - navigating to definition clears search context

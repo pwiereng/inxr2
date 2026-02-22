@@ -1355,6 +1355,23 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=develop'))
       expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('branch=feature'))
     })
+
+    it('should fall back to selectedBranch when refPanel is right in same-branch diff mode', async () => {
+      // Same-branch diff mode: diff param set, no diffBranch, refPanel on right
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=feature&rp=r&refs=1')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.handleRefPanelClick({
+          source_file_path: 'src/other.py',
+          source_line: 42,
+        })
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      // Should fall back to selectedBranch since diffBranch is absent
+      expect(navigatedUrl).toContain('branch=feature')
+    })
   })
 
   describe('handleDefinitionClick in diff mode', () => {
@@ -1460,6 +1477,20 @@ describe('useBrowseState', () => {
       // Should navigate with selectedBranch (develop), not diffBranch
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=develop'))
       expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('branch=feature'))
+    })
+
+    it('should fall back to selectedBranch when refPanel is right in same-branch diff mode', async () => {
+      // Same-branch diff mode: diff param set, no diffBranch, refPanel on right
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=feature&rp=r&refs=1')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.handleDefinitionClick(mockSymbol)
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      // Should fall back to selectedBranch since diffBranch is absent
+      expect(navigatedUrl).toContain('branch=feature')
     })
   })
 
@@ -1861,6 +1892,32 @@ describe('useBrowseState', () => {
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
       expect(navigatedUrl).toContain('co=1')
       expect(navigatedUrl).toContain('diffBranch=feature')
+    })
+
+    it('should preserve co=1 when navigating to a line', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123&co=1&branch=main')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.navigateToLine(42)
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).toContain('co=1')
+      expect(navigatedUrl).toContain('line=42')
+    })
+
+    it('should preserve co=1 when clicking a diff line', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&co=1&branch=main')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.handleDiffLineClick(10, 'right')
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).toContain('co=1')
+      expect(navigatedUrl).toContain('line=10')
     })
 
     it('should clear file selection when changedOnly is on and file is not in tree', async () => {
