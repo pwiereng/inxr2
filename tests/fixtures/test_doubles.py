@@ -31,7 +31,7 @@ fake_repo.add_test_symbol(Symbol(...))
 """
 
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from io import BytesIO
@@ -1531,6 +1531,14 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             ]
         )
 
+    async def prepare_resolution(
+        self,
+        repository_id: int,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> None:
+        """No-op for in-memory implementation."""
+        pass
+
     async def resolve_references_batch(
         self,
         repository_id: int,
@@ -1538,12 +1546,16 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     ) -> int:
         """Resolve a batch of unlinked references.
 
-        With content-addressable file versions, symbols are unique per file
-        version (no commit_id ambiguity), so resolution matches by name
-        across the entire repository.
+        Restricts symbol candidates to the latest version of each file path,
+        matching the Postgres behavior that filters via commit_files.
         """
         if self._symbol_repo is None:
             return 0
+
+        # Compute latest file IDs once per batch (matches Postgres temp tables)
+        latest_file_ids: set[int] | None = None
+        if self._file_repo is not None:
+            latest_file_ids = self._file_repo._compute_latest_file_ids(repository_id)
 
         resolved_count = 0
         updated_refs: dict[int, Reference] = {}
@@ -1558,7 +1570,9 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             candidates: list[Symbol] = [
                 s
                 for s in self._symbol_repo.get_all_symbols()
-                if s.repository_id == repository_id and s.name == ref.reference_text
+                if s.repository_id == repository_id
+                and s.name == ref.reference_text
+                and (latest_file_ids is None or s.file_id in latest_file_ids)
             ]
 
             if not candidates:
@@ -1638,12 +1652,16 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     async def resolve_unlinked_references(self, repository_id: int) -> int:
         """Resolve references to their target symbols.
 
-        Matches references to symbols by name across the entire repository.
-        With content-addressable file versions, symbols are unique per file
-        version, so no commit-aware mode is needed.
+        Restricts symbol candidates to the latest version of each file path,
+        matching the Postgres behavior that filters via commit_files.
         """
         if self._symbol_repo is None:
             return 0
+
+        # Compute latest file IDs once (matches Postgres latest-file filter)
+        latest_file_ids: set[int] | None = None
+        if self._file_repo is not None:
+            latest_file_ids = self._file_repo._compute_latest_file_ids(repository_id)
 
         resolved_count = 0
         updated_refs: dict[int, Reference] = {}
@@ -1655,7 +1673,9 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             candidates: list[Symbol] = [
                 s
                 for s in self._symbol_repo.get_all_symbols()
-                if s.repository_id == repository_id and s.name == ref.reference_text
+                if s.repository_id == repository_id
+                and s.name == ref.reference_text
+                and (latest_file_ids is None or s.file_id in latest_file_ids)
             ]
 
             matching_symbol = self._pick_best_symbol(ref, candidates)

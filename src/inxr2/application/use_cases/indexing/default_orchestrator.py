@@ -58,6 +58,8 @@ class IndexingProgress:
     # Resolution progress (only set during "resolving" phase)
     refs_resolved: int = 0
     refs_total: int = 0
+    refs_preparing: bool = False
+    refs_prepare_stage: str = ""
 
 
 # Type alias for progress callback
@@ -244,6 +246,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                         references_found=agg.references_found,
                         refs_resolved=p.resolved,
                         refs_total=p.total,
+                        refs_preparing=p.preparing,
+                        refs_prepare_stage=p.prepare_stage,
                     )
                 )
             db_stats.updates += 1

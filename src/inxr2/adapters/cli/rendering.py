@@ -177,7 +177,13 @@ class IndexingProgressRenderer:
                         )
                     else:
                         console.print("  [cyan]Resolving references...[/cyan]")
-                if p.refs_total > 0:
+                if p.refs_preparing:
+                    state.tick += 1
+                    spinner = _SPINNER[state.tick % len(_SPINNER)]
+                    stage = p.refs_prepare_stage or "Preparing..."
+                    out.write(f"\r  {spinner} {stage}    ")
+                    out.flush()
+                elif p.refs_total > 0:
                     pct = int((p.refs_resolved / p.refs_total) * 100)
                     milestone = _MILESTONES[bisect.bisect_right(_MILESTONES, pct) - 1]
                     if milestone > state.last_pct:

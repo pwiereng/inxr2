@@ -6,6 +6,7 @@ mechanisms like PostgreSQL.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import datetime
 
 from ...domain.entities import (
@@ -759,6 +760,25 @@ class ReferenceRepositoryPort(ABC):
 
         Returns:
             Number of references resolved
+        """
+        pass
+
+    @abstractmethod
+    async def prepare_resolution(
+        self,
+        repository_id: int,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> None:
+        """Pre-compute lookup tables for reference resolution.
+
+        Called once before the batch loop to build any indexes or temp
+        tables needed by resolve_references_batch. Implementations that
+        don't need preparation can no-op.
+
+        Args:
+            repository_id: The repository ID to prepare for
+            progress_callback: Optional callback receiving stage descriptions
+                (e.g. "Building same-file index...")
         """
         pass
 

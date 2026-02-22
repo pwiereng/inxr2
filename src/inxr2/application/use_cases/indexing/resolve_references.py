@@ -16,6 +16,8 @@ class ResolutionProgress:
 
     resolved: int
     total: int
+    preparing: bool = False
+    prepare_stage: str = ""
 
     @property
     def percent(self) -> int:
@@ -98,8 +100,27 @@ class ResolveReferencesUseCase:
                 progress_callback(ResolutionProgress(resolved=0, total=0))
             return ResolveReferencesResponse(resolved_count=0)
 
-        # Report initial progress
+        # Report initial progress and pre-compute lookup tables
         total_resolved = 0
+
+        def on_prepare_stage(stage: str) -> None:
+            if progress_callback:
+                progress_callback(
+                    ResolutionProgress(
+                        resolved=0,
+                        total=total_unresolved,
+                        preparing=True,
+                        prepare_stage=stage,
+                    )
+                )
+
+        on_prepare_stage("Preparing symbol lookup tables...")
+
+        await self._reference_repository.prepare_resolution(
+            repository_id=request.repository_id,
+            progress_callback=on_prepare_stage,
+        )
+
         if progress_callback:
             progress_callback(ResolutionProgress(resolved=0, total=total_unresolved))
 

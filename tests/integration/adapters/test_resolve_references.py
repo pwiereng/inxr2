@@ -93,6 +93,10 @@ class TestResolveReferencesBatch:
         assert file_a.id is not None
         assert file_b.id is not None
 
+        # Link files to commit (required for latest-file resolution)
+        await file_adapter.link_file_to_commit(file_a.id, commit.id)
+        await file_adapter.link_file_to_commit(file_b.id, commit.id)
+
         # Create "Config" symbol in both files
         sym_a = await symbol_adapter.save(
             Symbol(
@@ -190,6 +194,11 @@ class TestResolveReferencesBatch:
         assert py_source.id is not None
         assert py_target.id is not None
         assert ts_file.id is not None
+
+        # Link files to commit (required for latest-file resolution)
+        await file_adapter.link_file_to_commit(py_source.id, commit.id)
+        await file_adapter.link_file_to_commit(py_target.id, commit.id)
+        await file_adapter.link_file_to_commit(ts_file.id, commit.id)
 
         # "Config" in TypeScript (will get lower symbol ID) and Python
         sym_ts = await symbol_adapter.save(
@@ -293,6 +302,11 @@ class TestResolveReferencesBatch:
         assert file_x.id is not None
         assert file_y.id is not None
 
+        # Link files to commit (required for latest-file resolution)
+        await file_adapter.link_file_to_commit(file_src.id, commit.id)
+        await file_adapter.link_file_to_commit(file_x.id, commit.id)
+        await file_adapter.link_file_to_commit(file_y.id, commit.id)
+
         # Create "Helper" in file_x and file_y (NOT in file_src)
         sym_x = await symbol_adapter.save(
             Symbol(
@@ -371,6 +385,9 @@ class TestResolveReferencesBatch:
         )
         assert file.id is not None
 
+        # Link file to commit (required for latest-file resolution)
+        await file_adapter.link_file_to_commit(file.id, commit.id)
+
         sym = await symbol_adapter.save(
             Symbol(
                 file_id=file.id,
@@ -432,6 +449,9 @@ class TestResolveReferencesBatch:
         )
         assert file.id is not None
 
+        # Link file to commit (required for latest-file resolution)
+        await file_adapter.link_file_to_commit(file.id, commit.id)
+
         # Reference to symbol that doesn't exist
         ref = await ref_adapter.save(
             Reference(
@@ -487,6 +507,9 @@ class TestResolveReferencesBatch:
             )
         )
         assert file.id is not None
+
+        # Link file to commit (required for latest-file resolution)
+        await file_adapter.link_file_to_commit(file.id, commit.id)
 
         # One symbol that can be resolved
         sym = await symbol_adapter.save(
@@ -584,6 +607,9 @@ class TestResolveReferencesBatch:
         )
         assert file.id is not None
 
+        # Link file to commit (required for latest-file resolution)
+        await file_adapter.link_file_to_commit(file.id, commit.id)
+
         sym_a = await symbol_adapter.save(
             Symbol(
                 file_id=file.id,
@@ -656,3 +682,145 @@ class TestResolveReferencesBatch:
             repository_id=repo.id, batch_size=1
         )
         assert resolved_third == 0
+
+    async def test_resolution_ignores_old_file_versions(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Symbols in old file versions are NOT resolution targets.
+
+        When the same file path has multiple versions across commits,
+        only symbols from the latest version should be considered.
+        A symbol that was removed in the latest version must not match.
+        """
+        repo, commit1 = await self._create_repo_and_commit(
+            db_session, "old-version-test", "old"
+        )
+        assert repo.id is not None
+        assert commit1.id is not None
+
+        file_adapter = PostgresFileRepository(db_session)
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        ref_adapter = PostgresReferenceRepository(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+
+        # Create an older version of the file with "OldFunc"
+        old_file = await file_adapter.save(
+            File(
+                repository_id=repo.id,
+                path="src/module.py",
+                content_hash="hash_v1",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        assert old_file.id is not None
+        await file_adapter.link_file_to_commit(old_file.id, commit1.id)
+
+        sym_old = await symbol_adapter.save(
+            Symbol(
+                file_id=old_file.id,
+                repository_id=repo.id,
+                name="OldFunc",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        assert sym_old.id is not None
+
+        # Create a newer commit with a new version of the same file path
+        # This version does NOT have "OldFunc" but has "NewFunc"
+        commit2 = await commit_adapter.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=CommitHash("new" + "0" * 37),
+                author_date=datetime(2025, 2, 1),
+                commit_date=datetime(2025, 2, 1),
+            )
+        )
+        assert commit2.id is not None
+
+        new_file = await file_adapter.save(
+            File(
+                repository_id=repo.id,
+                path="src/module.py",
+                content_hash="hash_v2",
+                size_bytes=120,
+                language="python",
+            )
+        )
+        assert new_file.id is not None
+        await file_adapter.link_file_to_commit(new_file.id, commit2.id)
+
+        sym_new = await symbol_adapter.save(
+            Symbol(
+                file_id=new_file.id,
+                repository_id=repo.id,
+                name="NewFunc",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        assert sym_new.id is not None
+
+        # Create a separate source file for the references
+        source_file = await file_adapter.save(
+            File(
+                repository_id=repo.id,
+                path="src/caller.py",
+                content_hash="hash_caller",
+                size_bytes=50,
+                language="python",
+            )
+        )
+        assert source_file.id is not None
+        await file_adapter.link_file_to_commit(source_file.id, commit2.id)
+
+        # Reference to "OldFunc" — should NOT resolve (only in old version)
+        ref_old = await ref_adapter.save(
+            Reference(
+                source_file_id=source_file.id,
+                repository_id=repo.id,
+                source_line=5,
+                source_column=0,
+                source_end_column=7,
+                reference_text="OldFunc",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+        # Reference to "NewFunc" — SHOULD resolve (in latest version)
+        ref_new = await ref_adapter.save(
+            Reference(
+                source_file_id=source_file.id,
+                repository_id=repo.id,
+                source_line=10,
+                source_column=0,
+                source_end_column=7,
+                reference_text="NewFunc",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+        assert ref_old.id is not None
+        assert ref_new.id is not None
+
+        # Act
+        resolved = await ref_adapter.resolve_references_batch(
+            repository_id=repo.id, batch_size=100
+        )
+
+        # Assert — only NewFunc should resolve
+        assert resolved == 1
+        updated_old = await ref_adapter.find_by_id(ref_old.id)
+        assert updated_old is not None
+        assert updated_old.target_symbol_id is None  # OldFunc NOT resolved
+
+        updated_new = await ref_adapter.find_by_id(ref_new.id)
+        assert updated_new is not None
+        assert updated_new.target_symbol_id == sym_new.id  # NewFunc resolved
