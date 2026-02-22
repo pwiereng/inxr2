@@ -2111,6 +2111,174 @@ describe('useBrowseState', () => {
     })
   })
 
+  describe('leftCommit uses latestBranchCommit fallback', () => {
+    it('should use latestBranchCommit for leftCommit when no selectedCommit', async () => {
+      // Regression: leftCommit fell through to fileVersions[0].commit_hash,
+      // which could differ from the branch HEAD shown in the header.
+      mockSearchParams = new URLSearchParams('branch=feature')
+
+      // latestBranchCommit comes from getCommits — return branch HEAD commit
+      mockGetCommits.mockResolvedValue({
+        commits: [
+          {
+            hash: 'branch-head-abc',
+            short_hash: 'branch',
+            message: 'Branch HEAD commit',
+            author_name: 'Test',
+            author_email: 'test@test.com',
+            commit_date: '2024-01-03',
+            is_indexed: true,
+            tags: [],
+            is_branch_specific: true,
+            is_merge_base: false,
+          },
+        ],
+        total: 1,
+      })
+
+      // fileVersions[0] is a different commit (latest that modified the file)
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 5,
+            commit_hash: 'file-version-xyz',
+            short_hash: 'file-v',
+            commit_date: '2024-01-02',
+            message: 'Last file change',
+            content_hash: 'hash1',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 1,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      // Wait for latestBranchCommit to resolve
+      await vi.waitFor(() => {
+        expect(result.current.computedState.leftCommit).toBe('branch-head-abc')
+      })
+
+      // leftCommit should be the branch HEAD, NOT the file version
+      expect(result.current.computedState.leftCommit).not.toBe('file-version-xyz')
+    })
+
+    it('should use latestBranchCommit for treeCommit in diff mode when treePanel is left', async () => {
+      // In diff mode with treePanel=left, treeCommit = leftCommit.
+      // leftCommit should use latestBranchCommit (branch HEAD), not fileVersions[0].
+      mockSearchParams = new URLSearchParams('diff=other-commit&branch=feature&co=1')
+
+      mockGetCommits.mockResolvedValue({
+        commits: [
+          {
+            hash: 'branch-head-abc',
+            short_hash: 'branch',
+            message: 'Branch HEAD commit',
+            author_name: 'Test',
+            author_email: 'test@test.com',
+            commit_date: '2024-01-03',
+            is_indexed: true,
+            tags: [],
+            is_branch_specific: true,
+            is_merge_base: false,
+          },
+        ],
+        total: 1,
+      })
+
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 5,
+            commit_hash: 'file-version-xyz',
+            short_hash: 'file-v',
+            commit_date: '2024-01-02',
+            message: 'Last file change',
+            content_hash: 'hash1',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 1,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      // Wait for latestBranchCommit to resolve
+      await vi.waitFor(() => {
+        expect(result.current.computedState.leftCommit).toBe('branch-head-abc')
+      })
+
+      // In diff mode with treePanel=left (default), treeCommit should equal leftCommit
+      expect(result.current.computedState.treeCommit).toBe('branch-head-abc')
+    })
+
+    it('should still use selectedCommit for leftCommit when explicitly set', async () => {
+      // When a specific commit is selected, it should take priority over latestBranchCommit
+      mockSearchParams = new URLSearchParams('commit=explicit-commit&branch=feature')
+
+      mockGetCommits.mockResolvedValue({
+        commits: [
+          {
+            hash: 'branch-head-abc',
+            short_hash: 'branch',
+            message: 'Branch HEAD commit',
+            author_name: 'Test',
+            author_email: 'test@test.com',
+            commit_date: '2024-01-03',
+            is_indexed: true,
+            tags: [],
+            is_branch_specific: true,
+            is_merge_base: false,
+          },
+        ],
+        total: 1,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.repository).not.toBeNull()
+      })
+
+      // leftCommit should be the explicitly selected commit
+      expect(result.current.computedState.leftCommit).toBe('explicit-commit')
+    })
+
+    it('should fall back to fileVersions when latestBranchCommit is also null', async () => {
+      // Edge case: no branch selected, no commits loaded, but file history exists
+      mockSearchParams = new URLSearchParams('')
+
+      mockGetCommits.mockResolvedValue({ commits: [], total: 0 })
+
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 5,
+            commit_hash: 'file-version-xyz',
+            short_hash: 'file-v',
+            commit_date: '2024-01-02',
+            message: 'Last file change',
+            content_hash: 'hash1',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 1,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(1)
+      })
+
+      // With no selectedCommit and no latestBranchCommit, falls back to fileVersions[0]
+      expect(result.current.computedState.leftCommit).toBe('file-version-xyz')
+    })
+  })
+
   describe('changedOnly tree loading timing (issue #89)', () => {
     it('should not load unfiltered tree when changedOnly is true and treeCommit is pending', async () => {
       // Regression test: when co=1 is set but no specific commit is selected,

@@ -342,7 +342,7 @@ export function useBrowseState(repoNameProp?: string) {
 
   // ========== Computed state ==========
   const computedState = useMemo<BrowseComputedState>(() => {
-    const leftCommit = urlState.selectedCommit || fileVersions[0]?.commit_hash
+    const leftCommit = urlState.selectedCommit || latestBranchCommit || fileVersions[0]?.commit_hash
     const rightCommit = urlState.diffCommit || diffFileVersions[0]?.commit_hash || null
     const treeCommit = urlState.diffMode
       ? urlState.treePanel === 'left'
