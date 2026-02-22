@@ -15,7 +15,7 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
 ⚠️ **BEFORE making any changes:**
 
 1. **Docker-Only Development**
-   - ❌ NEVER run `npm install`, `pip install`, or `uv pip install` on host machine
+   - ❌ NEVER run `npm install` or `pip install` on host machine
    - ✅ ALWAYS run package management inside Docker containers
    - All development must be done inside the dev container (`inxr2-dev` for main, or `inxr2-<branch>-dev` for worktrees)
    - PostgreSQL is embedded inside the dev container (no separate postgres service)

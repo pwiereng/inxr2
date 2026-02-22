@@ -16,8 +16,6 @@ services:
       - ${INXR2_REPOS_DIR:-..}:/repos:ro
       # Use named volume for frontend node_modules (Linux binaries)
       - node_modules:/workspace/frontend/node_modules
-      # Cache pip packages
-      - pip_cache:/home/devuser/.cache/pip
       # PostgreSQL data persistence
       - pgdata:/home/devuser/pgdata
     ports:
@@ -40,8 +38,6 @@ services:
 
 volumes:
   pgdata:
-    driver: local
-  pip_cache:
     driver: local
   node_modules:
     driver: local

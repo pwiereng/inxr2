@@ -97,9 +97,8 @@ docker exec inxr2-dev inxr2 index --config config.yaml --force        # Force re
 All package management must happen inside the container:
 
 ```bash
-# Python
-docker exec inxr2-dev uv pip install <package>
-docker exec inxr2-dev uv pip install -e '.[dev]'
+# Python (rebuild the image when pyproject.toml changes)
+docker compose -f docker-compose.dev.yml up -d --build
 
 # Node.js
 docker exec inxr2-dev bash -c 'cd frontend && npm install <package>'

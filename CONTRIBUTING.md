@@ -20,15 +20,9 @@ This document outlines the coding standards, development practices, and guidelin
 ### Docker Development Rules
 
 1. **Package Management in Docker ONLY**
-   - ❌ NEVER run `pip install`, `uv pip install`, or `npm install` on your host machine
-   - ✅ ALWAYS install packages inside the Docker container
-   - Python packages: `docker exec inxr2-dev bash -c "cd /workspace && uv pip install <package>"`
+   - ❌ NEVER run `pip install` or `npm install` on your host machine
+   - ✅ Python packages are installed into system Python at image build time — rebuild the image when `pyproject.toml` changes
    - Node packages: `docker exec inxr2-dev bash -c "cd /workspace/frontend && npm install <package>"`
-
-2. **Use Virtual Environments (Python)**
-   - Python packages MUST use `uv` with the virtual environment at `/home/devuser/.venv`
-   - The `VIRTUAL_ENV` environment variable is set automatically in the container
-   - Never use `pip` directly - always use `uv pip` for consistency
 
 3. **Volume Permissions**
    - `node_modules` uses a named Docker volume to avoid Mac/Linux binary incompatibility

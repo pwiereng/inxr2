@@ -431,12 +431,7 @@ If CI fails, fix issues locally and push again.
 ### Python
 
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate     # Windows
-
-# Install dependencies
+# Install dependencies (inside Docker container or locally)
 pip install -e ".[dev]"
 
 # Verify setup
