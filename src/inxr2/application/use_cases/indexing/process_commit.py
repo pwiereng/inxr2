@@ -194,6 +194,10 @@ class ProcessCommitUseCase:
             ):
                 progress_callback(result)
 
+        # Final progress update for any remainder not on a 100-file boundary
+        if progress_callback and result.files_processed % 100 != 0:
+            progress_callback(result)
+
         # Bulk-link all file versions to this commit
         if file_ids:
             await self._file_repo.link_files_to_commit(file_ids, commit_id)
