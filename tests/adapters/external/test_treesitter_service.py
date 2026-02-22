@@ -647,3 +647,184 @@ fn main() {
 
         assert symbols == []
         assert references == []
+
+
+class TestCallReferenceExtraction:
+    """Regression tests for call reference extraction (issue #72).
+
+    These tests verify that function/method calls are correctly extracted
+    as references with type=="call" from Python source code.
+    """
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_simple_function_call_in_function_body(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that a simple function call inside a function body is extracted."""
+        code = '''
+def setup_logging(verbose, log_level):
+    """Configure logging."""
+    pass
+
+def main():
+    setup_logging(verbose, log_level)
+'''
+        symbols, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_names = [r["text"] for r in call_refs]
+        assert "setup_logging" in call_names
+
+    @pytest.mark.asyncio
+    async def test_function_call_inside_decorated_function(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test calls inside a heavily-decorated function (like Click CLI commands)."""
+        code = '''
+import click
+
+def setup_logging(verbose, log_level):
+    pass
+
+@click.command()
+@click.option("--verbose", is_flag=True)
+@click.option("--log-level", default="INFO")
+def cli(verbose, log_level):
+    """CLI entry point."""
+    setup_logging(verbose, log_level)
+    do_work()
+'''
+        symbols, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_names = [r["text"] for r in call_refs]
+        assert "setup_logging" in call_names
+        assert "do_work" in call_names
+
+    @pytest.mark.asyncio
+    async def test_method_call(self, parser_service: TreeSitterService) -> None:
+        """Test that method calls (obj.method()) produce call references."""
+        code = """
+def process():
+    result = client.fetch_data()
+    result.transform()
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_names = [r["text"] for r in call_refs]
+        assert "fetch_data" in call_names
+        assert "transform" in call_names
+
+    @pytest.mark.asyncio
+    async def test_calls_inside_class_methods(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that function calls inside class methods are extracted."""
+        code = """
+def helper():
+    pass
+
+class MyService:
+    def execute(self):
+        helper()
+        self.validate()
+        result = compute_value(42)
+        return result
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_names = [r["text"] for r in call_refs]
+        assert "helper" in call_names
+        assert "validate" in call_names
+        assert "compute_value" in call_names
+
+    @pytest.mark.asyncio
+    async def test_nested_calls(self, parser_service: TreeSitterService) -> None:
+        """Test that nested function calls are all extracted."""
+        code = """
+def process():
+    result = outer(inner(value))
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_names = [r["text"] for r in call_refs]
+        assert "outer" in call_names
+        assert "inner" in call_names
+
+    @pytest.mark.asyncio
+    async def test_call_reference_has_correct_line_info(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that call references have correct source line information."""
+        code = """def main():
+    setup_logging()
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        setup_ref = [r for r in call_refs if r["text"] == "setup_logging"]
+        assert len(setup_ref) == 1
+        assert setup_ref[0]["source_line"] == 2
+
+    @pytest.mark.asyncio
+    async def test_call_references_after_multibyte_characters(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Regression test: references after multi-byte UTF-8 chars are correct.
+
+        Tree-sitter uses byte offsets but _get_text was slicing a Python string
+        by character index, causing corrupted reference text after non-ASCII
+        characters like em-dashes (3 bytes, 1 character).
+        """
+        # The em-dash (—) is 3 bytes in UTF-8 but 1 character in Python
+        code = '''def main():
+    """Description \u2014 with em-dash."""
+    setup_logging(verbose)
+'''
+        symbols, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_names = [r["text"] for r in call_refs]
+        assert (
+            "setup_logging" in call_names
+        ), f"Expected 'setup_logging' in call references but got: {call_names}"
+
+    @pytest.mark.asyncio
+    async def test_symbols_after_multibyte_characters(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Regression test: symbol names are correct after multi-byte chars."""
+        code = """# Comment with em-dash \u2014 here
+def my_function():
+    pass
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        func_names = [s["name"] for s in symbols if s["kind"] == "function"]
+        assert (
+            "my_function" in func_names
+        ), f"Expected 'my_function' but got: {func_names}"
