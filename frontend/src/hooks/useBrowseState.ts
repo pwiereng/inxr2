@@ -764,6 +764,8 @@ export function useBrowseState(repoNameProp?: string) {
         // Preserve branch state
         if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
         if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
+        // Preserve changedOnly state
+        if (urlState.changedOnly) params.set('co', '1')
         navigate(
           `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`,
           {
@@ -811,6 +813,8 @@ export function useBrowseState(repoNameProp?: string) {
     // Don't preserve refs, searchQuery - diff mode is a new context
     // Preserve branch state
     if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
+    // Preserve changedOnly state
+    if (urlState.changedOnly) params.set('co', '1')
 
     if (diffTarget) {
       // Compare against a different version on the same branch
@@ -842,6 +846,8 @@ export function useBrowseState(repoNameProp?: string) {
     // Don't preserve refs, searchQuery - exiting diff mode is a context change
     // Preserve branch state (but not diffBranch since we're exiting diff mode)
     if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
+    // Preserve changedOnly state
+    if (urlState.changedOnly) params.set('co', '1')
     navigate(
       `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
     )
@@ -862,6 +868,8 @@ export function useBrowseState(repoNameProp?: string) {
         // Don't preserve refs, searchQuery - closing panel is a context change
         // When closing left panel, the diff side becomes the main view - use diffBranch
         if (urlState.diffBranch) params.set('branch', urlState.diffBranch)
+        // Preserve changedOnly state
+        if (urlState.changedOnly) params.set('co', '1')
         navigate(
           `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
         )
@@ -922,6 +930,8 @@ export function useBrowseState(repoNameProp?: string) {
       // Preserve branch state
       if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
       if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
+      // Preserve changedOnly state
+      if (urlState.changedOnly) params.set('co', '1')
       navigate(
         `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
       )
@@ -982,6 +992,8 @@ export function useBrowseState(repoNameProp?: string) {
       if (urlState.treePanel === 'right') params.set('tp', 'r')
       if (urlState.refPanel === 'right') params.set('rp', 'r')
       if (urlState.activePanel === 'right') params.set('ap', 'r')
+      // Preserve changedOnly state
+      if (urlState.changedOnly) params.set('co', '1')
       navigate(
         `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
       )
@@ -1140,6 +1152,8 @@ export function useBrowseState(repoNameProp?: string) {
         // Preserve drawer state only - navigating to reference clears search context
         if (!urlState.drawerOpen) params.set('drawer', '0')
         // Don't preserve refs, searchQuery - navigating to a different file is a context change
+        // Preserve changedOnly state
+        if (urlState.changedOnly) params.set('co', '1')
         navigate(
           `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(reference.source_file_path)}?${params}`
         )
@@ -1166,6 +1180,8 @@ export function useBrowseState(repoNameProp?: string) {
         // Preserve drawer state only - navigating to definition clears search context
         if (!urlState.drawerOpen) params.set('drawer', '0')
         // Don't preserve refs, searchQuery - navigating to a definition is a context change
+        // Preserve changedOnly state
+        if (urlState.changedOnly) params.set('co', '1')
         navigate(
           `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(sym.file_path)}?${params}`
         )
@@ -1199,6 +1215,8 @@ export function useBrowseState(repoNameProp?: string) {
         // Preserve branch state
         if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
         if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
+        // Preserve changedOnly state
+        if (urlState.changedOnly) params.set('co', '1')
         navigate(
           `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`,
           { replace: true }
