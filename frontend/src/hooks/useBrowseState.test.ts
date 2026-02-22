@@ -1740,7 +1740,7 @@ describe('useBrowseState', () => {
           content_hash: 'hash2',
         },
       ]
-      vi.mocked(api.getFileHistory).mockResolvedValue({
+      mockGetFileHistory.mockResolvedValue({
         versions: mockVersions,
         path: 'src/main.py',
         repository_name: 'test-repo',
@@ -1764,7 +1764,7 @@ describe('useBrowseState', () => {
 
     it('should preserve co=1 when exiting diff mode', async () => {
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&co=1&branch=main')
-      vi.mocked(api.getFileHistory).mockResolvedValue({
+      mockGetFileHistory.mockResolvedValue({
         versions: [],
         path: 'src/main.py',
         repository_name: 'test-repo',
@@ -1802,7 +1802,7 @@ describe('useBrowseState', () => {
           content_hash: 'hash2',
         },
       ]
-      vi.mocked(api.getFileHistory).mockResolvedValue({
+      mockGetFileHistory.mockResolvedValue({
         versions: mockVersions,
         path: 'src/main.py',
         repository_name: 'test-repo',
@@ -1825,7 +1825,7 @@ describe('useBrowseState', () => {
 
     it('should preserve co=1 when changing diff version', async () => {
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&co=1&branch=main')
-      vi.mocked(api.getFileHistory).mockResolvedValue({
+      mockGetFileHistory.mockResolvedValue({
         versions: [],
         path: 'src/main.py',
         repository_name: 'test-repo',
@@ -1845,7 +1845,7 @@ describe('useBrowseState', () => {
 
     it('should preserve co=1 when changing diff branch', async () => {
       mockSearchParams = new URLSearchParams('commit=abc123&diffBranch=main&co=1&branch=main')
-      vi.mocked(api.getFileHistory).mockResolvedValue({
+      mockGetFileHistory.mockResolvedValue({
         versions: [],
         path: 'src/main.py',
         repository_name: 'test-repo',
