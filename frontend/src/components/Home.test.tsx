@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
+import { render } from '@/test/utils'
 import { Home } from './Home'
 import type { RepositoryStats } from '@/lib/api'
 
@@ -70,14 +70,6 @@ const mockStats: RepositoryStats[] = [
   },
 ]
 
-const renderWithRouter = (ui: React.ReactElement) => {
-  return render(
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      {ui}
-    </BrowserRouter>
-  )
-}
-
 describe('Home', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
@@ -87,7 +79,7 @@ describe('Home', () => {
   })
 
   it('should render the home page with title', async () => {
-    renderWithRouter(<Home />)
+    render(<Home />)
 
     // Wait for async data loading to complete to avoid act() warnings
     await waitFor(() => {
@@ -104,13 +96,13 @@ describe('Home', () => {
       () => new Promise((resolve) => setTimeout(() => resolve(mockRepositories), 1000))
     )
 
-    renderWithRouter(<Home />)
+    render(<Home />)
 
     expect(screen.getByRole('progressbar')).toBeInTheDocument()
   })
 
   it('should display repository cards when loaded', async () => {
-    renderWithRouter(<Home />)
+    render(<Home />)
 
     await waitFor(() => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
@@ -119,7 +111,7 @@ describe('Home', () => {
   })
 
   it('should display repository description when available', async () => {
-    renderWithRouter(<Home />)
+    render(<Home />)
 
     await waitFor(() => {
       expect(screen.getByText('A test repository')).toBeInTheDocument()
@@ -127,7 +119,7 @@ describe('Home', () => {
   })
 
   it('should navigate to browse when clicking a repository card', async () => {
-    renderWithRouter(<Home />)
+    render(<Home />)
 
     await waitFor(() => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
@@ -145,7 +137,7 @@ describe('Home', () => {
     const api = await import('@/lib/api')
     vi.mocked(api.getRepositories).mockResolvedValue([])
 
-    renderWithRouter(<Home />)
+    render(<Home />)
 
     await waitFor(() => {
       expect(screen.getByText(/No repositories indexed yet/i)).toBeInTheDocument()
@@ -156,7 +148,7 @@ describe('Home', () => {
     const api = await import('@/lib/api')
     vi.mocked(api.getRepositories).mockRejectedValue(new Error('API Error'))
 
-    renderWithRouter(<Home />)
+    render(<Home />)
 
     await waitFor(() => {
       expect(screen.getByText('API Error')).toBeInTheDocument()
@@ -164,7 +156,7 @@ describe('Home', () => {
   })
 
   it('should display stats on repository cards', async () => {
-    renderWithRouter(<Home />)
+    render(<Home />)
 
     await waitFor(() => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
@@ -186,7 +178,7 @@ describe('Home', () => {
   })
 
   it('should display commit date range when available', async () => {
-    renderWithRouter(<Home />)
+    render(<Home />)
 
     await waitFor(() => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
@@ -201,7 +193,7 @@ describe('Home', () => {
     const api = await import('@/lib/api')
     vi.mocked(api.getAllRepositoryStats).mockRejectedValue(new Error('Stats failed'))
 
-    renderWithRouter(<Home />)
+    render(<Home />)
 
     // Cards should still render without stats
     await waitFor(() => {

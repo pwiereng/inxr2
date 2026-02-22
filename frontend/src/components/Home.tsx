@@ -12,14 +12,16 @@ import {
   CardActionArea,
   Chip,
 } from '@mui/material'
-import CodeIcon from '@mui/icons-material/Code'
 import FolderIcon from '@mui/icons-material/Folder'
+import { useApp } from '@/contexts/AppContext'
 import {
   getRepositories,
   getAllRepositoryStats,
   type Repository,
   type RepositoryStats,
 } from '@/lib/api'
+import logoLight from '@/assets/logo-light.svg'
+import logoDark from '@/assets/logo-dark-v4.svg'
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -41,6 +43,7 @@ function formatDate(iso: string): string {
  */
 export function Home() {
   const navigate = useNavigate()
+  const { themeMode } = useApp()
   const [repositories, setRepositories] = useState<Repository[]>([])
   const [statsMap, setStatsMap] = useState<Map<number, RepositoryStats>>(new Map())
   const [loading, setLoading] = useState(true)
@@ -89,7 +92,14 @@ export function Home() {
   return (
     <Container maxWidth="lg">
       <Box sx={{ mt: 6, mb: 4, textAlign: 'center' }}>
-        <CodeIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
+        <a href="https://github.com/pwiereng/inxr2" target="_blank" rel="noopener noreferrer">
+          <Box
+            component="img"
+            src={themeMode === 'dark' ? logoDark : logoLight}
+            alt="INXR2"
+            sx={{ width: 128, height: 128, mb: 2 }}
+          />
+        </a>
         <Typography variant="h3" component="h1" gutterBottom>
           INXR2
         </Typography>
