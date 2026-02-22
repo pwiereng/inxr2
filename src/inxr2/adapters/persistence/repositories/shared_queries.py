@@ -44,8 +44,13 @@ def latest_file_ids_subquery(
     which is correct even for HEAD-first indexing where newer commits
     may have lower file IDs.
 
+    When repository_id is None, returns the latest files across all
+    repositories. When provided, filters to that specific repository.
+
     When branch is provided, only considers files from commits on that
     branch, so "latest" is scoped to the branch rather than global.
+    If repository_id is None but branch is provided, filters to commits
+    on branches with that name across all repositories.
     """
     inner_query = (
         select(
