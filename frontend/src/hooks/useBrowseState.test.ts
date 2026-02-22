@@ -591,6 +591,31 @@ describe('useBrowseState', () => {
       expect(navigatedUrl).not.toContain('diffBranch=')
     })
 
+    it('should preserve selectedBranch when closing left panel in same-branch diff mode', async () => {
+      // Same-branch diff mode: diff param set, no diffBranch
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=feature')
+      mockGetFileHistory.mockResolvedValue({
+        versions: mockVersions,
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 3,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(3)
+      })
+
+      act(() => {
+        result.current.actions.closePanel('left')
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      // Should fall back to selectedBranch since diffBranch is absent
+      expect(navigatedUrl).toContain('branch=feature')
+    })
+
     it('should switch to left panel version when closing right panel', async () => {
       // In diff mode with left=abc123 (main) and right=def456 (feature branch)
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=main')

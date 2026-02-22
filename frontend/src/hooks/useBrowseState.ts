@@ -866,8 +866,10 @@ export function useBrowseState(repoNameProp?: string) {
         // Preserve drawer state only - closing panel clears search context
         if (!urlState.drawerOpen) params.set('drawer', '0')
         // Don't preserve refs, searchQuery - closing panel is a context change
-        // When closing left panel, the diff side becomes the main view - use diffBranch
-        if (urlState.diffBranch) params.set('branch', urlState.diffBranch)
+        // When closing left panel, the diff side becomes the main view - prefer diffBranch,
+        // but fall back to selectedBranch for same-branch diff mode
+        const rightBranch = urlState.diffBranch ?? urlState.selectedBranch
+        if (rightBranch) params.set('branch', rightBranch)
         // Preserve changedOnly state
         if (urlState.changedOnly) params.set('co', '1')
         navigate(
