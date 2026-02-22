@@ -53,10 +53,6 @@ class PostgresCommitRepository(CommitRepositoryPort):
 
         await self.session.flush()
 
-        # Refresh all models to get generated IDs
-        for model in saved_commits:
-            await self.session.refresh(model)
-
         return [self.mapper.to_domain(model) for model in saved_commits]
 
     async def find_by_id(self, commit_id: int) -> Commit | None:

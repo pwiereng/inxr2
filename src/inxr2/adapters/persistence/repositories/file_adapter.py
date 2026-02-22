@@ -43,9 +43,6 @@ class PostgresFileRepository(FileRepositoryPort):
         self.session.add_all(models)
         await self.session.flush()
 
-        for model in models:
-            await self.session.refresh(model)
-
         return [self.mapper.to_domain(model) for model in models]
 
     async def find_by_id(self, file_id: int) -> File | None:
