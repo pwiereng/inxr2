@@ -1,5 +1,7 @@
 """PostgreSQL reference repository adapter."""
 
+from collections.abc import Callable
+
 from sqlalchemy import Subquery, delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +16,24 @@ from ..models.reference import ReferenceModel
 from ..models.repository import RepositoryModel
 from .regex_utils import translate_word_boundaries, validate_regex_pattern
 
+# Raw SQL subquery returning file IDs for the latest version of each file path.
+# Mirrors _latest_file_ids_subquery() but in raw SQL for use in text() queries.
+# Bind parameter: :repo_id
+_LATEST_FILE_IDS_SQL = """
+    SELECT sub.file_id FROM (
+        SELECT f.id AS file_id,
+               ROW_NUMBER() OVER (
+                   PARTITION BY f.repository_id, f.path
+                   ORDER BY c.commit_date DESC, c.id DESC
+               ) AS rn
+        FROM files f
+        JOIN commit_files cf ON cf.file_id = f.id
+        JOIN commits c ON c.id = cf.commit_id
+        WHERE f.repository_id = :repo_id
+    ) sub
+    WHERE sub.rn = 1
+"""
+
 
 class PostgresReferenceRepository(ReferenceRepositoryPort):
     """PostgreSQL implementation of ReferenceRepositoryPort."""
@@ -21,6 +41,7 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
     def __init__(self, session: AsyncSession):
         self.session = session
         self.mapper = ReferenceMapper()
+        self._resolution_tables_for_repo_id: int | None = None
 
     async def save(self, reference: Reference) -> Reference:
         """Save or update a reference."""
@@ -368,6 +389,127 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         )
         return result.scalar() or 0
 
+    async def _ensure_resolution_tables(
+        self,
+        repository_id: int,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> None:
+        """Create temp tables for symbol resolution, restricted to latest files.
+
+        Pre-computes name-to-target-ID mappings for the three resolution passes:
+        1. Same-file: (name, file_id) -> min symbol ID
+        2. Same-language: (name, language) -> min symbol ID
+        3. Any-match: (name) -> min symbol ID
+
+        Tables are created once and reused across batch calls within the same
+        session. Only symbols from the latest version of each file path are
+        included, avoiding the O(commits x symbols) scan of all historical
+        file versions.
+        """
+        if self._resolution_tables_for_repo_id == repository_id:
+            return
+
+        def _report(msg: str) -> None:
+            if progress_callback is not None:
+                progress_callback(msg)
+
+        # Drop any stale tables from a previous repository
+        for table in (
+            "_resolve_latest_files",
+            "_resolve_pass1",
+            "_resolve_pass2",
+            "_resolve_pass3",
+        ):
+            await self.session.execute(
+                text(f"DROP TABLE IF EXISTS {table}")  # noqa: S608
+            )
+
+        # Step 0: Compute latest file IDs once (expensive window function)
+        _report("Finding latest file versions...")
+        await self.session.execute(
+            text(f"""
+                CREATE TEMP TABLE _resolve_latest_files AS
+                {_LATEST_FILE_IDS_SQL}
+            """),
+            {"repo_id": repository_id},
+        )
+        await self.session.execute(
+            text("CREATE INDEX ON _resolve_latest_files (file_id)")
+        )
+
+        # Pass 1: same-file lookup (name + file_id -> min symbol id)
+        _report("Building same-file symbol index...")
+        await self.session.execute(
+            text("""
+                CREATE TEMP TABLE _resolve_pass1 AS
+                SELECT s.name, s.file_id, MIN(s.id) AS min_id
+                FROM symbols s
+                WHERE s.repository_id = :repo_id
+                  AND s.file_id IN (SELECT file_id FROM _resolve_latest_files)
+                GROUP BY s.name, s.file_id
+            """),
+            {"repo_id": repository_id},
+        )
+        await self.session.execute(
+            text("CREATE INDEX ON _resolve_pass1 (name, file_id)")
+        )
+
+        # Pass 2: same-language lookup (name + language -> min symbol id)
+        _report("Building same-language symbol index...")
+        await self.session.execute(
+            text("""
+                CREATE TEMP TABLE _resolve_pass2 AS
+                SELECT s.name, f.language, MIN(s.id) AS min_id
+                FROM symbols s
+                JOIN files f ON s.file_id = f.id
+                WHERE s.repository_id = :repo_id
+                  AND s.file_id IN (SELECT file_id FROM _resolve_latest_files)
+                GROUP BY s.name, f.language
+            """),
+            {"repo_id": repository_id},
+        )
+        await self.session.execute(
+            text("CREATE INDEX ON _resolve_pass2 (name, language)")
+        )
+
+        # Pass 3: any-match lookup (name -> min symbol id)
+        _report("Building global symbol index...")
+        await self.session.execute(
+            text("""
+                CREATE TEMP TABLE _resolve_pass3 AS
+                SELECT s.name, MIN(s.id) AS min_id
+                FROM symbols s
+                WHERE s.repository_id = :repo_id
+                  AND s.file_id IN (SELECT file_id FROM _resolve_latest_files)
+                GROUP BY s.name
+            """),
+            {"repo_id": repository_id},
+        )
+        await self.session.execute(text("CREATE INDEX ON _resolve_pass3 (name)"))
+
+        self._resolution_tables_for_repo_id = repository_id
+
+    async def _drop_resolution_tables(self) -> None:
+        """Drop resolution temp tables."""
+        for table in (
+            "_resolve_latest_files",
+            "_resolve_pass1",
+            "_resolve_pass2",
+            "_resolve_pass3",
+        ):
+            await self.session.execute(
+                text(f"DROP TABLE IF EXISTS {table}")  # noqa: S608
+            )
+        self._resolution_tables_for_repo_id = None
+
+    async def prepare_resolution(
+        self,
+        repository_id: int,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> None:
+        """Pre-compute temp tables for reference resolution."""
+        await self._ensure_resolution_tables(repository_id, progress_callback)
+
     async def resolve_references_batch(
         self,
         repository_id: int,
@@ -375,14 +517,18 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
     ) -> int:
         """Resolve a batch of unlinked references.
 
-        With content-addressable file versions, symbols are unique per file
-        version (no commit_id ambiguity), so we always match cross-file.
+        Uses pre-computed temp tables with symbols from latest file versions
+        only, avoiding the O(commits x symbols) scan of all historical
+        versions. The GROUP BY aggregations run once (at table creation)
+        rather than per batch.
 
         Resolution priority (deterministic):
         1. Same file - most likely the correct local symbol
         2. Same language - cross-file but same language preferred
         3. Lowest symbol ID - deterministic tiebreaker for consistency
         """
+        await self._ensure_resolution_tables(repository_id)
+
         total_resolved = 0
 
         # Pass 1: Same-file resolution (preferred)
@@ -391,15 +537,11 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                 UPDATE "references"
                 SET target_symbol_id = sub.target_id
                 FROM (
-                    SELECT r.id AS ref_id, best.min_id AS target_id
+                    SELECT r.id AS ref_id, p1.min_id AS target_id
                     FROM "references" r
-                    JOIN (
-                        SELECT s.name, s.file_id, MIN(s.id) AS min_id
-                        FROM symbols s
-                        WHERE s.repository_id = :repo_id
-                        GROUP BY s.name, s.file_id
-                    ) best ON r.reference_text = best.name
-                        AND r.source_file_id = best.file_id
+                    JOIN _resolve_pass1 p1
+                        ON r.reference_text = p1.name
+                        AND r.source_file_id = p1.file_id
                     WHERE r.repository_id = :repo_id
                       AND r.target_symbol_id IS NULL
                     LIMIT :batch_size
@@ -419,17 +561,12 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                     UPDATE "references"
                     SET target_symbol_id = sub.target_id
                     FROM (
-                        SELECT r.id AS ref_id, best.min_id AS target_id
+                        SELECT r.id AS ref_id, p2.min_id AS target_id
                         FROM "references" r
                         JOIN files rf ON r.source_file_id = rf.id
-                        JOIN (
-                            SELECT s.name, f.language, MIN(s.id) AS min_id
-                            FROM symbols s
-                            JOIN files f ON s.file_id = f.id
-                            WHERE s.repository_id = :repo_id
-                            GROUP BY s.name, f.language
-                        ) best ON r.reference_text = best.name
-                            AND rf.language = best.language
+                        JOIN _resolve_pass2 p2
+                            ON r.reference_text = p2.name
+                            AND rf.language = p2.language
                         WHERE r.repository_id = :repo_id
                           AND r.target_symbol_id IS NULL
                         LIMIT :batch_size
@@ -448,14 +585,10 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                     UPDATE "references"
                     SET target_symbol_id = sub.target_id
                     FROM (
-                        SELECT r.id AS ref_id, best.min_id AS target_id
+                        SELECT r.id AS ref_id, p3.min_id AS target_id
                         FROM "references" r
-                        JOIN (
-                            SELECT s.name, MIN(s.id) AS min_id
-                            FROM symbols s
-                            WHERE s.repository_id = :repo_id
-                            GROUP BY s.name
-                        ) best ON r.reference_text = best.name
+                        JOIN _resolve_pass3 p3
+                            ON r.reference_text = p3.name
                         WHERE r.repository_id = :repo_id
                           AND r.target_symbol_id IS NULL
                         LIMIT :batch_size
@@ -471,22 +604,73 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
     async def resolve_unlinked_references(self, repository_id: int) -> int:
         """Resolve references to their target symbols.
 
-        With content-addressable file versions, symbols are unique per file
-        version, so no commit-aware mode is needed. Simply match reference_text
-        to symbol names across the repository.
+        Uses the same 3-pass priority as resolve_references_batch
+        (same-file > same-language > lowest-id) but without batching.
+        Restricts to latest file versions only.
         """
+        await self._ensure_resolution_tables(repository_id)
+
+        total_resolved = 0
+
+        # Pass 1: Same-file resolution
         result = await self.session.execute(
             text("""
-                UPDATE "references" r
-                SET target_symbol_id = s.id
-                FROM symbols s
-                WHERE r.repository_id = :repo_id
-                  AND s.repository_id = :repo_id
-                  AND r.reference_text = s.name
-                  AND r.target_symbol_id IS NULL
+                UPDATE "references"
+                SET target_symbol_id = sub.target_id
+                FROM (
+                    SELECT r.id AS ref_id, p1.min_id AS target_id
+                    FROM "references" r
+                    JOIN _resolve_pass1 p1
+                        ON r.reference_text = p1.name
+                        AND r.source_file_id = p1.file_id
+                    WHERE r.repository_id = :repo_id
+                      AND r.target_symbol_id IS NULL
+                ) sub
+                WHERE "references".id = sub.ref_id
             """),
             {"repo_id": repository_id},
         )
+        total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
+
+        # Pass 2: Same-language cross-file resolution
+        result = await self.session.execute(
+            text("""
+                UPDATE "references"
+                SET target_symbol_id = sub.target_id
+                FROM (
+                    SELECT r.id AS ref_id, p2.min_id AS target_id
+                    FROM "references" r
+                    JOIN files rf ON r.source_file_id = rf.id
+                    JOIN _resolve_pass2 p2
+                        ON r.reference_text = p2.name
+                        AND rf.language = p2.language
+                    WHERE r.repository_id = :repo_id
+                      AND r.target_symbol_id IS NULL
+                ) sub
+                WHERE "references".id = sub.ref_id
+            """),
+            {"repo_id": repository_id},
+        )
+        total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
+
+        # Pass 3: Any-match resolution (lowest ID fallback)
+        result = await self.session.execute(
+            text("""
+                UPDATE "references"
+                SET target_symbol_id = sub.target_id
+                FROM (
+                    SELECT r.id AS ref_id, p3.min_id AS target_id
+                    FROM "references" r
+                    JOIN _resolve_pass3 p3
+                        ON r.reference_text = p3.name
+                    WHERE r.repository_id = :repo_id
+                      AND r.target_symbol_id IS NULL
+                ) sub
+                WHERE "references".id = sub.ref_id
+            """),
+            {"repo_id": repository_id},
+        )
+        total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
 
         await self.session.flush()
-        return result.rowcount or 0  # type: ignore[attr-defined]
+        return total_resolved
