@@ -4,7 +4,7 @@ import base64
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from ....application.use_cases.files import (
     BinaryFileError,
@@ -13,7 +13,6 @@ from ....application.use_cases.files import (
     RepositoryPathNotFoundError,
     ResolveFileRequest,
 )
-from ....domain.exceptions import CommitNotFound, FileNotFound, RepositoryNotFound
 from ....infrastructure.dependencies import (
     CommitAdapter,
     FileAdapter,
@@ -25,6 +24,13 @@ from ....infrastructure.dependencies import (
     ResolveFileUseCaseDep,
     SymbolAdapter,
 )
+from ..converters import (
+    FileReferenceResponse,
+    FileSymbolResponse,
+    reference_to_response,
+    symbol_to_response,
+)
+from ..decorators import handle_file_resolution_errors
 from ..validation import validate_path, validate_repo_name
 
 router = APIRouter(prefix="/files", tags=["files"])
@@ -42,22 +48,6 @@ class FileContentResponse(BaseModel):
     size_bytes: int
 
 
-class FileSymbolResponse(BaseModel):
-    """Symbol in a file response model."""
-
-    id: int
-    name: str
-    qualified_name: str | None
-    kind: str
-    start_line: int
-    start_column: int
-    end_line: int
-    end_column: int
-    signature: str | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class FileSymbolsResponse(BaseModel):
     """List of symbols in a file."""
 
@@ -65,19 +55,6 @@ class FileSymbolsResponse(BaseModel):
     file_path: str
     symbols: list[FileSymbolResponse]
     total: int
-
-
-class FileReferenceResponse(BaseModel):
-    """Reference from a file response model."""
-
-    id: int
-    reference_text: str
-    reference_type: str
-    source_line: int
-    source_column: int
-    target_symbol_id: int | None
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class FileReferencesResponse(BaseModel):
@@ -155,6 +132,7 @@ _IMAGE_CONTENT_TYPES: dict[str, str] = {
 
 
 @router.get("/by-path/raw", response_model=RawFileContentResponse)
+@handle_file_resolution_errors
 async def get_file_raw_content_by_path(
     repo: str,
     path: str,
@@ -178,21 +156,14 @@ async def get_file_raw_content_by_path(
     repo = validate_repo_name(repo)
     path = validate_path(path)
 
-    try:
-        resolved = await resolve_file_use_case.execute(
-            ResolveFileRequest(
-                repository_name=repo,
-                file_path=path,
-                commit_hash=commit,
-                branch=branch,
-            )
+    resolved = await resolve_file_use_case.execute(
+        ResolveFileRequest(
+            repository_name=repo,
+            file_path=path,
+            commit_hash=commit,
+            branch=branch,
         )
-    except RepositoryNotFound as e:
-        raise HTTPException(status_code=404, detail="Repository not found") from e
-    except FileNotFound as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
-    except CommitNotFound as e:
-        raise HTTPException(status_code=404, detail="Commit not found") from e
+    )
 
     repository = resolved.repository
     resolved_commit = resolved.commit
@@ -246,6 +217,7 @@ async def get_file_raw_content_by_path(
 
 
 @router.get("/by-path", response_model=FileContentResponse)
+@handle_file_resolution_errors
 async def get_file_content_by_path(
     repo: str,
     path: str,
@@ -277,12 +249,6 @@ async def get_file_content_by_path(
                 branch=branch,
             )
         )
-    except RepositoryNotFound as e:
-        raise HTTPException(status_code=404, detail="Repository not found") from e
-    except FileNotFound as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
-    except CommitNotFound as e:
-        raise HTTPException(status_code=404, detail="Commit not found") from e
     except RepositoryPathNotFoundError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     except BinaryFileError as e:
@@ -302,6 +268,7 @@ async def get_file_content_by_path(
 
 
 @router.get("/history", response_model=FileHistoryResponse)
+@handle_file_resolution_errors
 async def get_file_history(
     repo: str,
     path: str,
@@ -324,18 +291,13 @@ async def get_file_history(
     repo = validate_repo_name(repo)
     path = validate_path(path)
 
-    try:
-        result = await use_case.execute(
-            GetFileHistoryRequest(
-                repository_name=repo,
-                file_path=path,
-                branch=branch,
-            )
+    result = await use_case.execute(
+        GetFileHistoryRequest(
+            repository_name=repo,
+            file_path=path,
+            branch=branch,
         )
-    except RepositoryNotFound as e:
-        raise HTTPException(status_code=404, detail="Repository not found") from e
-    except FileNotFound as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
+    )
 
     return FileHistoryResponse(
         path=result.path,
@@ -356,6 +318,7 @@ async def get_file_history(
 
 
 @router.get("/by-path/blame", response_model=FileBlameResponse)
+@handle_file_resolution_errors
 async def get_file_blame_by_path(
     repo: str,
     path: str,
@@ -377,21 +340,14 @@ async def get_file_blame_by_path(
     repo = validate_repo_name(repo)
     path = validate_path(path)
 
-    try:
-        resolved = await resolve_file_use_case.execute(
-            ResolveFileRequest(
-                repository_name=repo,
-                file_path=path,
-                commit_hash=commit,
-                branch=branch,
-            )
+    resolved = await resolve_file_use_case.execute(
+        ResolveFileRequest(
+            repository_name=repo,
+            file_path=path,
+            commit_hash=commit,
+            branch=branch,
         )
-    except RepositoryNotFound as e:
-        raise HTTPException(status_code=404, detail="Repository not found") from e
-    except FileNotFound as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
-    except CommitNotFound as e:
-        raise HTTPException(status_code=404, detail="Commit not found") from e
+    )
 
     repository = resolved.repository
     resolved_commit = resolved.commit
@@ -444,6 +400,7 @@ async def get_file_blame_by_path(
 
 
 @router.get("/by-path/symbols", response_model=FileSymbolsResponse)
+@handle_file_resolution_errors
 async def get_file_symbols_by_path(
     repo: str,
     path: str,
@@ -468,21 +425,14 @@ async def get_file_symbols_by_path(
     path = validate_path(path)
 
     # Resolve file using use case (handles priority: commit > branch > default)
-    try:
-        resolved = await resolve_file_use_case.execute(
-            ResolveFileRequest(
-                repository_name=repo,
-                file_path=path,
-                commit_hash=commit,
-                branch=branch,
-            )
+    resolved = await resolve_file_use_case.execute(
+        ResolveFileRequest(
+            repository_name=repo,
+            file_path=path,
+            commit_hash=commit,
+            branch=branch,
         )
-    except RepositoryNotFound as e:
-        raise HTTPException(status_code=404, detail="Repository not found") from e
-    except FileNotFound as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
-    except CommitNotFound as e:
-        raise HTTPException(status_code=404, detail="Commit not found") from e
+    )
 
     file = resolved.file
     file_id = file.id or 0
@@ -493,25 +443,13 @@ async def get_file_symbols_by_path(
     return FileSymbolsResponse(
         file_id=file_id,
         file_path=file.path,
-        symbols=[
-            FileSymbolResponse(
-                id=s.id or 0,
-                name=s.name,
-                qualified_name=s.qualified_name,
-                kind=s.kind,
-                start_line=s.start_line,
-                start_column=s.start_column,
-                end_line=s.end_line,
-                end_column=s.end_column,
-                signature=s.signature,
-            )
-            for s in symbols
-        ],
+        symbols=[symbol_to_response(s) for s in symbols],
         total=len(symbols),
     )
 
 
 @router.get("/by-path/references", response_model=FileReferencesResponse)
+@handle_file_resolution_errors
 async def get_file_references_by_path(
     repo: str,
     path: str,
@@ -536,21 +474,14 @@ async def get_file_references_by_path(
     path = validate_path(path)
 
     # Resolve file using use case (handles priority: commit > branch > default)
-    try:
-        resolved = await resolve_file_use_case.execute(
-            ResolveFileRequest(
-                repository_name=repo,
-                file_path=path,
-                commit_hash=commit,
-                branch=branch,
-            )
+    resolved = await resolve_file_use_case.execute(
+        ResolveFileRequest(
+            repository_name=repo,
+            file_path=path,
+            commit_hash=commit,
+            branch=branch,
         )
-    except RepositoryNotFound as e:
-        raise HTTPException(status_code=404, detail="Repository not found") from e
-    except FileNotFound as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
-    except CommitNotFound as e:
-        raise HTTPException(status_code=404, detail="Commit not found") from e
+    )
 
     file = resolved.file
     file_id = file.id or 0
@@ -561,17 +492,7 @@ async def get_file_references_by_path(
     return FileReferencesResponse(
         file_id=file_id,
         file_path=file.path,
-        references=[
-            FileReferenceResponse(
-                id=r.id or 0,
-                reference_text=r.reference_text,
-                reference_type=r.reference_type.value,
-                source_line=r.source_line,
-                source_column=r.source_column,
-                target_symbol_id=r.target_symbol_id,
-            )
-            for r in references
-        ],
+        references=[reference_to_response(r) for r in references],
         total=len(references),
     )
 
@@ -667,20 +588,7 @@ async def get_file_symbols(
     return FileSymbolsResponse(
         file_id=file.id or 0,
         file_path=file.path,
-        symbols=[
-            FileSymbolResponse(
-                id=s.id or 0,
-                name=s.name,
-                qualified_name=s.qualified_name,
-                kind=s.kind,
-                start_line=s.start_line,
-                start_column=s.start_column,
-                end_line=s.end_line,
-                end_column=s.end_column,
-                signature=s.signature,
-            )
-            for s in symbols
-        ],
+        symbols=[symbol_to_response(s) for s in symbols],
         total=len(symbols),
     )
 
@@ -708,16 +616,6 @@ async def get_file_references(
     return FileReferencesResponse(
         file_id=file.id or 0,
         file_path=file.path,
-        references=[
-            FileReferenceResponse(
-                id=r.id or 0,
-                reference_text=r.reference_text,
-                reference_type=r.reference_type.value,
-                source_line=r.source_line,
-                source_column=r.source_column,
-                target_symbol_id=r.target_symbol_id,
-            )
-            for r in references
-        ],
+        references=[reference_to_response(r) for r in references],
         total=len(references),
     )
