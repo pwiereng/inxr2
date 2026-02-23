@@ -1354,7 +1354,6 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         self._symbol_repo = symbol_repo
         self._file_repo = file_repo
         self._commit_repo = commit_repo
-        self._resolution_branch: str | None = None
 
     async def save(self, reference: Reference) -> Reference:
         """Save reference to in-memory storage."""
@@ -1543,25 +1542,12 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         return len(to_delete)
 
     async def count_unresolved_references(self, repository_id: int) -> int:
-        """Count references that don't have a target_symbol_id set.
-
-        When _resolution_branch is set (via prepare_resolution), restricts
-        the count to references whose source_file_id is in the branch-scoped
-        latest file IDs, matching the Postgres adapter behavior.
-        """
-        latest_file_ids: set[int] | None = None
-        if self._resolution_branch is not None and self._file_repo is not None:
-            latest_file_ids = self._file_repo._compute_latest_file_ids(
-                repository_id, branch=self._resolution_branch
-            )
-
+        """Count references that don't have a target_symbol_id set."""
         return len(
             [
                 r
                 for r in self._references.values()
-                if r.repository_id == repository_id
-                and r.target_symbol_id is None
-                and (latest_file_ids is None or r.source_file_id in latest_file_ids)
+                if r.repository_id == repository_id and r.target_symbol_id is None
             ]
         )
 
@@ -1572,7 +1558,6 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         branch: str | None = None,
     ) -> None:
         """Store branch for subsequent resolution calls."""
-        self._resolution_branch = branch
 
     async def resolve_references_batch(
         self,
@@ -1581,19 +1566,21 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     ) -> int:
         """Resolve a batch of unlinked references.
 
-        Restricts symbol candidates to the latest version of each file path,
-        matching the Postgres behavior that filters via commit_files.
-        When _resolution_branch is set, also restricts source refs to files
-        on that branch.
+        Uses two file sets matching the Postgres adapter behavior:
+        - Branch-scoped file IDs for source ref filtering (which refs to process)
+        - Repo-wide file IDs for symbol candidate filtering (which symbols to match)
+
+        This ensures references on a branch can resolve to symbols in any
+        file in the repo, not just files modified on that branch.
         """
         if self._symbol_repo is None:
             return 0
 
-        # Compute latest file IDs once per batch (matches Postgres temp tables)
-        latest_file_ids: set[int] | None = None
+        # Repo-wide file IDs for symbol candidate filtering
+        symbols_file_ids: set[int] | None = None
         if self._file_repo is not None:
-            latest_file_ids = self._file_repo._compute_latest_file_ids(
-                repository_id, branch=self._resolution_branch
+            symbols_file_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=None
             )
 
         resolved_count = 0
@@ -1606,19 +1593,12 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             if ref.target_symbol_id is not None or ref.repository_id != repository_id:
                 continue
 
-            # When branch-scoped, skip refs not from branch files
-            if (
-                latest_file_ids is not None
-                and ref.source_file_id not in latest_file_ids
-            ):
-                continue
-
             candidates: list[Symbol] = [
                 s
                 for s in self._symbol_repo.get_all_symbols()
                 if s.repository_id == repository_id
                 and s.name == ref.reference_text
-                and (latest_file_ids is None or s.file_id in latest_file_ids)
+                and (symbols_file_ids is None or s.file_id in symbols_file_ids)
             ]
 
             if not candidates:
@@ -1700,18 +1680,18 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     ) -> int:
         """Resolve references to their target symbols.
 
-        Restricts symbol candidates to the latest version of each file path,
-        matching the Postgres behavior that filters via commit_files.
-        When branch is set, also restricts source refs to files on that branch.
+        Uses repo-wide file IDs for symbol candidate filtering, matching
+        the Postgres adapter behavior where all refs are resolved against
+        symbols from the latest version of each file path.
         """
         if self._symbol_repo is None:
             return 0
 
-        # Compute latest file IDs once (matches Postgres latest-file filter)
-        latest_file_ids: set[int] | None = None
+        # Repo-wide file IDs for symbol candidate filtering
+        symbols_file_ids: set[int] | None = None
         if self._file_repo is not None:
-            latest_file_ids = self._file_repo._compute_latest_file_ids(
-                repository_id, branch=branch
+            symbols_file_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=None
             )
 
         resolved_count = 0
@@ -1721,19 +1701,12 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             if ref.target_symbol_id is not None or ref.repository_id != repository_id:
                 continue
 
-            # When branch-scoped, skip refs not from branch files
-            if (
-                latest_file_ids is not None
-                and ref.source_file_id not in latest_file_ids
-            ):
-                continue
-
             candidates: list[Symbol] = [
                 s
                 for s in self._symbol_repo.get_all_symbols()
                 if s.repository_id == repository_id
                 and s.name == ref.reference_text
-                and (latest_file_ids is None or s.file_id in latest_file_ids)
+                and (symbols_file_ids is None or s.file_id in symbols_file_ids)
             ]
 
             matching_symbol = self._pick_best_symbol(ref, candidates)

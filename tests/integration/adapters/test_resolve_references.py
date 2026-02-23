@@ -973,12 +973,15 @@ class TestBranchScopedResolution:
             "feat_ref_id": feat_ref.id,
         }
 
-    async def test_resolution_scoped_to_branch(self, db_session: AsyncSession) -> None:
-        """Only refs from the specified branch's files are resolved."""
+    async def test_resolution_resolves_all_refs_with_branch(
+        self, db_session: AsyncSession
+    ) -> None:
+        """All refs are resolved regardless of branch, using repo-wide symbols."""
         ids = await self._create_two_branch_setup(db_session)
         ref_adapter = PostgresReferenceRepository(db_session)
 
-        # Prepare for "main" branch only
+        # Prepare for "main" branch — affects count and symbol pool, but
+        # all refs are still resolved (no source-file filter on UPDATEs).
         await ref_adapter.prepare_resolution(
             repository_id=ids["repo_id"], branch="main"
         )
@@ -993,8 +996,8 @@ class TestBranchScopedResolution:
             if resolved == 0:
                 break
 
-        # Only the main ref should be resolved
-        assert total_resolved == 1
+        # Both refs should be resolved (repo-wide symbol pool, no source filter)
+        assert total_resolved == 2
 
         main_ref = await ref_adapter.find_by_id(ids["main_ref_id"])
         assert main_ref is not None
@@ -1002,10 +1005,10 @@ class TestBranchScopedResolution:
 
         feat_ref = await ref_adapter.find_by_id(ids["feat_ref_id"])
         assert feat_ref is not None
-        assert feat_ref.target_symbol_id is None  # NOT resolved
+        assert feat_ref.target_symbol_id == ids["feat_sym_id"]
 
-    async def test_count_scoped_after_prepare(self, db_session: AsyncSession) -> None:
-        """count_unresolved_references returns branch-scoped count after prepare."""
+    async def test_count_unresolved_is_global(self, db_session: AsyncSession) -> None:
+        """count_unresolved_references always returns global count."""
         ids = await self._create_two_branch_setup(db_session)
         ref_adapter = PostgresReferenceRepository(db_session)
 
@@ -1015,14 +1018,14 @@ class TestBranchScopedResolution:
         )
         assert count_before == 2
 
-        # After prepare with branch="main": count is scoped
+        # After prepare with branch="main": count is still global
         await ref_adapter.prepare_resolution(
             repository_id=ids["repo_id"], branch="main"
         )
         count_after = await ref_adapter.count_unresolved_references(
             repository_id=ids["repo_id"]
         )
-        assert count_after == 1
+        assert count_after == 2
 
     async def test_branch_none_resolves_all(self, db_session: AsyncSession) -> None:
         """branch=None resolves refs across all branches (backward compat)."""
@@ -1170,11 +1173,16 @@ class TestBranchScopedResolution:
         assert updated is not None
         assert updated.target_symbol_id == shared_sym.id
 
-    async def test_cross_branch_same_path_different_symbols(
+    async def test_cross_branch_same_path_uses_globally_latest_symbol(
         self, db_session: AsyncSession
     ) -> None:
-        """When both branches have the same file path with different symbols,
-        branch-scoped resolution picks the correct branch's symbol version.
+        """When both branches have the same file path, the globally latest
+        version's symbol is used as the resolution target.
+
+        After the issue #98 fix, the symbol pool is repo-wide (not branch-scoped)
+        to ensure high resolution rates. For same-path files across branches,
+        this means the globally latest version (by commit date) is the one
+        whose symbols are candidates.
         """
         repo_adapter = PostgresRepositoryAdapter(db_session)
         commit_adapter = PostgresCommitRepository(db_session)
@@ -1294,7 +1302,9 @@ class TestBranchScopedResolution:
         )
         assert ref.id is not None
 
-        # Resolve scoped to "main" — should pick main's "compute", not feature's
+        # Resolve scoped to "main" — symbol pool is repo-wide, so the globally
+        # latest version of src/utils.py (feature's, with newer commit date)
+        # provides the "compute" symbol.
         await ref_adapter.prepare_resolution(repository_id=repo_id, branch="main")
         resolved = 0
         for _ in range(10):
@@ -1308,25 +1318,147 @@ class TestBranchScopedResolution:
         assert resolved == 1
         updated = await ref_adapter.find_by_id(ref.id)
         assert updated is not None
-        assert updated.target_symbol_id == main_sym.id  # Main's version, not feature's
+        # Feature's version is globally latest (newer commit date), so its
+        # symbol is the resolution target.
+        assert updated.target_symbol_id == feat_sym.id
+
+    async def test_branch_scoped_resolves_to_repo_wide_symbols(
+        self, db_session: AsyncSession
+    ) -> None:
+        """References on one branch resolve to symbols from files outside that branch.
+
+        Regression test for issue #98: PR #96 scoped resolution to the current
+        branch, but the symbol pool was also branch-scoped, causing a massive
+        resolution rate regression (42.7% → 4.7%). The symbol pool should
+        include ALL latest files in the repo, not just branch-scoped files.
+        """
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        ref_adapter = PostgresReferenceRepository(db_session)
+
+        # Create repository
+        repository = Repository(
+            name="cross-branch-symbol-test",
+            url="https://example.com/cross-branch-sym.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
+        repo_id = saved_repo.id
+
+        # Commit on "main" branch — has a file with a reference
+        main_commit = await commit_adapter.save(
+            Commit(
+                repository_id=repo_id,
+                commit_hash=CommitHash("cbsym" + "0" * 35),
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+            )
+        )
+        assert main_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo_id, main_commit.id, "main")
+
+        # Commit NOT on "main" — has a file with the target symbol
+        other_commit = await commit_adapter.save(
+            Commit(
+                repository_id=repo_id,
+                commit_hash=CommitHash("other" + "0" * 35),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        assert other_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo_id, other_commit.id, "feature")
+
+        # File on "feature" branch with the target symbol
+        other_file = await file_adapter.save(
+            File(
+                repository_id=repo_id,
+                path="lib/exceptions.py",
+                content_hash="hash_exceptions",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        assert other_file.id is not None
+        await file_adapter.link_file_to_commit(other_file.id, other_commit.id)
+
+        target_sym = await symbol_adapter.save(
+            Symbol(
+                file_id=other_file.id,
+                repository_id=repo_id,
+                name="HTTPException",
+                kind=SymbolKind.CLASS,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            )
+        )
+        assert target_sym.id is not None
+
+        # File on "main" branch with a reference to HTTPException
+        main_file = await file_adapter.save(
+            File(
+                repository_id=repo_id,
+                path="src/api.py",
+                content_hash="hash_api",
+                size_bytes=200,
+                language="python",
+            )
+        )
+        assert main_file.id is not None
+        await file_adapter.link_file_to_commit(main_file.id, main_commit.id)
+
+        ref = await ref_adapter.save(
+            Reference(
+                source_file_id=main_file.id,
+                repository_id=repo_id,
+                source_line=5,
+                source_column=10,
+                source_end_column=23,
+                reference_text="HTTPException",
+                reference_type=ReferenceType.USAGE,
+                target_symbol_id=None,
+            )
+        )
+        assert ref.id is not None
+
+        # Resolve scoped to "main" — should find HTTPException from the
+        # repo-wide symbol pool even though it's on "feature" branch
+        await ref_adapter.prepare_resolution(repository_id=repo_id, branch="main")
+        resolved = 0
+        for _ in range(10):
+            batch = await ref_adapter.resolve_references_batch(
+                repository_id=repo_id, batch_size=100
+            )
+            resolved += batch
+            if batch == 0:
+                break
+
+        assert resolved == 1
+        updated = await ref_adapter.find_by_id(ref.id)
+        assert updated is not None
+        assert updated.target_symbol_id == target_sym.id
 
     async def test_resolve_unlinked_references_with_branch(
         self, db_session: AsyncSession
     ) -> None:
-        """resolve_unlinked_references(branch=...) scopes resolution to branch.
+        """resolve_unlinked_references(branch=...) resolves all refs with repo-wide symbols.
 
         This exercises the non-batched code path used by execute().
         """
         ids = await self._create_two_branch_setup(db_session)
         ref_adapter = PostgresReferenceRepository(db_session)
 
-        # Resolve only main branch (non-batched path)
+        # Resolve with branch="main" (non-batched path)
         resolved = await ref_adapter.resolve_unlinked_references(
             repository_id=ids["repo_id"], branch="main"
         )
 
-        # Only the main ref should be resolved
-        assert resolved == 1
+        # Both refs resolved (no source-file filter, repo-wide symbol pool)
+        assert resolved == 2
 
         main_ref = await ref_adapter.find_by_id(ids["main_ref_id"])
         assert main_ref is not None
@@ -1334,4 +1466,4 @@ class TestBranchScopedResolution:
 
         feat_ref = await ref_adapter.find_by_id(ids["feat_ref_id"])
         assert feat_ref is not None
-        assert feat_ref.target_symbol_id is None  # NOT resolved
+        assert feat_ref.target_symbol_id == ids["feat_sym_id"]
