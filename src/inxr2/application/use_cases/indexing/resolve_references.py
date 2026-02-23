@@ -37,9 +37,12 @@ class ResolveReferencesRequest:
 
     Args:
         repository_id: The repository ID to resolve references for
+        branch: Optional branch to scope resolution to. When set,
+            only references from files on that branch are resolved.
     """
 
     repository_id: int
+    branch: str | None = None
 
 
 @dataclass
@@ -75,6 +78,7 @@ class ResolveReferencesUseCase:
         """Execute reference resolution."""
         resolved_count = await self._reference_repository.resolve_unlinked_references(
             repository_id=request.repository_id,
+            branch=request.branch,
         )
 
         return ResolveReferencesResponse(resolved_count=resolved_count)
@@ -89,18 +93,15 @@ class ResolveReferencesUseCase:
 
         Resolves references in batches, calling the progress callback
         after each batch to report progress.
+
+        When request.branch is set, resolution is scoped to that branch:
+        prepare_resolution builds branch-scoped temp tables, and
+        count_unresolved_references uses them for an accurate count.
+        The prepare step runs BEFORE the count so the count can leverage
+        the branch-scoped temp table.
         """
-        # Get total count of unresolved references
-        total_unresolved = await self._reference_repository.count_unresolved_references(
-            repository_id=request.repository_id
-        )
-
-        if total_unresolved == 0:
-            if progress_callback:
-                progress_callback(ResolutionProgress(resolved=0, total=0))
-            return ResolveReferencesResponse(resolved_count=0)
-
-        # Report initial progress and pre-compute lookup tables
+        # Pre-compute lookup tables FIRST so the count query can use
+        # the branch-scoped temp table (when branch is set).
         total_resolved = 0
 
         def on_prepare_stage(stage: str) -> None:
@@ -108,7 +109,7 @@ class ResolveReferencesUseCase:
                 progress_callback(
                     ResolutionProgress(
                         resolved=0,
-                        total=total_unresolved,
+                        total=0,
                         preparing=True,
                         prepare_stage=stage,
                     )
@@ -119,7 +120,18 @@ class ResolveReferencesUseCase:
         await self._reference_repository.prepare_resolution(
             repository_id=request.repository_id,
             progress_callback=on_prepare_stage,
+            branch=request.branch,
         )
+
+        # Count AFTER prepare so the count uses branch-scoped temp tables
+        total_unresolved = await self._reference_repository.count_unresolved_references(
+            repository_id=request.repository_id
+        )
+
+        if total_unresolved == 0:
+            if progress_callback:
+                progress_callback(ResolutionProgress(resolved=0, total=0))
+            return ResolveReferencesResponse(resolved_count=0)
 
         if progress_callback:
             progress_callback(ResolutionProgress(resolved=0, total=total_unresolved))

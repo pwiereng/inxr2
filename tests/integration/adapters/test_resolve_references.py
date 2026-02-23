@@ -824,3 +824,514 @@ class TestResolveReferencesBatch:
         updated_new = await ref_adapter.find_by_id(ref_new.id)
         assert updated_new is not None
         assert updated_new.target_symbol_id == sym_new.id  # NewFunc resolved
+
+
+@pytest.mark.asyncio
+class TestBranchScopedResolution:
+    """Tests for branch-scoped reference resolution."""
+
+    async def _create_two_branch_setup(
+        self, db_session: AsyncSession
+    ) -> dict[str, int]:
+        """Create a repo with 2 branches, each with its own file+symbol+reference.
+
+        Returns dict with keys: repo_id, main_commit_id, feat_commit_id,
+        main_file_id, feat_file_id, main_sym_id, feat_sym_id,
+        main_ref_id, feat_ref_id.
+        """
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        ref_adapter = PostgresReferenceRepository(db_session)
+
+        # Create repository
+        repository = Repository(
+            name="branch-scope-test", url="https://example.com/branch-scope.git"
+        )
+        saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
+        repo_id = saved_repo.id
+
+        # Create commit on "main" branch
+        main_commit = await commit_adapter.save(
+            Commit(
+                repository_id=repo_id,
+                commit_hash=CommitHash("main" + "0" * 36),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        assert main_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo_id, main_commit.id, "main")
+
+        # Create commit on "feature" branch
+        feat_commit = await commit_adapter.save(
+            Commit(
+                repository_id=repo_id,
+                commit_hash=CommitHash("feat" + "0" * 36),
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+            )
+        )
+        assert feat_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo_id, feat_commit.id, "feature")
+
+        # Create file + symbol on main
+        main_file = await file_adapter.save(
+            File(
+                repository_id=repo_id,
+                path="src/main_module.py",
+                content_hash="hash_main_mod",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        assert main_file.id is not None
+        await file_adapter.link_file_to_commit(main_file.id, main_commit.id)
+
+        main_sym = await symbol_adapter.save(
+            Symbol(
+                file_id=main_file.id,
+                repository_id=repo_id,
+                name="MainFunc",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        assert main_sym.id is not None
+
+        # Create file + symbol on feature
+        feat_file = await file_adapter.save(
+            File(
+                repository_id=repo_id,
+                path="src/feat_module.py",
+                content_hash="hash_feat_mod",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        assert feat_file.id is not None
+        await file_adapter.link_file_to_commit(feat_file.id, feat_commit.id)
+
+        feat_sym = await symbol_adapter.save(
+            Symbol(
+                file_id=feat_file.id,
+                repository_id=repo_id,
+                name="FeatFunc",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        assert feat_sym.id is not None
+
+        # Create unresolved reference on main (to MainFunc)
+        main_ref = await ref_adapter.save(
+            Reference(
+                source_file_id=main_file.id,
+                repository_id=repo_id,
+                source_line=10,
+                source_column=0,
+                source_end_column=8,
+                reference_text="MainFunc",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+        assert main_ref.id is not None
+
+        # Create unresolved reference on feature (to FeatFunc)
+        feat_ref = await ref_adapter.save(
+            Reference(
+                source_file_id=feat_file.id,
+                repository_id=repo_id,
+                source_line=10,
+                source_column=0,
+                source_end_column=8,
+                reference_text="FeatFunc",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+        assert feat_ref.id is not None
+
+        return {
+            "repo_id": repo_id,
+            "main_commit_id": main_commit.id,
+            "feat_commit_id": feat_commit.id,
+            "main_file_id": main_file.id,
+            "feat_file_id": feat_file.id,
+            "main_sym_id": main_sym.id,
+            "feat_sym_id": feat_sym.id,
+            "main_ref_id": main_ref.id,
+            "feat_ref_id": feat_ref.id,
+        }
+
+    async def test_resolution_scoped_to_branch(self, db_session: AsyncSession) -> None:
+        """Only refs from the specified branch's files are resolved."""
+        ids = await self._create_two_branch_setup(db_session)
+        ref_adapter = PostgresReferenceRepository(db_session)
+
+        # Prepare for "main" branch only
+        await ref_adapter.prepare_resolution(
+            repository_id=ids["repo_id"], branch="main"
+        )
+
+        # Resolve
+        total_resolved = 0
+        for _ in range(10):
+            resolved = await ref_adapter.resolve_references_batch(
+                repository_id=ids["repo_id"], batch_size=100
+            )
+            total_resolved += resolved
+            if resolved == 0:
+                break
+
+        # Only the main ref should be resolved
+        assert total_resolved == 1
+
+        main_ref = await ref_adapter.find_by_id(ids["main_ref_id"])
+        assert main_ref is not None
+        assert main_ref.target_symbol_id == ids["main_sym_id"]
+
+        feat_ref = await ref_adapter.find_by_id(ids["feat_ref_id"])
+        assert feat_ref is not None
+        assert feat_ref.target_symbol_id is None  # NOT resolved
+
+    async def test_count_scoped_after_prepare(self, db_session: AsyncSession) -> None:
+        """count_unresolved_references returns branch-scoped count after prepare."""
+        ids = await self._create_two_branch_setup(db_session)
+        ref_adapter = PostgresReferenceRepository(db_session)
+
+        # Before prepare: count is global (both branches)
+        count_before = await ref_adapter.count_unresolved_references(
+            repository_id=ids["repo_id"]
+        )
+        assert count_before == 2
+
+        # After prepare with branch="main": count is scoped
+        await ref_adapter.prepare_resolution(
+            repository_id=ids["repo_id"], branch="main"
+        )
+        count_after = await ref_adapter.count_unresolved_references(
+            repository_id=ids["repo_id"]
+        )
+        assert count_after == 1
+
+    async def test_branch_none_resolves_all(self, db_session: AsyncSession) -> None:
+        """branch=None resolves refs across all branches (backward compat)."""
+        ids = await self._create_two_branch_setup(db_session)
+        ref_adapter = PostgresReferenceRepository(db_session)
+
+        # Prepare without branch (all branches)
+        await ref_adapter.prepare_resolution(repository_id=ids["repo_id"], branch=None)
+
+        # Resolve
+        total_resolved = 0
+        for _ in range(10):
+            resolved = await ref_adapter.resolve_references_batch(
+                repository_id=ids["repo_id"], batch_size=100
+            )
+            total_resolved += resolved
+            if resolved == 0:
+                break
+
+        # Both refs should be resolved
+        assert total_resolved == 2
+
+        main_ref = await ref_adapter.find_by_id(ids["main_ref_id"])
+        assert main_ref is not None
+        assert main_ref.target_symbol_id == ids["main_sym_id"]
+
+        feat_ref = await ref_adapter.find_by_id(ids["feat_ref_id"])
+        assert feat_ref is not None
+        assert feat_ref.target_symbol_id == ids["feat_sym_id"]
+
+    async def test_shared_commit_included_in_branch_scope(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Files on a shared commit (linked to both branches) are included in scope.
+
+        When a commit is shared between two branches, its files should be
+        visible when resolving for either branch.
+        """
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        ref_adapter = PostgresReferenceRepository(db_session)
+
+        # Create repository
+        repository = Repository(
+            name="shared-commit-test", url="https://example.com/shared.git"
+        )
+        saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
+        repo_id = saved_repo.id
+
+        # Create a shared commit linked to BOTH branches
+        shared_commit = await commit_adapter.save(
+            Commit(
+                repository_id=repo_id,
+                commit_hash=CommitHash("shar" + "0" * 36),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        assert shared_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo_id, shared_commit.id, "main")
+        await commit_adapter.link_commit_to_branch(repo_id, shared_commit.id, "feature")
+
+        # Create a main-only commit
+        main_commit = await commit_adapter.save(
+            Commit(
+                repository_id=repo_id,
+                commit_hash=CommitHash("monly" + "0" * 35),
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+            )
+        )
+        assert main_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo_id, main_commit.id, "main")
+
+        # File + symbol on the shared commit
+        shared_file = await file_adapter.save(
+            File(
+                repository_id=repo_id,
+                path="src/shared_utils.py",
+                content_hash="hash_shared",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        assert shared_file.id is not None
+        await file_adapter.link_file_to_commit(shared_file.id, shared_commit.id)
+
+        shared_sym = await symbol_adapter.save(
+            Symbol(
+                file_id=shared_file.id,
+                repository_id=repo_id,
+                name="SharedHelper",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        assert shared_sym.id is not None
+
+        # File on the main-only commit that references SharedHelper
+        main_file = await file_adapter.save(
+            File(
+                repository_id=repo_id,
+                path="src/main_caller.py",
+                content_hash="hash_main_caller",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        assert main_file.id is not None
+        await file_adapter.link_file_to_commit(main_file.id, main_commit.id)
+
+        main_ref = await ref_adapter.save(
+            Reference(
+                source_file_id=main_file.id,
+                repository_id=repo_id,
+                source_line=5,
+                source_column=0,
+                source_end_column=12,
+                reference_text="SharedHelper",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+        assert main_ref.id is not None
+
+        # Resolve scoped to "main" — shared commit's symbol must be a target
+        await ref_adapter.prepare_resolution(repository_id=repo_id, branch="main")
+        resolved = 0
+        for _ in range(10):
+            batch = await ref_adapter.resolve_references_batch(
+                repository_id=repo_id, batch_size=100
+            )
+            resolved += batch
+            if batch == 0:
+                break
+
+        assert resolved == 1
+        updated = await ref_adapter.find_by_id(main_ref.id)
+        assert updated is not None
+        assert updated.target_symbol_id == shared_sym.id
+
+    async def test_cross_branch_same_path_different_symbols(
+        self, db_session: AsyncSession
+    ) -> None:
+        """When both branches have the same file path with different symbols,
+        branch-scoped resolution picks the correct branch's symbol version.
+        """
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+        symbol_adapter = PostgresSymbolRepository(db_session)
+        ref_adapter = PostgresReferenceRepository(db_session)
+
+        repository = Repository(
+            name="cross-branch-path-test", url="https://example.com/xbranch.git"
+        )
+        saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
+        repo_id = saved_repo.id
+
+        # Main branch commit
+        main_commit = await commit_adapter.save(
+            Commit(
+                repository_id=repo_id,
+                commit_hash=CommitHash("xmain" + "0" * 35),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        assert main_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo_id, main_commit.id, "main")
+
+        # Feature branch commit
+        feat_commit = await commit_adapter.save(
+            Commit(
+                repository_id=repo_id,
+                commit_hash=CommitHash("xfeat" + "0" * 35),
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+            )
+        )
+        assert feat_commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo_id, feat_commit.id, "feature")
+
+        # Same path on main — symbol "compute" returns int
+        main_file = await file_adapter.save(
+            File(
+                repository_id=repo_id,
+                path="src/utils.py",
+                content_hash="hash_utils_main",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        assert main_file.id is not None
+        await file_adapter.link_file_to_commit(main_file.id, main_commit.id)
+
+        main_sym = await symbol_adapter.save(
+            Symbol(
+                file_id=main_file.id,
+                repository_id=repo_id,
+                name="compute",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        assert main_sym.id is not None
+
+        # Same path on feature — symbol "compute" returns string (different file version)
+        feat_file = await file_adapter.save(
+            File(
+                repository_id=repo_id,
+                path="src/utils.py",
+                content_hash="hash_utils_feat",
+                size_bytes=120,
+                language="python",
+            )
+        )
+        assert feat_file.id is not None
+        await file_adapter.link_file_to_commit(feat_file.id, feat_commit.id)
+
+        feat_sym = await symbol_adapter.save(
+            Symbol(
+                file_id=feat_file.id,
+                repository_id=repo_id,
+                name="compute",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=8,
+                end_column=0,
+            )
+        )
+        assert feat_sym.id is not None
+
+        # Caller file on main references "compute"
+        caller_file = await file_adapter.save(
+            File(
+                repository_id=repo_id,
+                path="src/main_caller.py",
+                content_hash="hash_caller_xb",
+                size_bytes=80,
+                language="python",
+            )
+        )
+        assert caller_file.id is not None
+        await file_adapter.link_file_to_commit(caller_file.id, main_commit.id)
+
+        ref = await ref_adapter.save(
+            Reference(
+                source_file_id=caller_file.id,
+                repository_id=repo_id,
+                source_line=3,
+                source_column=0,
+                source_end_column=7,
+                reference_text="compute",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+        assert ref.id is not None
+
+        # Resolve scoped to "main" — should pick main's "compute", not feature's
+        await ref_adapter.prepare_resolution(repository_id=repo_id, branch="main")
+        resolved = 0
+        for _ in range(10):
+            batch = await ref_adapter.resolve_references_batch(
+                repository_id=repo_id, batch_size=100
+            )
+            resolved += batch
+            if batch == 0:
+                break
+
+        assert resolved == 1
+        updated = await ref_adapter.find_by_id(ref.id)
+        assert updated is not None
+        assert updated.target_symbol_id == main_sym.id  # Main's version, not feature's
+
+    async def test_resolve_unlinked_references_with_branch(
+        self, db_session: AsyncSession
+    ) -> None:
+        """resolve_unlinked_references(branch=...) scopes resolution to branch.
+
+        This exercises the non-batched code path used by execute().
+        """
+        ids = await self._create_two_branch_setup(db_session)
+        ref_adapter = PostgresReferenceRepository(db_session)
+
+        # Resolve only main branch (non-batched path)
+        resolved = await ref_adapter.resolve_unlinked_references(
+            repository_id=ids["repo_id"], branch="main"
+        )
+
+        # Only the main ref should be resolved
+        assert resolved == 1
+
+        main_ref = await ref_adapter.find_by_id(ids["main_ref_id"])
+        assert main_ref is not None
+        assert main_ref.target_symbol_id == ids["main_sym_id"]
+
+        feat_ref = await ref_adapter.find_by_id(ids["feat_ref_id"])
+        assert feat_ref is not None
+        assert feat_ref.target_symbol_id is None  # NOT resolved

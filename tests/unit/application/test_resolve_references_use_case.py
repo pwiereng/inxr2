@@ -1,14 +1,17 @@
 """Tests for ResolveReferencesUseCase using dependency injection."""
 
+from datetime import datetime
+
 import pytest
 
 from inxr2.application.use_cases.indexing import (
     ResolveReferencesRequest,
     ResolveReferencesUseCase,
 )
-from inxr2.domain.entities import File, Reference, Symbol
-from inxr2.domain.value_objects import ReferenceType, SymbolKind
+from inxr2.domain.entities import Commit, File, Reference, Symbol
+from inxr2.domain.value_objects import CommitHash, ReferenceType, SymbolKind
 from tests.fixtures.test_doubles import (
+    InMemoryCommitRepository,
     InMemoryFileRepository,
     InMemoryReferenceRepository,
     InMemorySymbolRepository,
@@ -574,3 +577,338 @@ class TestDeterministicResolution:
 
         # All results should be the same
         assert len(set(results)) == 1, f"Resolution was not deterministic: {results}"
+
+
+class TestBranchScopedResolution:
+    """Tests for branch-scoped reference resolution via use case."""
+
+    @pytest.mark.asyncio
+    async def test_branch_scoped_resolution_only_resolves_branch_refs(self) -> None:
+        """When branch is set, only refs from that branch's files are resolved."""
+        commit_repo = InMemoryCommitRepository()
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
+        ref_repo = InMemoryReferenceRepository(
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+        # Set up two branches with commits
+        commit_repo.add(
+            Commit(
+                id=1,
+                repository_id=1,
+                commit_hash=CommitHash("main" + "0" * 36),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        await commit_repo.link_commit_to_branch(1, 1, "main")
+
+        commit_repo.add(
+            Commit(
+                id=2,
+                repository_id=1,
+                commit_hash=CommitHash("feat" + "0" * 36),
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+            )
+        )
+        await commit_repo.link_commit_to_branch(1, 2, "feature")
+
+        # File on main
+        file_repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/main_mod.py",
+                content_hash="hash_main",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        await file_repo.link_file_to_commit(1, 1)
+
+        # File on feature
+        file_repo.add(
+            File(
+                id=2,
+                repository_id=1,
+                path="src/feat_mod.py",
+                content_hash="hash_feat",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        await file_repo.link_file_to_commit(2, 2)
+
+        # Symbols
+        symbol_repo.add(
+            Symbol(
+                id=1,
+                file_id=1,
+                repository_id=1,
+                name="MainFunc",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        symbol_repo.add(
+            Symbol(
+                id=2,
+                file_id=2,
+                repository_id=1,
+                name="FeatFunc",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+
+        # Reference on main
+        ref_repo.add(
+            Reference(
+                id=1,
+                repository_id=1,
+                source_file_id=1,
+                source_line=10,
+                source_column=0,
+                source_end_column=8,
+                reference_text="MainFunc",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+        # Reference on feature
+        ref_repo.add(
+            Reference(
+                id=2,
+                repository_id=1,
+                source_file_id=2,
+                source_line=10,
+                source_column=0,
+                source_end_column=8,
+                reference_text="FeatFunc",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+
+        # Resolve scoped to "main" via use case
+        use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
+        response = await use_case.execute(
+            ResolveReferencesRequest(repository_id=1, branch="main")
+        )
+
+        # Only main ref resolved
+        assert response.resolved_count == 1
+
+        main_ref = await ref_repo.find_by_id(1)
+        assert main_ref is not None
+        assert main_ref.target_symbol_id == 1
+
+        feat_ref = await ref_repo.find_by_id(2)
+        assert feat_ref is not None
+        assert feat_ref.target_symbol_id is None  # NOT resolved
+
+    @pytest.mark.asyncio
+    async def test_branch_none_resolves_all_refs(self) -> None:
+        """When branch is None, all refs are resolved (backward compat)."""
+        commit_repo = InMemoryCommitRepository()
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
+        ref_repo = InMemoryReferenceRepository(
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+        # Same setup as above but resolve with branch=None
+        commit_repo.add(
+            Commit(
+                id=1,
+                repository_id=1,
+                commit_hash=CommitHash("main" + "0" * 36),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        await commit_repo.link_commit_to_branch(1, 1, "main")
+
+        commit_repo.add(
+            Commit(
+                id=2,
+                repository_id=1,
+                commit_hash=CommitHash("feat" + "0" * 36),
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+            )
+        )
+        await commit_repo.link_commit_to_branch(1, 2, "feature")
+
+        file_repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/main_mod.py",
+                content_hash="hash_main",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        await file_repo.link_file_to_commit(1, 1)
+
+        file_repo.add(
+            File(
+                id=2,
+                repository_id=1,
+                path="src/feat_mod.py",
+                content_hash="hash_feat",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        await file_repo.link_file_to_commit(2, 2)
+
+        symbol_repo.add(
+            Symbol(
+                id=1,
+                file_id=1,
+                repository_id=1,
+                name="MainFunc",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        symbol_repo.add(
+            Symbol(
+                id=2,
+                file_id=2,
+                repository_id=1,
+                name="FeatFunc",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+
+        ref_repo.add(
+            Reference(
+                id=1,
+                repository_id=1,
+                source_file_id=1,
+                source_line=10,
+                source_column=0,
+                source_end_column=8,
+                reference_text="MainFunc",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+        ref_repo.add(
+            Reference(
+                id=2,
+                repository_id=1,
+                source_file_id=2,
+                source_line=10,
+                source_column=0,
+                source_end_column=8,
+                reference_text="FeatFunc",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+
+        # Resolve with branch=None (default)
+        use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
+        response = await use_case.execute(
+            ResolveReferencesRequest(repository_id=1, branch=None)
+        )
+
+        # Both refs resolved
+        assert response.resolved_count == 2
+
+    @pytest.mark.asyncio
+    async def test_execute_with_progress_passes_branch(self) -> None:
+        """execute_with_progress passes branch to prepare_resolution."""
+        commit_repo = InMemoryCommitRepository()
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
+        ref_repo = InMemoryReferenceRepository(
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+        # Minimal setup: one branch with one file+symbol+ref
+        commit_repo.add(
+            Commit(
+                id=1,
+                repository_id=1,
+                commit_hash=CommitHash("main" + "0" * 36),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        await commit_repo.link_commit_to_branch(1, 1, "main")
+
+        file_repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/mod.py",
+                content_hash="hash1",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        await file_repo.link_file_to_commit(1, 1)
+
+        symbol_repo.add(
+            Symbol(
+                id=1,
+                file_id=1,
+                repository_id=1,
+                name="Func",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+
+        ref_repo.add(
+            Reference(
+                id=1,
+                repository_id=1,
+                source_file_id=1,
+                source_line=10,
+                source_column=0,
+                source_end_column=4,
+                reference_text="Func",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+
+        use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
+        response = await use_case.execute_with_progress(
+            ResolveReferencesRequest(repository_id=1, branch="main"),
+            batch_size=100,
+        )
+
+        # Verify branch was stored via prepare_resolution
+        assert ref_repo._resolution_branch == "main"
+        assert response.resolved_count == 1

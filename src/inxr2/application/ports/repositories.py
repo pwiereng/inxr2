@@ -778,7 +778,9 @@ class ReferenceRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    async def resolve_unlinked_references(self, repository_id: int) -> int:
+    async def resolve_unlinked_references(
+        self, repository_id: int, branch: str | None = None
+    ) -> int:
         """Resolve references to their target symbols.
 
         After indexing, this method matches reference_text to symbol names
@@ -789,6 +791,9 @@ class ReferenceRepositoryPort(ABC):
 
         Args:
             repository_id: The repository ID to resolve references for
+            branch: Optional branch to scope resolution to. When set,
+                only references from files on that branch are resolved,
+                and only symbols from that branch are resolution targets.
 
         Returns:
             Number of references resolved
@@ -800,6 +805,7 @@ class ReferenceRepositoryPort(ABC):
         self,
         repository_id: int,
         progress_callback: Callable[[str], None] | None = None,
+        branch: str | None = None,
     ) -> None:
         """Pre-compute lookup tables for reference resolution.
 
@@ -811,6 +817,10 @@ class ReferenceRepositoryPort(ABC):
             repository_id: The repository ID to prepare for
             progress_callback: Optional callback receiving stage descriptions
                 (e.g. "Building same-file index...")
+            branch: Optional branch to scope resolution to. When set,
+                only files from commits on that branch are included in
+                the lookup tables, restricting both symbol targets and
+                source references to that branch.
         """
         pass
 
