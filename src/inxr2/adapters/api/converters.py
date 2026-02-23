@@ -78,7 +78,7 @@ def symbol_to_response(s: Symbol) -> FileSymbolResponse:
         id=s.id or 0,
         name=s.name,
         qualified_name=s.qualified_name,
-        kind=s.kind,
+        kind=s.kind.value,
         start_line=s.start_line,
         start_column=s.start_column,
         end_line=s.end_line,
