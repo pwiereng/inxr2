@@ -583,8 +583,8 @@ class TestBranchScopedResolution:
     """Tests for branch-scoped reference resolution via use case."""
 
     @pytest.mark.asyncio
-    async def test_branch_scoped_resolution_resolves_all_refs(self) -> None:
-        """When branch is set, all refs are resolved using repo-wide symbols."""
+    async def test_branch_param_does_not_restrict_resolution(self) -> None:
+        """Branch parameter is accepted but all refs are resolved regardless."""
         commit_repo = InMemoryCommitRepository()
         file_repo = InMemoryFileRepository(commit_repo=commit_repo)
         symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
@@ -912,7 +912,7 @@ class TestBranchScopedResolution:
         assert response.resolved_count == 1
 
     @pytest.mark.asyncio
-    async def test_branch_scoped_resolves_to_repo_wide_symbols(self) -> None:
+    async def test_branch_param_uses_repo_wide_symbols(self) -> None:
         """References on a branch resolve to symbols from files outside that branch.
 
         Regression test for issue #98: symbol pool must be repo-wide, not

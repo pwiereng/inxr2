@@ -1566,9 +1566,9 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     ) -> int:
         """Resolve a batch of unlinked references.
 
-        Processes all unresolved references for the repository and uses
-        repo-wide latest file IDs for symbol candidate filtering (which
-        symbols to match).
+        Processes up to ``batch_size`` unresolved references for the
+        repository and uses repo-wide latest file IDs for symbol
+        candidate filtering (which symbols to match).
 
         This ensures references can resolve to symbols in any file in the
         repository, not just files modified on a particular branch.

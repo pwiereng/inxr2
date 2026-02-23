@@ -1322,7 +1322,7 @@ class TestBranchScopedResolution:
         # symbol is the resolution target.
         assert updated.target_symbol_id == feat_sym.id
 
-    async def test_branch_scoped_resolves_to_repo_wide_symbols(
+    async def test_branch_param_uses_repo_wide_symbols(
         self, db_session: AsyncSession
     ) -> None:
         """References on one branch resolve to symbols from files outside that branch.
