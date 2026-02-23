@@ -828,3 +828,158 @@ def my_function():
         assert (
             "my_function" in func_names
         ), f"Expected 'my_function' but got: {func_names}"
+
+
+class TestPythonNestedFunctions:
+    """Tests for nested function extraction in Python (issue #43)."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_nested_function_in_top_level_function(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that a nested function inside a top-level function is extracted."""
+        code = """def outer():
+    def inner():
+        pass
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        func_names = [s["name"] for s in func_symbols]
+
+        assert "outer" in func_names
+        assert "inner" in func_names
+
+        inner = next(s for s in func_symbols if s["name"] == "inner")
+        assert inner["scope"] == "outer"
+        assert inner["qualified_name"] == "outer.inner"
+
+    @pytest.mark.asyncio
+    async def test_nested_function_in_class_method(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that nested functions inside class methods are extracted."""
+        code = """class MyClass:
+    def extract(self):
+        def process_item(node):
+            pass
+        def handle_error(e):
+            pass
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        nested = [s for s in symbols if s["kind"] == "function"]
+        nested_names = [s["name"] for s in nested]
+
+        assert "process_item" in nested_names
+        assert "handle_error" in nested_names
+
+        process_item = next(s for s in nested if s["name"] == "process_item")
+        assert process_item["scope"] == "MyClass.extract"
+        assert process_item["qualified_name"] == "MyClass.extract.process_item"
+
+        handle_error = next(s for s in nested if s["name"] == "handle_error")
+        assert handle_error["scope"] == "MyClass.extract"
+        assert handle_error["qualified_name"] == "MyClass.extract.handle_error"
+
+    @pytest.mark.asyncio
+    async def test_multiple_nested_functions_at_same_level(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test multiple nested functions at the same nesting level."""
+        code = """def process():
+    def validate(item):
+        pass
+    def transform(item):
+        pass
+    def save(item):
+        pass
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        nested = [
+            s for s in symbols if s["kind"] == "function" and s["scope"] == "process"
+        ]
+        nested_names = [s["name"] for s in nested]
+
+        assert len(nested) == 3
+        assert "validate" in nested_names
+        assert "transform" in nested_names
+        assert "save" in nested_names
+
+    @pytest.mark.asyncio
+    async def test_deeply_nested_functions(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test functions nested multiple levels deep."""
+        code = """def level0():
+    def level1():
+        def level2():
+            pass
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        func_symbols = [s for s in symbols if s["kind"] == "function"]
+
+        level0 = next(s for s in func_symbols if s["name"] == "level0")
+        assert level0["scope"] is None
+
+        level1 = next(s for s in func_symbols if s["name"] == "level1")
+        assert level1["scope"] == "level0"
+        assert level1["qualified_name"] == "level0.level1"
+
+        level2 = next(s for s in func_symbols if s["name"] == "level2")
+        assert level2["scope"] == "level0.level1"
+        assert level2["qualified_name"] == "level0.level1.level2"
+
+    @pytest.mark.asyncio
+    async def test_nested_function_with_decorator(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that decorated nested functions are extracted."""
+        code = """def outer():
+    @some_decorator
+    def inner():
+        pass
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        inner = next(s for s in func_symbols if s["name"] == "inner")
+        assert inner["scope"] == "outer"
+        assert inner["qualified_name"] == "outer.inner"
+
+    @pytest.mark.asyncio
+    async def test_nested_function_in_decorated_method(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test nested functions inside decorated class methods."""
+        code = """class MyClass:
+    @staticmethod
+    def process():
+        def helper():
+            pass
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        helper = next(s for s in func_symbols if s["name"] == "helper")
+        assert helper["scope"] == "MyClass.process"
+        assert helper["qualified_name"] == "MyClass.process.helper"
