@@ -583,8 +583,8 @@ class TestBranchScopedResolution:
     """Tests for branch-scoped reference resolution via use case."""
 
     @pytest.mark.asyncio
-    async def test_branch_scoped_resolution_only_resolves_branch_refs(self) -> None:
-        """When branch is set, only refs from that branch's files are resolved."""
+    async def test_branch_param_does_not_restrict_resolution(self) -> None:
+        """Branch parameter is accepted but all refs are resolved regardless."""
         commit_repo = InMemoryCommitRepository()
         file_repo = InMemoryFileRepository(commit_repo=commit_repo)
         symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
@@ -700,14 +700,14 @@ class TestBranchScopedResolution:
             )
         )
 
-        # Resolve scoped to "main" via use case
+        # Resolve with branch="main" via use case — all refs resolved
         use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
         response = await use_case.execute(
             ResolveReferencesRequest(repository_id=1, branch="main")
         )
 
-        # Only main ref resolved
-        assert response.resolved_count == 1
+        # Both refs resolved (no source-file filter, repo-wide symbol pool)
+        assert response.resolved_count == 2
 
         main_ref = await ref_repo.find_by_id(1)
         assert main_ref is not None
@@ -715,7 +715,7 @@ class TestBranchScopedResolution:
 
         feat_ref = await ref_repo.find_by_id(2)
         assert feat_ref is not None
-        assert feat_ref.target_symbol_id is None  # NOT resolved
+        assert feat_ref.target_symbol_id == 2
 
     @pytest.mark.asyncio
     async def test_branch_none_resolves_all_refs(self) -> None:
@@ -840,8 +840,8 @@ class TestBranchScopedResolution:
         assert response.resolved_count == 2
 
     @pytest.mark.asyncio
-    async def test_execute_with_progress_passes_branch(self) -> None:
-        """execute_with_progress passes branch to prepare_resolution."""
+    async def test_execute_with_progress_accepts_branch(self) -> None:
+        """execute_with_progress accepts branch parameter."""
         commit_repo = InMemoryCommitRepository()
         file_repo = InMemoryFileRepository(commit_repo=commit_repo)
         symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
@@ -909,6 +909,111 @@ class TestBranchScopedResolution:
             batch_size=100,
         )
 
-        # Verify branch was stored via prepare_resolution
-        assert ref_repo._resolution_branch == "main"
         assert response.resolved_count == 1
+
+    @pytest.mark.asyncio
+    async def test_branch_param_uses_repo_wide_symbols(self) -> None:
+        """References on a branch resolve to symbols from files outside that branch.
+
+        Regression test for issue #98: symbol pool must be repo-wide, not
+        branch-scoped, when resolving branch-scoped references.
+        """
+        commit_repo = InMemoryCommitRepository()
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
+        ref_repo = InMemoryReferenceRepository(
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+        # Main branch commit
+        commit_repo.add(
+            Commit(
+                id=1,
+                repository_id=1,
+                commit_hash=CommitHash("main" + "0" * 36),
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+            )
+        )
+        await commit_repo.link_commit_to_branch(1, 1, "main")
+
+        # Feature branch commit (NOT on main)
+        commit_repo.add(
+            Commit(
+                id=2,
+                repository_id=1,
+                commit_hash=CommitHash("feat" + "0" * 36),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        await commit_repo.link_commit_to_branch(1, 2, "feature")
+
+        # File on main with a reference to "HTTPException"
+        file_repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/api.py",
+                content_hash="hash_api",
+                size_bytes=200,
+                language="python",
+            )
+        )
+        await file_repo.link_file_to_commit(1, 1)
+
+        # File on feature with the target symbol (NOT on main)
+        file_repo.add(
+            File(
+                id=2,
+                repository_id=1,
+                path="lib/exceptions.py",
+                content_hash="hash_exc",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        await file_repo.link_file_to_commit(2, 2)
+
+        # Symbol only on the feature branch's file
+        symbol_repo.add(
+            Symbol(
+                id=1,
+                file_id=2,
+                repository_id=1,
+                name="HTTPException",
+                kind=SymbolKind.CLASS,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            )
+        )
+
+        # Reference on main to HTTPException
+        ref_repo.add(
+            Reference(
+                id=1,
+                repository_id=1,
+                source_file_id=1,
+                source_line=5,
+                source_column=10,
+                source_end_column=23,
+                reference_text="HTTPException",
+                reference_type=ReferenceType.USAGE,
+                target_symbol_id=None,
+            )
+        )
+
+        # Resolve scoped to "main" — should find HTTPException from repo-wide pool
+        use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
+        response = await use_case.execute(
+            ResolveReferencesRequest(repository_id=1, branch="main")
+        )
+
+        assert response.resolved_count == 1
+        ref = await ref_repo.find_by_id(1)
+        assert ref is not None
+        assert ref.target_symbol_id == 1

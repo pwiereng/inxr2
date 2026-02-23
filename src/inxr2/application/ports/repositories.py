@@ -791,9 +791,9 @@ class ReferenceRepositoryPort(ABC):
 
         Args:
             repository_id: The repository ID to resolve references for
-            branch: Optional branch to scope resolution to. When set,
-                only references from files on that branch are resolved,
-                and only symbols from that branch are resolution targets.
+            branch: Accepted for API compatibility but does not affect
+                resolution. All references are resolved using repo-wide
+                latest symbols.
 
         Returns:
             Number of references resolved
@@ -817,10 +817,8 @@ class ReferenceRepositoryPort(ABC):
             repository_id: The repository ID to prepare for
             progress_callback: Optional callback receiving stage descriptions
                 (e.g. "Building same-file index...")
-            branch: Optional branch to scope resolution to. When set,
-                only files from commits on that branch are included in
-                the lookup tables, restricting both symbol targets and
-                source references to that branch.
+            branch: Accepted for API compatibility but does not affect
+                resolution.
         """
         pass
 
