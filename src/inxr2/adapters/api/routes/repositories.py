@@ -25,23 +25,12 @@ from ....infrastructure.dependencies import (
     ListRepositoriesUseCaseDep,
     RepositoryAdapter,
 )
+from ..converters import RepositoryResponse, repository_to_response
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 
 
 # Response models
-class RepositoryResponse(BaseModel):
-    """Repository response model."""
-
-    id: int
-    name: str
-    url: str
-    description: str | None
-    default_branch: str
-    created_at: str | None
-    updated_at: str | None
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class FileResponse(BaseModel):
@@ -120,19 +109,7 @@ async def list_repositories(
     """List all repositories."""
     response = await use_case.execute()
 
-    # Convert to response models
-    return [
-        RepositoryResponse(
-            id=repo.id if repo.id is not None else 0,
-            name=repo.name,
-            url=repo.url,
-            description=repo.description,
-            default_branch=repo.default_branch,
-            created_at=repo.created_at.isoformat() if repo.created_at else None,
-            updated_at=repo.updated_at.isoformat() if repo.updated_at else None,
-        )
-        for repo in response.repositories
-    ]
+    return [repository_to_response(repo) for repo in response.repositories]
 
 
 @router.get("/by-name/{name}", response_model=RepositoryResponse)
@@ -146,15 +123,7 @@ async def get_repository_by_name(
     if not repository:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    return RepositoryResponse(
-        id=repository.id if repository.id is not None else 0,
-        name=repository.name,
-        url=repository.url,
-        description=repository.description,
-        default_branch=repository.default_branch,
-        created_at=repository.created_at.isoformat() if repository.created_at else None,
-        updated_at=repository.updated_at.isoformat() if repository.updated_at else None,
-    )
+    return repository_to_response(repository)
 
 
 def _tree_node_to_response(node: TreeNode) -> TreeNodeResponse:
@@ -260,15 +229,7 @@ async def get_repository(
     if not repository:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    return RepositoryResponse(
-        id=repository.id if repository.id is not None else 0,
-        name=repository.name,
-        url=repository.url,
-        description=repository.description,
-        default_branch=repository.default_branch,
-        created_at=repository.created_at.isoformat() if repository.created_at else None,
-        updated_at=repository.updated_at.isoformat() if repository.updated_at else None,
-    )
+    return repository_to_response(repository)
 
 
 @router.get("/{repository_id}/files", response_model=list[FileResponse])
