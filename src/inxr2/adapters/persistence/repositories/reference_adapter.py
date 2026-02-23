@@ -27,6 +27,7 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         self.session = session
         self.mapper = ReferenceMapper()
         self._resolution_tables_for_repo_id: int | None = None
+        self._resolution_branch: str | None = None
 
     async def save(self, reference: Reference) -> Reference:
         """Save or update a reference."""
@@ -283,7 +284,28 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         return result.rowcount or 0  # type: ignore[attr-defined]
 
     async def count_unresolved_references(self, repository_id: int) -> int:
-        """Count references that don't have a target_symbol_id set."""
+        """Count references that don't have a target_symbol_id set.
+
+        When branch-scoped temp tables exist (from prepare_resolution),
+        restricts the count to references whose source_file_id is in the
+        branch-scoped _resolve_latest_files table.
+        """
+        if self._resolution_tables_for_repo_id == repository_id:
+            # Use branch-scoped temp table for an accurate count
+            result = await self.session.execute(
+                text("""
+                    SELECT COUNT(*)
+                    FROM "references" r
+                    WHERE r.repository_id = :repo_id
+                      AND r.target_symbol_id IS NULL
+                      AND r.source_file_id IN (
+                          SELECT file_id FROM _resolve_latest_files
+                      )
+                """),
+                {"repo_id": repository_id},
+            )
+            return result.scalar() or 0
+
         result = await self.session.execute(
             select(func.count(ReferenceModel.id)).where(
                 ReferenceModel.repository_id == repository_id,
@@ -296,6 +318,7 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         self,
         repository_id: int,
         progress_callback: Callable[[str], None] | None = None,
+        branch: str | None = None,
     ) -> None:
         """Create temp tables for symbol resolution, restricted to latest files.
 
@@ -308,8 +331,15 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         session. Only symbols from the latest version of each file path are
         included, avoiding the O(commits x symbols) scan of all historical
         file versions.
+
+        When branch is set, only files from commits on that branch are
+        included in the latest-files temp table, scoping both symbol
+        targets and source references to the current branch.
         """
-        if self._resolution_tables_for_repo_id == repository_id:
+        if (
+            self._resolution_tables_for_repo_id == repository_id
+            and self._resolution_branch == branch
+        ):
             return
 
         def _report(msg: str) -> None:
@@ -329,13 +359,38 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
 
         # Step 0: Compute latest file IDs once (expensive window function)
         _report("Finding latest file versions...")
-        await self.session.execute(
-            text(f"""
-                CREATE TEMP TABLE _resolve_latest_files AS
-                {LATEST_FILE_IDS_SQL}
-            """),
-            {"repo_id": repository_id},
-        )
+        if branch is not None:
+            # Branch-scoped: only consider files from commits on this branch
+            await self.session.execute(
+                text("""
+                    CREATE TEMP TABLE _resolve_latest_files AS
+                    SELECT sub.file_id FROM (
+                        SELECT f.id AS file_id,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY f.repository_id, f.path
+                                   ORDER BY c.commit_date DESC, c.id DESC
+                               ) AS rn
+                        FROM files f
+                        JOIN commit_files cf ON cf.file_id = f.id
+                        JOIN commits c ON c.id = cf.commit_id
+                        JOIN branch_commits bc
+                            ON bc.commit_id = cf.commit_id
+                            AND bc.repository_id = f.repository_id
+                        WHERE f.repository_id = :repo_id
+                          AND bc.branch = :branch
+                    ) sub
+                    WHERE sub.rn = 1
+                """),
+                {"repo_id": repository_id, "branch": branch},
+            )
+        else:
+            await self.session.execute(
+                text(f"""
+                    CREATE TEMP TABLE _resolve_latest_files AS
+                    {LATEST_FILE_IDS_SQL}
+                """),
+                {"repo_id": repository_id},
+            )
         await self.session.execute(
             text("CREATE INDEX ON _resolve_latest_files (file_id)")
         )
@@ -391,6 +446,7 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         await self.session.execute(text("CREATE INDEX ON _resolve_pass3 (name)"))
 
         self._resolution_tables_for_repo_id = repository_id
+        self._resolution_branch = branch
 
     async def _drop_resolution_tables(self) -> None:
         """Drop resolution temp tables."""
@@ -404,14 +460,16 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                 text(f"DROP TABLE IF EXISTS {table}")  # noqa: S608
             )
         self._resolution_tables_for_repo_id = None
+        self._resolution_branch = None
 
     async def prepare_resolution(
         self,
         repository_id: int,
         progress_callback: Callable[[str], None] | None = None,
+        branch: str | None = None,
     ) -> None:
         """Pre-compute temp tables for reference resolution."""
-        await self._ensure_resolution_tables(repository_id, progress_callback)
+        await self._ensure_resolution_tables(repository_id, progress_callback, branch)
 
     async def resolve_references_batch(
         self,
@@ -430,7 +488,10 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         2. Same language - cross-file but same language preferred
         3. Lowest symbol ID - deterministic tiebreaker for consistency
         """
-        await self._ensure_resolution_tables(repository_id)
+        # Use the cached branch so we don't invalidate already-prepared tables
+        await self._ensure_resolution_tables(
+            repository_id, branch=self._resolution_branch
+        )
 
         total_resolved = 0
 
@@ -447,6 +508,9 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                         AND r.source_file_id = p1.file_id
                     WHERE r.repository_id = :repo_id
                       AND r.target_symbol_id IS NULL
+                      AND r.source_file_id IN (
+                          SELECT file_id FROM _resolve_latest_files
+                      )
                     LIMIT :batch_size
                 ) sub
                 WHERE "references".id = sub.ref_id
@@ -472,6 +536,9 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                             AND rf.language = p2.language
                         WHERE r.repository_id = :repo_id
                           AND r.target_symbol_id IS NULL
+                          AND r.source_file_id IN (
+                              SELECT file_id FROM _resolve_latest_files
+                          )
                         LIMIT :batch_size
                     ) sub
                     WHERE "references".id = sub.ref_id
@@ -494,6 +561,9 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                             ON r.reference_text = p3.name
                         WHERE r.repository_id = :repo_id
                           AND r.target_symbol_id IS NULL
+                          AND r.source_file_id IN (
+                              SELECT file_id FROM _resolve_latest_files
+                          )
                         LIMIT :batch_size
                     ) sub
                     WHERE "references".id = sub.ref_id
@@ -504,14 +574,19 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
 
         return total_resolved
 
-    async def resolve_unlinked_references(self, repository_id: int) -> int:
+    async def resolve_unlinked_references(
+        self, repository_id: int, branch: str | None = None
+    ) -> int:
         """Resolve references to their target symbols.
 
         Uses the same 3-pass priority as resolve_references_batch
         (same-file > same-language > lowest-id) but without batching.
         Restricts to latest file versions only.
+
+        When branch is set, only references from files on that branch
+        are resolved, and only symbols from that branch are targets.
         """
-        await self._ensure_resolution_tables(repository_id)
+        await self._ensure_resolution_tables(repository_id, branch=branch)
 
         total_resolved = 0
 
@@ -528,6 +603,9 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                         AND r.source_file_id = p1.file_id
                     WHERE r.repository_id = :repo_id
                       AND r.target_symbol_id IS NULL
+                      AND r.source_file_id IN (
+                          SELECT file_id FROM _resolve_latest_files
+                      )
                 ) sub
                 WHERE "references".id = sub.ref_id
             """),
@@ -549,6 +627,9 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                         AND rf.language = p2.language
                     WHERE r.repository_id = :repo_id
                       AND r.target_symbol_id IS NULL
+                      AND r.source_file_id IN (
+                          SELECT file_id FROM _resolve_latest_files
+                      )
                 ) sub
                 WHERE "references".id = sub.ref_id
             """),
@@ -568,6 +649,9 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
                         ON r.reference_text = p3.name
                     WHERE r.repository_id = :repo_id
                       AND r.target_symbol_id IS NULL
+                      AND r.source_file_id IN (
+                          SELECT file_id FROM _resolve_latest_files
+                      )
                 ) sub
                 WHERE "references".id = sub.ref_id
             """),

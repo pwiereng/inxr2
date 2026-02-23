@@ -1354,6 +1354,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         self._symbol_repo = symbol_repo
         self._file_repo = file_repo
         self._commit_repo = commit_repo
+        self._resolution_branch: str | None = None
 
     async def save(self, reference: Reference) -> Reference:
         """Save reference to in-memory storage."""
@@ -1542,12 +1543,25 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         return len(to_delete)
 
     async def count_unresolved_references(self, repository_id: int) -> int:
-        """Count references that don't have a target_symbol_id set."""
+        """Count references that don't have a target_symbol_id set.
+
+        When _resolution_branch is set (via prepare_resolution), restricts
+        the count to references whose source_file_id is in the branch-scoped
+        latest file IDs, matching the Postgres adapter behavior.
+        """
+        latest_file_ids: set[int] | None = None
+        if self._resolution_branch is not None and self._file_repo is not None:
+            latest_file_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=self._resolution_branch
+            )
+
         return len(
             [
                 r
                 for r in self._references.values()
-                if r.repository_id == repository_id and r.target_symbol_id is None
+                if r.repository_id == repository_id
+                and r.target_symbol_id is None
+                and (latest_file_ids is None or r.source_file_id in latest_file_ids)
             ]
         )
 
@@ -1555,9 +1569,10 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         self,
         repository_id: int,
         progress_callback: Callable[[str], None] | None = None,
+        branch: str | None = None,
     ) -> None:
-        """No-op for in-memory implementation."""
-        pass
+        """Store branch for subsequent resolution calls."""
+        self._resolution_branch = branch
 
     async def resolve_references_batch(
         self,
@@ -1568,6 +1583,8 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
 
         Restricts symbol candidates to the latest version of each file path,
         matching the Postgres behavior that filters via commit_files.
+        When _resolution_branch is set, also restricts source refs to files
+        on that branch.
         """
         if self._symbol_repo is None:
             return 0
@@ -1575,7 +1592,9 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         # Compute latest file IDs once per batch (matches Postgres temp tables)
         latest_file_ids: set[int] | None = None
         if self._file_repo is not None:
-            latest_file_ids = self._file_repo._compute_latest_file_ids(repository_id)
+            latest_file_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=self._resolution_branch
+            )
 
         resolved_count = 0
         updated_refs: dict[int, Reference] = {}
@@ -1585,6 +1604,13 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 break
 
             if ref.target_symbol_id is not None or ref.repository_id != repository_id:
+                continue
+
+            # When branch-scoped, skip refs not from branch files
+            if (
+                latest_file_ids is not None
+                and ref.source_file_id not in latest_file_ids
+            ):
                 continue
 
             candidates: list[Symbol] = [
@@ -1669,11 +1695,14 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         candidates.sort(key=sort_key)
         return candidates[0]
 
-    async def resolve_unlinked_references(self, repository_id: int) -> int:
+    async def resolve_unlinked_references(
+        self, repository_id: int, branch: str | None = None
+    ) -> int:
         """Resolve references to their target symbols.
 
         Restricts symbol candidates to the latest version of each file path,
         matching the Postgres behavior that filters via commit_files.
+        When branch is set, also restricts source refs to files on that branch.
         """
         if self._symbol_repo is None:
             return 0
@@ -1681,13 +1710,22 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         # Compute latest file IDs once (matches Postgres latest-file filter)
         latest_file_ids: set[int] | None = None
         if self._file_repo is not None:
-            latest_file_ids = self._file_repo._compute_latest_file_ids(repository_id)
+            latest_file_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=branch
+            )
 
         resolved_count = 0
         updated_refs: dict[int, Reference] = {}
 
         for ref_id, ref in self._references.items():
             if ref.target_symbol_id is not None or ref.repository_id != repository_id:
+                continue
+
+            # When branch-scoped, skip refs not from branch files
+            if (
+                latest_file_ids is not None
+                and ref.source_file_id not in latest_file_ids
+            ):
                 continue
 
             candidates: list[Symbol] = [
