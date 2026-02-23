@@ -232,10 +232,11 @@ class PythonParser(BaseLanguageParser):
             method_name = get_text(name_node)
             symbols.append(self._make_symbol(method_name, "method", node, class_name))
 
-            # Look for instance variable assignments (self.x = ...)
+            # Look for instance variable assignments and nested functions
             for child in node.children:
                 if child.type == "block":
                     process_method_body(child, class_name, method_name)
+                    process_nested_functions(child, f"{class_name}.{method_name}")
 
         def process_method_body(node: Node, class_name: str, method_name: str) -> None:
             """Process method body for instance variable assignments."""
@@ -371,11 +372,13 @@ class PythonParser(BaseLanguageParser):
                 )
             )
 
-            # If it's a method, check for instance variables
-            if class_name and func_def:
+            # Process body of decorated function/method
+            if func_def:
                 for child in func_def.children:
                     if child.type == "block":
-                        process_method_body(child, class_name, func_name)
+                        if class_name:
+                            process_method_body(child, class_name, func_name)
+                        process_nested_functions(child, qualified)
 
         def process_function(node: Node, scope: str | None = None) -> None:
             """Process a standalone function definition."""
@@ -391,6 +394,76 @@ class PythonParser(BaseLanguageParser):
 
             func_name = get_text(name_node)
             symbols.append(self._make_symbol(func_name, "function", node, scope))
+
+            # Extract nested functions
+            parent_qualified = f"{scope}.{func_name}" if scope else func_name
+            for child in node.children:
+                if child.type == "block":
+                    process_nested_functions(child, parent_qualified)
+
+        def process_nested_functions(block: Node, parent_qualified_name: str) -> None:
+            """Recursively extract nested function definitions from a block."""
+            for child in block.children:
+                if child.type == "function_definition":
+                    name_node = child.child_by_field_name("name")
+                    if not name_node:
+                        for sub in child.children:
+                            if sub.type == "identifier":
+                                name_node = sub
+                                break
+                    if name_node:
+                        func_name = get_text(name_node)
+                        symbols.append(
+                            self._make_symbol(
+                                func_name,
+                                "function",
+                                child,
+                                parent_qualified_name,
+                            )
+                        )
+                        nested_qualified = f"{parent_qualified_name}.{func_name}"
+                        for sub in child.children:
+                            if sub.type == "block":
+                                process_nested_functions(sub, nested_qualified)
+                elif child.type == "decorated_definition":
+                    func_def = None
+                    for sub in child.children:
+                        if sub.type == "function_definition":
+                            func_def = sub
+                            break
+                    if func_def:
+                        name_node = func_def.child_by_field_name("name")
+                        if not name_node:
+                            for sub in func_def.children:
+                                if sub.type == "identifier":
+                                    name_node = sub
+                                    break
+                        if name_node:
+                            func_name = get_text(name_node)
+                            symbols.append(
+                                self._make_symbol(
+                                    func_name,
+                                    "function",
+                                    func_def,
+                                    parent_qualified_name,
+                                    end_line=child.end_point[0] + 1,
+                                    end_column=child.end_point[1],
+                                )
+                            )
+                            nested_qualified = f"{parent_qualified_name}.{func_name}"
+                            for sub in func_def.children:
+                                if sub.type == "block":
+                                    process_nested_functions(sub, nested_qualified)
+                elif child.type in (
+                    "if_statement",
+                    "for_statement",
+                    "while_statement",
+                    "with_statement",
+                    "try_statement",
+                ):
+                    for sub in child.children:
+                        if sub.type == "block":
+                            process_nested_functions(sub, parent_qualified_name)
 
         def process_module_assignment(node: Node) -> None:
             """Process a module-level assignment (constant)."""
