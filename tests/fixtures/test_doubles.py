@@ -1566,12 +1566,12 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     ) -> int:
         """Resolve a batch of unlinked references.
 
-        Uses two file sets matching the Postgres adapter behavior:
-        - Branch-scoped file IDs for source ref filtering (which refs to process)
-        - Repo-wide file IDs for symbol candidate filtering (which symbols to match)
+        Processes all unresolved references for the repository and uses
+        repo-wide latest file IDs for symbol candidate filtering (which
+        symbols to match).
 
-        This ensures references on a branch can resolve to symbols in any
-        file in the repo, not just files modified on that branch.
+        This ensures references can resolve to symbols in any file in the
+        repository, not just files modified on a particular branch.
         """
         if self._symbol_repo is None:
             return 0

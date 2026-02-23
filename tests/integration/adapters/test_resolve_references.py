@@ -980,8 +980,8 @@ class TestBranchScopedResolution:
         ids = await self._create_two_branch_setup(db_session)
         ref_adapter = PostgresReferenceRepository(db_session)
 
-        # Prepare for "main" branch — affects count and symbol pool, but
-        # all refs are still resolved (no source-file filter on UPDATEs).
+        # Prepare for "main" branch — branch argument is kept for API
+        # compatibility; resolution is always global/repo-wide.
         await ref_adapter.prepare_resolution(
             repository_id=ids["repo_id"], branch="main"
         )
