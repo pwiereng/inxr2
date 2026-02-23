@@ -1557,7 +1557,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         progress_callback: Callable[[str], None] | None = None,
         branch: str | None = None,
     ) -> None:
-        """Store branch for subsequent resolution calls."""
+        """No-op; branch accepted for API compatibility."""
 
     async def resolve_references_batch(
         self,
