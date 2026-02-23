@@ -983,3 +983,54 @@ class TestPythonNestedFunctions:
         helper = next(s for s in func_symbols if s["name"] == "helper")
         assert helper["scope"] == "MyClass.process"
         assert helper["qualified_name"] == "MyClass.process.helper"
+
+    @pytest.mark.asyncio
+    async def test_nested_function_inside_control_structure(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test nested function defined inside a control structure in a method."""
+        code = """class Parser:
+    def process(self, items):
+        for item in items:
+            if item.valid:
+                def handle(x):
+                    pass
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        handle = next(s for s in func_symbols if s["name"] == "handle")
+        assert handle["scope"] == "Parser.process"
+        assert handle["qualified_name"] == "Parser.process.handle"
+
+    @pytest.mark.asyncio
+    async def test_nested_function_coexists_with_instance_variables(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that nested functions and instance variables are both extracted."""
+        code = """class Service:
+    def __init__(self, config):
+        self.config = config
+        self._cache = {}
+
+        def build_key(item):
+            return str(item)
+
+        self._key_builder = build_key
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        instance_vars = [s for s in symbols if s["kind"] == "instance_variable"]
+        var_names = [s["name"] for s in instance_vars]
+        assert "config" in var_names
+        assert "_cache" in var_names
+        assert "_key_builder" in var_names
+
+        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        build_key = next(s for s in func_symbols if s["name"] == "build_key")
+        assert build_key["scope"] == "Service.__init__"
+        assert build_key["qualified_name"] == "Service.__init__.build_key"
