@@ -9,7 +9,6 @@ ProcessCommitUseCase) while keeping the orchestration logic here.
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
 
 from inxr2.domain.entities import IndexStatus
 
@@ -26,6 +25,7 @@ from ...ports.services import (
     CommitInfo,
     GitServicePort,
     IndexingOrchestratorPort,
+    ParserServicePort,
     PlaintextParserPort,
 )
 from .orchestrator import (
@@ -91,7 +91,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         index_status_repo: IndexStatusRepositoryPort,
         text_content_repo: TextContentRepositoryPort,
         git_service: GitServicePort,
-        parser_service: Any,  # ParserServicePort
+        parser_service: ParserServicePort,
         plaintext_parser: PlaintextParserPort,
         pre_resolve_callback: Callable[[], Awaitable[None]] | None = None,
         post_commit_callback: Callable[[], Awaitable[None]] | None = None,

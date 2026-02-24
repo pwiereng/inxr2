@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from inxr2.application.ports.services import CommitInfo
+from inxr2.application.ports.services import CommitInfo, ParserServicePort
 from inxr2.application.use_cases.indexing.process_commit import (
     ProcessCommitRequest,
     ProcessCommitUseCase,
@@ -22,7 +22,7 @@ from tests.fixtures.test_doubles import (
 )
 
 
-class FakeParserService:
+class FakeParserService(ParserServicePort):
     """Fake parser service for testing."""
 
     def supports_language(self, language: str) -> bool:

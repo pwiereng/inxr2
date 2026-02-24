@@ -9,7 +9,6 @@ during indexing. Uses content-addressable file versioning: if a file version
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from inxr2.domain.entities import (
     Reference,
@@ -29,7 +28,7 @@ from ...ports.repositories import (
     SymbolRepositoryPort,
     TextContentRepositoryPort,
 )
-from ...ports.services import GitServicePort, PlaintextParserPort
+from ...ports.services import GitServicePort, ParserServicePort, PlaintextParserPort
 
 
 @dataclass
@@ -83,7 +82,7 @@ class ProcessFileUseCase:
         symbol_repo: SymbolRepositoryPort,
         reference_repo: ReferenceRepositoryPort,
         text_content_repo: TextContentRepositoryPort,
-        parser_service: Any,  # ParserServicePort
+        parser_service: ParserServicePort,
         plaintext_parser: PlaintextParserPort,
     ) -> None:
         self._git_service = git_service
