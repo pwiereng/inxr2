@@ -30,7 +30,7 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
-import { highlightMatches } from '@/lib/highlightMatches'
+import { highlightMatches, sanitizeHeadline } from '@/lib/highlightMatches'
 import {
   searchText,
   searchFiles,
@@ -988,19 +988,23 @@ export default function Search() {
                                     wordBreak: 'break-word',
                                   }}
                                 >
-                                  {result.kind === 'symbol'
-                                    ? highlightMatches(
-                                        result.data.signature ||
-                                          result.data.qualified_name ||
-                                          result.data.name,
-                                        query,
-                                        'keyword'
-                                      )
-                                    : highlightMatches(
-                                        result.data.headline || result.data.content,
-                                        query,
-                                        mode
-                                      )}
+                                  {result.kind === 'symbol' ? (
+                                    highlightMatches(
+                                      result.data.signature ||
+                                        result.data.qualified_name ||
+                                        result.data.name,
+                                      query,
+                                      'keyword'
+                                    )
+                                  ) : result.data.headline ? (
+                                    <span
+                                      dangerouslySetInnerHTML={{
+                                        __html: sanitizeHeadline(result.data.headline),
+                                      }}
+                                    />
+                                  ) : (
+                                    highlightMatches(result.data.content, query, mode)
+                                  )}
                                 </Typography>
                               }
                             />
