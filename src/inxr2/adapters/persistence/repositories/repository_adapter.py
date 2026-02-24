@@ -11,10 +11,15 @@ from ....application.ports.repositories import RepositoryPort
 from ....domain.entities import Repository
 from ..mappers import RepositoryMapper
 from ..models import RepositoryModel
+from .base_repository import BaseSQLAlchemyRepository
 
 
-class PostgresRepositoryAdapter(RepositoryPort):
+class PostgresRepositoryAdapter(
+    BaseSQLAlchemyRepository[Repository, RepositoryModel], RepositoryPort
+):
     """PostgreSQL implementation of RepositoryPort."""
+
+    _model_class = RepositoryModel
 
     def __init__(self, session: AsyncSession):
         """
@@ -23,33 +28,8 @@ class PostgresRepositoryAdapter(RepositoryPort):
         Args:
             session: SQLAlchemy async session
         """
-        self.session = session
+        super().__init__(session)
         self.mapper = RepositoryMapper()
-
-    async def save(self, repository: Repository) -> Repository:
-        """Save or update a repository."""
-        model = self.mapper.to_model(repository)
-
-        if repository.id is None:
-            # New repository - add to session
-            self.session.add(model)
-        else:
-            # Existing repository - merge
-            model = await self.session.merge(model)
-
-        await self.session.flush()
-        await self.session.refresh(model)
-
-        return self.mapper.to_domain(model)
-
-    async def find_by_id(self, repository_id: int) -> Repository | None:
-        """Find repository by ID."""
-        result = await self.session.execute(
-            select(RepositoryModel).where(RepositoryModel.id == repository_id)
-        )
-        model = result.scalar_one_or_none()
-
-        return self.mapper.to_domain(model) if model else None
 
     async def find_by_ids(self, repository_ids: list[int]) -> list[Repository]:
         """Find multiple repositories by IDs in a single query."""

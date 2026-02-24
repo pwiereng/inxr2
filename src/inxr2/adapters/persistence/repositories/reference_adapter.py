@@ -12,6 +12,7 @@ from ..mappers import ReferenceMapper
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.reference import ReferenceModel
+from .base_repository import BaseSQLAlchemyRepository
 from .regex_utils import translate_word_boundaries, validate_regex_pattern
 from .shared_queries import (
     LATEST_FILE_IDS_SQL,
@@ -20,27 +21,17 @@ from .shared_queries import (
 )
 
 
-class PostgresReferenceRepository(ReferenceRepositoryPort):
+class PostgresReferenceRepository(
+    BaseSQLAlchemyRepository[Reference, ReferenceModel], ReferenceRepositoryPort
+):
     """PostgreSQL implementation of ReferenceRepositoryPort."""
 
+    _model_class = ReferenceModel
+
     def __init__(self, session: AsyncSession):
-        self.session = session
+        super().__init__(session)
         self.mapper = ReferenceMapper()
         self._resolution_tables_for_repo_id: int | None = None
-
-    async def save(self, reference: Reference) -> Reference:
-        """Save or update a reference."""
-        model = self.mapper.to_model(reference)
-
-        if reference.id is None:
-            self.session.add(model)
-        else:
-            model = await self.session.merge(model)
-
-        await self.session.flush()
-        await self.session.refresh(model)
-
-        return self.mapper.to_domain(model)
 
     async def save_many(self, references: list[Reference]) -> list[Reference]:
         """Bulk save references for performance."""
@@ -55,14 +46,6 @@ class PostgresReferenceRepository(ReferenceRepositoryPort):
         await self.session.flush()
 
         return [self.mapper.to_domain(model) for model in models]
-
-    async def find_by_id(self, reference_id: int) -> Reference | None:
-        """Find reference by ID."""
-        result = await self.session.execute(
-            select(ReferenceModel).where(ReferenceModel.id == reference_id)
-        )
-        model = result.scalar_one_or_none()
-        return self.mapper.to_domain(model) if model else None
 
     async def find_references_to_symbol(
         self,
