@@ -10,7 +10,7 @@ from ....application.use_cases.search import SearchFilesRequest, SearchTextReque
 from ....domain.exceptions import CommitNotFound, RepositoryNotFound
 from ....domain.value_objects import QueryMode, TextSearchSourceType
 from ....infrastructure.dependencies import (
-    FileAdapter,
+    FileSearchAdapter,
     SearchFilesUseCaseDep,
     SearchTextUseCaseDep,
 )
@@ -320,7 +320,7 @@ class ExtensionsResponse(BaseModel):
 
 @router.get("/extensions", response_model=ExtensionsResponse)
 async def get_extensions(
-    file_adapter: FileAdapter,
+    file_adapter: FileSearchAdapter,
     repository_id: int | None = Query(None, description="Repository ID filter"),
     branch: str | None = Query(None, description="Branch filter"),
     scope: Literal["latest"] = Query(

@@ -8,6 +8,7 @@ import asyncio
 from ...ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
+    FileVersionPort,
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
@@ -26,6 +27,7 @@ class GetAllRepositoryStatsUseCase:
         self,
         repository_repo: RepositoryPort,
         file_repo: FileRepositoryPort,
+        file_version_repo: FileVersionPort,
         symbol_repo: SymbolRepositoryPort,
         reference_repo: ReferenceRepositoryPort,
         commit_repo: CommitRepositoryPort,
@@ -34,6 +36,7 @@ class GetAllRepositoryStatsUseCase:
         self._stats_use_case = GetRepositoryStatsUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             commit_repo=commit_repo,

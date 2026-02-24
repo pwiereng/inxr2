@@ -10,6 +10,7 @@ from inxr2.domain.value_objects import CommitHash, ReferenceType, SymbolKind
 from tests.fixtures.test_doubles import (
     InMemoryCommitRepository,
     InMemoryFileRepository,
+    InMemoryFileVersionRepository,
     InMemoryReferenceRepository,
     InMemoryRepositoryRepository,
     InMemorySymbolRepository,
@@ -104,9 +105,11 @@ class TestGetAllRepositoryStatsUseCase:
             )
         )
 
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetAllRepositoryStatsUseCase(
             repository_repo=repo_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             commit_repo=commit_repo,
@@ -130,9 +133,12 @@ class TestGetAllRepositoryStatsUseCase:
     @pytest.mark.asyncio
     async def test_returns_empty_list_when_no_repositories(self) -> None:
         """Should return empty list when there are no repositories."""
+        file_repo = InMemoryFileRepository()
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetAllRepositoryStatsUseCase(
             repository_repo=InMemoryRepositoryRepository(),
-            file_repo=InMemoryFileRepository(),
+            file_repo=file_repo,
+            file_version_repo=file_version_repo,
             symbol_repo=InMemorySymbolRepository(),
             reference_repo=InMemoryReferenceRepository(),
             commit_repo=InMemoryCommitRepository(),
@@ -148,9 +154,12 @@ class TestGetAllRepositoryStatsUseCase:
         repo_repo = InMemoryRepositoryRepository()
         repo_repo.add(Repository(id=1, name="repo-x", url="/x", default_branch="main"))
 
+        file_repo = InMemoryFileRepository()
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetAllRepositoryStatsUseCase(
             repository_repo=repo_repo,
-            file_repo=InMemoryFileRepository(),
+            file_repo=file_repo,
+            file_version_repo=file_version_repo,
             symbol_repo=InMemorySymbolRepository(),
             reference_repo=InMemoryReferenceRepository(),
             commit_repo=InMemoryCommitRepository(),

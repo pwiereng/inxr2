@@ -11,6 +11,7 @@ from inxr2.domain.value_objects import CommitHash
 from tests.fixtures.test_doubles import (
     InMemoryCommitRepository,
     InMemoryFileRepository,
+    InMemoryFileSearchRepository,
     InMemoryRepositoryRepository,
 )
 
@@ -92,8 +93,9 @@ class TestSearchFilesUseCase:
         commit_repo: InMemoryCommitRepository,
     ) -> SearchFilesUseCase:
         """Create the use case with all dependencies."""
+        file_search_repo = InMemoryFileSearchRepository(file_repo)
         return SearchFilesUseCase(
-            file_repo=file_repo,
+            file_search_repo=file_search_repo,
             repository_repo=repository_repo,
             commit_repo=commit_repo,
         )
@@ -311,8 +313,9 @@ class TestSearchFilesGlobalScope:
         repository_repo: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
     ) -> SearchFilesUseCase:
+        file_search_repo = InMemoryFileSearchRepository(file_repo)
         return SearchFilesUseCase(
-            file_repo=file_repo,
+            file_search_repo=file_search_repo,
             repository_repo=repository_repo,
             commit_repo=commit_repo,
         )
@@ -428,8 +431,9 @@ class TestSearchFilesExtensionFilter:
         repository_repo: InMemoryRepositoryRepository,
         commit_repo: InMemoryCommitRepository,
     ) -> SearchFilesUseCase:
+        file_search_repo = InMemoryFileSearchRepository(file_repo)
         return SearchFilesUseCase(
-            file_repo=file_repo,
+            file_search_repo=file_search_repo,
             repository_repo=repository_repo,
             commit_repo=commit_repo,
         )
@@ -480,14 +484,16 @@ class TestSearchFilesExtensionFilter:
         self, file_repo: InMemoryFileRepository
     ) -> None:
         """get_distinct_extensions returns sorted unique extensions."""
-        extensions = await file_repo.get_distinct_extensions(repository_id=1)
+        search_repo = InMemoryFileSearchRepository(file_repo)
+        extensions = await search_repo.get_distinct_extensions(repository_id=1)
 
         assert extensions == [".py", ".ts", ".tsx"]
 
     @pytest.mark.asyncio
     async def test_get_distinct_extensions_empty(self) -> None:
         """get_distinct_extensions returns empty list when no files exist."""
-        repo = InMemoryFileRepository()
-        extensions = await repo.get_distinct_extensions()
+        file_repo = InMemoryFileRepository()
+        search_repo = InMemoryFileSearchRepository(file_repo)
+        extensions = await search_repo.get_distinct_extensions()
 
         assert extensions == []

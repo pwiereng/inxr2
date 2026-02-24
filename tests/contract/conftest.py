@@ -18,6 +18,8 @@ from inxr2.adapters.persistence.models import Base
 from inxr2.adapters.persistence.repositories import (
     PostgresCommitRepository,
     PostgresFileRepository,
+    PostgresFileSearchRepository,
+    PostgresFileVersionRepository,
     PostgresReferenceRepository,
     PostgresRepositoryAdapter,
     PostgresSymbolRepository,
@@ -25,6 +27,8 @@ from inxr2.adapters.persistence.repositories import (
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
+    FileSearchPort,
+    FileVersionPort,
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
@@ -32,6 +36,8 @@ from inxr2.application.ports.repositories import (
 from tests.fixtures.test_doubles import (
     InMemoryCommitRepository,
     InMemoryFileRepository,
+    InMemoryFileSearchRepository,
+    InMemoryFileVersionRepository,
     InMemoryReferenceRepository,
     InMemoryRepositoryRepository,
     InMemorySymbolRepository,
@@ -55,6 +61,8 @@ class Repos:
     repository: RepositoryPort
     commit: CommitRepositoryPort
     file: FileRepositoryPort
+    file_search: FileSearchPort
+    file_version: FileVersionPort
     symbol: SymbolRepositoryPort
     reference: ReferenceRepositoryPort
 
@@ -127,6 +135,8 @@ async def repos(impl: str, db_session: AsyncSession) -> Repos:
     if impl == "fake":
         commit_repo = InMemoryCommitRepository()
         file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        file_search_repo = InMemoryFileSearchRepository(file_repo)
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
         ref_repo = InMemoryReferenceRepository(
             symbol_repo=symbol_repo,
@@ -138,6 +148,8 @@ async def repos(impl: str, db_session: AsyncSession) -> Repos:
             repository=repo_repo,
             commit=commit_repo,
             file=file_repo,
+            file_search=file_search_repo,
+            file_version=file_version_repo,
             symbol=symbol_repo,
             reference=ref_repo,
         )
@@ -146,6 +158,8 @@ async def repos(impl: str, db_session: AsyncSession) -> Repos:
             repository=PostgresRepositoryAdapter(db_session),
             commit=PostgresCommitRepository(db_session),
             file=PostgresFileRepository(db_session),
+            file_search=PostgresFileSearchRepository(db_session),
+            file_version=PostgresFileVersionRepository(db_session),
             symbol=PostgresSymbolRepository(db_session),
             reference=PostgresReferenceRepository(db_session),
         )

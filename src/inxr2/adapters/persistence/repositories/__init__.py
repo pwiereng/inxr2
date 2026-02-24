@@ -2,6 +2,8 @@
 
 from .commit_adapter import PostgresCommitRepository
 from .file_adapter import PostgresFileRepository
+from .file_search_adapter import PostgresFileSearchRepository
+from .file_version_adapter import PostgresFileVersionRepository
 from .index_status_adapter import PostgresIndexStatusRepository
 from .postgres_text_search import PostgresTextSearch
 from .reference_adapter import PostgresReferenceRepository
@@ -12,6 +14,8 @@ from .text_content_adapter import PostgresTextContentRepository
 __all__ = [
     "PostgresCommitRepository",
     "PostgresFileRepository",
+    "PostgresFileSearchRepository",
+    "PostgresFileVersionRepository",
     "PostgresIndexStatusRepository",
     "PostgresReferenceRepository",
     "PostgresRepositoryAdapter",

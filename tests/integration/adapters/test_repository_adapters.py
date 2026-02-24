@@ -13,6 +13,9 @@ from inxr2.adapters.persistence.repositories.commit_adapter import (
     PostgresCommitRepository,
 )
 from inxr2.adapters.persistence.repositories.file_adapter import PostgresFileRepository
+from inxr2.adapters.persistence.repositories.file_version_adapter import (
+    PostgresFileVersionRepository,
+)
 from inxr2.adapters.persistence.repositories.reference_adapter import (
     PostgresReferenceRepository,
 )
@@ -431,7 +434,8 @@ class TestPostgresFileRepository:
         await file_adapter.link_files_to_commit(file_ids, saved_commit.id)
 
         # Act
-        found_files = await file_adapter.list_by_commit(saved_commit.id)
+        file_version_adapter = PostgresFileVersionRepository(db_session)
+        found_files = await file_version_adapter.list_by_commit(saved_commit.id)
 
         # Assert
         assert len(found_files) >= 3
