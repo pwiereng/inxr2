@@ -11,6 +11,12 @@ from inxr2.adapters.persistence.repositories.commit_adapter import (
     PostgresCommitRepository,
 )
 from inxr2.adapters.persistence.repositories.file_adapter import PostgresFileRepository
+from inxr2.adapters.persistence.repositories.file_search_adapter import (
+    PostgresFileSearchRepository,
+)
+from inxr2.adapters.persistence.repositories.file_version_adapter import (
+    PostgresFileVersionRepository,
+)
 from inxr2.adapters.persistence.repositories.index_status_adapter import (
     PostgresIndexStatusRepository,
 )
@@ -23,6 +29,7 @@ from inxr2.adapters.persistence.repositories.repository_adapter import (
 from inxr2.adapters.persistence.repositories.symbol_adapter import (
     PostgresSymbolRepository,
 )
+from inxr2.application.ports.repositories import FileSearchPort, FileVersionPort
 from inxr2.application.use_cases.indexing.index_local_directory import (
     IndexLocalDirectoryUseCase,
 )
@@ -38,6 +45,8 @@ from inxr2.application.use_cases.repositories.list_repositories import (
 from inxr2.infrastructure.dependencies import (
     get_commit_adapter,
     get_file_adapter,
+    get_file_search_adapter,
+    get_file_version_adapter,
     get_filesystem,
     get_git_service,
     get_index_local_directory_use_case,
@@ -74,6 +83,18 @@ class TestRepositoryAdapterProviders:
         """get_file_adapter should return PostgresFileRepository."""
         adapter = get_file_adapter(mock_session)
         assert isinstance(adapter, PostgresFileRepository)
+
+    def test_get_file_search_adapter(self, mock_session: AsyncSession) -> None:
+        """get_file_search_adapter should return PostgresFileSearchRepository."""
+        adapter = get_file_search_adapter(mock_session)
+        assert isinstance(adapter, PostgresFileSearchRepository)
+        assert isinstance(adapter, FileSearchPort)
+
+    def test_get_file_version_adapter(self, mock_session: AsyncSession) -> None:
+        """get_file_version_adapter should return PostgresFileVersionRepository."""
+        adapter = get_file_version_adapter(mock_session)
+        assert isinstance(adapter, PostgresFileVersionRepository)
+        assert isinstance(adapter, FileVersionPort)
 
     def test_get_symbol_adapter(self, mock_session: AsyncSession) -> None:
         """get_symbol_adapter should return PostgresSymbolRepository."""
@@ -205,10 +226,12 @@ class TestUseCaseProviders:
         mock_commit_adapter: MagicMock,
     ) -> None:
         """get_repository_tree_use_case should return GetRepositoryTreeUseCase."""
+        mock_file_version_adapter = MagicMock()
         mock_git_service = MagicMock()
         use_case = get_repository_tree_use_case(
             mock_repository_adapter,
             mock_file_adapter,
+            mock_file_version_adapter,
             mock_commit_adapter,
             mock_git_service,
         )
@@ -251,12 +274,14 @@ class TestUseCaseDependencyWiring:
         """GetRepositoryTreeUseCase should receive all adapters and git service."""
         mock_repo = MagicMock()
         mock_file = MagicMock()
+        mock_file_version = MagicMock()
         mock_commit = MagicMock()
         mock_git = MagicMock()
         use_case = get_repository_tree_use_case(
-            mock_repo, mock_file, mock_commit, mock_git
+            mock_repo, mock_file, mock_file_version, mock_commit, mock_git
         )
         assert use_case._repository_repo is mock_repo
         assert use_case._file_repo is mock_file
+        assert use_case._file_version_repo is mock_file_version
         assert use_case._commit_repo is mock_commit
         assert use_case._git_service is mock_git

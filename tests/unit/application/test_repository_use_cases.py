@@ -22,6 +22,7 @@ from tests.fixtures.test_doubles import (
     FakeGitService,
     InMemoryCommitRepository,
     InMemoryFileRepository,
+    InMemoryFileVersionRepository,
     InMemoryRepositoryRepository,
 )
 
@@ -598,6 +599,7 @@ class TestGetRepositoryTreeUseCase:
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
+            file_version_repo=InMemoryFileVersionRepository(file_repository),
             commit_repo=commit_repository,
         )
 
@@ -636,6 +638,7 @@ class TestGetRepositoryTreeUseCase:
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
+            file_version_repo=InMemoryFileVersionRepository(file_repository),
             commit_repo=commit_repository,
         )
 
@@ -740,6 +743,7 @@ class TestGetRepositoryTreeUseCase:
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
+            file_version_repo=InMemoryFileVersionRepository(file_repository),
             commit_repo=commit_repository,
             git_service=git_service,
         )

@@ -226,7 +226,7 @@ class TestListChangedAtCommitContract:
         )
         await create_test_file(repos, repo_id, commit_id, "src/new.py", "c" * 40)
 
-        changed = await repos.file.list_changed_at_commit(repo_id, commit_id)
+        changed = await repos.file_version.list_changed_at_commit(repo_id, commit_id)
 
         assert len(changed) == 1
         assert changed[0].path == "src/new.py"
@@ -246,7 +246,7 @@ class TestListChangedAtCommitContract:
         await create_test_file(repos, repo_id, commit1_id, "src/same.py", same_hash)
         await create_test_file(repos, repo_id, commit2_id, "src/same.py", same_hash)
 
-        changed = await repos.file.list_changed_at_commit(repo_id, commit2_id)
+        changed = await repos.file_version.list_changed_at_commit(repo_id, commit2_id)
 
         assert len(changed) == 0
 
@@ -263,7 +263,7 @@ class TestListChangedAtCommitContract:
         await create_test_file(repos, repo_id, commit1_id, "src/mod.py", "c" * 40)
         await create_test_file(repos, repo_id, commit2_id, "src/mod.py", "d" * 40)
 
-        changed = await repos.file.list_changed_at_commit(repo_id, commit2_id)
+        changed = await repos.file_version.list_changed_at_commit(repo_id, commit2_id)
 
         assert len(changed) == 1
         assert changed[0].path == "src/mod.py"
@@ -289,11 +289,11 @@ class TestListChangedAtCommitContract:
         await create_test_file(repos, repo_id, commit3_id, "src/f.py", hash2)
 
         # Commit3's file has same hash as commit2 (most recent prior) -> not changed
-        changed = await repos.file.list_changed_at_commit(repo_id, commit3_id)
+        changed = await repos.file_version.list_changed_at_commit(repo_id, commit3_id)
         assert len(changed) == 0
 
         # Commit2's file differs from commit1 (most recent prior) -> changed
-        changed = await repos.file.list_changed_at_commit(repo_id, commit2_id)
+        changed = await repos.file_version.list_changed_at_commit(repo_id, commit2_id)
         assert len(changed) == 1
         assert changed[0].path == "src/f.py"
 

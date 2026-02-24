@@ -14,6 +14,7 @@ from inxr2.domain.value_objects import CommitHash
 from tests.fixtures.test_doubles import (
     InMemoryCommitRepository,
     InMemoryFileRepository,
+    InMemoryFileVersionRepository,
     InMemoryRepositoryRepository,
 )
 
@@ -120,9 +121,11 @@ class TestResolveFileUseCase:
         commit_repo: InMemoryCommitRepository,
     ) -> ResolveFileUseCase:
         """Create use case with test repositories."""
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         return ResolveFileUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             commit_repo=commit_repo,
         )
 
@@ -357,9 +360,11 @@ class TestResolveFileUseCaseEdgeCases:
             )
         )
 
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = ResolveFileUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             commit_repo=commit_repo,
         )
 
@@ -426,9 +431,11 @@ class TestResolveFileUseCaseEdgeCases:
         )
         file_repo._commit_files.add((1, 1))  # Only linked to commit 1
 
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = ResolveFileUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             commit_repo=commit_repo,
         )
 

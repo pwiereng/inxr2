@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from ....domain.exceptions import CommitNotFound, RepositoryNotFound
 from ...ports.repositories import (
     CommitRepositoryPort,
-    FileRepositoryPort,
+    FileSearchPort,
     RepositoryPort,
 )
 
@@ -87,11 +87,11 @@ class SearchFilesUseCase:
 
     def __init__(
         self,
-        file_repo: FileRepositoryPort,
+        file_search_repo: FileSearchPort,
         repository_repo: RepositoryPort,
         commit_repo: CommitRepositoryPort,
     ):
-        self._file_repo = file_repo
+        self._file_search_repo = file_search_repo
         self._repository_repo = repository_repo
         self._commit_repo = commit_repo
 
@@ -140,7 +140,7 @@ class SearchFilesUseCase:
                 commit_id = commit.id
 
         # Search files
-        files = await self._file_repo.search_by_name(
+        files = await self._file_search_repo.search_by_name(
             query=request.query,
             repository_id=repository_id,
             commit_id=commit_id,

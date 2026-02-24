@@ -16,6 +16,7 @@ from ....application.use_cases.files import (
 from ....infrastructure.dependencies import (
     CommitAdapter,
     FileAdapter,
+    FileVersionAdapter,
     GetFileContentUseCaseDep,
     GetFileHistoryUseCaseDep,
     GitServiceDep,
@@ -501,6 +502,7 @@ async def get_file_references_by_path(
 async def get_file_content(
     file_id: int,
     file_adapter: FileAdapter,
+    file_version_adapter: FileVersionAdapter,
     commit_adapter: CommitAdapter,
     repo_adapter: RepositoryAdapter,
     git_service: GitServiceDep,
@@ -516,7 +518,7 @@ async def get_file_content(
         raise HTTPException(status_code=404, detail="File not found")
 
     # Find a commit linked to this file via commit_files junction
-    commit_ids_map = await file_adapter.get_commit_ids_for_files([file_id])
+    commit_ids_map = await file_version_adapter.get_commit_ids_for_files([file_id])
     linked_commit_ids = commit_ids_map.get(file_id, [])
     if not linked_commit_ids:
         raise HTTPException(status_code=404, detail="No commit linked to this file")

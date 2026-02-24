@@ -13,6 +13,7 @@ from ....domain.exceptions import RepositoryNotFound
 from ...ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
+    FileVersionPort,
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
@@ -70,19 +71,22 @@ class GetRepositoryStatsUseCase:
         file_repo: FileRepositoryPort,
         symbol_repo: SymbolRepositoryPort,
         reference_repo: ReferenceRepositoryPort,
+        file_version_repo: FileVersionPort | None = None,
         commit_repo: CommitRepositoryPort | None = None,
     ) -> None:
         """Initialize use case with required repositories.
 
         Args:
             repository_repo: Repository for accessing repositories
-            file_repo: Repository for accessing files
+            file_repo: Repository for CRUD file operations
+            file_version_repo: Repository for file version operations
             symbol_repo: Repository for accessing symbols
             reference_repo: Repository for accessing references
             commit_repo: Repository for accessing commits (used to get HEAD files)
         """
         self._repository_repo = repository_repo
         self._file_repo = file_repo
+        self._file_version_repo = file_version_repo
         self._symbol_repo = symbol_repo
         self._reference_repo = reference_repo
         self._commit_repo = commit_repo
@@ -205,13 +209,13 @@ class GetRepositoryStatsUseCase:
         Returns:
             List of unique files at HEAD
         """
-        if self._commit_repo is not None:
+        if self._commit_repo is not None and self._file_version_repo is not None:
             default_branch = repository.default_branch or "main"
             commit = await self._commit_repo.find_latest_by_branch(
                 repository_id, default_branch
             )
             if commit and commit.id is not None:
-                return await self._file_repo.list_by_commit(commit.id)
+                return await self._file_version_repo.list_by_commit(commit.id)
 
         # Fallback: list all and deduplicate
         files = await self._file_repo.list_by_repository(repository_id)

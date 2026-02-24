@@ -28,6 +28,12 @@ from ..adapters.external.git_service import GitService
 from ..adapters.external.local_filesystem import LocalFileSystem
 from ..adapters.persistence.repositories.commit_adapter import PostgresCommitRepository
 from ..adapters.persistence.repositories.file_adapter import PostgresFileRepository
+from ..adapters.persistence.repositories.file_search_adapter import (
+    PostgresFileSearchRepository,
+)
+from ..adapters.persistence.repositories.file_version_adapter import (
+    PostgresFileVersionRepository,
+)
 from ..adapters.persistence.repositories.index_status_adapter import (
     PostgresIndexStatusRepository,
 )
@@ -45,6 +51,8 @@ from ..adapters.persistence.repositories.text_content_adapter import (
 from ..application.ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
+    FileSearchPort,
+    FileVersionPort,
     IndexStatusRepositoryPort,
     ReferenceRepositoryPort,
     RepositoryPort,
@@ -110,6 +118,16 @@ def get_file_adapter(session: DbSession) -> FileRepositoryPort:
     return PostgresFileRepository(session)
 
 
+def get_file_search_adapter(session: DbSession) -> FileSearchPort:
+    """Provide file search repository adapter."""
+    return PostgresFileSearchRepository(session)
+
+
+def get_file_version_adapter(session: DbSession) -> FileVersionPort:
+    """Provide file version repository adapter."""
+    return PostgresFileVersionRepository(session)
+
+
 def get_symbol_adapter(session: DbSession) -> SymbolRepositoryPort:
     """Provide symbol repository adapter."""
     return PostgresSymbolRepository(session)
@@ -139,6 +157,8 @@ def get_text_search(session: DbSession) -> TextSearchPort:
 RepositoryAdapter = Annotated[RepositoryPort, Depends(get_repository_adapter)]
 CommitAdapter = Annotated[CommitRepositoryPort, Depends(get_commit_adapter)]
 FileAdapter = Annotated[FileRepositoryPort, Depends(get_file_adapter)]
+FileSearchAdapter = Annotated[FileSearchPort, Depends(get_file_search_adapter)]
+FileVersionAdapter = Annotated[FileVersionPort, Depends(get_file_version_adapter)]
 SymbolAdapter = Annotated[SymbolRepositoryPort, Depends(get_symbol_adapter)]
 ReferenceAdapter = Annotated[ReferenceRepositoryPort, Depends(get_reference_adapter)]
 IndexStatusAdapter = Annotated[
@@ -224,6 +244,7 @@ def get_index_local_directory_use_case(
 def get_repository_tree_use_case(
     repository_adapter: RepositoryAdapter,
     file_adapter: FileAdapter,
+    file_version_adapter: FileVersionAdapter,
     commit_adapter: CommitAdapter,
     git_service: GitServiceDep,
 ) -> GetRepositoryTreeUseCase:
@@ -231,6 +252,7 @@ def get_repository_tree_use_case(
     return GetRepositoryTreeUseCase(
         repository_repo=repository_adapter,
         file_repo=file_adapter,
+        file_version_repo=file_version_adapter,
         commit_repo=commit_adapter,
         git_service=git_service,
     )
@@ -239,12 +261,14 @@ def get_repository_tree_use_case(
 def get_resolve_file_use_case(
     repository_adapter: RepositoryAdapter,
     file_adapter: FileAdapter,
+    file_version_adapter: FileVersionAdapter,
     commit_adapter: CommitAdapter,
 ) -> ResolveFileUseCase:
     """Provide ResolveFileUseCase with dependencies."""
     return ResolveFileUseCase(
         repository_repo=repository_adapter,
         file_repo=file_adapter,
+        file_version_repo=file_version_adapter,
         commit_repo=commit_adapter,
     )
 
@@ -252,6 +276,7 @@ def get_resolve_file_use_case(
 def get_repository_stats_use_case(
     repository_adapter: RepositoryAdapter,
     file_adapter: FileAdapter,
+    file_version_adapter: FileVersionAdapter,
     symbol_adapter: SymbolAdapter,
     reference_adapter: ReferenceAdapter,
     commit_adapter: CommitAdapter,
@@ -260,6 +285,7 @@ def get_repository_stats_use_case(
     return GetRepositoryStatsUseCase(
         repository_repo=repository_adapter,
         file_repo=file_adapter,
+        file_version_repo=file_version_adapter,
         symbol_repo=symbol_adapter,
         reference_repo=reference_adapter,
         commit_repo=commit_adapter,
@@ -269,6 +295,7 @@ def get_repository_stats_use_case(
 def get_all_repository_stats_use_case(
     repository_adapter: RepositoryAdapter,
     file_adapter: FileAdapter,
+    file_version_adapter: FileVersionAdapter,
     symbol_adapter: SymbolAdapter,
     reference_adapter: ReferenceAdapter,
     commit_adapter: CommitAdapter,
@@ -277,6 +304,7 @@ def get_all_repository_stats_use_case(
     return GetAllRepositoryStatsUseCase(
         repository_repo=repository_adapter,
         file_repo=file_adapter,
+        file_version_repo=file_version_adapter,
         symbol_repo=symbol_adapter,
         reference_repo=reference_adapter,
         commit_repo=commit_adapter,
@@ -311,14 +339,14 @@ def get_file_content_use_case(
 
 def get_file_history_use_case(
     repository_adapter: RepositoryAdapter,
-    file_adapter: FileAdapter,
+    file_version_adapter: FileVersionAdapter,
     commit_adapter: CommitAdapter,
     git_service: GitServiceDep,
 ) -> GetFileHistoryUseCase:
     """Provide GetFileHistoryUseCase with dependencies."""
     return GetFileHistoryUseCase(
         repository_repo=repository_adapter,
-        file_repo=file_adapter,
+        file_version_repo=file_version_adapter,
         commit_repo=commit_adapter,
         git_service=git_service,
     )
@@ -435,13 +463,13 @@ SearchTextUseCaseDep = Annotated[SearchTextUseCase, Depends(get_search_text_use_
 
 
 def get_search_files_use_case(
-    file_adapter: FileAdapter,
+    file_search_adapter: FileSearchAdapter,
     repository_adapter: RepositoryAdapter,
     commit_adapter: CommitAdapter,
 ) -> SearchFilesUseCase:
     """Provide SearchFilesUseCase with dependencies."""
     return SearchFilesUseCase(
-        file_repo=file_adapter,
+        file_search_repo=file_search_adapter,
         repository_repo=repository_adapter,
         commit_repo=commit_adapter,
     )

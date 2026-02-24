@@ -18,6 +18,7 @@ from inxr2.domain.value_objects import CommitHash
 from tests.fixtures.test_doubles import (
     InMemoryCommitRepository,
     InMemoryFileRepository,
+    InMemoryFileVersionRepository,
     InMemoryRepositoryRepository,
 )
 
@@ -145,6 +146,7 @@ class TestGetFileContentUseCase:
         return ResolveFileUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=InMemoryFileVersionRepository(file_repo),
             commit_repo=commit_repo,
         )
 
@@ -301,6 +303,7 @@ class TestGetFileContentUseCase:
         resolve_use_case = ResolveFileUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=InMemoryFileVersionRepository(file_repo),
             commit_repo=commit_repo,
         )
 

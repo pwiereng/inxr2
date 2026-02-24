@@ -14,6 +14,7 @@ from inxr2.domain.value_objects import CommitHash, ReferenceType, SymbolKind
 from tests.fixtures.test_doubles import (
     InMemoryCommitRepository,
     InMemoryFileRepository,
+    InMemoryFileVersionRepository,
     InMemoryReferenceRepository,
     InMemoryRepositoryRepository,
     InMemorySymbolRepository,
@@ -270,9 +271,11 @@ class TestGetRepositoryStatsUseCase:
         commit_repo: InMemoryCommitRepository,
     ) -> GetRepositoryStatsUseCase:
         """Create use case with test repositories."""
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         return GetRepositoryStatsUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             commit_repo=commit_repo,
@@ -463,6 +466,7 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
         )
 
         file_repo = InMemoryFileRepository()
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         symbol_repo = InMemorySymbolRepository()
         reference_repo = InMemoryReferenceRepository()
         commit_repo = InMemoryCommitRepository()
@@ -470,6 +474,7 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
         use_case = GetRepositoryStatsUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             symbol_repo=symbol_repo,
             reference_repo=reference_repo,
             commit_repo=commit_repo,
@@ -528,9 +533,11 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
             )
         )
 
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetRepositoryStatsUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             symbol_repo=InMemorySymbolRepository(),
             reference_repo=InMemoryReferenceRepository(),
         )
@@ -604,9 +611,11 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
         )
         file_repo._commit_files.add((2, 2))  # linked to old commit
 
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetRepositoryStatsUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             symbol_repo=InMemorySymbolRepository(),
             reference_repo=InMemoryReferenceRepository(),
             commit_repo=commit_repo,

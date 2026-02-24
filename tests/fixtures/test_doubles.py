@@ -41,6 +41,8 @@ from typing import Any, BinaryIO
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
+    FileSearchPort,
+    FileVersionPort,
     IndexStatusRepositoryPort,
     ReferenceRepositoryPort,
     RepositoryPort,
@@ -391,8 +393,8 @@ class InMemoryFileRepository(FileRepositoryPort):
         """Initialize with empty storage.
 
         Args:
-            commit_repo: Optional commit repository for commit hash lookups
-                         (required for find_by_repository_path_and_commit_hash)
+            commit_repo: Optional commit repository for commit-date lookups
+                         (used by _compute_latest_file_ids and related helpers).
         """
         self._files: dict[int, File] = {}
         # Junction table: set of (commit_id, file_id) pairs
@@ -505,22 +507,6 @@ class InMemoryFileRepository(FileRepositoryPort):
                 return file
         return None
 
-    async def list_by_commit(self, commit_id: int) -> list[File]:
-        """List files for a commit via commit_files junction table."""
-        file_ids = {fid for cid, fid in self._commit_files if cid == commit_id}
-        return [f for f in self._files.values() if f.id in file_ids]
-
-    async def list_at_or_before_commit(
-        self, repository_id: int, commit_id: int
-    ) -> list[File]:
-        """List the latest version of each file at or before a specific commit.
-
-        With full snapshot indexing via commit_files, this is equivalent to
-        list_by_commit since every commit has its complete file tree.
-        """
-        files = await self.list_by_commit(commit_id)
-        return [f for f in files if f.repository_id == repository_id]
-
     async def find_by_content_hash(
         self,
         content_hash: str,
@@ -553,277 +539,6 @@ class InMemoryFileRepository(FileRepositoryPort):
             if file.repository_id == repository_id and file.path == path:
                 return file
         return None
-
-    async def list_versions_by_path(
-        self, repository_id: int, path: str, branch: str | None = None
-    ) -> list[File]:
-        """List all versions of a file across commits (for time travel).
-
-        Returns distinct file versions for this path.
-        """
-        files = [
-            f
-            for f in self._files.values()
-            if f.repository_id == repository_id and f.path == path
-        ]
-
-        # If branch filter specified and we have a commit repo, filter by branch
-        if branch is not None and self._commit_repo is not None:
-            # Get commit IDs on this branch from the branch_commits mapping
-            branch_commit_ids: set[int] = set()
-            for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
-                if repo_id == repository_id and b == branch:
-                    branch_commit_ids.add(cid)
-            # Get file_ids linked to branch commits
-            branch_file_ids = {
-                fid for cid, fid in self._commit_files if cid in branch_commit_ids
-            }
-            files = [f for f in files if f.id in branch_file_ids]
-
-        return files
-
-    async def find_by_repository_path_and_commit_hash(
-        self, repository_id: int, path: str, commit_hash: str
-    ) -> File | None:
-        """Find file by repository, path, and commit hash (for time travel).
-
-        Requires commit_repo to be set for proper commit hash lookups.
-        """
-        if self._commit_repo is None:
-            # No commit repo - fall back to simple path matching (legacy behavior)
-            for file in self._files.values():
-                if file.repository_id == repository_id and file.path == path:
-                    return file
-            return None
-
-        # Look up commit by hash
-        commit = await self._commit_repo.find_by_hash(repository_id, commit_hash)
-        if commit is None or commit.id is None:
-            return None
-
-        # Find file at this commit via commit_files
-        return await self.find_by_path(repository_id, commit.id, path)
-
-    async def list_latest_by_branch(
-        self, repository_id: int, branch: str
-    ) -> list[File]:
-        """List the latest version of each file on a branch.
-
-        Gets the latest commit on the branch, then returns all files
-        linked to that commit via commit_files.
-        """
-        if self._commit_repo is None:
-            # No commit repo - return all files for repository
-            return [f for f in self._files.values() if f.repository_id == repository_id]
-
-        # Find latest commit on branch
-        latest = await self._commit_repo.find_latest_by_branch(repository_id, branch)
-        if latest is None or latest.id is None:
-            return []
-
-        files = await self.list_by_commit(latest.id)
-        return sorted(
-            [f for f in files if f.repository_id == repository_id],
-            key=lambda f: f.path,
-        )
-
-    async def list_changed_at_commit(
-        self, repository_id: int, commit_id: int
-    ) -> list[File]:
-        """List only files that actually changed at a specific commit.
-
-        Compares with parent commit's file set to find new or changed files.
-        """
-        # Get files at this commit via commit_files
-        files_at_commit = await self.list_by_commit(commit_id)
-        files_at_commit = [
-            f for f in files_at_commit if f.repository_id == repository_id
-        ]
-
-        if not files_at_commit or self._commit_repo is None:
-            return files_at_commit
-
-        # Get target commit
-        target_commit = await self._commit_repo.find_by_id(commit_id)
-        if target_commit is None:
-            return files_at_commit
-
-        # Find parent commit (most recent commit before this one)
-        parent_commit_id = None
-        parent_date = None
-        for c in self._commit_repo._commits.values():
-            if c.repository_id != repository_id or c.id is None or c.id == commit_id:
-                continue
-            if c.commit_date < target_commit.commit_date or (
-                c.commit_date == target_commit.commit_date and c.id < commit_id
-            ):
-                if (
-                    parent_date is None
-                    or c.commit_date > parent_date
-                    or (
-                        c.commit_date == parent_date
-                        and parent_commit_id is not None
-                        and c.id > parent_commit_id
-                    )
-                ):
-                    parent_commit_id = c.id
-                    parent_date = c.commit_date
-
-        if parent_commit_id is None:
-            # No parent - all files are "changed" (first commit)
-            return files_at_commit
-
-        # Get files at parent commit
-        parent_files = await self.list_by_commit(parent_commit_id)
-        parent_hashes = {
-            f.path: f.content_hash
-            for f in parent_files
-            if f.repository_id == repository_id
-        }
-
-        # Changed = new or different content_hash
-        changed = []
-        for f in files_at_commit:
-            parent_hash = parent_hashes.get(f.path)
-            if parent_hash is None or parent_hash != f.content_hash:
-                changed.append(f)
-
-        return changed
-
-    async def search_by_name(
-        self,
-        query: str,
-        repository_id: int | None = None,
-        commit_id: int | None = None,
-        language: str | None = None,
-        extensions: list[str] | None = None,
-        limit: int = 20,
-        scope: str | None = None,
-    ) -> list[File]:
-        """Search files by name/path pattern.
-
-        When commit_id is set, filters via commit_files junction.
-        When commit_id is None, deduplicates by (repository_id, path).
-        When scope is "latest" and repository_id is None, filters to files
-        at HEAD of each repo's default branch.
-        """
-        query_lower = query.lower()
-
-        # If commit_id is provided, get file_ids for that commit
-        commit_file_ids: set[int] | None = None
-        if commit_id is not None:
-            commit_file_ids = {
-                fid for cid, fid in self._commit_files if cid == commit_id
-            }
-
-        results = []
-        for file in self._files.values():
-            # Check if query matches path (case-insensitive)
-            if query_lower not in file.path.lower():
-                continue
-
-            # Apply filters
-            if repository_id is not None and file.repository_id != repository_id:
-                continue
-
-            if commit_file_ids is not None and file.id not in commit_file_ids:
-                continue
-
-            if language is not None and file.language != language:
-                continue
-
-            if extensions is not None and file.extension not in extensions:
-                continue
-
-            results.append(file)
-
-        # Dedup/scope filtering when no commit_id
-        if commit_id is None:
-            if repository_id is None and scope == "latest":
-                # Global search: only files at HEAD of each repo's default branch
-                head_file_ids = self._compute_head_file_ids()
-                results = [f for f in results if f.id in head_file_ids]
-            else:
-                # Deduplicate by (repository_id, path) keeping latest
-                latest_by_repo_path: dict[tuple[int | None, str], File] = {}
-                for f in results:
-                    key = (f.repository_id, f.path)
-                    existing = latest_by_repo_path.get(key)
-                    if existing is None or (
-                        f.id is not None and (existing.id is None or f.id > existing.id)
-                    ):
-                        latest_by_repo_path[key] = f
-                results = list(latest_by_repo_path.values())
-
-        # Sort by relevance (exact filename match first, then prefix, then contains)
-        def relevance_key(f: File) -> tuple[int, str]:
-            filename = (
-                f.path.rsplit("/", 1)[-1].lower() if "/" in f.path else f.path.lower()
-            )
-            if filename == query_lower:
-                return (1, f.path)
-            elif filename.startswith(query_lower):
-                return (2, f.path)
-            else:
-                return (3, f.path)
-
-        results.sort(key=relevance_key)
-
-        return results[:limit]
-
-    async def get_commit_ids_for_files(
-        self, file_ids: list[int]
-    ) -> dict[int, list[int]]:
-        """Get commit IDs linked to file versions via commit_files.
-
-        Orders by commit_date descending (matching production behavior).
-        Falls back to commit_id descending if no commit_repo is available.
-        """
-        result: dict[int, list[int]] = {}
-        for fid in file_ids:
-            commit_ids = [cid for cid, f in self._commit_files if f == fid]
-            if not commit_ids:
-                continue
-
-            if self._commit_repo is not None:
-                # Sort by commit_date descending, then commit_id descending
-                def sort_key(cid: int) -> tuple[datetime, int]:
-                    commit = self._commit_repo._commits.get(cid)  # type: ignore[union-attr]
-                    date = commit.commit_date if commit else datetime.min
-                    return (date, cid)
-
-                commit_ids.sort(key=sort_key, reverse=True)
-            else:
-                commit_ids.sort(reverse=True)
-
-            result[fid] = commit_ids
-        return result
-
-    async def get_distinct_extensions(
-        self,
-        repository_id: int | None = None,
-        branch: str | None = None,
-        scope: str | None = None,
-    ) -> list[str]:
-        """Get distinct file extensions across indexed files."""
-        extensions: set[str] = set()
-
-        # Determine which files to consider
-        if repository_id is None and scope == "latest":
-            head_file_ids = self._compute_head_file_ids()
-            candidate_files = [f for f in self._files.values() if f.id in head_file_ids]
-        elif repository_id is not None:
-            candidate_files = [
-                f for f in self._files.values() if f.repository_id == repository_id
-            ]
-        else:
-            candidate_files = list(self._files.values())
-
-        for f in candidate_files:
-            if f.extension is not None:
-                extensions.add(f.extension)
-
-        return sorted(extensions)
 
     def _compute_latest_file_ids(
         self, repository_id: int, branch: str | None = None
@@ -982,6 +697,319 @@ class InMemoryFileRepository(FileRepositoryPort):
         """Clear all files and commit_files links."""
         self._files.clear()
         self._commit_files.clear()
+
+
+class InMemoryFileSearchRepository(FileSearchPort):
+    """In-memory implementation of FileSearchPort for testing.
+
+    Shares state with an InMemoryFileRepository instance to avoid
+    duplicating file storage.
+
+    Example:
+        file_repo = InMemoryFileRepository()
+        search_repo = InMemoryFileSearchRepository(file_repo)
+        results = await search_repo.search_by_name("main")
+    """
+
+    def __init__(self, file_repo: "InMemoryFileRepository") -> None:
+        """Initialize with a reference to the shared file repository.
+
+        Args:
+            file_repo: The file repository whose state we share.
+        """
+        self._file_repo = file_repo
+
+    async def search_by_name(
+        self,
+        query: str,
+        repository_id: int | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+        extensions: list[str] | None = None,
+        limit: int = 20,
+        scope: str | None = None,
+    ) -> list[File]:
+        """Search files by name/path pattern.
+
+        Delegates to the shared file repository's state.
+        """
+        query_lower = query.lower()
+
+        # If commit_id is provided, get file_ids for that commit
+        commit_file_ids: set[int] | None = None
+        if commit_id is not None:
+            commit_file_ids = {
+                fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+            }
+
+        results = []
+        for file in self._file_repo._files.values():
+            if query_lower not in file.path.lower():
+                continue
+            if repository_id is not None and file.repository_id != repository_id:
+                continue
+            if commit_file_ids is not None and file.id not in commit_file_ids:
+                continue
+            if language is not None and file.language != language:
+                continue
+            if extensions is not None and file.extension not in extensions:
+                continue
+            results.append(file)
+
+        # Dedup/scope filtering when no commit_id
+        if commit_id is None:
+            if repository_id is None and scope == "latest":
+                head_file_ids = self._file_repo._compute_head_file_ids()
+                results = [f for f in results if f.id in head_file_ids]
+            else:
+                latest_by_repo_path: dict[tuple[int | None, str], File] = {}
+                for f in results:
+                    key = (f.repository_id, f.path)
+                    existing = latest_by_repo_path.get(key)
+                    if existing is None or (
+                        f.id is not None and (existing.id is None or f.id > existing.id)
+                    ):
+                        latest_by_repo_path[key] = f
+                results = list(latest_by_repo_path.values())
+
+        # Sort by relevance
+        def relevance_key(f: File) -> tuple[int, str]:
+            filename = (
+                f.path.rsplit("/", 1)[-1].lower() if "/" in f.path else f.path.lower()
+            )
+            if filename == query_lower:
+                return (1, f.path)
+            elif filename.startswith(query_lower):
+                return (2, f.path)
+            else:
+                return (3, f.path)
+
+        results.sort(key=relevance_key)
+        return results[:limit]
+
+    async def get_distinct_extensions(
+        self,
+        repository_id: int | None = None,
+        branch: str | None = None,
+        scope: str | None = None,
+    ) -> list[str]:
+        """Get distinct file extensions across indexed files."""
+        exts: set[str] = set()
+
+        if repository_id is None and scope == "latest":
+            head_file_ids = self._file_repo._compute_head_file_ids()
+            candidate_files = [
+                f for f in self._file_repo._files.values() if f.id in head_file_ids
+            ]
+        elif repository_id is not None:
+            candidate_files = [
+                f
+                for f in self._file_repo._files.values()
+                if f.repository_id == repository_id
+            ]
+        else:
+            candidate_files = list(self._file_repo._files.values())
+
+        for f in candidate_files:
+            if f.extension is not None:
+                exts.add(f.extension)
+
+        return sorted(exts)
+
+
+class InMemoryFileVersionRepository(FileVersionPort):
+    """In-memory implementation of FileVersionPort for testing.
+
+    Shares state with an InMemoryFileRepository instance to avoid
+    duplicating file storage.
+
+    Example:
+        commit_repo = InMemoryCommitRepository()
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        version_repo = InMemoryFileVersionRepository(file_repo)
+        files = await version_repo.list_by_commit(1)
+    """
+
+    def __init__(self, file_repo: "InMemoryFileRepository") -> None:
+        """Initialize with a reference to the shared file repository.
+
+        Args:
+            file_repo: The file repository whose state we share.
+        """
+        self._file_repo = file_repo
+
+    async def list_by_commit(self, commit_id: int) -> list[File]:
+        """List files for a commit via commit_files junction table."""
+        file_ids = {
+            fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+        }
+        return [f for f in self._file_repo._files.values() if f.id in file_ids]
+
+    async def list_at_or_before_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List the latest version of each file at or before a specific commit."""
+        files = await self.list_by_commit(commit_id)
+        return [f for f in files if f.repository_id == repository_id]
+
+    async def list_versions_by_path(
+        self, repository_id: int, path: str, branch: str | None = None
+    ) -> list[File]:
+        """List all versions of a file across commits."""
+        files = [
+            f
+            for f in self._file_repo._files.values()
+            if f.repository_id == repository_id and f.path == path
+        ]
+
+        if branch is not None and self._file_repo._commit_repo is not None:
+            branch_commit_ids: set[int] = set()
+            for (
+                repo_id,
+                b,
+                cid,
+            ), _ in self._file_repo._commit_repo._branch_commits.items():
+                if repo_id == repository_id and b == branch:
+                    branch_commit_ids.add(cid)
+            branch_file_ids = {
+                fid
+                for cid, fid in self._file_repo._commit_files
+                if cid in branch_commit_ids
+            }
+            files = [f for f in files if f.id in branch_file_ids]
+
+        return files
+
+    async def find_by_repository_path_and_commit_hash(
+        self, repository_id: int, path: str, commit_hash: str
+    ) -> File | None:
+        """Find file by repository, path, and commit hash."""
+        if self._file_repo._commit_repo is None:
+            for file in self._file_repo._files.values():
+                if file.repository_id == repository_id and file.path == path:
+                    return file
+            return None
+
+        commit = await self._file_repo._commit_repo.find_by_hash(
+            repository_id, commit_hash
+        )
+        if commit is None or commit.id is None:
+            return None
+
+        # Inline find_by_path logic
+        file_ids = {
+            fid for cid, fid in self._file_repo._commit_files if cid == commit.id
+        }
+        for file in self._file_repo._files.values():
+            if (
+                file.id in file_ids
+                and file.repository_id == repository_id
+                and file.path == path
+            ):
+                return file
+        return None
+
+    async def list_latest_by_branch(
+        self, repository_id: int, branch: str
+    ) -> list[File]:
+        """List the latest version of each file on a branch."""
+        if self._file_repo._commit_repo is None:
+            return [
+                f
+                for f in self._file_repo._files.values()
+                if f.repository_id == repository_id
+            ]
+
+        latest = await self._file_repo._commit_repo.find_latest_by_branch(
+            repository_id, branch
+        )
+        if latest is None or latest.id is None:
+            return []
+
+        files = await self.list_by_commit(latest.id)
+        return sorted(
+            [f for f in files if f.repository_id == repository_id],
+            key=lambda f: f.path,
+        )
+
+    async def list_changed_at_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List only files that actually changed at a specific commit."""
+        files_at_commit = await self.list_by_commit(commit_id)
+        files_at_commit = [
+            f for f in files_at_commit if f.repository_id == repository_id
+        ]
+
+        if not files_at_commit or self._file_repo._commit_repo is None:
+            return files_at_commit
+
+        target_commit = await self._file_repo._commit_repo.find_by_id(commit_id)
+        if target_commit is None:
+            return files_at_commit
+
+        # Find parent commit
+        parent_commit_id = None
+        parent_date = None
+        for c in self._file_repo._commit_repo._commits.values():
+            if c.repository_id != repository_id or c.id is None or c.id == commit_id:
+                continue
+            if c.commit_date < target_commit.commit_date or (
+                c.commit_date == target_commit.commit_date and c.id < commit_id
+            ):
+                if (
+                    parent_date is None
+                    or c.commit_date > parent_date
+                    or (
+                        c.commit_date == parent_date
+                        and parent_commit_id is not None
+                        and c.id > parent_commit_id
+                    )
+                ):
+                    parent_commit_id = c.id
+                    parent_date = c.commit_date
+
+        if parent_commit_id is None:
+            return files_at_commit
+
+        parent_files = await self.list_by_commit(parent_commit_id)
+        parent_hashes = {
+            f.path: f.content_hash
+            for f in parent_files
+            if f.repository_id == repository_id
+        }
+
+        changed = []
+        for f in files_at_commit:
+            parent_hash = parent_hashes.get(f.path)
+            if parent_hash is None or parent_hash != f.content_hash:
+                changed.append(f)
+
+        return changed
+
+    async def get_commit_ids_for_files(
+        self, file_ids: list[int]
+    ) -> dict[int, list[int]]:
+        """Get commit IDs linked to file versions via commit_files."""
+        result: dict[int, list[int]] = {}
+        for fid in file_ids:
+            commit_ids = [cid for cid, f in self._file_repo._commit_files if f == fid]
+            if not commit_ids:
+                continue
+
+            if self._file_repo._commit_repo is not None:
+
+                def sort_key(cid: int) -> tuple[datetime, int]:
+                    commit = self._file_repo._commit_repo._commits.get(cid)  # type: ignore[union-attr]
+                    date = commit.commit_date if commit else datetime.min
+                    return (date, cid)
+
+                commit_ids.sort(key=sort_key, reverse=True)
+            else:
+                commit_ids.sort(reverse=True)
+
+            result[fid] = commit_ids
+        return result
 
 
 class InMemoryRepositoryRepository(RepositoryPort):

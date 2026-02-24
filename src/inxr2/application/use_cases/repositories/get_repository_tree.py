@@ -6,6 +6,7 @@ from pathlib import Path
 from ...ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
+    FileVersionPort,
     RepositoryPort,
 )
 from ...ports.services import GitServicePort
@@ -58,6 +59,7 @@ class GetRepositoryTreeUseCase:
         self,
         repository_repo: RepositoryPort,
         file_repo: FileRepositoryPort,
+        file_version_repo: FileVersionPort | None = None,
         commit_repo: CommitRepositoryPort | None = None,
         git_service: GitServicePort | None = None,
     ) -> None:
@@ -66,12 +68,14 @@ class GetRepositoryTreeUseCase:
 
         Args:
             repository_repo: Repository for accessing repository entities
-            file_repo: Repository for accessing file entities
+            file_repo: Repository for CRUD file operations
+            file_version_repo: Repository for file version operations
             commit_repo: Repository for accessing commit entities (for time travel)
             git_service: Git service for determining changed files (for changed_only)
         """
         self._repository_repo = repository_repo
         self._file_repo = file_repo
+        self._file_version_repo = file_version_repo
         self._commit_repo = commit_repo
         self._git_service = git_service
 
@@ -143,20 +147,20 @@ class GetRepositoryTreeUseCase:
                     files = []
                 else:
                     # Get full tree at this commit, then filter to changed paths
-                    all_files = await self._file_repo.list_at_or_before_commit(
+                    all_files = await self._file_version_repo.list_at_or_before_commit(  # type: ignore[union-attr]
                         repository_id, commit.id
                     )
                     files = [f for f in all_files if f.path in changed_paths]
             else:
                 # Get the latest version of each file at or before this commit
                 # This returns the full tree state, not just files changed at this commit
-                files = await self._file_repo.list_at_or_before_commit(
+                files = await self._file_version_repo.list_at_or_before_commit(  # type: ignore[union-attr]
                     repository_id, commit.id
                 )
         elif request.branch:
             # Get latest version of each file on the branch
             # This aggregates across all commits on the branch
-            files = await self._file_repo.list_latest_by_branch(
+            files = await self._file_version_repo.list_latest_by_branch(  # type: ignore[union-attr]
                 repository_id, request.branch
             )
             if not files:

@@ -15,6 +15,7 @@ from tests.fixtures.test_doubles import (
     FakeGitService,
     InMemoryCommitRepository,
     InMemoryFileRepository,
+    InMemoryFileVersionRepository,
     InMemoryRepositoryRepository,
 )
 
@@ -196,9 +197,11 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
         git_service: FakeGitService,
     ) -> None:
         """Test that changed_only=True returns only files git reports as changed."""
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             commit_repo=commit_repo,
             git_service=git_service,
         )
@@ -232,9 +235,11 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
         git_service: FakeGitService,
     ) -> None:
         """Test that changed_only=False returns all files at the commit."""
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             commit_repo=commit_repo,
             git_service=git_service,
         )
@@ -261,9 +266,11 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
         git_service: FakeGitService,
     ) -> None:
         """Test that changed_only on first commit returns all files (all are new)."""
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             commit_repo=commit_repo,
             git_service=git_service,
         )
@@ -289,9 +296,11 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
         commit_repo: InMemoryCommitRepository,
     ) -> None:
         """Test that changed_only=True without git_service raises ValueError."""
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
+            file_version_repo=file_version_repo,
             commit_repo=commit_repo,
             # No git_service
         )

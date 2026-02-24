@@ -350,51 +350,6 @@ class FileRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    async def list_by_commit(self, commit_id: int) -> list[File]:
-        """List all files at a specific commit.
-
-        Joins through commit_files junction table.
-        """
-        pass
-
-    @abstractmethod
-    async def list_changed_at_commit(
-        self, repository_id: int, commit_id: int
-    ) -> list[File]:
-        """List only files that actually changed at a specific commit.
-
-        Compares the commit's file set with its parent commit's file set
-        to find files that are new or have a different content_hash.
-
-        Args:
-            repository_id: The repository ID
-            commit_id: The target commit ID
-
-        Returns:
-            List of files that were actually changed/added at this commit
-        """
-        pass
-
-    @abstractmethod
-    async def list_at_or_before_commit(
-        self, repository_id: int, commit_id: int
-    ) -> list[File]:
-        """List the latest version of each file at or before a specific commit.
-
-        With full snapshot indexing via commit_files, this is equivalent
-        to list_by_commit since every commit has its complete file tree.
-        Falls back to window function for delta-indexed commits.
-
-        Args:
-            repository_id: The repository ID
-            commit_id: The target commit ID
-
-        Returns:
-            List of files representing the complete tree state at that commit
-        """
-        pass
-
-    @abstractmethod
     async def list_by_repository(self, repository_id: int) -> list[File]:
         """List all files for a repository (latest version)."""
         pass
@@ -443,49 +398,13 @@ class FileRepositoryPort(ABC):
         """Find file by repository and path (latest version for now)."""
         pass
 
-    @abstractmethod
-    async def list_versions_by_path(
-        self, repository_id: int, path: str, branch: str | None = None
-    ) -> list[File]:
-        """List all versions of a file across commits (for time travel).
 
-        Returns distinct file versions (unique content_hash) for this path,
-        ordered by newest first.
+class FileSearchPort(ABC):
+    """Port for file search operations.
 
-        Args:
-            repository_id: The repository ID
-            path: The file path
-            branch: Optional branch name to filter versions by
-        """
-        pass
-
-    @abstractmethod
-    async def find_by_repository_path_and_commit_hash(
-        self, repository_id: int, path: str, commit_hash: str
-    ) -> File | None:
-        """Find file by repository, path, and commit hash (for time travel).
-
-        This is useful when the caller has a commit hash instead of commit_id.
-        """
-        pass
-
-    @abstractmethod
-    async def list_latest_by_branch(
-        self, repository_id: int, branch: str
-    ) -> list[File]:
-        """List the latest version of each file on a branch.
-
-        Gets the latest commit on the branch, then returns all files
-        linked to that commit via commit_files.
-
-        Args:
-            repository_id: The repository ID
-            branch: The branch name
-
-        Returns:
-            List of files (latest version of each unique path on the branch)
-        """
-        pass
+    Handles file name/path searching and extension discovery.
+    Split from FileRepositoryPort to follow Single Responsibility Principle.
+    """
 
     @abstractmethod
     async def search_by_name(
@@ -543,6 +462,104 @@ class FileRepositoryPort(ABC):
 
         Returns:
             Sorted list of distinct file extensions (e.g., [".css", ".py", ".ts"])
+        """
+        pass
+
+
+class FileVersionPort(ABC):
+    """Port for file version and temporal navigation operations.
+
+    Handles file listing by commit, branch-based listing, version history,
+    and commit-file linkage queries.
+    Split from FileRepositoryPort to follow Single Responsibility Principle.
+    """
+
+    @abstractmethod
+    async def list_by_commit(self, commit_id: int) -> list[File]:
+        """List all files at a specific commit.
+
+        Joins through commit_files junction table.
+        """
+        pass
+
+    @abstractmethod
+    async def list_at_or_before_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List the latest version of each file at or before a specific commit.
+
+        With full snapshot indexing via commit_files, this is equivalent
+        to list_by_commit since every commit has its complete file tree.
+        Falls back to window function for delta-indexed commits.
+
+        Args:
+            repository_id: The repository ID
+            commit_id: The target commit ID
+
+        Returns:
+            List of files representing the complete tree state at that commit
+        """
+        pass
+
+    @abstractmethod
+    async def list_versions_by_path(
+        self, repository_id: int, path: str, branch: str | None = None
+    ) -> list[File]:
+        """List all versions of a file across commits (for time travel).
+
+        Returns distinct file versions (unique content_hash) for this path,
+        ordered by newest first.
+
+        Args:
+            repository_id: The repository ID
+            path: The file path
+            branch: Optional branch name to filter versions by
+        """
+        pass
+
+    @abstractmethod
+    async def find_by_repository_path_and_commit_hash(
+        self, repository_id: int, path: str, commit_hash: str
+    ) -> File | None:
+        """Find file by repository, path, and commit hash (for time travel).
+
+        This is useful when the caller has a commit hash instead of commit_id.
+        """
+        pass
+
+    @abstractmethod
+    async def list_latest_by_branch(
+        self, repository_id: int, branch: str
+    ) -> list[File]:
+        """List the latest version of each file on a branch.
+
+        Gets the latest commit on the branch, then returns all files
+        linked to that commit via commit_files.
+
+        Args:
+            repository_id: The repository ID
+            branch: The branch name
+
+        Returns:
+            List of files (latest version of each unique path on the branch)
+        """
+        pass
+
+    @abstractmethod
+    async def list_changed_at_commit(
+        self, repository_id: int, commit_id: int
+    ) -> list[File]:
+        """List only files that actually changed at a specific commit.
+
+        Compares the commit's file set with its parent commit's file set
+        to find files that are new or have a different content_hash.
+
+        Args:
+            repository_id: The repository ID
+            commit_id: The target commit ID
+
+        Returns:
+            List of files that were actually changed/added at this commit
         """
         pass
 

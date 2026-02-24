@@ -12,7 +12,7 @@ from ....domain.entities import Repository
 from ....domain.exceptions import FileNotFound, RepositoryNotFound
 from ...ports.repositories import (
     CommitRepositoryPort,
-    FileRepositoryPort,
+    FileVersionPort,
     RepositoryPort,
 )
 from ...ports.services import CommitInfo
@@ -99,7 +99,7 @@ class GetFileHistoryUseCase:
     def __init__(
         self,
         repository_repo: RepositoryPort,
-        file_repo: FileRepositoryPort,
+        file_version_repo: FileVersionPort,
         commit_repo: CommitRepositoryPort,
         git_service: GitCommitInfoProtocol,
     ) -> None:
@@ -107,12 +107,12 @@ class GetFileHistoryUseCase:
 
         Args:
             repository_repo: Repository for accessing repositories
-            file_repo: Repository for accessing files
+            file_version_repo: Repository for file version operations
             commit_repo: Repository for accessing commits
             git_service: Git service for hydrating commit messages
         """
         self._repository_repo = repository_repo
-        self._file_repo = file_repo
+        self._file_version_repo = file_version_repo
         self._commit_repo = commit_repo
         self._git_service = git_service
 
@@ -137,7 +137,7 @@ class GetFileHistoryUseCase:
         repository_id = repository.id if repository.id is not None else 0
 
         # 2. Get all versions of this file (optionally filtered by branch)
-        files = await self._file_repo.list_versions_by_path(
+        files = await self._file_version_repo.list_versions_by_path(
             repository_id, request.file_path, request.branch
         )
 
@@ -179,7 +179,9 @@ class GetFileHistoryUseCase:
 
         # Bulk look up commit IDs for all file versions
         file_ids = [f.id for f in files if f.id is not None]
-        commit_ids_map = await self._file_repo.get_commit_ids_for_files(file_ids)
+        commit_ids_map = await self._file_version_repo.get_commit_ids_for_files(
+            file_ids
+        )
 
         # Collect all unique commit IDs and bulk fetch
         all_commit_ids = {cid for cids in commit_ids_map.values() for cid in cids}

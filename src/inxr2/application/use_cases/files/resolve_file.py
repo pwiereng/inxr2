@@ -13,6 +13,7 @@ from ....domain.exceptions import CommitNotFound, FileNotFound, RepositoryNotFou
 from ...ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
+    FileVersionPort,
     RepositoryPort,
 )
 
@@ -67,17 +68,20 @@ class ResolveFileUseCase:
         self,
         repository_repo: RepositoryPort,
         file_repo: FileRepositoryPort,
+        file_version_repo: FileVersionPort,
         commit_repo: CommitRepositoryPort,
     ) -> None:
         """Initialize use case with required repositories.
 
         Args:
             repository_repo: Repository for accessing repositories
-            file_repo: Repository for accessing files
+            file_repo: Repository for CRUD file operations
+            file_version_repo: Repository for file version operations
             commit_repo: Repository for accessing commits
         """
         self._repository_repo = repository_repo
         self._file_repo = file_repo
+        self._file_version_repo = file_version_repo
         self._commit_repo = commit_repo
 
     async def execute(self, request: ResolveFileRequest) -> ResolveFileResponse:
@@ -147,8 +151,10 @@ class ResolveFileUseCase:
         """
         if commit_hash:
             # Time travel mode: get file at specific commit
-            file = await self._file_repo.find_by_repository_path_and_commit_hash(
-                repository_id, path, commit_hash
+            file = (
+                await self._file_version_repo.find_by_repository_path_and_commit_hash(
+                    repository_id, path, commit_hash
+                )
             )
             if not file:
                 raise FileNotFound(
@@ -178,7 +184,7 @@ class ResolveFileUseCase:
                     return file, commit
 
             # Fallback: use list_versions_by_path + find linked commit
-            versions = await self._file_repo.list_versions_by_path(
+            versions = await self._file_version_repo.list_versions_by_path(
                 repository_id, path, branch
             )
             if not versions:
@@ -221,7 +227,9 @@ class ResolveFileUseCase:
         Falls back to the provided commit or raises CommitNotFound.
         """
         if file.id is not None:
-            file_commit_ids = await self._file_repo.get_commit_ids_for_files([file.id])
+            file_commit_ids = await self._file_version_repo.get_commit_ids_for_files(
+                [file.id]
+            )
             linked_ids = file_commit_ids.get(file.id, [])
             if linked_ids:
                 commit = await self._commit_repo.find_by_id(linked_ids[0])

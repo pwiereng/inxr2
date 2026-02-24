@@ -16,6 +16,7 @@ from inxr2.domain.value_objects import CommitHash
 from tests.fixtures.test_doubles import (
     InMemoryCommitRepository,
     InMemoryFileRepository,
+    InMemoryFileVersionRepository,
     InMemoryRepositoryRepository,
 )
 
@@ -223,9 +224,10 @@ class TestGetFileHistoryUseCase:
         git_service: StubGitCommitInfoService,
     ) -> GetFileHistoryUseCase:
         """Create use case with test dependencies."""
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         return GetFileHistoryUseCase(
             repository_repo=repository_repo,
-            file_repo=file_repo,
+            file_version_repo=file_version_repo,
             commit_repo=commit_repo,
             git_service=git_service,
         )
@@ -332,9 +334,10 @@ class TestGetFileHistoryUseCase:
         git_service: StubGitCommitInfoService,
     ) -> None:
         """Should raise FileNotFound when file doesn't exist on specified branch."""
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetFileHistoryUseCase(
             repository_repo=repository_repo,
-            file_repo=file_repo,
+            file_version_repo=file_version_repo,
             commit_repo=commit_repo,
             git_service=git_service,
         )
@@ -387,9 +390,10 @@ class TestGetFileHistoryUseCase:
         # Create git service that returns empty info
         git_service = StubGitCommitInfoService()
 
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetFileHistoryUseCase(
             repository_repo=repository_repo,
-            file_repo=file_repo,
+            file_version_repo=file_version_repo,
             commit_repo=commit_repo,
             git_service=git_service,
         )
@@ -454,9 +458,10 @@ class TestGetFileHistoryUseCase:
             ),
         )
 
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
         use_case = GetFileHistoryUseCase(
             repository_repo=repository_repo,
-            file_repo=file_repo,
+            file_version_repo=file_version_repo,
             commit_repo=commit_repo,
             git_service=git_service,
         )
