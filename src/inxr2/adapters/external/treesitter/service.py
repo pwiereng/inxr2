@@ -10,6 +10,8 @@ from typing import Any
 
 from tree_sitter import Language, Parser
 
+from inxr2.application.ports.services import ParserServicePort
+
 from .base import BaseLanguageParser
 from .c_parser import CParser
 from .csharp_parser import CSharpParser
@@ -20,7 +22,7 @@ from .typescript_parser import TypeScriptParser
 logger = logging.getLogger(__name__)
 
 
-class TreeSitterService:
+class TreeSitterService(ParserServicePort):
     """
     Tree-sitter based code parsing service.
 

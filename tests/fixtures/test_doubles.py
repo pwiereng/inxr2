@@ -2083,27 +2083,53 @@ class StubParserService(ParserServicePort):
 
     Example:
         parser = StubParserService()
-        parser.set_symbols_for_file("main.py", [Symbol(...), Symbol(...)])
-        symbols = await parser.parse_file(Path("main.py"), "python")
+        parser.set_results_for_file("main.py", ([symbol_dict], [ref_dict]))
+        symbols, refs = await parser.parse_file("content", "python", "main.py")
     """
 
     def __init__(self) -> None:
         """Initialize with empty responses."""
-        self._responses: dict[str, list[Symbol]] = {}
+        self._parse_responses: dict[
+            str, tuple[list[dict[str, Any]], list[dict[str, Any]]]
+        ] = {}
+        self._comment_responses: dict[str, list[dict[str, Any]]] = {}
+        self._supported_languages: set[str] = {"python", "typescript", "javascript"}
 
-    async def parse_file(self, file_path: Path, language: str) -> list[Symbol]:
-        """Return predefined symbols for the file."""
-        key = str(file_path)
-        return self._responses.get(key, [])
+    def supports_language(self, language: str) -> bool:
+        """Check if language is supported."""
+        return language in self._supported_languages
+
+    async def parse_file(
+        self, content: str, language: str, file_path: str
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Return predefined symbols and references for the file."""
+        return self._parse_responses.get(file_path, ([], []))
+
+    async def extract_comments(
+        self, content: str, language: str, file_path: str
+    ) -> list[dict[str, Any]]:
+        """Return predefined comments for the file."""
+        return self._comment_responses.get(file_path, [])
 
     # Test helper methods
-    def set_symbols_for_file(self, file_path: str, symbols: list[Symbol]) -> None:
-        """Set what symbols should be returned for a file."""
-        self._responses[file_path] = symbols
+    def set_results_for_file(
+        self,
+        file_path: str,
+        results: tuple[list[dict[str, Any]], list[dict[str, Any]]],
+    ) -> None:
+        """Set what symbols/references should be returned for a file."""
+        self._parse_responses[file_path] = results
+
+    def set_comments_for_file(
+        self, file_path: str, comments: list[dict[str, Any]]
+    ) -> None:
+        """Set what comments should be returned for a file."""
+        self._comment_responses[file_path] = comments
 
     def clear(self) -> None:
         """Clear all predefined responses."""
-        self._responses.clear()
+        self._parse_responses.clear()
+        self._comment_responses.clear()
 
 
 class FakeGitService(GitServicePort):

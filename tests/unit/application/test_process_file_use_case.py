@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from inxr2.application.ports.services import ParserServicePort
 from inxr2.application.use_cases.indexing.process_file import (
     ProcessFileRequest,
     ProcessFileUseCase,
@@ -18,7 +19,7 @@ from tests.fixtures.test_doubles import (
 )
 
 
-class FakeParserService:
+class FakeParserService(ParserServicePort):
     """Fake parser service for testing."""
 
     def __init__(self) -> None:

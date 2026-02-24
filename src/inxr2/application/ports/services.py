@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO
 
-from ...domain.entities import Symbol, TextContent
+from ...domain.entities import TextContent
 from ...domain.value_objects import AppConfig
 
 if TYPE_CHECKING:
@@ -35,25 +35,52 @@ class ParserServicePort(ABC):
     """
     Port for code parsing service.
 
-    Implementations will use tree-sitter or other parsers.
-
-    TODO: Add incremental parsing support
-    TODO: Add error recovery
+    Implementations parse source code content and extract symbols, references,
+    and comments. The primary implementation uses tree-sitter grammars.
     """
 
     @abstractmethod
-    async def parse_file(self, file_path: Path, language: str) -> list[Symbol]:
-        """
-        Parse a file and extract symbols.
+    def supports_language(self, language: str) -> bool:
+        """Check if the parser supports a given language.
 
         Args:
-            file_path: Path to file to parse
-            language: Programming language
+            language: Language name (e.g. "python", "typescript")
 
         Returns:
-            List of symbols found in file
+            True if language is supported
+        """
+        pass
 
-        TODO: Implement in adapter layer using tree-sitter
+    @abstractmethod
+    async def parse_file(
+        self, content: str, language: str, file_path: str
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Parse file content and return extracted symbols and references.
+
+        Args:
+            content: File content as string
+            language: Programming language
+            file_path: Path to file (for context/error reporting)
+
+        Returns:
+            Tuple of (symbols_data, references_data) as lists of dicts
+        """
+        pass
+
+    @abstractmethod
+    async def extract_comments(
+        self, content: str, language: str, file_path: str
+    ) -> list[dict[str, Any]]:
+        """Extract comments and docstrings from file content.
+
+        Args:
+            content: File content as string
+            language: Programming language
+            file_path: Path to file (for context/error reporting)
+
+        Returns:
+            List of comment dicts with keys: content, content_type,
+            source_line, source_end_line
         """
         pass
 

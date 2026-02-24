@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from inxr2.application.ports.services import ChangedFiles, CommitInfo
+from inxr2.application.ports.services import ChangedFiles, CommitInfo, ParserServicePort
 from inxr2.application.use_cases.indexing.default_orchestrator import (
     DefaultIndexingOrchestrator,
 )
@@ -25,7 +25,7 @@ from tests.fixtures.test_doubles import (
 )
 
 
-class FakeParserService:
+class FakeParserService(ParserServicePort):
     """Fake parser service for testing without real parsing."""
 
     def __init__(self) -> None:
@@ -809,7 +809,7 @@ class TestGitServiceIntegration:
         dicts to Symbol objects.
         """
 
-        class DictReturningParserService:
+        class DictReturningParserService(ParserServicePort):
             """Parser that returns dicts (like real TreeSitterService)."""
 
             def supports_language(self, language: str) -> bool:
@@ -838,6 +838,11 @@ class TestGitServiceIntegration:
                     }
                 ]
                 return symbols, references
+
+            async def extract_comments(
+                self, content: str, language: str, file_path: str
+            ) -> list[dict]:
+                return []
 
         dict_parser = DictReturningParserService()
         orchestrator = DefaultIndexingOrchestrator(
@@ -886,7 +891,7 @@ class TestGitServiceIntegration:
         data. The orchestrator should calculate it from source_column + len(reference_text).
         """
 
-        class ParserWithoutEndColumn:
+        class ParserWithoutEndColumn(ParserServicePort):
             """Parser that doesn't provide source_end_column (like real C parser)."""
 
             def supports_language(self, language: str) -> bool:
@@ -905,7 +910,6 @@ class TestGitServiceIntegration:
                         "end_column": 0,
                     }
                 ]
-                # References WITHOUT source_end_column
                 # References WITHOUT source_end_column (like real C parser)
                 references = [
                     {
@@ -917,6 +921,11 @@ class TestGitServiceIntegration:
                     }
                 ]
                 return symbols, references
+
+            async def extract_comments(
+                self, content: str, language: str, file_path: str
+            ) -> list[dict]:
+                return []
 
         no_end_parser = ParserWithoutEndColumn()
         orchestrator = DefaultIndexingOrchestrator(
@@ -980,7 +989,7 @@ class TestGitServiceIntegration:
         """
         from inxr2.domain.value_objects import ReferenceType
 
-        class ParserWithStringReferenceType:
+        class ParserWithStringReferenceType(ParserServicePort):
             """Parser that returns reference type as string (like all real parsers)."""
 
             def supports_language(self, language: str) -> bool:
@@ -1015,6 +1024,11 @@ class TestGitServiceIntegration:
                     },
                 ]
                 return symbols, references
+
+            async def extract_comments(
+                self, content: str, language: str, file_path: str
+            ) -> list[dict]:
+                return []
 
         string_type_parser = ParserWithStringReferenceType()
         orchestrator = DefaultIndexingOrchestrator(
