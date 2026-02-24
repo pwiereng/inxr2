@@ -71,7 +71,7 @@ class GetRepositoryStatsUseCase:
         file_repo: FileRepositoryPort,
         symbol_repo: SymbolRepositoryPort,
         reference_repo: ReferenceRepositoryPort,
-        file_version_repo: FileVersionPort | None = None,
+        file_version_repo: FileVersionPort,
         commit_repo: CommitRepositoryPort | None = None,
     ) -> None:
         """Initialize use case with required repositories.
@@ -209,7 +209,7 @@ class GetRepositoryStatsUseCase:
         Returns:
             List of unique files at HEAD
         """
-        if self._commit_repo is not None and self._file_version_repo is not None:
+        if self._commit_repo is not None:
             default_branch = repository.default_branch or "main"
             commit = await self._commit_repo.find_latest_by_branch(
                 repository_id, default_branch

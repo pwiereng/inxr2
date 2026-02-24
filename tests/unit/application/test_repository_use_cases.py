@@ -299,6 +299,7 @@ class TestGetRepositoryTreeUseCase:
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
+            file_version_repo=InMemoryFileVersionRepository(file_repository),
         )
 
         with pytest.raises(ValueError, match="Repository not found"):
@@ -312,6 +313,7 @@ class TestGetRepositoryTreeUseCase:
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
+            file_version_repo=InMemoryFileVersionRepository(file_repository),
         )
 
         with pytest.raises(ValueError, match="Repository not found"):
@@ -332,6 +334,7 @@ class TestGetRepositoryTreeUseCase:
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
+            file_version_repo=InMemoryFileVersionRepository(file_repository),
         )
 
         result = await use_case.execute(GetRepositoryTreeRequest(repository_id=repo.id))
@@ -396,6 +399,7 @@ class TestGetRepositoryTreeUseCase:
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
+            file_version_repo=InMemoryFileVersionRepository(file_repository),
         )
 
         result = await use_case.execute(GetRepositoryTreeRequest(repository_id=repo.id))
@@ -469,6 +473,7 @@ class TestGetRepositoryTreeUseCase:
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
+            file_version_repo=InMemoryFileVersionRepository(file_repository),
         )
 
         result = await use_case.execute(GetRepositoryTreeRequest(repository_id=repo.id))
@@ -515,6 +520,7 @@ class TestGetRepositoryTreeUseCase:
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
+            file_version_repo=InMemoryFileVersionRepository(file_repository),
         )
 
         # Use repository_name instead of repository_id
@@ -664,6 +670,7 @@ class TestGetRepositoryTreeUseCase:
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
+            file_version_repo=InMemoryFileVersionRepository(file_repository),
             commit_repo=None,  # No commit repo provided
         )
 
@@ -795,6 +802,7 @@ class TestGetRepositoryTreeUseCase:
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
             file_repo=file_repository,
+            file_version_repo=InMemoryFileVersionRepository(file_repository),
         )
 
         # changed_only=True but no commit_hash: should use default behavior (list all)
