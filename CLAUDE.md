@@ -812,6 +812,16 @@ See `config.yaml` for the current repository configuration.
    - Access via curl: `curl http://localhost:9222/navigate?url=...`
    - See `qa-agent/README.md` for API documentation
 
+## PR Review Workflow
+
+When the user says **"check comments"** on a PR, this means:
+1. **Read** all comments on the PR using `gh api repos/<owner>/<repo>/pulls/<number>/comments` and `gh pr view <number> --comments`
+2. **Review** the comments — understand what reviewers are asking for or pointing out
+3. **Summarize** the comments concisely for the user
+4. **Advise** on next steps — what changes are needed, whether comments are actionable, and recommended approach
+
+Do NOT take any action (push code, make changes, etc.) until the user has reviewed the summary and decided on next steps.
+
 ## Getting Help
 
 - **Architecture questions:** See this file (CLAUDE.md) — Architecture section
@@ -860,6 +870,15 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 2. Each container has its own embedded PostgreSQL (data in `pgdata` volume)
 3. The main worktree needs no `.env` — defaults work (ports 8000/5173/9222)
 4. All scripts (`dev-shell.sh`, `run-all-tests.sh`, etc.) auto-detect the container name from `.env`
+
+### Worktree Prompt Files
+
+When creating a worktree and crafting a prompt for a new Claude instance, **always write the prompt to a file** in the worktree directory:
+- File name: `instructions.txt` (always the same name)
+- Location: root of the worktree directory (e.g., `../wt-inxr2-<branch>/instructions.txt`)
+- Content: the full prompt/summary that would be given to the new Claude instance
+
+This ensures the prompt is preserved and easily accessible when opening a new Claude Code session in the worktree.
 
 ### Container Naming
 

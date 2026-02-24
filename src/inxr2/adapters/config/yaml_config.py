@@ -124,7 +124,7 @@ class YamlConfigService(ConfigServicePort):
             for error in e.errors():
                 loc = ".".join(str(x) for x in error["loc"])
                 errors.append(f"{loc}: {error['msg']}")
-        except Exception as e:
+        except (KeyError, TypeError, ValueError, OSError) as e:
             errors.append(f"Unexpected error: {e}")
 
         return errors

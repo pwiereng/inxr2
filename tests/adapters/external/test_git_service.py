@@ -493,3 +493,65 @@ class TestGitServiceBranchCommits:
         # Should return commits from main
         assert isinstance(commits, list)
         assert len(commits) <= 5
+
+
+class TestGitServiceNarrowedExceptions:
+    """Regression tests: verify narrowed exception catches still handle real GitPython errors.
+
+    These tests exercise the actual error paths in GitPython (BadName,
+    GitCommandError) to confirm the narrowed except clauses catch them.
+    If a catch is too narrow, the exception propagates and the test fails.
+    """
+
+    @pytest.fixture
+    def git_service(self) -> GitService:
+        return GitService()
+
+    def test_get_current_commit_bad_branch_falls_back_to_head(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """get_current_commit with non-existent branch falls back to HEAD."""
+        head_hash = git_service.get_current_commit(temp_git_repo)
+        # Non-existent branch triggers BadName → fallback to head.commit
+        result = git_service.get_current_commit(temp_git_repo, "no-such-branch-xyz")
+        assert result == head_hash
+
+    def test_get_changed_files_invalid_commit_raises_valueerror(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """get_changed_files with garbage commit hash raises ValueError."""
+        good_hash = git_service.get_current_commit(temp_git_repo)
+        with pytest.raises(ValueError, match="Invalid commit hash"):
+            git_service.get_changed_files(temp_git_repo, "deadbeef" * 5, good_hash)
+
+    def test_get_blame_invalid_commit_raises_valueerror(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """get_blame with garbage commit hash raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot access repository or commit"):
+            git_service.get_blame(temp_git_repo, "deadbeef" * 5, "README.md")
+
+    def test_get_blame_missing_file_raises_filenotfounderror(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """get_blame with non-existent file raises FileNotFoundError."""
+        commit_hash = git_service.get_current_commit(temp_git_repo)
+        with pytest.raises(FileNotFoundError):
+            git_service.get_blame(temp_git_repo, commit_hash, "no-such-file.txt")
+
+    def test_get_merge_base_bad_branches_returns_none(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """get_merge_base with two non-existent branches returns None."""
+        result = git_service.get_merge_base(
+            temp_git_repo, "no-branch-aaa", "no-branch-bbb"
+        )
+        assert result is None
+
+    def test_list_branches_with_no_errors(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """list_branches succeeds and the ValueError/GitCommandError catches don't interfere."""
+        branches = git_service.list_branches(temp_git_repo)
+        assert "main" in branches
+        assert "feature-branch" in branches

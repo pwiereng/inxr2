@@ -170,13 +170,14 @@ class TreeSitterService(ParserServicePort):
 
         try:
             tree = parser.parse(content.encode("utf-8"))
-        except Exception as e:
+        except (UnicodeEncodeError, ValueError, RuntimeError) as e:
             logger.error(f"Failed to parse {file_path}: {e}")
             return [], []
 
         try:
             return language_parser.extract(tree.root_node, content)
-        except Exception as e:
+        except (AttributeError, IndexError, KeyError, TypeError, RuntimeError) as e:
+            # AST traversal errors from unexpected node structures
             logger.error("Failed to extract symbols from %s: %s", file_path, e)
             return [], []
 
@@ -220,12 +221,13 @@ class TreeSitterService(ParserServicePort):
 
         try:
             tree = parser.parse(content.encode("utf-8"))
-        except Exception as e:
+        except (UnicodeEncodeError, ValueError, RuntimeError) as e:
             logger.error(f"Failed to parse {file_path}: {e}")
             return []
 
         try:
             return language_parser.extract_comments(tree.root_node, content)
-        except Exception as e:
+        except (AttributeError, IndexError, KeyError, TypeError, RuntimeError) as e:
+            # AST traversal errors from unexpected node structures
             logger.error("Failed to extract comments from %s: %s", file_path, e)
             return []

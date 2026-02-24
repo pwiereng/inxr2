@@ -72,7 +72,8 @@ class BaseLanguageParser(ABC):
                 result = self._process_comment_node(node, content)
                 if result is not None:
                     comments.append(result)
-            except Exception as e:
+            except (AttributeError, IndexError, KeyError, ValueError) as e:
+                # Unexpected AST node structure during comment extraction
                 logger.warning(
                     "Skipping comment node %s at line %d: %s",
                     node.type,

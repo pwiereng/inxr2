@@ -625,7 +625,7 @@ def _write_csv_log(
                 ]
             )
             f.flush()
-    except Exception:
+    except OSError:
         logger.debug("Failed to write CSV log to %s", log_path, exc_info=True)
 
 

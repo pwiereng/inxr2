@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from git.exc import BadName, GitCommandError
+
 from ....domain.exceptions import RepositoryNotFound
 from ...ports.repositories import CommitRepositoryPort, RepositoryPort
 from ...ports.services import CommitInfo
@@ -146,7 +148,7 @@ class ListCommitsUseCase:
                 max_count=request.limit,
             )
             git_commits.reverse()
-        except Exception:
+        except (GitCommandError, BadName, ValueError, OSError, RuntimeError):
             logger.warning(
                 "Failed to list git commits for %s",
                 repo_path,
@@ -164,7 +166,7 @@ class ListCommitsUseCase:
         # Fetch tags (commit_hash -> [tag_names])
         try:
             tags_map = self._git_service.get_tags(repo_path)
-        except Exception:
+        except (GitCommandError, BadName, ValueError, OSError, RuntimeError):
             logger.warning(
                 "Failed to get tags for %s",
                 repo_path,
@@ -183,7 +185,7 @@ class ListCommitsUseCase:
                     repo_path, branch, default_branch
                 )
                 branch_specific_hashes = {ci.hash for ci in branch_commits}
-            except Exception:
+            except (GitCommandError, BadName, ValueError, OSError, RuntimeError):
                 logger.warning(
                     "Failed to list branch commits for %s vs %s",
                     branch,
@@ -197,7 +199,7 @@ class ListCommitsUseCase:
                     merge_base_hash = self._git_service.get_merge_base(
                         repo_path, branch, default_branch
                     )
-                except Exception:
+                except (GitCommandError, BadName, ValueError, OSError, RuntimeError):
                     logger.warning(
                         "Failed to get merge-base for %s vs %s",
                         branch,
