@@ -78,7 +78,7 @@ def _run_single_repo_index(
         if days is not None:
             kwargs["days"] = days
         index_func(**kwargs)
-    except Exception as e:
+    except Exception as e:  # Catch-all: top-level CLI error boundary
         console.print(f"\n[red]Error during indexing:[/red] {e}")
         if verbose:
             console.print_exception()
@@ -248,7 +248,7 @@ def _run_config_based_index(
                 result = index_func(**kwargs)
                 if result:
                     results.append(result)
-            except Exception as e:
+            except Exception as e:  # Catch-all: top-level CLI error boundary per repo
                 console.print(f"  [red]Error:[/red] {e}")
                 if verbose:
                     console.print_exception()
@@ -463,7 +463,7 @@ def index(
         try:
             reset_database(console=console)
             console.print("[green]Database reset complete[/green]\n")
-        except Exception as e:
+        except Exception as e:  # Catch-all: top-level CLI error boundary
             console.print(f"[red]Error resetting database:[/red] {e}")
             sys.exit(1)
 
@@ -527,7 +527,7 @@ def index_status(path: Path) -> None:
 
     try:
         show_index_status(repo_path=path, console=console)
-    except Exception as e:
+    except Exception as e:  # Catch-all: top-level CLI error boundary
         console.print(f"\n[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -671,7 +671,7 @@ def db_reset(yes: bool) -> None:
     try:
         reset_database(console=console)
         console.print("[green]Database reset complete[/green]")
-    except Exception as e:
+    except Exception as e:  # Catch-all: top-level CLI error boundary
         console.print(f"[red]Error resetting database:[/red] {e}")
         sys.exit(1)
 
@@ -724,7 +724,7 @@ def status() -> None:
 
     try:
         show_overall_status(console=console)
-    except Exception as e:
+    except Exception as e:  # Catch-all: top-level CLI error boundary
         console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 

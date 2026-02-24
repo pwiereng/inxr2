@@ -5,6 +5,7 @@ Author info, message, and parent hashes are queried from git on-demand.
 See ARCHITECTURAL_REVIEW.md for rationale.
 """
 
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -19,6 +20,8 @@ from ....infrastructure.dependencies import (
     RepositoryAdapter,
 )
 from ..validation import validate_repo_name
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/commits", tags=["commits"])
 
@@ -148,8 +151,11 @@ async def get_commit(
         committer_name = info.committer_name
         committer_email = info.committer_email
         parent_hashes = info.parent_hashes
-    except Exception:
-        # Git query failed - use empty values
+    except (ValueError, OSError) as e:
+        # Git query failed — use empty values for non-essential fields
+        logger.warning(
+            "Failed to hydrate commit %s from git: %s", commit.commit_hash.value, e
+        )
         message = ""
         author_name = ""
         author_email = ""

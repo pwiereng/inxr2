@@ -257,7 +257,7 @@ class ProcessCommitUseCase:
             await self._text_content_repo.save(text_content)
             result.commit_messages_indexed += 1
 
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             result.errors.append(
                 f"Failed to index commit message for commit {commit_data.hash}: {e}"
             )

@@ -71,7 +71,9 @@ class DatabaseConnection:
             try:
                 yield session
                 await session.commit()
-            except Exception:
+            except (
+                Exception
+            ):  # Catch-all: must rollback on any error to keep session clean
                 await session.rollback()
                 raise
             finally:

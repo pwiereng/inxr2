@@ -713,7 +713,14 @@ class PythonParser(BaseLanguageParser):
                                     if docstring:
                                         comments.append(docstring)
                                     break
-            except Exception as e:
+            except (
+                AttributeError,
+                IndexError,
+                KeyError,
+                ValueError,
+                RuntimeError,
+            ) as e:
+                # Unexpected AST node structure during comment/docstring extraction
                 logger.warning(
                     "Skipping comment node %s at line %d: %s",
                     node.type,

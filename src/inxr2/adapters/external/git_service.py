@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from git import Repo
-from git.exc import GitCommandError, InvalidGitRepositoryError
+from git.exc import BadName, GitCommandError, InvalidGitRepositoryError
 
 from ...application.ports.services import (
     BlameLineInfo,
@@ -101,11 +101,11 @@ class GitService(GitServicePort):
         if branch:
             try:
                 commit = repo.commit(branch)
-            except Exception:
+            except (GitCommandError, BadName):
                 # Branch might be a remote tracking branch
                 try:
                     commit = repo.commit(f"origin/{branch}")
-                except Exception:
+                except (GitCommandError, BadName):
                     commit = repo.head.commit
         else:
             commit = repo.head.commit
@@ -204,7 +204,7 @@ class GitService(GitServicePort):
         try:
             from_c = repo.commit(from_commit)
             to_c = repo.commit(to_commit)
-        except Exception as e:
+        except (GitCommandError, BadName, ValueError) as e:
             raise ValueError(f"Invalid commit hash: {e}") from e
 
         diff = from_c.diff(to_c)
@@ -458,11 +458,11 @@ class GitService(GitServicePort):
         try:
             # Try local branch first
             commits = list(repo.iter_commits(branch, **iter_kwargs))
-        except Exception:
+        except (GitCommandError, BadName):
             # Try remote tracking branch
             try:
                 commits = list(repo.iter_commits(f"origin/{branch}", **iter_kwargs))
-            except Exception as e:
+            except (GitCommandError, BadName) as e:
                 logger.warning(f"Could not find branch {branch}: {e}")
                 return []
 
@@ -494,10 +494,10 @@ class GitService(GitServicePort):
             """Resolve branch name to commit, trying local then remote."""
             try:
                 return repo.commit(branch)
-            except Exception:
+            except (GitCommandError, BadName):
                 try:
                     return repo.commit(f"origin/{branch}")
-                except Exception:
+                except (GitCommandError, BadName):
                     return None
 
         commit1 = resolve_branch(branch1)
@@ -512,7 +512,7 @@ class GitService(GitServicePort):
             if merge_bases:
                 return merge_bases[0].hexsha
             return None
-        except Exception as e:
+        except GitCommandError as e:
             logger.warning(
                 f"Could not find merge-base for {branch1} and {branch2}: {e}"
             )
@@ -548,10 +548,10 @@ class GitService(GitServicePort):
         def resolve_branch(b: str) -> Any:
             try:
                 return repo.commit(b)
-            except Exception:
+            except (GitCommandError, BadName):
                 try:
                     return repo.commit(f"origin/{b}")
-                except Exception:
+                except (GitCommandError, BadName):
                     return None
 
         branch_commit = resolve_branch(branch)
@@ -589,7 +589,7 @@ class GitService(GitServicePort):
                 )
                 commits = list(reversed(commits))
                 return self._commits_to_info(commits)
-        except Exception as e:
+        except GitCommandError as e:
             # Best-effort detection of unmerged commits failed; fall back to
             # merge-commit analysis below instead of failing the entire operation.
             logger.debug(
@@ -637,7 +637,7 @@ class GitService(GitServicePort):
                             )
                             commits = list(reversed(commits))
                             return self._commits_to_info(commits)
-        except Exception as e:
+        except GitCommandError as e:
             logger.warning(f"Error finding merge commit for {branch}: {e}")
 
         # Fallback: return empty if we can't determine branch commits
@@ -721,7 +721,8 @@ class GitService(GitServicePort):
         for ref in repo.heads:
             try:
                 branch_dates[ref.name] = ref.commit.committed_date
-            except Exception:
+            except (ValueError, GitCommandError):
+                # Detached or broken ref — use epoch as fallback
                 branch_dates[ref.name] = 0
 
         # Get remote tracking branches (strip remote prefix like "origin/")
@@ -730,7 +731,8 @@ class GitService(GitServicePort):
             if name and name != "HEAD" and name not in branch_dates:
                 try:
                     branch_dates[name] = ref.commit.committed_date
-                except Exception:
+                except (ValueError, GitCommandError):
+                    # Detached or broken ref — use epoch as fallback
                     branch_dates[name] = 0
 
         branch_list = list(branch_dates.keys())
@@ -787,14 +789,14 @@ class GitService(GitServicePort):
         try:
             repo = self._get_repo(repo_path)
             commit = repo.commit(commit_hash)
-        except Exception as e:
+        except (GitCommandError, BadName, ValueError) as e:
             raise ValueError(
                 f"Cannot access repository or commit {commit_hash[:8]}"
             ) from e
 
         try:
             blame_entries: Any = repo.blame(commit, file_path)
-        except Exception as e:
+        except GitCommandError as e:
             raise FileNotFoundError(
                 f"File not found at commit {commit_hash[:8]}"
             ) from e

@@ -97,7 +97,7 @@ class ProcessFileUseCase:
         """Process a single file: find or create version, parse if new."""
         try:
             return await self._do_process(request)
-        except Exception as e:
+        except Exception as e:  # Catch-all: resilience boundary for per-file processing
             return ProcessFileResult(
                 processed=False,
                 skipped=False,
@@ -428,7 +428,7 @@ class ProcessFileUseCase:
             if text_contents:
                 await self._text_content_repo.save_batch(text_contents)
 
-        except Exception as e:
+        except (UnicodeDecodeError, OSError, RuntimeError) as e:
             return (
                 comments_indexed,
                 docstrings_indexed,
@@ -483,7 +483,7 @@ class ProcessFileUseCase:
 
             return self._NonCodeResult(indexed=True, inserts=len(text_contents))
 
-        except Exception as e:
+        except (UnicodeDecodeError, OSError, RuntimeError) as e:
             return self._NonCodeResult(
                 indexed=False,
                 inserts=0,

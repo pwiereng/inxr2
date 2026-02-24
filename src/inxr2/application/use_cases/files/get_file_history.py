@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from git.exc import BadName, GitCommandError
+
 from ....domain.entities import Repository
 from ....domain.exceptions import FileNotFound, RepositoryNotFound
 from ...ports.repositories import (
@@ -233,5 +235,5 @@ class GetFileHistoryUseCase:
         try:
             git_info = self._git_service.get_commit_info(repo_path, commit_hash)
             return git_info.message[:100]
-        except Exception:
+        except (GitCommandError, BadName, ValueError, OSError):
             return ""

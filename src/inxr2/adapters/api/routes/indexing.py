@@ -46,7 +46,7 @@ async def index_local_directory(
                 path=request.path, name=request.name, description=request.description
             )
         )
-    except Exception as e:
+    except (ValueError, OSError, RuntimeError) as e:
         raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}") from e
 
     return IndexLocalResponse(

@@ -182,8 +182,8 @@ class IndexLocalDirectoryUseCase:
                     )
                 indexed_files += 1
 
-            except Exception as e:
-                # Skip files that can't be read
+            except (OSError, UnicodeDecodeError) as e:
+                # Skip files that can't be read or decoded
                 logger.warning("Skipping %s: %s", file_path, e)
                 skipped_files += 1
                 continue
@@ -253,5 +253,5 @@ class IndexLocalDirectoryUseCase:
             if last_byte is not None and last_byte != ord(b"\n"):
                 line_count += 1
             return line_count
-        except Exception:
+        except (UnicodeDecodeError, OSError):
             return None
