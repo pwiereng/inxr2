@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
+from git.exc import BadName, GitCommandError
 from pydantic import BaseModel
 
 from ....application.use_cases.commits import ListCommitsRequest
@@ -151,7 +152,7 @@ async def get_commit(
         committer_name = info.committer_name
         committer_email = info.committer_email
         parent_hashes = info.parent_hashes
-    except (ValueError, OSError) as e:
+    except (GitCommandError, BadName, ValueError, OSError) as e:
         # Git query failed — use empty values for non-essential fields
         logger.warning(
             "Failed to hydrate commit %s from git: %s", commit.commit_hash.value, e
