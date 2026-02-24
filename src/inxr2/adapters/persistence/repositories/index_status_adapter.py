@@ -7,10 +7,15 @@ from ....application.ports.repositories import IndexStatusRepositoryPort
 from ....domain.entities import IndexStatus
 from ..mappers import IndexStatusMapper
 from ..models.index_status import IndexStatusModel
+from .base_repository import BaseSQLAlchemyRepository
 
 
-class PostgresIndexStatusRepository(IndexStatusRepositoryPort):
+class PostgresIndexStatusRepository(
+    BaseSQLAlchemyRepository[IndexStatus, IndexStatusModel], IndexStatusRepositoryPort
+):
     """PostgreSQL implementation of IndexStatusRepositoryPort."""
+
+    _model_class = IndexStatusModel
 
     def __init__(self, session: AsyncSession):
         """
@@ -19,7 +24,7 @@ class PostgresIndexStatusRepository(IndexStatusRepositoryPort):
         Args:
             session: SQLAlchemy async session
         """
-        self.session = session
+        super().__init__(session)
         self.mapper = IndexStatusMapper()
 
     async def save(self, status: IndexStatus) -> IndexStatus:
@@ -57,17 +62,7 @@ class PostgresIndexStatusRepository(IndexStatusRepositoryPort):
                     updated_at=existing.updated_at,
                 )
 
-        model = self.mapper.to_model(status)
-
-        if status.id is None:
-            self.session.add(model)
-        else:
-            model = await self.session.merge(model)
-
-        await self.session.flush()
-        await self.session.refresh(model)
-
-        return self.mapper.to_domain(model)
+        return await super().save(status)
 
     async def find_by_repository_and_branch(
         self, repository_id: int, branch: str

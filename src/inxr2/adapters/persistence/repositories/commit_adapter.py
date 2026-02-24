@@ -11,10 +11,15 @@ from ....domain.entities import Commit
 from ..mappers import CommitMapper
 from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
+from .base_repository import BaseSQLAlchemyRepository
 
 
-class PostgresCommitRepository(CommitRepositoryPort):
+class PostgresCommitRepository(
+    BaseSQLAlchemyRepository[Commit, CommitModel], CommitRepositoryPort
+):
     """PostgreSQL implementation of CommitRepositoryPort."""
+
+    _model_class = CommitModel
 
     def __init__(self, session: AsyncSession):
         """
@@ -23,22 +28,8 @@ class PostgresCommitRepository(CommitRepositoryPort):
         Args:
             session: SQLAlchemy async session
         """
-        self.session = session
+        super().__init__(session)
         self.mapper = CommitMapper()
-
-    async def save(self, commit: Commit) -> Commit:
-        """Save or update a commit."""
-        model = self.mapper.to_model(commit)
-
-        if commit.id is None:
-            self.session.add(model)
-        else:
-            model = await self.session.merge(model)
-
-        await self.session.flush()
-        await self.session.refresh(model)
-
-        return self.mapper.to_domain(model)
 
     async def save_many(self, commits: list[Commit]) -> list[Commit]:
         """Bulk save commits for performance."""
@@ -54,14 +45,6 @@ class PostgresCommitRepository(CommitRepositoryPort):
         await self.session.flush()
 
         return [self.mapper.to_domain(model) for model in saved_commits]
-
-    async def find_by_id(self, commit_id: int) -> Commit | None:
-        """Find commit by ID."""
-        result = await self.session.execute(
-            select(CommitModel).where(CommitModel.id == commit_id)
-        )
-        model = result.scalar_one_or_none()
-        return self.mapper.to_domain(model) if model else None
 
     async def find_by_ids(self, commit_ids: list[int]) -> list[Commit]:
         """Find multiple commits by IDs in a single query."""

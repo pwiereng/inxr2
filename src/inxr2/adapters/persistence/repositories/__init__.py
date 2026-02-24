@@ -1,5 +1,6 @@
 """Repository implementations."""
 
+from .base_repository import BaseSQLAlchemyRepository, MapperProtocol
 from .commit_adapter import PostgresCommitRepository
 from .file_adapter import PostgresFileRepository
 from .file_search_adapter import PostgresFileSearchRepository
@@ -12,6 +13,8 @@ from .symbol_adapter import PostgresSymbolRepository
 from .text_content_adapter import PostgresTextContentRepository
 
 __all__ = [
+    "BaseSQLAlchemyRepository",
+    "MapperProtocol",
     "PostgresCommitRepository",
     "PostgresFileRepository",
     "PostgresFileSearchRepository",

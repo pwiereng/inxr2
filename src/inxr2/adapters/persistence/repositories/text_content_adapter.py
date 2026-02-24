@@ -9,10 +9,15 @@ from ....application.ports.repositories import TextContentRepositoryPort
 from ....domain.entities import TextContent
 from ..mappers import TextContentMapper
 from ..models.text_content import TextContentModel
+from .base_repository import BaseSQLAlchemyRepository
 
 
-class PostgresTextContentRepository(TextContentRepositoryPort):
+class PostgresTextContentRepository(
+    BaseSQLAlchemyRepository[TextContent, TextContentModel], TextContentRepositoryPort
+):
     """PostgreSQL implementation of TextContentRepositoryPort."""
+
+    _model_class = TextContentModel
 
     def __init__(self, session: AsyncSession):
         """
@@ -21,22 +26,8 @@ class PostgresTextContentRepository(TextContentRepositoryPort):
         Args:
             session: SQLAlchemy async session
         """
-        self.session = session
+        super().__init__(session)
         self.mapper = TextContentMapper()
-
-    async def save(self, text_content: TextContent) -> TextContent:
-        """Save or update a text content entry."""
-        model = self.mapper.to_model(text_content)
-
-        if text_content.id is None:
-            self.session.add(model)
-        else:
-            model = await self.session.merge(model)
-
-        await self.session.flush()
-        await self.session.refresh(model)
-
-        return self.mapper.to_domain(model)
 
     async def save_batch(self, text_contents: list[TextContent]) -> list[TextContent]:
         """Bulk save text contents for performance.

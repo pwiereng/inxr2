@@ -11,30 +11,21 @@ from ..mappers import SymbolMapper
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.symbol import SymbolModel
+from .base_repository import BaseSQLAlchemyRepository
 from .regex_utils import translate_word_boundaries, validate_regex_pattern
 from .shared_queries import head_file_ids_subquery, latest_file_ids_subquery
 
 
-class PostgresSymbolRepository(SymbolRepositoryPort):
+class PostgresSymbolRepository(
+    BaseSQLAlchemyRepository[Symbol, SymbolModel], SymbolRepositoryPort
+):
     """PostgreSQL implementation of SymbolRepositoryPort."""
 
+    _model_class = SymbolModel
+
     def __init__(self, session: AsyncSession):
-        self.session = session
+        super().__init__(session)
         self.mapper = SymbolMapper()
-
-    async def save(self, symbol: Symbol) -> Symbol:
-        """Save or update a symbol."""
-        model = self.mapper.to_model(symbol)
-
-        if symbol.id is None:
-            self.session.add(model)
-        else:
-            model = await self.session.merge(model)
-
-        await self.session.flush()
-        await self.session.refresh(model)
-
-        return self.mapper.to_domain(model)
 
     async def save_many(self, symbols: list[Symbol]) -> list[Symbol]:
         """Bulk save symbols for performance."""
@@ -49,14 +40,6 @@ class PostgresSymbolRepository(SymbolRepositoryPort):
         await self.session.flush()
 
         return [self.mapper.to_domain(model) for model in models]
-
-    async def find_by_id(self, symbol_id: int) -> Symbol | None:
-        """Find symbol by ID."""
-        result = await self.session.execute(
-            select(SymbolModel).where(SymbolModel.id == symbol_id)
-        )
-        model = result.scalar_one_or_none()
-        return self.mapper.to_domain(model) if model else None
 
     async def search_by_name(
         self,

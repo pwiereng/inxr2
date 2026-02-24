@@ -11,28 +11,19 @@ from ....domain.entities import File
 from ..mappers import FileMapper
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
+from .base_repository import BaseSQLAlchemyRepository
 
 
-class PostgresFileRepository(FileRepositoryPort):
+class PostgresFileRepository(
+    BaseSQLAlchemyRepository[File, FileModel], FileRepositoryPort
+):
     """PostgreSQL implementation of FileRepositoryPort."""
 
+    _model_class = FileModel
+
     def __init__(self, session: AsyncSession):
-        self.session = session
+        super().__init__(session)
         self.mapper = FileMapper()
-
-    async def save(self, file: File) -> File:
-        """Save or update a file."""
-        model = self.mapper.to_model(file)
-
-        if file.id is None:
-            self.session.add(model)
-        else:
-            model = await self.session.merge(model)
-
-        await self.session.flush()
-        await self.session.refresh(model)
-
-        return self.mapper.to_domain(model)
 
     async def save_many(self, files: list[File]) -> list[File]:
         """Bulk save files for performance."""
@@ -41,14 +32,6 @@ class PostgresFileRepository(FileRepositoryPort):
         await self.session.flush()
 
         return [self.mapper.to_domain(model) for model in models]
-
-    async def find_by_id(self, file_id: int) -> File | None:
-        """Find file by ID."""
-        result = await self.session.execute(
-            select(FileModel).where(FileModel.id == file_id)
-        )
-        model = result.scalar_one_or_none()
-        return self.mapper.to_domain(model) if model else None
 
     async def find_by_ids(self, file_ids: list[int]) -> dict[int, File]:
         """Find multiple files by IDs in a single query."""
