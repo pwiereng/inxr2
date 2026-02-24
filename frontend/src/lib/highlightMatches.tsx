@@ -1,6 +1,35 @@
 import React from 'react'
 
 /**
+ * Sanitize a ts_headline snippet from PostgreSQL for safe rendering via dangerouslySetInnerHTML.
+ *
+ * PostgreSQL ts_headline returns plain text with <mark>...</mark> tags around matched terms.
+ * This function:
+ * 1. Replaces <mark>/<\/mark> with placeholders
+ * 2. Escapes all remaining HTML (< and >) to prevent XSS
+ * 3. Restores <mark> tags with inline styling matching the existing highlight style
+ */
+export function sanitizeHeadline(headline: string): string {
+  const MARK_OPEN = '{{MARK_OPEN}}'
+  const MARK_CLOSE = '{{MARK_CLOSE}}'
+
+  // Step 1: Replace <mark> and </mark> with unique placeholders
+  let result = headline.replace(/<mark>/g, MARK_OPEN).replace(/<\/mark>/g, MARK_CLOSE)
+
+  // Step 2: Escape all remaining HTML characters
+  result = result.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+  // Step 3: Restore <mark> tags with inline styling
+  result = result
+    .split(MARK_OPEN)
+    .join('<mark style="background-color:#fff176;border-radius:2px;padding:0 1px">')
+    .split(MARK_CLOSE)
+    .join('</mark>')
+
+  return result
+}
+
+/**
  * Highlight matching text in a string by wrapping matches in <mark> elements.
  * For keyword mode, highlights each query word independently.
  * For phrase/regex mode, highlights the full pattern.

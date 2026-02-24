@@ -407,6 +407,171 @@ async def test_search_with_commit_filter(
 
 
 @pytest.mark.asyncio
+async def test_keyword_search_returns_headline(
+    db_session: AsyncSession,
+    test_repository: Repository,
+    test_commit: Commit,
+    test_file: File,
+) -> None:
+    """Test that keyword mode returns a ts_headline with <mark> tags."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
+    repo = PostgresTextContentRepository(db_session)
+    search = PostgresTextSearch(db_session)
+
+    await repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=test_commit.id,
+            source_type=TextSearchSourceType.COMMENT.value,
+            source_file_id=test_file.id,
+            source_line=1,
+            content="Initialize the rich console for output",
+            language="python",
+        )
+    )
+    await db_session.commit()
+
+    query = TextSearchQuery(
+        query="console",
+        mode=QueryMode.KEYWORD.value,
+        repository_id=test_repository.id,
+    )
+    results, total = await search.search(query)
+
+    assert total == 1
+    assert results[0].headline is not None
+    assert "<mark>" in results[0].headline
+    assert "</mark>" in results[0].headline
+
+
+@pytest.mark.asyncio
+async def test_phrase_search_returns_headline(
+    db_session: AsyncSession,
+    test_repository: Repository,
+    test_commit: Commit,
+    test_file: File,
+) -> None:
+    """Test that phrase mode returns a ts_headline with <mark> tags."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
+    repo = PostgresTextContentRepository(db_session)
+    search = PostgresTextSearch(db_session)
+
+    await repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=test_commit.id,
+            source_type=TextSearchSourceType.COMMENT.value,
+            source_file_id=test_file.id,
+            source_line=1,
+            content="Initialize the rich console for output",
+            language="python",
+        )
+    )
+    await db_session.commit()
+
+    query = TextSearchQuery(
+        query="rich console",
+        mode=QueryMode.PHRASE.value,
+        repository_id=test_repository.id,
+    )
+    results, total = await search.search(query)
+
+    assert total == 1
+    assert results[0].headline is not None
+    assert "<mark>" in results[0].headline
+
+
+@pytest.mark.asyncio
+async def test_regex_search_returns_no_headline(
+    db_session: AsyncSession,
+    test_repository: Repository,
+    test_commit: Commit,
+    test_file: File,
+) -> None:
+    """Test that regex mode returns headline=None (no ts_headline for regex)."""
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
+    repo = PostgresTextContentRepository(db_session)
+    search = PostgresTextSearch(db_session)
+
+    await repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=test_commit.id,
+            source_type=TextSearchSourceType.COMMENT.value,
+            source_file_id=test_file.id,
+            source_line=1,
+            content="Initialize the rich console for output",
+            language="python",
+        )
+    )
+    await db_session.commit()
+
+    query = TextSearchQuery(
+        query="console",
+        mode=QueryMode.REGEX.value,
+        repository_id=test_repository.id,
+    )
+    results, total = await search.search(query)
+
+    assert total == 1
+    assert results[0].headline is None
+
+
+@pytest.mark.asyncio
+async def test_headline_shows_stemmed_match(
+    db_session: AsyncSession,
+    test_repository: Repository,
+    test_commit: Commit,
+    test_file: File,
+) -> None:
+    """Test that ts_headline marks the actual stemmed word, not the query word.
+
+    This is the core problem being solved: searching "initialize" should mark
+    "Initial" in the headline because PostgreSQL stems both to the same root.
+    """
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_file.id is not None
+
+    repo = PostgresTextContentRepository(db_session)
+    search = PostgresTextSearch(db_session)
+
+    await repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=test_commit.id,
+            source_type=TextSearchSourceType.COMMENT.value,
+            source_file_id=test_file.id,
+            source_line=1,
+            content="Initial setup of the database connection pool",
+            language="python",
+        )
+    )
+    await db_session.commit()
+
+    query = TextSearchQuery(
+        query="initialize",
+        mode=QueryMode.KEYWORD.value,
+        repository_id=test_repository.id,
+    )
+    results, total = await search.search(query)
+
+    assert total == 1
+    assert results[0].headline is not None
+    # ts_headline should mark "Initial" — the actual word in the content
+    assert "<mark>Initial</mark>" in results[0].headline
+
+
+@pytest.mark.asyncio
 async def test_search_branch_filter_finds_file_based_content(
     db_session: AsyncSession,
     test_repository: Repository,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
-import { highlightMatches } from './highlightMatches'
+import { highlightMatches, sanitizeHeadline } from './highlightMatches'
 
 /** Render the result to a container and return its innerHTML for assertion. */
 function renderToHTML(node: React.ReactNode): string {
@@ -87,5 +87,44 @@ describe('highlightMatches', () => {
       const markCount = (html.match(/<mark/g) || []).length
       expect(markCount).toBe(3)
     })
+  })
+})
+
+describe('sanitizeHeadline', () => {
+  it('preserves <mark> tags and adds inline styling', () => {
+    const result = sanitizeHeadline('the <mark>console</mark> output')
+    expect(result).toContain('<mark style="background-color:#fff176')
+    expect(result).toContain('</mark>')
+    expect(result).toContain('console')
+  })
+
+  it('escapes <script> tags to prevent XSS', () => {
+    const result = sanitizeHeadline('<script>alert("xss")</script> <mark>match</mark>')
+    expect(result).not.toContain('<script>')
+    expect(result).toContain('&lt;script&gt;')
+    expect(result).toContain('<mark style=')
+  })
+
+  it('handles multiple <mark> tags', () => {
+    const result = sanitizeHeadline('<mark>rich</mark> and <mark>console</mark>')
+    const markCount = (result.match(/<mark /g) || []).length
+    expect(markCount).toBe(2)
+  })
+
+  it('handles plain text with no marks', () => {
+    const result = sanitizeHeadline('just plain text')
+    expect(result).toBe('just plain text')
+  })
+
+  it('escapes angle brackets in content outside marks', () => {
+    const result = sanitizeHeadline('a < b > c <mark>match</mark>')
+    expect(result).toContain('a &lt; b &gt; c')
+    expect(result).toContain('<mark style=')
+  })
+
+  it('escapes ampersands in content', () => {
+    const result = sanitizeHeadline('a &amp; b <mark>match</mark>')
+    expect(result).toContain('a &amp;amp; b')
+    expect(result).toContain('<mark style=')
   })
 })

@@ -178,7 +178,14 @@ class PostgresTextSearch(TextSearchPort):
             tsquery = self._build_tsquery(query)
             results_query = (
                 base_query.add_columns(
-                    func.ts_rank(content_tsvector, tsquery).label("rank")
+                    func.ts_rank(content_tsvector, tsquery).label("rank"),
+                    func.ts_headline(
+                        "english",
+                        TextContentModel.content,
+                        tsquery,
+                        "StartSel=<mark>, StopSel=</mark>, "
+                        "MaxFragments=3, MaxWords=35, MinWords=15",
+                    ).label("headline"),
                 )
                 .distinct()
                 .order_by(text("rank DESC"), TextContentModel.id)
@@ -204,11 +211,11 @@ class PostgresTextSearch(TextSearchPort):
             for row in rows:
                 model = row[0]
                 rank = row[1] if len(row) > 1 else 0.0
+                headline = row[2] if len(row) > 2 else None
                 text_content = self.mapper.to_domain(model)
-                # TODO: Add ts_headline support for snippets in future phase
                 search_results.append(
                     TextSearchResult(
-                        text_content=text_content, rank=rank, headline=None
+                        text_content=text_content, rank=rank, headline=headline
                     )
                 )
 

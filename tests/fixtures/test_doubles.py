@@ -2581,11 +2581,16 @@ class FakeTextSearch(TextSearchPort):
         paginated = scored[query.offset : query.offset + query.limit]
 
         # Convert to search results
+        is_regex = query.mode == "regex"
         results = [
             TextSearchResult(
                 text_content=tc,
                 rank=float(score),
-                headline=None,  # TODO: Add simple snippet generation
+                headline=(
+                    None
+                    if is_regex
+                    else f"<mark>{query.query}</mark> ... {tc.content[:50]}"
+                ),
             )
             for tc, score in paginated
         ]
