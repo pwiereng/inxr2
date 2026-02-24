@@ -36,10 +36,18 @@ class GitService(GitServicePort):
         self._repo_cache: dict[str, Repo] = {}
 
     def _get_repo(self, repo_path: Path) -> Repo:
-        """Get or create a cached Repo object for the given path."""
+        """Get or create a cached Repo object for the given path.
+
+        Raises ValueError if the path is not a valid git repository,
+        normalizing InvalidGitRepositoryError so callers only need to
+        catch ValueError for bad repo paths.
+        """
         key = str(repo_path)
         if key not in self._repo_cache:
-            self._repo_cache[key] = Repo(key)
+            try:
+                self._repo_cache[key] = Repo(key)
+            except InvalidGitRepositoryError as e:
+                raise ValueError(f"Not a valid git repository: {repo_path}") from e
         return self._repo_cache[key]
 
     def clear_repo_cache(self) -> None:
@@ -56,34 +64,30 @@ class GitService(GitServicePort):
         Returns:
             RepositoryInfo with name, url, current_branch, is_bare
         """
-        try:
-            repo = self._get_repo(repo_path)
+        repo = self._get_repo(repo_path)
 
-            # Get remote URL if available
-            url = None
-            if repo.remotes:
-                try:
-                    url = repo.remotes.origin.url
-                except AttributeError:
-                    # No origin remote
-                    url = repo.remotes[0].url if repo.remotes else None
-
-            # Get current branch
+        # Get remote URL if available
+        url = None
+        if repo.remotes:
             try:
-                current_branch = repo.active_branch.name
-            except TypeError:
-                # Detached HEAD state
-                current_branch = None
+                url = repo.remotes.origin.url
+            except AttributeError:
+                # No origin remote
+                url = repo.remotes[0].url if repo.remotes else None
 
-            return RepositoryInfo(
-                name=repo_path.name,
-                url=url,
-                current_branch=current_branch,
-                is_bare=repo.bare,
-            )
+        # Get current branch
+        try:
+            current_branch = repo.active_branch.name
+        except TypeError:
+            # Detached HEAD state
+            current_branch = None
 
-        except InvalidGitRepositoryError as e:
-            raise ValueError(f"Not a valid git repository: {repo_path}") from e
+        return RepositoryInfo(
+            name=repo_path.name,
+            url=url,
+            current_branch=current_branch,
+            is_bare=repo.bare,
+        )
 
     def get_current_commit(self, repo_path: Path, branch: str | None = None) -> str:
         """
