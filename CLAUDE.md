@@ -861,6 +861,15 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 ./scripts/worktree-list.sh
 ```
 
+### Worktree Cleanup Procedure
+
+When cleaning up a worktree (after its PR is merged), **always** follow this sequence:
+1. Verify PR is merged and issue is closed
+2. Run `./scripts/worktree-remove.sh <branch-name>`
+3. Pull latest main: `git pull --rebase origin main`
+4. Run all checks and tests on the updated main: `docker exec inxr2-dev bash -c "./scripts/run-all-tests.sh"`
+5. Report results to the user
+
 ### How It Works
 
 1. `worktree-create.sh feature-x` creates:
