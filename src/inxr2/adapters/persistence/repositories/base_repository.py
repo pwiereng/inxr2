@@ -21,9 +21,11 @@ class MapperProtocol(Protocol[TEntity, TModel]):
 class BaseSQLAlchemyRepository(Generic[TEntity, TModel]):
     """Generic base class for SQLAlchemy repository adapters.
 
-    Provides shared ``save()`` and ``find_by_id()`` implementations that are
-    identical across most repository adapters.  Subclasses must set
-    ``_model_class`` and initialise ``self.mapper`` in their ``__init__``.
+    Provides shared ``save()``, ``find_by_id()``, ``save_many()``,
+    ``delete_by_repository()``, and ``count_by_repository()``
+    implementations that are identical across most repository adapters.
+    Subclasses must set ``_model_class`` and initialise ``self.mapper``
+    in their ``__init__``.
     """
 
     _model_class: type[TModel]

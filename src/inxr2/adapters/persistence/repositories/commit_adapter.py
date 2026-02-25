@@ -17,7 +17,11 @@ from .base_repository import BaseSQLAlchemyRepository
 class PostgresCommitRepository(
     BaseSQLAlchemyRepository[Commit, CommitModel], CommitRepositoryPort
 ):
-    """PostgreSQL implementation of CommitRepositoryPort."""
+    """PostgreSQL implementation of CommitRepositoryPort.
+
+    Note: ``delete_by_repository()`` (inherited from base) cascades to
+    branch_commits entries via the database FK constraint.
+    """
 
     _model_class = CommitModel
 
