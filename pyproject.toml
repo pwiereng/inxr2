@@ -84,7 +84,7 @@ inxr2 = "inxr2.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-inxr2 = ["py.typed"]
+inxr2 = ["py.typed", "adapters/external/treesitter/builtins/*.json"]
 
 # Black configuration
 [tool.black]
