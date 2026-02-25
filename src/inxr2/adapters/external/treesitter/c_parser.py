@@ -420,16 +420,13 @@ class CParser(BaseLanguageParser):
             """Process a struct specifier."""
             # in_typedef is accepted for API consistency but not currently used
             _ = in_typedef
-            # Find the name (type_identifier)
-            struct_name = None
-            for child in node.children:
-                if child.type == "type_identifier":
-                    struct_name = get_text(child)
-                    break
-
-            # Only add struct symbol if it has a name
-            if struct_name:
-                symbols.append(self._make_symbol(struct_name, "struct", node))
+            struct_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "struct",
+                identifier_type="type_identifier",
+            )
 
             # Process fields from field_declaration_list (only if struct has a name)
             if struct_name:
@@ -445,15 +442,13 @@ class CParser(BaseLanguageParser):
             """Process a union specifier."""
             # in_typedef is accepted for API consistency but not currently used
             _ = in_typedef
-            # Find the name (type_identifier)
-            union_name = None
-            for child in node.children:
-                if child.type == "type_identifier":
-                    union_name = get_text(child)
-                    break
-
-            if union_name:
-                symbols.append(self._make_symbol(union_name, "union", node))
+            union_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "union",
+                identifier_type="type_identifier",
+            )
 
             # Process fields from field_declaration_list (only if union has a name)
             if union_name:
@@ -521,15 +516,14 @@ class CParser(BaseLanguageParser):
             """Process an enum specifier."""
             # in_typedef is accepted for API consistency but not currently used
             _ = in_typedef
-            # Find the name (type_identifier)
-            enum_name = None
-            for child in node.children:
-                if child.type == "type_identifier":
-                    enum_name = get_text(child)
-                    break
-
-            if enum_name:
-                symbols.append(self._make_symbol(enum_name, "enum", node))
+            enum_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "enum",
+                identifier_type="type_identifier",
+                allow_anonymous=True,
+            )
 
             # Process enumerators from enumerator_list
             for child in node.children:

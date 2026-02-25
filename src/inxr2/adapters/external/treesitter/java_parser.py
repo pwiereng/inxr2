@@ -188,37 +188,22 @@ class JavaParser(BaseLanguageParser):
         ) -> None:
             """Process a class declaration."""
             modifiers = get_modifiers(node)
-            class_name = None
-            name_node = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    class_name = get_text(child)
-                    name_node = child
-                    break
-
+            class_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "class",
+                scope,
+                is_abstract=is_abstract(modifiers),
+                is_final=is_final(modifiers),
+                is_static=is_static(modifiers),
+                # In Java, static nested classes are not "inner" classes
+                is_inner=is_inner and not is_static(modifiers),
+            )
             if not class_name:
                 return
 
             qualified_name = f"{scope}.{class_name}" if scope else class_name
-            loc_node = name_node or node
-
-            symbols.append(
-                self._make_symbol(
-                    class_name,
-                    "class",
-                    loc_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    qualified_name=qualified_name,
-                    is_abstract=is_abstract(modifiers),
-                    is_final=is_final(modifiers),
-                    is_static=is_static(modifiers),
-                    # In Java, static nested classes are not "inner" classes
-                    is_inner=is_inner and not is_static(modifiers),
-                )
-            )
 
             # Process extends and implements
             for child in node.children:
@@ -231,32 +216,17 @@ class JavaParser(BaseLanguageParser):
 
         def process_interface_declaration(node: Node, scope: str | None = None) -> None:
             """Process an interface declaration."""
-            interface_name = None
-            name_node = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    interface_name = get_text(child)
-                    name_node = child
-                    break
-
+            interface_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "interface",
+                scope,
+            )
             if not interface_name:
                 return
 
             qualified_name = f"{scope}.{interface_name}" if scope else interface_name
-            loc_node = name_node or node
-
-            symbols.append(
-                self._make_symbol(
-                    interface_name,
-                    "interface",
-                    loc_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    qualified_name=qualified_name,
-                )
-            )
 
             # Process extends
             for child in node.children:
@@ -267,32 +237,17 @@ class JavaParser(BaseLanguageParser):
 
         def process_enum_declaration(node: Node, scope: str | None = None) -> None:
             """Process an enum declaration."""
-            enum_name = None
-            name_node = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    enum_name = get_text(child)
-                    name_node = child
-                    break
-
+            enum_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "enum",
+                scope,
+            )
             if not enum_name:
                 return
 
             qualified_name = f"{scope}.{enum_name}" if scope else enum_name
-            loc_node = name_node or node
-
-            symbols.append(
-                self._make_symbol(
-                    enum_name,
-                    "enum",
-                    loc_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    qualified_name=qualified_name,
-                )
-            )
 
             # Process enum body
             for child in node.children:
@@ -305,61 +260,27 @@ class JavaParser(BaseLanguageParser):
             node: Node, scope: str | None = None
         ) -> None:
             """Process an annotation type declaration (@interface)."""
-            annotation_name = None
-            name_node = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    annotation_name = get_text(child)
-                    name_node = child
-                    break
-
-            if not annotation_name:
-                return
-
-            qualified_name = f"{scope}.{annotation_name}" if scope else annotation_name
-            loc_node = name_node or node
-
-            symbols.append(
-                self._make_symbol(
-                    annotation_name,
-                    "annotation",
-                    loc_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    qualified_name=qualified_name,
-                )
+            self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "annotation",
+                scope,
             )
 
         def process_record_declaration(node: Node, scope: str | None = None) -> None:
             """Process a record declaration (Java 14+)."""
-            record_name = None
-            name_node = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    record_name = get_text(child)
-                    name_node = child
-                    break
-
+            record_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "record",
+                scope,
+            )
             if not record_name:
                 return
 
             qualified_name = f"{scope}.{record_name}" if scope else record_name
-            loc_node = name_node or node
-
-            symbols.append(
-                self._make_symbol(
-                    record_name,
-                    "record",
-                    loc_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    qualified_name=qualified_name,
-                )
-            )
 
             # Process record components as fields
             for child in node.children:
