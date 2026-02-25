@@ -18,7 +18,7 @@ from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.repository import RepositoryModel
 from ..models.text_content import TextContentModel
-from .regex_utils import translate_word_boundaries, validate_regex_pattern
+from .query_utils import build_text_match_filter
 from .shared_queries import head_file_ids_subquery
 
 
@@ -247,12 +247,13 @@ class PostgresTextSearch(TextSearchPort):
             return query_builder.where(content_tsvector.op("@@")(tsquery))
         elif query.mode == QueryMode.REGEX.value:
             # Regex search bypasses tsvector, uses PostgreSQL ~ operator
-            # Validate pattern for safety before sending to database
-            validate_regex_pattern(query.query)
-            # Translate \b (common word boundary) to \y (PostgreSQL word boundary)
-            pg_pattern = translate_word_boundaries(query.query)
-            op = "~" if query.case_sensitive else "~*"
-            return query_builder.where(TextContentModel.content.op(op)(pg_pattern))
+            regex_filter = build_text_match_filter(
+                TextContentModel.content,
+                query.query,
+                mode="regex",
+                case_sensitive=query.case_sensitive,
+            )
+            return query_builder.where(regex_filter)
         else:
             # Default to keyword search
             tsquery = self._build_tsquery(query)
