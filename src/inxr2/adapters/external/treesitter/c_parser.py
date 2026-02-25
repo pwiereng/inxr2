@@ -522,7 +522,6 @@ class CParser(BaseLanguageParser):
                 symbols,
                 "enum",
                 identifier_type="type_identifier",
-                allow_anonymous=True,
             )
 
             # Process enumerators from enumerator_list

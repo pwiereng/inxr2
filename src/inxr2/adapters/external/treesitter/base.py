@@ -98,7 +98,6 @@ class BaseLanguageParser(ABC):
         symbol_kind: str,
         scope: str | None = None,
         identifier_type: str = "identifier",
-        allow_anonymous: bool = False,
         **extra_kwargs: Any,
     ) -> str | None:
         """Extract a named type declaration from an AST node.
@@ -113,7 +112,6 @@ class BaseLanguageParser(ABC):
             symbol_kind: Symbol kind (e.g., "class", "enum", "struct")
             scope: Parent scope for qualified naming
             identifier_type: Type of identifier node to find (default "identifier")
-            allow_anonymous: If True, return None without appending when no name found
             **extra_kwargs: Additional symbol metadata (is_abstract, is_final, etc.)
 
         Returns:

@@ -637,38 +637,6 @@ class TestExtractNamedTypeDeclaration:
         assert result is None
         assert len(symbols) == 0
 
-    def test_allow_anonymous_returns_none_without_appending(
-        self, parser: ConcreteParser
-    ) -> None:
-        """Test that allow_anonymous=True returns None without appending."""
-        content = "enum { A, B }"
-        other_node = FakeNode(
-            start_line=1,
-            start_column=5,
-            end_line=1,
-            end_column=13,
-            node_type="enumerator_list",
-        )
-        decl_node = FakeNode(
-            start_line=1,
-            start_column=0,
-            end_line=1,
-            end_column=13,
-        )
-        decl_node.children = [other_node]
-
-        symbols: list[dict[str, Any]] = []
-        result = parser._extract_named_type_declaration(
-            cast(Node, decl_node),
-            content,
-            symbols,
-            "enum",
-            allow_anonymous=True,
-        )
-
-        assert result is None
-        assert len(symbols) == 0
-
     def test_custom_identifier_type(self, parser: ConcreteParser) -> None:
         """Test finding a non-default identifier type (e.g., type_identifier for C)."""
         content = "struct MyStruct { }"
