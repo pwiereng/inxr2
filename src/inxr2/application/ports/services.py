@@ -137,16 +137,43 @@ class GitServicePort(ABC):
 
     Defines the full synchronous interface for git operations needed by
     the indexing orchestrator and other consumers.
+
+    Exception contract:
+        All methods may raise ``InvalidRepositoryPath`` if the repo path
+        is not a valid git repository.  Method-specific exceptions are
+        documented on each method.  Implementations MUST translate any
+        backend-specific exceptions (e.g. GitPython's ``git.exc``) into
+        domain exceptions before they escape.
     """
 
     @abstractmethod
-    def get_repository_info(self, repo_path: Path) -> RepositoryInfo: ...
+    def get_repository_info(self, repo_path: Path) -> RepositoryInfo:
+        """Get basic repository information.
+
+        Raises:
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
+        ...
 
     @abstractmethod
-    def get_current_commit(self, repo_path: Path, branch: str | None = None) -> str: ...
+    def get_current_commit(self, repo_path: Path, branch: str | None = None) -> str:
+        """Get the current HEAD commit hash.
+
+        Raises:
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
+        ...
 
     @abstractmethod
-    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo: ...
+    def get_commit_info(self, repo_path: Path, commit_hash: str) -> CommitInfo:
+        """Get detailed information about a commit.
+
+        Raises:
+            CommitNotFound: If the commit hash cannot be resolved.
+            GitOperationError: If the git operation fails.
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
+        ...
 
     @abstractmethod
     def list_commits(
@@ -155,7 +182,15 @@ class GitServicePort(ABC):
         branch: str,
         max_count: int | None = 1000,
         since_days: int | None = None,
-    ) -> list[CommitInfo]: ...
+    ) -> list[CommitInfo]:
+        """List commits for a branch, from oldest to newest.
+
+        Returns an empty list if the branch cannot be found.
+
+        Raises:
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
+        ...
 
     @abstractmethod
     def list_branch_commits(
@@ -165,7 +200,15 @@ class GitServicePort(ABC):
         base_branch: str,
         max_count: int | None = 1000,
         since_days: int | None = None,
-    ) -> list[CommitInfo]: ...
+    ) -> list[CommitInfo]:
+        """List commits made on a branch (from creation to merge/HEAD).
+
+        Returns an empty list if the branch cannot be found.
+
+        Raises:
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
+        ...
 
     @abstractmethod
     def list_files(
@@ -173,7 +216,14 @@ class GitServicePort(ABC):
         repo_path: Path,
         commit_hash: str,
         patterns: list[str] | None = None,
-    ) -> list[str]: ...
+    ) -> list[str]:
+        """List all files in the repository at a specific commit.
+
+        Raises:
+            CommitNotFound: If the commit hash cannot be resolved.
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
+        ...
 
     @abstractmethod
     def list_files_with_hashes(
@@ -185,36 +235,82 @@ class GitServicePort(ABC):
 
         Returns:
             Dict mapping file path to git blob SHA hash.
+
+        Raises:
+            CommitNotFound: If the commit hash cannot be resolved.
+            InvalidRepositoryPath: If the path is not a valid git repository.
         """
         ...
 
     @abstractmethod
     def get_changed_files_in_commit(
         self, repo_path: Path, commit_hash: str
-    ) -> ChangedFiles: ...
+    ) -> ChangedFiles:
+        """Get files changed in a single commit (vs its parent).
+
+        Raises:
+            CommitNotFound: If the commit hash cannot be resolved.
+            GitOperationError: If the git operation fails.
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
+        ...
 
     @abstractmethod
     def get_file_content(
         self, repo_path: Path, commit_hash: str, file_path: str
-    ) -> str: ...
+    ) -> str:
+        """Get the content of a file at a specific commit.
+
+        Raises:
+            FileNotFoundError: If file doesn't exist at commit.
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
+        ...
 
     @abstractmethod
-    def list_branches(self, repo_path: Path) -> list[str]: ...
+    def list_branches(self, repo_path: Path) -> list[str]:
+        """List all branches in the repository.
+
+        Raises:
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
+        ...
 
     @abstractmethod
     def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
-        """Return mapping of commit_hash -> [tag_names]."""
+        """Return mapping of commit_hash -> [tag_names].
+
+        Raises:
+            GitOperationError: If the git operation fails.
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
         ...
 
     @abstractmethod
     def get_merge_base(self, repo_path: Path, branch1: str, branch2: str) -> str | None:
-        """Return the merge-base commit hash of two branches, or None."""
+        """Return the merge-base commit hash of two branches, or None.
+
+        Returns None if no common ancestor is found or if branches
+        cannot be resolved.
+
+        Raises:
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
         ...
 
     @abstractmethod
     def get_blame(
         self, repo_path: Path, commit_hash: str, file_path: str
-    ) -> list[BlameLineInfo]: ...
+    ) -> list[BlameLineInfo]:
+        """Get blame information for each line of a file.
+
+        Raises:
+            CommitNotFound: If the commit hash cannot be resolved.
+            GitOperationError: If the git operation fails.
+            FileNotFoundError: If file doesn't exist at commit.
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
+        ...
 
     @abstractmethod
     def get_file_raw_content(
@@ -235,7 +331,8 @@ class GitServicePort(ABC):
             Raw file content as bytes
 
         Raises:
-            FileNotFoundError: If file doesn't exist at commit
+            FileNotFoundError: If file doesn't exist at commit.
+            InvalidRepositoryPath: If the path is not a valid git repository.
         """
         ...
 

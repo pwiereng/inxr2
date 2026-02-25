@@ -3,8 +3,7 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from git.exc import BadName, GitCommandError
-
+from ....domain.exceptions import DomainException
 from ...ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
@@ -139,7 +138,7 @@ class GetRepositoryTreeUseCase:
                     changed = self._git_service.get_changed_files_in_commit(
                         repo_path, request.commit_hash
                     )
-                except (GitCommandError, BadName, ValueError) as e:
+                except (DomainException, ValueError) as e:
                     raise ValueError(
                         "Cannot determine changed files for this commit"
                     ) from e

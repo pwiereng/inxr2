@@ -18,6 +18,11 @@ from ...application.ports.services import (
     GitServicePort,
     RepositoryInfo,
 )
+from ...domain.exceptions import (
+    CommitNotFound,
+    GitOperationError,
+    InvalidRepositoryPath,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +43,15 @@ class GitService(GitServicePort):
     def _get_repo(self, repo_path: Path) -> Repo:
         """Get or create a cached Repo object for the given path.
 
-        Raises ValueError if the path is not a valid git repository,
-        normalizing InvalidGitRepositoryError so callers only need to
-        catch ValueError for bad repo paths.
+        Raises:
+            InvalidRepositoryPath: If the path is not a valid git repository.
         """
         key = str(repo_path)
         if key not in self._repo_cache:
             try:
                 self._repo_cache[key] = Repo(key)
             except InvalidGitRepositoryError as e:
-                raise ValueError(f"Not a valid git repository: {repo_path}") from e
+                raise InvalidRepositoryPath(str(repo_path)) from e
         return self._repo_cache[key]
 
     def clear_repo_cache(self) -> None:
@@ -126,9 +130,18 @@ class GitService(GitServicePort):
 
         Returns:
             CommitInfo with full commit metadata
+
+        Raises:
+            CommitNotFound: If the commit hash cannot be resolved.
+            GitOperationError: If the git operation fails.
         """
         repo = self._get_repo(repo_path)
-        commit = repo.commit(commit_hash)
+        try:
+            commit = repo.commit(commit_hash)
+        except (BadName, ValueError) as e:
+            raise CommitNotFound(commit_hash=commit_hash) from e
+        except GitCommandError as e:
+            raise GitOperationError("get_commit_info", str(e)) from e
 
         message = commit.message
         if isinstance(message, bytes):
@@ -208,8 +221,10 @@ class GitService(GitServicePort):
         try:
             from_c = repo.commit(from_commit)
             to_c = repo.commit(to_commit)
-        except (GitCommandError, BadName, ValueError) as e:
-            raise ValueError(f"Invalid commit hash: {e}") from e
+        except (BadName, ValueError) as e:
+            raise CommitNotFound(commit_hash=from_commit) from e
+        except GitCommandError as e:
+            raise GitOperationError("get_changed_files", str(e)) from e
 
         diff = from_c.diff(to_c)
 
@@ -773,13 +788,20 @@ class GitService(GitServicePort):
         return sorted_branches
 
     def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
-        """Return mapping of commit_hash -> [tag_names]."""
+        """Return mapping of commit_hash -> [tag_names].
+
+        Raises:
+            GitOperationError: If the git operation fails.
+        """
         repo = self._get_repo(repo_path)
-        result: dict[str, list[str]] = {}
-        for tag in repo.tags:
-            commit_hash = tag.commit.hexsha
-            result.setdefault(commit_hash, []).append(tag.name)
-        return result
+        try:
+            result: dict[str, list[str]] = {}
+            for tag in repo.tags:
+                commit_hash = tag.commit.hexsha
+                result.setdefault(commit_hash, []).append(tag.name)
+            return result
+        except GitCommandError as e:
+            raise GitOperationError("get_tags", str(e)) from e
 
     def get_blame(
         self,
@@ -790,13 +812,13 @@ class GitService(GitServicePort):
         """Get blame information for each line of a file at a specific commit."""
         from datetime import UTC, datetime
 
+        repo = self._get_repo(repo_path)
         try:
-            repo = self._get_repo(repo_path)
             commit = repo.commit(commit_hash)
-        except (GitCommandError, BadName, ValueError) as e:
-            raise ValueError(
-                f"Cannot access repository or commit {commit_hash[:8]}"
-            ) from e
+        except (BadName, ValueError) as e:
+            raise CommitNotFound(commit_hash=commit_hash) from e
+        except GitCommandError as e:
+            raise GitOperationError("get_blame", str(e)) from e
 
         try:
             blame_entries: Any = repo.blame(commit, file_path)
@@ -848,9 +870,18 @@ class GitService(GitServicePort):
 
         Returns:
             ChangedFiles with added, modified, and deleted file paths
+
+        Raises:
+            CommitNotFound: If the commit hash cannot be resolved.
+            GitOperationError: If the git operation fails.
         """
         repo = self._get_repo(repo_path)
-        commit = repo.commit(commit_hash)
+        try:
+            commit = repo.commit(commit_hash)
+        except (BadName, ValueError) as e:
+            raise CommitNotFound(commit_hash=commit_hash) from e
+        except GitCommandError as e:
+            raise GitOperationError("get_changed_files_in_commit", str(e)) from e
 
         added: list[str] = []
         modified: list[str] = []
