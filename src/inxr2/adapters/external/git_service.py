@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from git import Repo
-from git.exc import BadName, GitCommandError, InvalidGitRepositoryError
+from git.exc import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 
 from ...application.ports.services import (
     BlameLineInfo,
@@ -50,7 +50,7 @@ class GitService(GitServicePort):
         if key not in self._repo_cache:
             try:
                 self._repo_cache[key] = Repo(key)
-            except InvalidGitRepositoryError as e:
+            except (InvalidGitRepositoryError, NoSuchPathError) as e:
                 raise InvalidRepositoryPath(str(repo_path)) from e
         return self._repo_cache[key]
 

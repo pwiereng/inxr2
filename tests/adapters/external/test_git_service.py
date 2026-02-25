@@ -615,6 +615,16 @@ class TestGitServiceExceptionTranslation:
             git_service.get_commit_info(not_git, "abc123")
         assert str(not_git) in exc_info.value.path
 
+    def test_nonexistent_path_raises_invalid_repository_path(
+        self, git_service: GitService, tmp_path: Path
+    ) -> None:
+        """Accessing a path that doesn't exist raises InvalidRepositoryPath."""
+        missing = tmp_path / "no-such-directory"
+
+        with pytest.raises(InvalidRepositoryPath) as exc_info:
+            git_service.get_commit_info(missing, "abc123")
+        assert str(missing) in exc_info.value.path
+
     def test_get_commit_info_valid_hash_succeeds(
         self, git_service: GitService, temp_git_repo: Path
     ) -> None:

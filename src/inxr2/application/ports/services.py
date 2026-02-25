@@ -221,8 +221,10 @@ class GitServicePort(ABC):
     ) -> list[str]:
         """List all files in the repository at a specific commit.
 
+        Note: Used by the indexing orchestrator. Backend exceptions may
+        propagate; callers should handle accordingly.
+
         Raises:
-            CommitNotFound: If the commit hash cannot be resolved.
             InvalidRepositoryPath: If the path is not a valid git repository.
         """
         ...
@@ -235,11 +237,13 @@ class GitServicePort(ABC):
     ) -> dict[str, str]:
         """List all files with their git blob hashes at a specific commit.
 
+        Note: Used by the indexing orchestrator. Backend exceptions may
+        propagate; callers should handle accordingly.
+
         Returns:
             Dict mapping file path to git blob SHA hash.
 
         Raises:
-            CommitNotFound: If the commit hash cannot be resolved.
             InvalidRepositoryPath: If the path is not a valid git repository.
         """
         ...
