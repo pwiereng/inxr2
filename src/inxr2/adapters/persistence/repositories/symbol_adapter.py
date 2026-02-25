@@ -10,7 +10,7 @@ from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.symbol import SymbolModel
 from .base_repository import BaseSQLAlchemyRepository
-from .regex_utils import translate_word_boundaries, validate_regex_pattern
+from .query_utils import build_text_match_filter
 from .shared_queries import head_file_ids_subquery, latest_file_ids_subquery
 
 
@@ -49,21 +49,10 @@ class PostgresSymbolRepository(
         Note: ``branch`` only takes effect when ``repository_id`` is
         provided, since branch-scoped dedup requires a repository context.
         """
-        if mode == "regex":
-            validate_regex_pattern(name)
-            pg_pattern = translate_word_boundaries(name)
-            op = "~" if case_sensitive else "~*"
-            query = select(SymbolModel).where(SymbolModel.name.op(op)(pg_pattern))
-        else:
-            escaped = name.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
-            if case_sensitive:
-                query = select(SymbolModel).where(
-                    SymbolModel.name.like(f"%{escaped}%", escape="\\")
-                )
-            else:
-                query = select(SymbolModel).where(
-                    SymbolModel.name.ilike(f"%{escaped}%", escape="\\")
-                )
+        name_filter = build_text_match_filter(
+            SymbolModel.name, name, mode=mode, case_sensitive=case_sensitive
+        )
+        query = select(SymbolModel).where(name_filter)
 
         if repository_id is None and scope == "latest":
             # Global search: only symbols from HEAD of each repo's default branch

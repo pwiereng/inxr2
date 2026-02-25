@@ -13,7 +13,7 @@ from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.reference import ReferenceModel
 from .base_repository import BaseSQLAlchemyRepository
-from .regex_utils import translate_word_boundaries, validate_regex_pattern
+from .query_utils import build_text_match_filter
 from .shared_queries import (
     LATEST_FILE_IDS_SQL,
     head_file_ids_subquery,
@@ -169,25 +169,13 @@ class PostgresReferenceRepository(
         case_sensitive: bool = True,
     ) -> tuple[list[Reference], int]:
         """Search references by text match on reference_text."""
-        if mode == "regex":
-            validate_regex_pattern(query)
-            pg_pattern = translate_word_boundaries(query)
-            op = "~" if case_sensitive else "~*"
-            base_query = select(ReferenceModel).where(
-                ReferenceModel.reference_text.op(op)(pg_pattern)
-            )
-        else:
-            escaped = (
-                query.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
-            )
-            if case_sensitive:
-                base_query = select(ReferenceModel).where(
-                    ReferenceModel.reference_text.like(f"%{escaped}%", escape="\\")
-                )
-            else:
-                base_query = select(ReferenceModel).where(
-                    ReferenceModel.reference_text.ilike(f"%{escaped}%", escape="\\")
-                )
+        text_filter = build_text_match_filter(
+            ReferenceModel.reference_text,
+            query,
+            mode=mode,
+            case_sensitive=case_sensitive,
+        )
+        base_query = select(ReferenceModel).where(text_filter)
 
         if repository_id is not None:
             base_query = base_query.where(ReferenceModel.repository_id == repository_id)

@@ -1,0 +1,44 @@
+"""Shared query utilities for text matching."""
+
+from typing import cast
+
+from sqlalchemy import ColumnElement
+from sqlalchemy.orm import InstrumentedAttribute
+
+from .regex_utils import translate_word_boundaries, validate_regex_pattern
+
+# Accept both ORM attributes (Model.column) and core column elements.
+_Column = ColumnElement[str] | InstrumentedAttribute[str]
+
+
+def build_text_match_filter(
+    col: _Column,
+    text: str,
+    mode: str | None = None,
+    case_sensitive: bool = True,
+) -> ColumnElement[bool]:
+    """Build a WHERE clause for text matching (regex or LIKE).
+
+    Args:
+        col: SQLAlchemy column or attribute to match against.
+        text: The search text or regex pattern.
+        mode: ``"regex"`` for regex matching, otherwise LIKE/ILIKE.
+        case_sensitive: Whether the match is case-sensitive.
+
+    Returns:
+        A SQLAlchemy expression suitable for ``.where()``.
+    """
+    # InstrumentedAttribute proxies all ColumnElement operations at runtime,
+    # but the stubs don't expose .like()/.ilike()/.op() on it directly.
+    c = cast(ColumnElement[str], col)
+
+    if mode == "regex":
+        validate_regex_pattern(text)
+        pg_pattern = translate_word_boundaries(text)
+        op = "~" if case_sensitive else "~*"
+        return c.op(op)(pg_pattern)
+
+    escaped = text.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+    if case_sensitive:
+        return c.like(f"%{escaped}%", escape="\\")
+    return c.ilike(f"%{escaped}%", escape="\\")
