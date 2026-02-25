@@ -905,6 +905,12 @@ When creating a worktree and crafting a prompt for a new Claude instance, **alwa
 - File name: `instructions.txt` (always the same name)
 - Location: root of the worktree directory (e.g., `../wt-inxr2-<branch>/instructions.txt`)
 - Content: the full prompt/summary that would be given to the new Claude instance
+- **IMPORTANT**: Always start `instructions.txt` with:
+  ```
+  FIRST: Set your terminal tab title to the branch name:
+    echo -ne "\033]0;<branch-name>\007"
+  ```
+  This ensures spawned Claude sessions set their tab title immediately so the user can identify which worktree each terminal belongs to.
 
 This ensures the prompt is preserved and easily accessible when opening a new Claude Code session in the worktree.
 
