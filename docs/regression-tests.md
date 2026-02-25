@@ -296,16 +296,17 @@ curl "http://localhost:9222/url"
 **Steps:**
 ```bash
 # (Continuing from RT-06 with a file loaded)
-# Look for clickable symbol spans
-curl "http://localhost:9222/elements?selector=span[style*='cursor']&limit=10"
-# Click first symbol
-curl "http://localhost:9222/click?selector=span[style*='cursor']"
+# Clickable symbols are spans with data-mui-internal-clone-element attribute (Tooltip-wrapped)
+# List clickable symbols on the page
+curl "http://localhost:9222/elements?selector=span[data-mui-internal-clone-element]&limit=10"
+# Click first clickable symbol
+curl "http://localhost:9222/click?selector=span[data-mui-internal-clone-element]"
 # Check panel opened
 curl "http://localhost:9222/text?selector=body"
 ```
 
 **Pass criteria:**
-- References panel appears with a symbol name and kind
+- References panel appears with "Definition" and/or "References" sections
 - The displayed symbol name exists in the file being viewed (cross-reference with file content)
 
 ---

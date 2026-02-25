@@ -883,13 +883,11 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 
 ### Worktree Cleanup Procedure
 
-After **every** worktree close (not batched — run after each one), follow this sequence:
+When cleaning up a worktree (after its PR is merged), follow this sequence:
 1. Verify PR is merged and issue is closed
 2. Run `./scripts/worktree-remove.sh <branch-name>`
 3. Pull latest main: `git pull --rebase origin main`
 4. Run all checks and tests on the updated main: `docker exec inxr2-dev ./scripts/run-all-tests.sh`
-5. Run the QA regression test suite (see "Regression Testing" section below)
-6. Report results to the user
 
 ### How It Works
 
@@ -917,8 +915,8 @@ This ensures the prompt is preserved and easily accessible when opening a new Cl
 
 ## Regression Testing
 
-After merging changes into main (worktree cleanup step 5), run the full regression suite.
-This includes re-indexing all repos, then verifying UI behavior via browser automation.
+On-demand regression suite covering indexing pipeline and browser UI.
+Run when the user asks (e.g., "run regression tests"). Can be run on any branch — main, worktree, or before merging.
 
 **Full test plan:** See `docs/regression-tests.md` for all 28 test cases.
 
@@ -992,8 +990,8 @@ If all pass, report: **"Regression suite: 28/28 passed (5 indexing + 23 browser)
 
 ### When to Run
 
-- **Always** after worktree cleanup (merging into main)
-- **On request** when the user asks to "run regression tests" or "run QA tests"
+- **On demand** when the user asks to "run regression tests" or "run QA tests"
+- Can target any branch — main, a worktree, or pre-merge verification
 - Before any release or deployment
 
 ## Key Commands Reference
