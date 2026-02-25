@@ -5,122 +5,13 @@ from typing import Any
 from tree_sitter import Node
 
 from .base import BaseLanguageParser
+from .builtins import _load
 
 # Java builtin types and classes to exclude from references
-JAVA_BUILTINS = {
-    # java.lang (auto-imported)
-    "Object",
-    "String",
-    "System",
-    "Class",
-    "Throwable",
-    "Exception",
-    "RuntimeException",
-    "Error",
-    "Thread",
-    "Runnable",
-    "Comparable",
-    "Integer",
-    "Long",
-    "Double",
-    "Float",
-    "Boolean",
-    "Character",
-    "Byte",
-    "Short",
-    "Number",
-    "Void",
-    "Math",
-    "StringBuilder",
-    "StringBuffer",
-    "Iterable",
-    "Cloneable",
-    "Enum",
-    "Override",
-    "Deprecated",
-    "SuppressWarnings",
-    "FunctionalInterface",
-    "SafeVarargs",
-    # Common methods to exclude
-    "toString",
-    "equals",
-    "hashCode",
-    "getClass",
-    "clone",
-    "notify",
-    "notifyAll",
-    "wait",
-    "finalize",
-    # java.util common
-    "List",
-    "ArrayList",
-    "LinkedList",
-    "Set",
-    "HashSet",
-    "TreeSet",
-    "LinkedHashSet",
-    "Map",
-    "HashMap",
-    "TreeMap",
-    "LinkedHashMap",
-    "Collection",
-    "Collections",
-    "Arrays",
-    "Optional",
-    "Iterator",
-    "Comparator",
-    "Queue",
-    "Deque",
-    "Stack",
-    "Vector",
-    "Properties",
-    "Date",
-    "Calendar",
-    "UUID",
-    "Random",
-    "Scanner",
-    "Formatter",
-    "Locale",
-    "TimeZone",
-    "Currency",
-    # java.io common
-    "File",
-    "InputStream",
-    "OutputStream",
-    "Reader",
-    "Writer",
-    "BufferedReader",
-    "BufferedWriter",
-    "FileReader",
-    "FileWriter",
-    "PrintWriter",
-    "IOException",
-    "FileNotFoundException",
-    "Serializable",
-    # java.util.stream
-    "Stream",
-    "Collectors",
-    # Literals and keywords
-    "null",
-    "true",
-    "false",
-    "this",
-    "super",
-}
+JAVA_BUILTINS = _load("java.json", "builtins")
 
 # Java primitive types to exclude from type references
-JAVA_PRIMITIVE_TYPES = {
-    "void",
-    "boolean",
-    "byte",
-    "char",
-    "short",
-    "int",
-    "long",
-    "float",
-    "double",
-    "var",  # Java 10+ local variable type inference
-}
+JAVA_PRIMITIVE_TYPES = _load("java.json", "primitive_types")
 
 
 class JavaParser(BaseLanguageParser):

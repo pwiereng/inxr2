@@ -5,133 +5,13 @@ from typing import Any
 from tree_sitter import Node
 
 from .base import BaseLanguageParser
+from .builtins import _load
 
 # C# builtin types and common System namespace types to exclude from references
-CSHARP_BUILTINS = {
-    # System namespace (auto-imported via global using)
-    "Console",
-    "Math",
-    "Environment",
-    "Convert",
-    "Activator",
-    "GC",
-    "Type",
-    "Attribute",
-    "Exception",
-    "SystemException",
-    "ArgumentException",
-    "ArgumentNullException",
-    "InvalidOperationException",
-    "NotSupportedException",
-    "NotImplementedException",
-    "NullReferenceException",
-    "IndexOutOfRangeException",
-    "OverflowException",
-    "FormatException",
-    "StackOverflowException",
-    "OutOfMemoryException",
-    "ObjectDisposedException",
-    "AggregateException",
-    # Collections
-    "List",
-    "Dictionary",
-    "HashSet",
-    "Queue",
-    "Stack",
-    "SortedSet",
-    "SortedDictionary",
-    "SortedList",
-    "LinkedList",
-    "IEnumerable",
-    "IEnumerator",
-    "ICollection",
-    "IList",
-    "IDictionary",
-    "ISet",
-    "IReadOnlyList",
-    "IReadOnlyCollection",
-    "IReadOnlyDictionary",
-    # Async/Task
-    "Task",
-    "ValueTask",
-    "CancellationToken",
-    "CancellationTokenSource",
-    # Common interfaces
-    "IDisposable",
-    "IComparable",
-    "IEquatable",
-    "ICloneable",
-    "IFormattable",
-    "IConvertible",
-    "IAsyncDisposable",
-    # Delegates
-    "Action",
-    "Func",
-    "Predicate",
-    "EventHandler",
-    "Comparison",
-    "Converter",
-    # LINQ
-    "Enumerable",
-    "Queryable",
-    # IO
-    "File",
-    "Directory",
-    "Path",
-    "Stream",
-    "StreamReader",
-    "StreamWriter",
-    "TextReader",
-    "TextWriter",
-    "MemoryStream",
-    "FileStream",
-    # String
-    "StringBuilder",
-    "StringComparer",
-    "StringComparison",
-    # Common Object methods
-    "ToString",
-    "Equals",
-    "GetHashCode",
-    "GetType",
-    "ReferenceEquals",
-    "MemberwiseClone",
-    # Literals and keywords
-    "null",
-    "true",
-    "false",
-    "this",
-    "base",
-    "value",
-    "nameof",
-    "typeof",
-    "sizeof",
-    "default",
-}
+CSHARP_BUILTINS = _load("csharp.json", "builtins")
 
 # C# primitive/keyword types to exclude from type references
-CSHARP_PRIMITIVE_TYPES = {
-    "void",
-    "bool",
-    "byte",
-    "sbyte",
-    "char",
-    "short",
-    "ushort",
-    "int",
-    "uint",
-    "long",
-    "ulong",
-    "float",
-    "double",
-    "decimal",
-    "string",
-    "object",
-    "dynamic",
-    "var",
-    "nint",
-    "nuint",
-}
+CSHARP_PRIMITIVE_TYPES = _load("csharp.json", "primitive_types")
 
 
 class CSharpParser(BaseLanguageParser):
