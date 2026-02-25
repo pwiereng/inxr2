@@ -177,4 +177,3 @@ class PostgresFileRepository(
         )
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
-

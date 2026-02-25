@@ -86,4 +86,3 @@ class PostgresIndexStatusRepository(
         )
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
-
