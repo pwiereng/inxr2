@@ -868,6 +868,15 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 | Frontend   | 5173          | 5183   | 5193   | 5203   |
 | Playwright | 9222          | 9232   | 9242   | 9252   |
 
+### Pre-Creation Check
+
+Before creating a worktree, ensure the source branch (usually main) is fully in sync with GitHub. There must be no pending commits that haven't been pushed, and no remote commits that haven't been pulled. Otherwise the worktree will be based on stale code and will hit unnecessary conflicts when rebasing later.
+
+```bash
+git fetch origin main
+git status  # should show "up to date with 'origin/main'"
+```
+
 ### Worktree Commands
 
 ```bash
