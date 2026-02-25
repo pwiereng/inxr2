@@ -19,11 +19,13 @@ class FakeNode:
         end_column: int,
         start_byte: int = 0,
         end_byte: int = 10,
+        node_type: str = "",
     ):
         self.start_point = (start_line - 1, start_column)  # tree-sitter uses 0-indexed
         self.end_point = (end_line - 1, end_column)
         self.start_byte = start_byte
         self.end_byte = end_byte
+        self.type = node_type
         self.children: list[Any] = []
 
 
@@ -527,3 +529,296 @@ class TestGetText:
 
         text = parser._get_text(cast(Node, node), content)
         assert text == "hello"
+
+
+class TestExtractNamedTypeDeclaration:
+    """Tests for _extract_named_type_declaration helper method."""
+
+    @pytest.fixture
+    def parser(self) -> ConcreteParser:
+        """Create a parser instance."""
+        return ConcreteParser()
+
+    def test_extracts_name_and_appends_symbol(self, parser: ConcreteParser) -> None:
+        """Test basic extraction: finds identifier, appends symbol, returns name."""
+        content = "class MyClass { }"
+        name_node = FakeNode(
+            start_line=1,
+            start_column=6,
+            end_line=1,
+            end_column=13,
+            start_byte=6,
+            end_byte=13,
+            node_type="identifier",
+        )
+        decl_node = FakeNode(
+            start_line=1,
+            start_column=0,
+            end_line=3,
+            end_column=1,
+        )
+        decl_node.children = [name_node]
+
+        symbols: list[dict[str, Any]] = []
+        result = parser._extract_named_type_declaration(
+            cast(Node, decl_node),
+            content,
+            symbols,
+            "class",
+        )
+
+        assert result == "MyClass"
+        assert len(symbols) == 1
+        assert symbols[0]["name"] == "MyClass"
+        assert symbols[0]["kind"] == "class"
+        assert symbols[0]["qualified_name"] == "MyClass"
+
+    def test_builds_qualified_name_with_scope(self, parser: ConcreteParser) -> None:
+        """Test that scope is prepended to qualified_name."""
+        content = "class Inner { }"
+        name_node = FakeNode(
+            start_line=2,
+            start_column=10,
+            end_line=2,
+            end_column=15,
+            start_byte=6,
+            end_byte=11,
+            node_type="identifier",
+        )
+        decl_node = FakeNode(
+            start_line=2,
+            start_column=4,
+            end_line=5,
+            end_column=1,
+        )
+        decl_node.children = [name_node]
+
+        symbols: list[dict[str, Any]] = []
+        result = parser._extract_named_type_declaration(
+            cast(Node, decl_node),
+            content,
+            symbols,
+            "class",
+            scope="Outer",
+        )
+
+        assert result == "Inner"
+        assert symbols[0]["qualified_name"] == "Outer.Inner"
+        assert symbols[0]["scope"] == "Outer"
+
+    def test_returns_none_when_no_identifier_found(
+        self, parser: ConcreteParser
+    ) -> None:
+        """Test that None is returned and nothing appended when no identifier child."""
+        content = "class { }"
+        other_node = FakeNode(
+            start_line=1,
+            start_column=0,
+            end_line=1,
+            end_column=5,
+            node_type="keyword",
+        )
+        decl_node = FakeNode(
+            start_line=1,
+            start_column=0,
+            end_line=1,
+            end_column=9,
+        )
+        decl_node.children = [other_node]
+
+        symbols: list[dict[str, Any]] = []
+        result = parser._extract_named_type_declaration(
+            cast(Node, decl_node),
+            content,
+            symbols,
+            "class",
+        )
+
+        assert result is None
+        assert len(symbols) == 0
+
+    def test_custom_identifier_type(self, parser: ConcreteParser) -> None:
+        """Test finding a non-default identifier type (e.g., type_identifier for C)."""
+        content = "struct MyStruct { }"
+        name_node = FakeNode(
+            start_line=1,
+            start_column=7,
+            end_line=1,
+            end_column=15,
+            start_byte=7,
+            end_byte=15,
+            node_type="type_identifier",
+        )
+        decl_node = FakeNode(
+            start_line=1,
+            start_column=0,
+            end_line=1,
+            end_column=19,
+        )
+        decl_node.children = [name_node]
+
+        symbols: list[dict[str, Any]] = []
+        result = parser._extract_named_type_declaration(
+            cast(Node, decl_node),
+            content,
+            symbols,
+            "struct",
+            identifier_type="type_identifier",
+        )
+
+        assert result == "MyStruct"
+        assert symbols[0]["kind"] == "struct"
+
+    def test_extra_kwargs_passed_to_symbol(self, parser: ConcreteParser) -> None:
+        """Test that extra keyword args are included in the symbol dict."""
+        content = "class Abs { }"
+        name_node = FakeNode(
+            start_line=1,
+            start_column=6,
+            end_line=1,
+            end_column=9,
+            start_byte=6,
+            end_byte=9,
+            node_type="identifier",
+        )
+        decl_node = FakeNode(
+            start_line=1,
+            start_column=0,
+            end_line=3,
+            end_column=1,
+        )
+        decl_node.children = [name_node]
+
+        symbols: list[dict[str, Any]] = []
+        parser._extract_named_type_declaration(
+            cast(Node, decl_node),
+            content,
+            symbols,
+            "class",
+            is_abstract=True,
+            is_final=False,
+        )
+
+        assert symbols[0]["is_abstract"] is True
+        assert symbols[0]["is_final"] is False
+
+    def test_start_location_from_name_node_end_from_declaration(
+        self, parser: ConcreteParser
+    ) -> None:
+        """Test that start comes from name node but end from declaration node."""
+        content = "class MyClass {\n  ...\n}"
+        name_node = FakeNode(
+            start_line=1,
+            start_column=6,
+            end_line=1,
+            end_column=13,
+            start_byte=6,
+            end_byte=13,
+            node_type="identifier",
+        )
+        decl_node = FakeNode(
+            start_line=1,
+            start_column=0,
+            end_line=3,
+            end_column=1,
+        )
+        decl_node.children = [name_node]
+
+        symbols: list[dict[str, Any]] = []
+        parser._extract_named_type_declaration(
+            cast(Node, decl_node),
+            content,
+            symbols,
+            "class",
+        )
+
+        # Start comes from name_node
+        assert symbols[0]["start_line"] == 1
+        assert symbols[0]["start_column"] == 6
+        # End comes from declaration node (overridden)
+        assert symbols[0]["end_line"] == 3
+        assert symbols[0]["end_column"] == 1
+
+    def test_skips_non_matching_children(self, parser: ConcreteParser) -> None:
+        """Test that non-identifier children are skipped."""
+        content = "public class MyClass { }"
+        modifier_node = FakeNode(
+            start_line=1,
+            start_column=0,
+            end_line=1,
+            end_column=6,
+            node_type="modifiers",
+        )
+        keyword_node = FakeNode(
+            start_line=1,
+            start_column=7,
+            end_line=1,
+            end_column=12,
+            node_type="class",
+        )
+        name_node = FakeNode(
+            start_line=1,
+            start_column=13,
+            end_line=1,
+            end_column=20,
+            start_byte=13,
+            end_byte=20,
+            node_type="identifier",
+        )
+        decl_node = FakeNode(
+            start_line=1,
+            start_column=0,
+            end_line=1,
+            end_column=24,
+        )
+        decl_node.children = [modifier_node, keyword_node, name_node]
+
+        symbols: list[dict[str, Any]] = []
+        result = parser._extract_named_type_declaration(
+            cast(Node, decl_node),
+            content,
+            symbols,
+            "class",
+        )
+
+        assert result == "MyClass"
+
+    def test_finds_first_matching_identifier_only(self, parser: ConcreteParser) -> None:
+        """Test that only the first matching identifier is used."""
+        content = "class First extends Second { }"
+        first_id = FakeNode(
+            start_line=1,
+            start_column=6,
+            end_line=1,
+            end_column=11,
+            start_byte=6,
+            end_byte=11,
+            node_type="identifier",
+        )
+        second_id = FakeNode(
+            start_line=1,
+            start_column=20,
+            end_line=1,
+            end_column=26,
+            start_byte=20,
+            end_byte=26,
+            node_type="identifier",
+        )
+        decl_node = FakeNode(
+            start_line=1,
+            start_column=0,
+            end_line=1,
+            end_column=30,
+        )
+        decl_node.children = [first_id, second_id]
+
+        symbols: list[dict[str, Any]] = []
+        result = parser._extract_named_type_declaration(
+            cast(Node, decl_node),
+            content,
+            symbols,
+            "class",
+        )
+
+        assert result == "First"
+        assert len(symbols) == 1

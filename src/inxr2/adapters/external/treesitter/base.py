@@ -90,6 +90,63 @@ class BaseLanguageParser(ABC):
         """Override to classify and clean a comment node. Return dict or None."""
         return None
 
+    def _extract_named_type_declaration(
+        self,
+        node: Node,
+        content: str,
+        symbols: list[dict[str, Any]],
+        symbol_kind: str,
+        scope: str | None = None,
+        identifier_type: str = "identifier",
+        **extra_kwargs: Any,
+    ) -> str | None:
+        """Extract a named type declaration from an AST node.
+
+        Common pattern: find identifier child, build qualified name, append symbol.
+        Used for class, interface, enum, struct, record, etc. declarations.
+
+        Args:
+            node: The declaration AST node
+            content: Source file content
+            symbols: List to append the symbol dict to
+            symbol_kind: Symbol kind (e.g., "class", "enum", "struct")
+            scope: Parent scope for qualified naming
+            identifier_type: Type of identifier node to find (default "identifier")
+            **extra_kwargs: Additional symbol metadata (is_abstract, is_final, etc.)
+
+        Returns:
+            The extracted type name, or None if no identifier found.
+        """
+        type_name = None
+        name_node = None
+
+        for child in node.children:
+            if child.type == identifier_type:
+                type_name = self._get_text(child, content)
+                name_node = child
+                break
+
+        if not type_name:
+            return None
+
+        qualified_name = f"{scope}.{type_name}" if scope else type_name
+        loc_node = name_node or node
+
+        symbols.append(
+            self._make_symbol(
+                type_name,
+                symbol_kind,
+                loc_node,
+                scope,
+                end_line=node.end_point[0] + 1,
+                end_column=node.end_point[1],
+                qualified_name=qualified_name,
+                **extra_kwargs,
+            )
+        )
+
+        return type_name
+
     def _make_symbol(
         self,
         name: str,

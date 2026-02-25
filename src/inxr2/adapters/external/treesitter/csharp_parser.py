@@ -177,37 +177,22 @@ class CSharpParser(BaseLanguageParser):
         ) -> None:
             """Process a class declaration."""
             modifiers = get_modifiers(node)
-            class_name = None
-            name_node = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    class_name = get_text(child)
-                    name_node = child
-                    break
-
+            class_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "class",
+                scope,
+                is_abstract=has_modifier(modifiers, "abstract"),
+                is_static=has_modifier(modifiers, "static"),
+                is_sealed=has_modifier(modifiers, "sealed"),
+                is_partial=has_modifier(modifiers, "partial"),
+                is_inner=is_inner,
+            )
             if not class_name:
                 return
 
             qualified_name = f"{scope}.{class_name}" if scope else class_name
-            loc_node = name_node or node
-
-            symbols.append(
-                self._make_symbol(
-                    class_name,
-                    "class",
-                    loc_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    qualified_name=qualified_name,
-                    is_abstract=has_modifier(modifiers, "abstract"),
-                    is_static=has_modifier(modifiers, "static"),
-                    is_sealed=has_modifier(modifiers, "sealed"),
-                    is_partial=has_modifier(modifiers, "partial"),
-                    is_inner=is_inner,
-                )
-            )
 
             # Process base list and body
             for child in node.children:
@@ -219,33 +204,18 @@ class CSharpParser(BaseLanguageParser):
         def process_struct_declaration(node: Node, scope: str | None = None) -> None:
             """Process a struct declaration."""
             modifiers = get_modifiers(node)
-            struct_name = None
-            name_node = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    struct_name = get_text(child)
-                    name_node = child
-                    break
-
+            struct_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "struct",
+                scope,
+                is_readonly=has_modifier(modifiers, "readonly"),
+            )
             if not struct_name:
                 return
 
             qualified_name = f"{scope}.{struct_name}" if scope else struct_name
-            loc_node = name_node or node
-
-            symbols.append(
-                self._make_symbol(
-                    struct_name,
-                    "struct",
-                    loc_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    qualified_name=qualified_name,
-                    is_readonly=has_modifier(modifiers, "readonly"),
-                )
-            )
 
             for child in node.children:
                 if child.type == "base_list":
@@ -256,34 +226,19 @@ class CSharpParser(BaseLanguageParser):
         def process_record_declaration(node: Node, scope: str | None = None) -> None:
             """Process a record declaration (record class or record struct)."""
             modifiers = get_modifiers(node)
-            record_name = None
-            name_node = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    record_name = get_text(child)
-                    name_node = child
-                    break
-
+            record_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "record",
+                scope,
+                is_abstract=has_modifier(modifiers, "abstract"),
+                is_sealed=has_modifier(modifiers, "sealed"),
+            )
             if not record_name:
                 return
 
             qualified_name = f"{scope}.{record_name}" if scope else record_name
-            loc_node = name_node or node
-
-            symbols.append(
-                self._make_symbol(
-                    record_name,
-                    "record",
-                    loc_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    qualified_name=qualified_name,
-                    is_abstract=has_modifier(modifiers, "abstract"),
-                    is_sealed=has_modifier(modifiers, "sealed"),
-                )
-            )
 
             # Process parameter list (positional record parameters)
             for child in node.children:
@@ -313,32 +268,17 @@ class CSharpParser(BaseLanguageParser):
 
         def process_interface_declaration(node: Node, scope: str | None = None) -> None:
             """Process an interface declaration."""
-            interface_name = None
-            name_node = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    interface_name = get_text(child)
-                    name_node = child
-                    break
-
+            interface_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "interface",
+                scope,
+            )
             if not interface_name:
                 return
 
             qualified_name = f"{scope}.{interface_name}" if scope else interface_name
-            loc_node = name_node or node
-
-            symbols.append(
-                self._make_symbol(
-                    interface_name,
-                    "interface",
-                    loc_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    qualified_name=qualified_name,
-                )
-            )
 
             for child in node.children:
                 if child.type == "base_list":
@@ -348,32 +288,17 @@ class CSharpParser(BaseLanguageParser):
 
         def process_enum_declaration(node: Node, scope: str | None = None) -> None:
             """Process an enum declaration."""
-            enum_name = None
-            name_node = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    enum_name = get_text(child)
-                    name_node = child
-                    break
-
+            enum_name = self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "enum",
+                scope,
+            )
             if not enum_name:
                 return
 
             qualified_name = f"{scope}.{enum_name}" if scope else enum_name
-            loc_node = name_node or node
-
-            symbols.append(
-                self._make_symbol(
-                    enum_name,
-                    "enum",
-                    loc_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    qualified_name=qualified_name,
-                )
-            )
 
             for child in node.children:
                 if child.type == "enum_member_declaration_list":
@@ -398,29 +323,12 @@ class CSharpParser(BaseLanguageParser):
 
         def process_delegate_declaration(node: Node, scope: str | None = None) -> None:
             """Process a delegate declaration."""
-            delegate_name = None
-            name_node = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    delegate_name = get_text(child)
-                    name_node = child
-                    break
-
-            if not delegate_name:
-                return
-
-            qualified_name = f"{scope}.{delegate_name}" if scope else delegate_name
-            loc_node = name_node or node
-
-            symbols.append(
-                self._make_symbol(
-                    delegate_name,
-                    "delegate",
-                    loc_node,
-                    scope,
-                    qualified_name=qualified_name,
-                )
+            self._extract_named_type_declaration(
+                node,
+                content,
+                symbols,
+                "delegate",
+                scope,
             )
 
         # --- Namespace handling ---
