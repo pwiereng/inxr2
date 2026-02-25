@@ -812,6 +812,27 @@ See `config.yaml` for the current repository configuration.
    - Access via curl: `curl http://localhost:9222/navigate?url=...`
    - See `qa-agent/README.md` for API documentation
 
+## Session Startup
+
+At the start of every session, set the iTerm2 terminal tab title to reflect the current context. This helps the user identify which Claude instance is working on what, especially with parallel worktrees.
+
+Run this command at session start:
+
+```bash
+# Set iTerm2 tab title to branch and issue context
+echo -ne "\033]0;Claude: $(git branch --show-current)\007"
+```
+
+If working on a specific issue, include the issue number:
+
+```bash
+echo -ne "\033]0;Claude: $(git branch --show-current) (#<issue-number>)\007"
+```
+
+Examples:
+- `Claude: main` — working on main branch
+- `Claude: fix-broad-exceptions (#59)` — working on issue #59 in a worktree
+
 ## PR Review Workflow
 
 When the user says **"check comments"** on a PR, this means:
