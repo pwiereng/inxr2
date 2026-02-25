@@ -19,6 +19,11 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
    - ✅ ALWAYS run package management inside Docker containers
    - All development must be done inside the dev container (`inxr2-dev` for main, or `inxr2-<branch>-dev` for worktrees)
    - PostgreSQL is embedded inside the dev container (no separate postgres service)
+   - **Prefer `docker exec` over `bash -c`** when suggesting commands to the user:
+     - ✅ `docker exec <container> inxr2 index --config config.yaml`
+     - ❌ `docker exec <container> bash -c "cd /workspace && inxr2 index --config config.yaml"`
+     - The default working directory is `/workspace`, so `-w` is only needed for subdirectories (e.g., `-w /workspace/frontend` for frontend commands)
+     - Use `-d` for background/daemon processes (servers)
 
 2. **Testing Requirements**
    - ✅ MANDATORY: Run `./scripts/run-all-tests.sh` before EVERY commit
@@ -888,7 +893,7 @@ When cleaning up a worktree (after its PR is merged), **always** follow this seq
 1. Verify PR is merged and issue is closed
 2. Run `./scripts/worktree-remove.sh <branch-name>`
 3. Pull latest main: `git pull --rebase origin main`
-4. Run all checks and tests on the updated main: `docker exec inxr2-dev bash -c "./scripts/run-all-tests.sh"`
+4. Run all checks and tests on the updated main: `docker exec inxr2-dev ./scripts/run-all-tests.sh`
 5. Run the QA regression test suite (see "Regression Testing" section below)
 6. Report results to the user
 
@@ -931,10 +936,10 @@ Re-index all repos from `config.yaml` (last 30 days) to verify the full indexing
 
 ```bash
 # Reset DB and re-index all repos
-docker exec inxr2-dev bash -c "cd /workspace && inxr2 index --config config.yaml --reset-db --yes --days 30"
+docker exec inxr2-dev inxr2 index --config config.yaml --reset-db --yes --days 30
 
 # Verify status
-docker exec inxr2-dev bash -c "cd /workspace && inxr2 status"
+docker exec inxr2-dev inxr2 status
 ```
 
 Run IX-01 through IX-04 from `docs/regression-tests.md`:
@@ -949,8 +954,8 @@ Start backend, frontend, and QA agent, then run browser tests:
 
 ```bash
 # Start backend + frontend (if not running)
-docker exec -d inxr2-dev bash -c "cd /workspace && inxr2 serve --reload"
-docker exec -d inxr2-dev bash -c "cd /workspace/frontend && npm run dev"
+docker exec -d inxr2-dev inxr2 serve --reload
+docker exec -d -w /workspace/frontend inxr2-dev npm run dev
 
 # Start QA agent
 docker compose -f docker-compose.dev.yml --profile qa up -d playwright
