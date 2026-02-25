@@ -883,7 +883,7 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 
 ### Worktree Cleanup Procedure
 
-When cleaning up a worktree (after its PR is merged), **always** follow this sequence:
+After **every** worktree close (not batched — run after each one), follow this sequence:
 1. Verify PR is merged and issue is closed
 2. Run `./scripts/worktree-remove.sh <branch-name>`
 3. Pull latest main: `git pull --rebase origin main`
