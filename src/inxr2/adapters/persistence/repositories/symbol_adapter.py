@@ -1,8 +1,6 @@
 """PostgreSQL symbol repository adapter."""
 
-from datetime import UTC, datetime
-
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import SymbolRepositoryPort
@@ -22,24 +20,11 @@ class PostgresSymbolRepository(
     """PostgreSQL implementation of SymbolRepositoryPort."""
 
     _model_class = SymbolModel
+    _set_indexed_at_on_save_many = True
 
     def __init__(self, session: AsyncSession):
         super().__init__(session)
         self.mapper = SymbolMapper()
-
-    async def save_many(self, symbols: list[Symbol]) -> list[Symbol]:
-        """Bulk save symbols for performance."""
-        if not symbols:
-            return []
-
-        now = datetime.now(UTC).replace(tzinfo=None)
-        models = [self.mapper.to_model(symbol) for symbol in symbols]
-        for model in models:
-            model.indexed_at = now
-        self.session.add_all(models)
-        await self.session.flush()
-
-        return [self.mapper.to_domain(model) for model in models]
 
     async def search_by_name(
         self,
@@ -189,19 +174,3 @@ class PostgresSymbolRepository(
         await self.session.flush()
         return result.rowcount or 0  # type: ignore[attr-defined]
 
-    async def count_by_repository(self, repository_id: int) -> int:
-        """Count symbols for a repository."""
-        result = await self.session.execute(
-            select(func.count(SymbolModel.id)).where(
-                SymbolModel.repository_id == repository_id
-            )
-        )
-        return result.scalar() or 0
-
-    async def delete_by_repository(self, repository_id: int) -> int:
-        """Delete all symbols for a repository. Returns count deleted."""
-        result = await self.session.execute(
-            delete(SymbolModel).where(SymbolModel.repository_id == repository_id)
-        )
-        await self.session.flush()
-        return result.rowcount or 0  # type: ignore[attr-defined]

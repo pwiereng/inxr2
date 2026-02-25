@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -288,13 +288,3 @@ class PostgresCommitRepository(
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
 
-    async def delete_by_repository(self, repository_id: int) -> int:
-        """Delete all commits for a repository. Returns count deleted.
-
-        Note: branch_commits entries are deleted via CASCADE.
-        """
-        result = await self.session.execute(
-            delete(CommitModel).where(CommitModel.repository_id == repository_id)
-        )
-        await self.session.flush()
-        return result.rowcount or 0  # type: ignore[attr-defined]

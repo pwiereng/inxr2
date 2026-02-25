@@ -1,7 +1,6 @@
 """PostgreSQL reference repository adapter."""
 
 from collections.abc import Callable
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, func, select, text
@@ -28,6 +27,7 @@ class PostgresReferenceRepository(
     """PostgreSQL implementation of ReferenceRepositoryPort."""
 
     _model_class = ReferenceModel
+    _set_indexed_at_on_save_many = True
 
     # -- Join clauses for the 3 resolution passes --
 
@@ -47,20 +47,6 @@ class PostgresReferenceRepository(
         super().__init__(session)
         self.mapper = ReferenceMapper()
         self._resolution_tables_for_repo_id: int | None = None
-
-    async def save_many(self, references: list[Reference]) -> list[Reference]:
-        """Bulk save references for performance."""
-        if not references:
-            return []
-
-        now = datetime.now(UTC).replace(tzinfo=None)
-        models = [self.mapper.to_model(ref) for ref in references]
-        for model in models:
-            model.indexed_at = now
-        self.session.add_all(models)
-        await self.session.flush()
-
-        return [self.mapper.to_domain(model) for model in models]
 
     async def find_references_to_symbol(
         self,
@@ -259,23 +245,6 @@ class PostgresReferenceRepository(
         """Delete all references for a file (for re-indexing). Returns count deleted."""
         result = await self.session.execute(
             delete(ReferenceModel).where(ReferenceModel.source_file_id == file_id)
-        )
-        await self.session.flush()
-        return result.rowcount or 0  # type: ignore[attr-defined]
-
-    async def count_by_repository(self, repository_id: int) -> int:
-        """Count references for a repository."""
-        result = await self.session.execute(
-            select(func.count(ReferenceModel.id)).where(
-                ReferenceModel.repository_id == repository_id
-            )
-        )
-        return result.scalar() or 0
-
-    async def delete_by_repository(self, repository_id: int) -> int:
-        """Delete all references for a repository. Returns count deleted."""
-        result = await self.session.execute(
-            delete(ReferenceModel).where(ReferenceModel.repository_id == repository_id)
         )
         await self.session.flush()
         return result.rowcount or 0  # type: ignore[attr-defined]

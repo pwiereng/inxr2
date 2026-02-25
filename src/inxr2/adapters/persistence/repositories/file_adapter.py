@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,14 +24,6 @@ class PostgresFileRepository(
     def __init__(self, session: AsyncSession):
         super().__init__(session)
         self.mapper = FileMapper()
-
-    async def save_many(self, files: list[File]) -> list[File]:
-        """Bulk save files for performance."""
-        models = [self.mapper.to_model(file) for file in files]
-        self.session.add_all(models)
-        await self.session.flush()
-
-        return [self.mapper.to_domain(model) for model in models]
 
     async def find_by_ids(self, file_ids: list[int]) -> dict[int, File]:
         """Find multiple files by IDs in a single query."""
@@ -186,10 +178,3 @@ class PostgresFileRepository(
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
 
-    async def delete_by_repository(self, repository_id: int) -> int:
-        """Delete all files for a repository. Returns count deleted."""
-        result = await self.session.execute(
-            delete(FileModel).where(FileModel.repository_id == repository_id)
-        )
-        await self.session.flush()
-        return result.rowcount or 0  # type: ignore[attr-defined]
