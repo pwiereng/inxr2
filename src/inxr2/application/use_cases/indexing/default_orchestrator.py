@@ -283,6 +283,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             branch=branch,
             commits_indexed=commits_indexed,
             files_indexed=agg.files_processed,
+            symbols_indexed=agg.symbols_found,
+            references_indexed=agg.references_found,
             last_indexed_commit=last_indexed_commit,
         )
         db_stats.inserts += 1
@@ -431,9 +433,13 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         branch: str,
         commits_indexed: int,
         files_indexed: int,
+        symbols_indexed: int,
+        references_indexed: int,
         last_indexed_commit: str | None = None,
     ) -> None:
         """Update index status after indexing."""
+        from datetime import UTC, datetime
+
         status = IndexStatus(
             id=None,
             repository_id=repository_id,
@@ -441,7 +447,10 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             indexing_status="completed",
             total_commits_indexed=commits_indexed,
             total_files_indexed=files_indexed,
+            total_symbols_indexed=symbols_indexed,
+            total_references_indexed=references_indexed,
             last_indexed_commit=last_indexed_commit,
+            last_indexed_at=datetime.now(UTC).replace(tzinfo=None),
             indexer_version="0.1.0",
         )
         await self._index_status_repo.save(status)
