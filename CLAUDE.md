@@ -19,6 +19,11 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
    - ✅ ALWAYS run package management inside Docker containers
    - All development must be done inside the dev container (`inxr2-dev` for main, or `inxr2-<branch>-dev` for worktrees)
    - PostgreSQL is embedded inside the dev container (no separate postgres service)
+   - **Prefer `docker exec` over `bash -c`** when suggesting commands to the user:
+     - ✅ `docker exec <container> inxr2 index --config config.yaml`
+     - ❌ `docker exec <container> bash -c "cd /workspace && inxr2 index --config config.yaml"`
+     - The default working directory is `/workspace`, so `-w` is only needed for subdirectories (e.g., `-w /workspace/frontend` for frontend commands)
+     - Use `-d` for background/daemon processes (servers)
 
 2. **Testing Requirements**
    - ✅ MANDATORY: Run `./scripts/run-all-tests.sh` before EVERY commit
@@ -812,6 +817,27 @@ See `config.yaml` for the current repository configuration.
    - Access via curl: `curl http://localhost:9222/navigate?url=...`
    - See `qa-agent/README.md` for API documentation
 
+## Session Startup
+
+At the start of every session, set the iTerm2 terminal tab title to reflect the current context. This helps the user identify which Claude instance is working on what, especially with parallel worktrees.
+
+Run this command at session start:
+
+```bash
+# Set iTerm2 tab title to branch and issue context
+echo -ne "\033]0;Claude: $(git branch --show-current)\007"
+```
+
+If working on a specific issue, include the issue number:
+
+```bash
+echo -ne "\033]0;Claude: $(git branch --show-current) (#<issue-number>)\007"
+```
+
+Examples:
+- `Claude: main` — working on main branch
+- `Claude: fix-broad-exceptions (#59)` — working on issue #59 in a worktree
+
 ## PR Review Workflow
 
 When the user says **"check comments"** on a PR, this means:
@@ -861,6 +887,16 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 ./scripts/worktree-list.sh
 ```
 
+### Worktree Cleanup Procedure
+
+When cleaning up a worktree (after its PR is merged), **always** follow this sequence:
+1. Verify PR is merged and issue is closed
+2. Run `./scripts/worktree-remove.sh <branch-name>`
+3. Pull latest main: `git pull --rebase origin main`
+4. Run all checks and tests on the updated main: `docker exec inxr2-dev ./scripts/run-all-tests.sh`
+5. Run the QA regression test suite (see "Regression Testing" section below)
+6. Report results to the user
+
 ### How It Works
 
 1. `worktree-create.sh feature-x` creates:
@@ -884,6 +920,86 @@ This ensures the prompt is preserved and easily accessible when opening a new Cl
 
 - Main: `inxr2-dev`, `inxr2-playwright`
 - Worktree: `inxr2-<branch>-dev`, `inxr2-<branch>-playwright`
+
+## Regression Testing
+
+After merging changes into main (worktree cleanup step 5), run the full regression suite.
+This includes re-indexing all repos, then verifying UI behavior via browser automation.
+
+**Full test plan:** See `docs/regression-tests.md` for all 27 test cases.
+
+**Testing philosophy:** No hardcoded expected data. Each test discovers what to expect by querying git or the API first, then verifies the UI matches. See "Discover → Navigate → Verify" pattern in the test plan.
+
+### Phase 1: Indexing
+
+Re-index all repos from `config.yaml` (last 30 days) to verify the full indexing pipeline:
+
+```bash
+# Reset DB and re-index all repos
+docker exec inxr2-dev inxr2 index --config config.yaml --reset-db --yes --days 30
+
+# Verify status
+docker exec inxr2-dev inxr2 status
+```
+
+Run IX-01 through IX-04 from `docs/regression-tests.md`:
+- IX-01: Reset DB and index all repos
+- IX-02: Verify indexing status (all repos, non-zero counts)
+- IX-03: Verify API serves indexed data (matches config.yaml)
+- IX-04: Verify multi-language symbol extraction (discover from git, verify via API)
+
+### Phase 2: QA Browser
+
+Start backend, frontend, and QA agent, then run browser tests:
+
+```bash
+# Start backend + frontend (if not running)
+docker exec -d inxr2-dev inxr2 serve --reload
+docker exec -d -w /workspace/frontend inxr2-dev npm run dev
+
+# Start QA agent
+docker compose -f docker-compose.dev.yml --profile qa up -d playwright
+curl http://localhost:9222/health  # verify
+```
+
+Run RT-01 through RT-23 from `docs/regression-tests.md`:
+
+| Area | Tests | Validated Against |
+|------|-------|-------------------|
+| Home | RT-01 to RT-03 | API repo count and stats |
+| Browse | RT-04 to RT-12 | `git ls-tree`, `git blame`, file content |
+| Search | RT-13 to RT-16 | `git ls-files`, `grep` patterns from repos |
+| History | RT-17 to RT-18 | `git log --oneline` |
+| Navigation | RT-19 to RT-20 | URL params, `config.yaml` branches |
+| Cross-cutting | RT-21 to RT-23 | URL state, color change, `grep '^#'` heading |
+
+### Interpreting Results
+
+For each test:
+1. **Discover** what data exists via git or API
+2. **Navigate** the UI with QA agent curl commands
+3. **Verify** UI output matches discovered data
+4. If a test fails, take a screenshot: `curl "http://localhost:9222/screenshot/save?path=/tmp/rt-fail-<ID>.png"`
+
+### Reporting
+
+After the full suite, report a summary to the user:
+
+```
+Regression Test Results:
+- Indexing: X/4 passed
+- Browser:  X/23 passed
+- Total:    X/27 passed
+- Failed:   [list any failures with ID and brief reason]
+```
+
+If all pass, report: **"Regression suite: 27/27 passed (4 indexing + 23 browser)."**
+
+### When to Run
+
+- **Always** after worktree cleanup (merging into main)
+- **On request** when the user asks to "run regression tests" or "run QA tests"
+- Before any release or deployment
 
 ## Key Commands Reference
 

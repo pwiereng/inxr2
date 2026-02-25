@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +28,20 @@ class PostgresReferenceRepository(
     """PostgreSQL implementation of ReferenceRepositoryPort."""
 
     _model_class = ReferenceModel
+
+    # -- Join clauses for the 3 resolution passes --
+
+    _PASS1_JOIN = """JOIN _resolve_pass1 sub_t
+                    ON r.reference_text = sub_t.name
+                    AND r.source_file_id = sub_t.file_id"""
+
+    _PASS2_JOIN = """JOIN files rf ON r.source_file_id = rf.id
+                    JOIN _resolve_pass2 sub_t
+                    ON r.reference_text = sub_t.name
+                    AND rf.language = sub_t.language"""
+
+    _PASS3_JOIN = """JOIN _resolve_pass3 sub_t
+                    ON r.reference_text = sub_t.name"""
 
     def __init__(self, session: AsyncSession):
         super().__init__(session)
@@ -408,6 +423,41 @@ class PostgresReferenceRepository(
         """
         await self._ensure_resolution_tables(repository_id, progress_callback)
 
+    async def _execute_resolution_pass(
+        self,
+        join_clause: str,
+        repo_id: int,
+        limit: int | None = None,
+    ) -> int:
+        """Execute one resolution pass and return count of resolved references.
+
+        Args:
+            join_clause: The JOIN clause specific to this pass.
+            repo_id: Repository ID to scope the update.
+            limit: Optional batch size limit for the subquery.
+        """
+        limit_clause = "LIMIT :batch_size" if limit else ""
+        params: dict[str, Any] = {"repo_id": repo_id}
+        if limit:
+            params["batch_size"] = limit
+
+        sql = text(f"""
+            UPDATE "references"
+            SET target_symbol_id = sub.target_id
+            FROM (
+                SELECT r.id AS ref_id, sub_t.min_id AS target_id
+                FROM "references" r
+                {join_clause}
+                WHERE r.repository_id = :repo_id
+                  AND r.target_symbol_id IS NULL
+                {limit_clause}
+            ) sub
+            WHERE "references".id = sub.ref_id
+        """)
+
+        result = await self.session.execute(sql, params)
+        return result.rowcount or 0  # type: ignore[attr-defined]
+
     async def resolve_references_batch(
         self,
         repository_id: int,
@@ -430,72 +480,23 @@ class PostgresReferenceRepository(
         total_resolved = 0
 
         # Pass 1: Same-file resolution (preferred)
-        result = await self.session.execute(
-            text("""
-                UPDATE "references"
-                SET target_symbol_id = sub.target_id
-                FROM (
-                    SELECT r.id AS ref_id, p1.min_id AS target_id
-                    FROM "references" r
-                    JOIN _resolve_pass1 p1
-                        ON r.reference_text = p1.name
-                        AND r.source_file_id = p1.file_id
-                    WHERE r.repository_id = :repo_id
-                      AND r.target_symbol_id IS NULL
-                    LIMIT :batch_size
-                ) sub
-                WHERE "references".id = sub.ref_id
-            """),
-            {"repo_id": repository_id, "batch_size": batch_size},
+        total_resolved += await self._execute_resolution_pass(
+            self._PASS1_JOIN, repository_id, limit=batch_size
         )
-        pass1_count = result.rowcount or 0  # type: ignore[attr-defined]
-        total_resolved += pass1_count
 
         # Pass 2: Same-language cross-file resolution
         remaining = batch_size - total_resolved
         if remaining > 0:
-            result = await self.session.execute(
-                text("""
-                    UPDATE "references"
-                    SET target_symbol_id = sub.target_id
-                    FROM (
-                        SELECT r.id AS ref_id, p2.min_id AS target_id
-                        FROM "references" r
-                        JOIN files rf ON r.source_file_id = rf.id
-                        JOIN _resolve_pass2 p2
-                            ON r.reference_text = p2.name
-                            AND rf.language = p2.language
-                        WHERE r.repository_id = :repo_id
-                          AND r.target_symbol_id IS NULL
-                        LIMIT :batch_size
-                    ) sub
-                    WHERE "references".id = sub.ref_id
-                """),
-                {"repo_id": repository_id, "batch_size": remaining},
+            total_resolved += await self._execute_resolution_pass(
+                self._PASS2_JOIN, repository_id, limit=remaining
             )
-            total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
 
         # Pass 3: Any-match cross-file resolution (lowest ID fallback)
         remaining = batch_size - total_resolved
         if remaining > 0:
-            result = await self.session.execute(
-                text("""
-                    UPDATE "references"
-                    SET target_symbol_id = sub.target_id
-                    FROM (
-                        SELECT r.id AS ref_id, p3.min_id AS target_id
-                        FROM "references" r
-                        JOIN _resolve_pass3 p3
-                            ON r.reference_text = p3.name
-                        WHERE r.repository_id = :repo_id
-                          AND r.target_symbol_id IS NULL
-                        LIMIT :batch_size
-                    ) sub
-                    WHERE "references".id = sub.ref_id
-                """),
-                {"repo_id": repository_id, "batch_size": remaining},
+            total_resolved += await self._execute_resolution_pass(
+                self._PASS3_JOIN, repository_id, limit=remaining
             )
-            total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
 
         return total_resolved
 
@@ -514,66 +515,15 @@ class PostgresReferenceRepository(
         await self._ensure_resolution_tables(repository_id)
 
         total_resolved = 0
-
-        # Pass 1: Same-file resolution
-        result = await self.session.execute(
-            text("""
-                UPDATE "references"
-                SET target_symbol_id = sub.target_id
-                FROM (
-                    SELECT r.id AS ref_id, p1.min_id AS target_id
-                    FROM "references" r
-                    JOIN _resolve_pass1 p1
-                        ON r.reference_text = p1.name
-                        AND r.source_file_id = p1.file_id
-                    WHERE r.repository_id = :repo_id
-                      AND r.target_symbol_id IS NULL
-                ) sub
-                WHERE "references".id = sub.ref_id
-            """),
-            {"repo_id": repository_id},
+        total_resolved += await self._execute_resolution_pass(
+            self._PASS1_JOIN, repository_id
         )
-        total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
-
-        # Pass 2: Same-language cross-file resolution
-        result = await self.session.execute(
-            text("""
-                UPDATE "references"
-                SET target_symbol_id = sub.target_id
-                FROM (
-                    SELECT r.id AS ref_id, p2.min_id AS target_id
-                    FROM "references" r
-                    JOIN files rf ON r.source_file_id = rf.id
-                    JOIN _resolve_pass2 p2
-                        ON r.reference_text = p2.name
-                        AND rf.language = p2.language
-                    WHERE r.repository_id = :repo_id
-                      AND r.target_symbol_id IS NULL
-                ) sub
-                WHERE "references".id = sub.ref_id
-            """),
-            {"repo_id": repository_id},
+        total_resolved += await self._execute_resolution_pass(
+            self._PASS2_JOIN, repository_id
         )
-        total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
-
-        # Pass 3: Any-match resolution (lowest ID fallback)
-        result = await self.session.execute(
-            text("""
-                UPDATE "references"
-                SET target_symbol_id = sub.target_id
-                FROM (
-                    SELECT r.id AS ref_id, p3.min_id AS target_id
-                    FROM "references" r
-                    JOIN _resolve_pass3 p3
-                        ON r.reference_text = p3.name
-                    WHERE r.repository_id = :repo_id
-                      AND r.target_symbol_id IS NULL
-                ) sub
-                WHERE "references".id = sub.ref_id
-            """),
-            {"repo_id": repository_id},
+        total_resolved += await self._execute_resolution_pass(
+            self._PASS3_JOIN, repository_id
         )
-        total_resolved += result.rowcount or 0  # type: ignore[attr-defined]
 
         await self.session.flush()
         return total_resolved
