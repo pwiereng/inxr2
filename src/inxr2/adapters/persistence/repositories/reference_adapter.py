@@ -29,6 +29,20 @@ class PostgresReferenceRepository(
 
     _model_class = ReferenceModel
 
+    # -- Join clauses for the 3 resolution passes --
+
+    _PASS1_JOIN = """JOIN _resolve_pass1 sub_t
+                    ON r.reference_text = sub_t.name
+                    AND r.source_file_id = sub_t.file_id"""
+
+    _PASS2_JOIN = """JOIN files rf ON r.source_file_id = rf.id
+                    JOIN _resolve_pass2 sub_t
+                    ON r.reference_text = sub_t.name
+                    AND rf.language = sub_t.language"""
+
+    _PASS3_JOIN = """JOIN _resolve_pass3 sub_t
+                    ON r.reference_text = sub_t.name"""
+
     def __init__(self, session: AsyncSession):
         super().__init__(session)
         self.mapper = ReferenceMapper()
@@ -411,7 +425,6 @@ class PostgresReferenceRepository(
 
     async def _execute_resolution_pass(
         self,
-        pass_table: str,
         join_clause: str,
         repo_id: int,
         limit: int | None = None,
@@ -419,7 +432,6 @@ class PostgresReferenceRepository(
         """Execute one resolution pass and return count of resolved references.
 
         Args:
-            pass_table: Temp table name (unused in SQL but documents which pass).
             join_clause: The JOIN clause specific to this pass.
             repo_id: Repository ID to scope the update.
             limit: Optional batch size limit for the subquery.
@@ -446,20 +458,6 @@ class PostgresReferenceRepository(
         result = await self.session.execute(sql, params)
         return result.rowcount or 0  # type: ignore[attr-defined]
 
-    # -- Join clauses for the 3 resolution passes --
-
-    _PASS1_JOIN = """JOIN _resolve_pass1 sub_t
-                    ON r.reference_text = sub_t.name
-                    AND r.source_file_id = sub_t.file_id"""
-
-    _PASS2_JOIN = """JOIN files rf ON r.source_file_id = rf.id
-                    JOIN _resolve_pass2 sub_t
-                    ON r.reference_text = sub_t.name
-                    AND rf.language = sub_t.language"""
-
-    _PASS3_JOIN = """JOIN _resolve_pass3 sub_t
-                    ON r.reference_text = sub_t.name"""
-
     async def resolve_references_batch(
         self,
         repository_id: int,
@@ -483,21 +481,21 @@ class PostgresReferenceRepository(
 
         # Pass 1: Same-file resolution (preferred)
         total_resolved += await self._execute_resolution_pass(
-            "_resolve_pass1", self._PASS1_JOIN, repository_id, limit=batch_size
+            self._PASS1_JOIN, repository_id, limit=batch_size
         )
 
         # Pass 2: Same-language cross-file resolution
         remaining = batch_size - total_resolved
         if remaining > 0:
             total_resolved += await self._execute_resolution_pass(
-                "_resolve_pass2", self._PASS2_JOIN, repository_id, limit=remaining
+                self._PASS2_JOIN, repository_id, limit=remaining
             )
 
         # Pass 3: Any-match cross-file resolution (lowest ID fallback)
         remaining = batch_size - total_resolved
         if remaining > 0:
             total_resolved += await self._execute_resolution_pass(
-                "_resolve_pass3", self._PASS3_JOIN, repository_id, limit=remaining
+                self._PASS3_JOIN, repository_id, limit=remaining
             )
 
         return total_resolved
@@ -518,13 +516,13 @@ class PostgresReferenceRepository(
 
         total_resolved = 0
         total_resolved += await self._execute_resolution_pass(
-            "_resolve_pass1", self._PASS1_JOIN, repository_id
+            self._PASS1_JOIN, repository_id
         )
         total_resolved += await self._execute_resolution_pass(
-            "_resolve_pass2", self._PASS2_JOIN, repository_id
+            self._PASS2_JOIN, repository_id
         )
         total_resolved += await self._execute_resolution_pass(
-            "_resolve_pass3", self._PASS3_JOIN, repository_id
+            self._PASS3_JOIN, repository_id
         )
 
         await self.session.flush()

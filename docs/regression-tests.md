@@ -43,7 +43,7 @@ Verifies: git integration, tree-sitter parsing, symbol extraction, reference res
 
 **Steps:**
 ```bash
-docker exec inxr2-dev bash -c "cd /workspace && inxr2 index --config config.yaml --reset-db --yes --days 30"
+docker exec inxr2-dev inxr2 index --config config.yaml --reset-db --yes --days 30
 ```
 
 **Pass criteria:**
@@ -56,7 +56,7 @@ docker exec inxr2-dev bash -c "cd /workspace && inxr2 index --config config.yaml
 
 **Steps:**
 ```bash
-docker exec inxr2-dev bash -c "cd /workspace && inxr2 status"
+docker exec inxr2-dev inxr2 status
 ```
 
 **Pass criteria:**
@@ -71,7 +71,7 @@ docker exec inxr2-dev bash -c "cd /workspace && inxr2 status"
 **Steps:**
 ```bash
 # Get repo list from config
-docker exec inxr2-dev bash -c "grep 'name:' /workspace/config.yaml"
+docker exec inxr2-dev grep 'name:' /workspace/config.yaml
 # Get repo list from API
 docker exec inxr2-dev bash -c "curl -s http://localhost:8000/api/repositories | python3 -m json.tool"
 # Get stats from API
@@ -114,10 +114,10 @@ Start backend and frontend, then verify UI features against the indexed data.
 
 ```bash
 # Start backend (if not running)
-docker exec -d inxr2-dev bash -c "cd /workspace && inxr2 serve --reload"
+docker exec -d inxr2-dev inxr2 serve --reload
 
 # Start frontend (if not running)
-docker exec -d inxr2-dev bash -c "cd /workspace/frontend && npm run dev"
+docker exec -d -w /workspace/frontend inxr2-dev npm run dev
 
 # Wait for services to be ready
 sleep 5
@@ -177,7 +177,7 @@ curl "http://localhost:9222/url"
 ```bash
 # DISCOVER: Get the repo name from the current URL (from RT-03)
 # Get top-level entries from git
-docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-tree --name-only HEAD"
+docker exec inxr2-dev git -C /repos/test-repos/<repo> ls-tree --name-only HEAD
 # NAVIGATE + VERIFY
 curl "http://localhost:9222/wait?selector=.MuiList-root&timeout=5000"
 curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=30"
@@ -193,7 +193,7 @@ curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=30"
 **Steps:**
 ```bash
 # DISCOVER: Pick first directory from git and list its children
-docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-tree --name-only HEAD <dir>/"
+docker exec inxr2-dev git -C /repos/test-repos/<repo> ls-tree --name-only HEAD <dir>/
 # NAVIGATE
 curl "http://localhost:9222/click?selector=.MuiListItemButton-root"
 curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=30"
@@ -210,8 +210,8 @@ curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=30"
 ```bash
 # DISCOVER: Pick a source file from the repo and get its line count
 docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-files '*.c' '*.py' '*.java' '*.cs' '*.ts' | head -1"
-docker exec inxr2-dev bash -c "wc -l /repos/test-repos/<repo>/<file>"
-docker exec inxr2-dev bash -c "head -5 /repos/test-repos/<repo>/<file>"
+docker exec inxr2-dev wc -l /repos/test-repos/<repo>/<file>
+docker exec inxr2-dev head -5 /repos/test-repos/<repo>/<file>
 # NAVIGATE
 curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/<repo>/<file>?branch=<branch>"
 curl "http://localhost:9222/wait?selector=table&timeout=5000"
@@ -415,7 +415,7 @@ curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=10"
 **Steps:**
 ```bash
 # DISCOVER: Get recent commits from git
-docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> log --oneline -5"
+docker exec inxr2-dev git -C /repos/test-repos/<repo> log --oneline -5
 # NAVIGATE
 curl "http://localhost:9222/navigate?url=http://localhost:5173/history?repo=<repo>"
 curl "http://localhost:9222/wait?selector=.MuiListItem-root&timeout=5000"
@@ -476,7 +476,7 @@ curl "http://localhost:9222/url"
 **Steps:**
 ```bash
 # DISCOVER: Get branches from git for a multi-branch repo (e.g., inxr2)
-docker exec inxr2-dev bash -c "git -C /repos/test-repos/inxr2 branch -a --format='%(refname:short)'"
+docker exec inxr2-dev git -C /repos/test-repos/inxr2 branch -a --format='%(refname:short)'
 # NAVIGATE
 curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/inxr2?branch=main"
 curl "http://localhost:9222/wait?selector=.MuiSelect-select&timeout=5000"
@@ -536,7 +536,7 @@ curl "http://localhost:9222/eval?script=getComputedStyle(document.body).backgrou
 ```bash
 # DISCOVER: Find a markdown file and extract its first heading
 docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-files '*.md' | head -1"
-docker exec inxr2-dev bash -c "grep -m1 '^#' /repos/test-repos/<repo>/<md_file>"
+docker exec inxr2-dev grep -m1 '^#' /repos/test-repos/<repo>/<md_file>
 # NAVIGATE
 curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/<repo>/<md_file>?branch=<branch>"
 curl "http://localhost:9222/wait?selector=h1,h2,h3&timeout=5000"
