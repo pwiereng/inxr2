@@ -1,8 +1,9 @@
 """Base SQLAlchemy repository with shared CRUD boilerplate."""
 
+from datetime import UTC, datetime
 from typing import Generic, Protocol, TypeVar
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 TEntity = TypeVar("TEntity")
@@ -20,12 +21,15 @@ class MapperProtocol(Protocol[TEntity, TModel]):
 class BaseSQLAlchemyRepository(Generic[TEntity, TModel]):
     """Generic base class for SQLAlchemy repository adapters.
 
-    Provides shared ``save()`` and ``find_by_id()`` implementations that are
-    identical across most repository adapters.  Subclasses must set
-    ``_model_class`` and initialise ``self.mapper`` in their ``__init__``.
+    Provides shared ``save()``, ``find_by_id()``, ``save_many()``,
+    ``delete_by_repository()``, and ``count_by_repository()``
+    implementations that are identical across most repository adapters.
+    Subclasses must set ``_model_class`` and initialise ``self.mapper``
+    in their ``__init__``.
     """
 
     _model_class: type[TModel]
+    _set_indexed_at_on_save_many: bool = False
     mapper: MapperProtocol[TEntity, TModel]
 
     def __init__(self, session: AsyncSession) -> None:
@@ -54,3 +58,40 @@ class BaseSQLAlchemyRepository(Generic[TEntity, TModel]):
         )
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None
+
+    async def save_many(self, entities: list[TEntity]) -> list[TEntity]:
+        """Bulk save entities.
+
+        Subclasses that need ``indexed_at`` stamped on every model should set
+        the class attribute ``_set_indexed_at_on_save_many = True``.
+        """
+        if not entities:
+            return []
+
+        models = [self.mapper.to_model(entity) for entity in entities]
+        if self._set_indexed_at_on_save_many:
+            now = datetime.now(UTC).replace(tzinfo=None)
+            for model in models:
+                model.indexed_at = now  # type: ignore[attr-defined]
+        self.session.add_all(models)
+        await self.session.flush()
+        return [self.mapper.to_domain(model) for model in models]
+
+    async def delete_by_repository(self, repository_id: int) -> int:
+        """Delete all rows for a repository. Returns count deleted."""
+        result = await self.session.execute(
+            delete(self._model_class).where(
+                self._model_class.repository_id == repository_id  # type: ignore[attr-defined]
+            )
+        )
+        await self.session.flush()
+        return result.rowcount or 0  # type: ignore[attr-defined]
+
+    async def count_by_repository(self, repository_id: int) -> int:
+        """Count rows for a repository."""
+        result = await self.session.execute(
+            select(func.count(self._model_class.id)).where(  # type: ignore[attr-defined]
+                self._model_class.repository_id == repository_id  # type: ignore[attr-defined]
+            )
+        )
+        return result.scalar() or 0

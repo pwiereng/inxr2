@@ -1,6 +1,6 @@
 """PostgreSQL index status repository adapter."""
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import IndexStatusRepositoryPort
@@ -87,12 +87,3 @@ class PostgresIndexStatusRepository(
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
 
-    async def delete_by_repository(self, repository_id: int) -> int:
-        """Delete all index statuses for a repository. Returns count deleted."""
-        result = await self.session.execute(
-            delete(IndexStatusModel).where(
-                IndexStatusModel.repository_id == repository_id
-            )
-        )
-        await self.session.flush()
-        return result.rowcount or 0  # type: ignore[attr-defined]
