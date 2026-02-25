@@ -819,24 +819,18 @@ See `config.yaml` for the current repository configuration.
 
 ## Session Startup
 
-At the start of every session, set the iTerm2 terminal tab title to reflect the current context. This helps the user identify which Claude instance is working on what, especially with parallel worktrees.
-
-Run this command at session start:
+At the start of every session, set the iTerm2 terminal tab title to the **current git branch name**. This is the most reliable way to identify which worktree/task a terminal belongs to.
 
 ```bash
-# Set iTerm2 tab title to branch and issue context
-echo -ne "\033]0;Claude: $(git branch --show-current)\007"
-```
-
-If working on a specific issue, include the issue number:
-
-```bash
-echo -ne "\033]0;Claude: $(git branch --show-current) (#<issue-number>)\007"
+echo -ne "\033]0;$(git branch --show-current)\007"
 ```
 
 Examples:
-- `Claude: main` — working on main branch
-- `Claude: fix-broad-exceptions (#59)` — working on issue #59 in a worktree
+- `main` — the main orchestration session
+- `abstract-git-exceptions` — worktree for issue #107
+- `extract-resolution-helper` — worktree for issue #108
+
+Do NOT use task descriptions or other text — just the branch name, always.
 
 ## PR Review Workflow
 

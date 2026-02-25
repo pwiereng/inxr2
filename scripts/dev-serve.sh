@@ -1,11 +1,9 @@
 #!/bin/bash
 # Start both backend and frontend development servers
 #
-# Usage (inside dev container):
-#   ./scripts/dev-serve.sh
-#
-# Or from host:
-#   docker exec -it <container-name> ./scripts/dev-serve.sh
+# Works from anywhere:
+#   ./scripts/dev-serve.sh          # auto-detects host vs container
+#   docker exec -it <name> ./scripts/dev-serve.sh  # explicit
 
 set -e
 
@@ -15,6 +13,29 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# If running on host, delegate to container
+if ! { [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; }; then
+    # Derive container name from .env (if present) or default to inxr2-dev
+    CONTAINER_PREFIX="inxr2"
+    if [ -f ".env" ]; then
+        PREFIX_FROM_ENV=$(sed -n 's/^COMPOSE_CONTAINER_PREFIX=[[:space:]]*//p' .env 2>/dev/null | tr -d '[:space:]"'"'")
+        [ -n "$PREFIX_FROM_ENV" ] && CONTAINER_PREFIX="$PREFIX_FROM_ENV"
+    fi
+    DEV_CONTAINER="${CONTAINER_PREFIX}-dev"
+
+    if ! docker ps --format '{{.Names}}' | grep -qx "$DEV_CONTAINER"; then
+        echo -e "${RED}Error: $DEV_CONTAINER is not running. Run './scripts/dev-start.sh' first.${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}Delegating to container $DEV_CONTAINER...${NC}"
+    exec docker exec -it "$DEV_CONTAINER" /workspace/scripts/dev-serve.sh
+fi
+
+# --- Running inside the container from here ---
+
+cd /workspace
 
 # Track PIDs for cleanup
 BACKEND_PID=""
