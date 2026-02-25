@@ -43,7 +43,7 @@ Verifies: git integration, tree-sitter parsing, symbol extraction, reference res
 
 **Steps:**
 ```bash
-docker exec inxr2-dev inxr2 index --config config.yaml --reset-db --yes --days 30
+docker exec inxr2-dev inxr2 index --config config.yaml --reset-db --yes --days 10
 ```
 
 **Pass criteria:**
@@ -102,6 +102,57 @@ docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=<dis
 **Pass criteria:**
 - For each language, at least one symbol is found via the API
 - Symbol kind matches what was found in the source (e.g., `grep 'class Foo'` → API returns symbol with kind=class)
+
+---
+
+## IX-05: Compare Indexing Performance Against History
+
+The indexing CLI appends timing data to `index.log` (CSV) after each run. Compare the
+current run against the most recent historical run for the same repo+branch to catch
+performance regressions.
+
+**Steps:**
+```bash
+# Read the full index.log
+docker exec inxr2-dev bash -c "cat /workspace/index.log"
+```
+
+**Analysis:**
+
+For each repo+branch combination, compare the **current run** (from IX-01) against the
+**most recent previous run** for the same repo+branch. The key columns are:
+
+| Column | What It Measures |
+|--------|-----------------|
+| `elapsed_seconds` | Total wall-clock time |
+| `indexing_seconds` | Time spent parsing files and extracting symbols |
+| `resolving_seconds` | Time spent resolving cross-references |
+| `files_processed` | Total file versions processed |
+| `symbols_found` | Total symbols extracted |
+| `references_found` | Total references found |
+| `references_resolved` | Total references successfully resolved |
+
+**Pass criteria:**
+- `elapsed_seconds` for each repo+branch is within **20%** of the previous run
+  (allow for variance due to container load, but flag anything beyond 20%)
+- `symbols_found` and `references_found` counts are the same or higher than previous
+  (a drop may indicate a parser regression)
+- `references_resolved` percentage (`resolved / found`) is the same or higher
+
+**Reporting format:**
+
+```
+Indexing Performance Comparison:
+| Repo | Branch | Elapsed (prev → now) | Symbols (prev → now) | Refs Resolved % |
+|------|--------|---------------------|---------------------|-----------------|
+| crisp | main | 5.5s → 5.8s (+5%) | 1324 → 1324 (=) | 82.1% → 82.1% |
+| inxr2 | main | 185.8s → 190.2s (+2%) | 36455 → 36455 (=) | ⚠ ... |
+```
+
+Flag any row with:
+- Elapsed time increase > 20%
+- Symbol count decrease
+- Reference resolution % decrease
 
 ---
 
@@ -553,7 +604,7 @@ curl "http://localhost:9222/text?selector=h1,h2,h3"
 
 ## Summary
 
-### Phase 1: Indexing (4 tests)
+### Phase 1: Indexing (5 tests)
 
 | ID | Test | Validates |
 |----|------|-----------|
@@ -561,6 +612,7 @@ curl "http://localhost:9222/text?selector=h1,h2,h3"
 | IX-02 | Verify indexing status | All repos indexed with data |
 | IX-03 | Verify API serves indexed data | API returns all repos from config |
 | IX-04 | Verify multi-language symbol extraction | Each parser produces correct symbols |
+| IX-05 | Compare indexing performance vs history | No timing/count regressions |
 
 ### Phase 2: QA Browser (23 tests)
 
@@ -590,4 +642,4 @@ curl "http://localhost:9222/text?selector=h1,h2,h3"
 | RT-22 | Theme toggle | Background color change |
 | RT-23 | Markdown rendering matches file | `grep '^#'` heading |
 
-**Total: 27 test cases** (4 indexing + 23 browser) — all verified against git/API, no hardcoded data.
+**Total: 28 test cases** (5 indexing + 23 browser) — all verified against git/API, no hardcoded data.

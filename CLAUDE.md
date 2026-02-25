@@ -920,27 +920,28 @@ This ensures the prompt is preserved and easily accessible when opening a new Cl
 After merging changes into main (worktree cleanup step 5), run the full regression suite.
 This includes re-indexing all repos, then verifying UI behavior via browser automation.
 
-**Full test plan:** See `docs/regression-tests.md` for all 27 test cases.
+**Full test plan:** See `docs/regression-tests.md` for all 28 test cases.
 
 **Testing philosophy:** No hardcoded expected data. Each test discovers what to expect by querying git or the API first, then verifies the UI matches. See "Discover → Navigate → Verify" pattern in the test plan.
 
 ### Phase 1: Indexing
 
-Re-index all repos from `config.yaml` (last 30 days) to verify the full indexing pipeline:
+Re-index all repos from `config.yaml` (last 10 days) to verify the full indexing pipeline:
 
 ```bash
 # Reset DB and re-index all repos
-docker exec inxr2-dev inxr2 index --config config.yaml --reset-db --yes --days 30
+docker exec inxr2-dev inxr2 index --config config.yaml --reset-db --yes --days 10
 
 # Verify status
 docker exec inxr2-dev inxr2 status
 ```
 
-Run IX-01 through IX-04 from `docs/regression-tests.md`:
+Run IX-01 through IX-05 from `docs/regression-tests.md`:
 - IX-01: Reset DB and index all repos
 - IX-02: Verify indexing status (all repos, non-zero counts)
 - IX-03: Verify API serves indexed data (matches config.yaml)
 - IX-04: Verify multi-language symbol extraction (discover from git, verify via API)
+- IX-05: Compare indexing times/counts against `index.log` history (flag >20% slowdowns or count drops)
 
 ### Phase 2: QA Browser
 
@@ -981,13 +982,13 @@ After the full suite, report a summary to the user:
 
 ```
 Regression Test Results:
-- Indexing: X/4 passed
+- Indexing: X/5 passed
 - Browser:  X/23 passed
-- Total:    X/27 passed
+- Total:    X/28 passed
 - Failed:   [list any failures with ID and brief reason]
 ```
 
-If all pass, report: **"Regression suite: 27/27 passed (4 indexing + 23 browser)."**
+If all pass, report: **"Regression suite: 28/28 passed (5 indexing + 23 browser)."**
 
 ### When to Run
 
