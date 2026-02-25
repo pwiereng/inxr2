@@ -173,4 +173,3 @@ class PostgresSymbolRepository(
         )
         await self.session.flush()
         return result.rowcount or 0  # type: ignore[attr-defined]
-
