@@ -220,9 +220,15 @@ class GitService(GitServicePort):
 
         try:
             from_c = repo.commit(from_commit)
-            to_c = repo.commit(to_commit)
         except (BadName, ValueError) as e:
             raise CommitNotFound(commit_hash=from_commit) from e
+        except GitCommandError as e:
+            raise GitOperationError("get_changed_files", str(e)) from e
+
+        try:
+            to_c = repo.commit(to_commit)
+        except (BadName, ValueError) as e:
+            raise CommitNotFound(commit_hash=to_commit) from e
         except GitCommandError as e:
             raise GitOperationError("get_changed_files", str(e)) from e
 

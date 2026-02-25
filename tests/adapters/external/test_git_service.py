@@ -521,13 +521,25 @@ class TestGitServiceNarrowedExceptions:
         result = git_service.get_current_commit(temp_git_repo, "no-such-branch-xyz")
         assert result == head_hash
 
-    def test_get_changed_files_invalid_commit_raises_commit_not_found(
+    def test_get_changed_files_invalid_from_commit_raises_commit_not_found(
         self, git_service: GitService, temp_git_repo: Path
     ) -> None:
-        """get_changed_files with garbage commit hash raises CommitNotFound."""
+        """get_changed_files with garbage from_commit raises CommitNotFound."""
         good_hash = git_service.get_current_commit(temp_git_repo)
-        with pytest.raises(CommitNotFound):
-            git_service.get_changed_files(temp_git_repo, "deadbeef" * 5, good_hash)
+        bad_hash = "deadbeef" * 5
+        with pytest.raises(CommitNotFound) as exc_info:
+            git_service.get_changed_files(temp_git_repo, bad_hash, good_hash)
+        assert exc_info.value.commit_hash == bad_hash
+
+    def test_get_changed_files_invalid_to_commit_raises_commit_not_found(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """get_changed_files with garbage to_commit raises CommitNotFound with correct hash."""
+        good_hash = git_service.get_current_commit(temp_git_repo)
+        bad_hash = "deadbeef" * 5
+        with pytest.raises(CommitNotFound) as exc_info:
+            git_service.get_changed_files(temp_git_repo, good_hash, bad_hash)
+        assert exc_info.value.commit_hash == bad_hash
 
     def test_get_blame_invalid_commit_raises_commit_not_found(
         self, git_service: GitService, temp_git_repo: Path

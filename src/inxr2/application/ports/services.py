@@ -140,10 +140,12 @@ class GitServicePort(ABC):
 
     Exception contract:
         All methods may raise ``InvalidRepositoryPath`` if the repo path
-        is not a valid git repository.  Method-specific exceptions are
-        documented on each method.  Implementations MUST translate any
-        backend-specific exceptions (e.g. GitPython's ``git.exc``) into
-        domain exceptions before they escape.
+        is not a valid git repository.  Method-specific domain exceptions
+        are documented on each method.  Implementations are expected to
+        translate backend-specific exceptions (e.g. GitPython's ``git.exc``)
+        into domain exceptions for methods called by the application layer.
+        Internal/indexing methods may let backend exceptions propagate when
+        the caller already handles them.
     """
 
     @abstractmethod
