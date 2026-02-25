@@ -1017,3 +1017,228 @@ class TestBranchScopedResolution:
         ref = await ref_repo.find_by_id(1)
         assert ref is not None
         assert ref.target_symbol_id == 1
+
+
+class TestStaleFileVersionResolution:
+    """Regression test for issue #129: resolution skips stale file versions.
+
+    When incremental indexing accumulates multiple file versions for the
+    same path, only references from the latest version should be resolved.
+    References from superseded file versions are never shown in the UI and
+    processing them wastes time (17m vs 2m on real data).
+    """
+
+    @pytest.mark.asyncio
+    async def test_only_latest_file_version_refs_resolved(self) -> None:
+        """References from old file versions should NOT be resolved."""
+        commit_repo = InMemoryCommitRepository()
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
+        ref_repo = InMemoryReferenceRepository(
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+        # Two commits: older and newer
+        commit_repo.add(
+            Commit(
+                id=1,
+                repository_id=1,
+                commit_hash=CommitHash("old0" + "0" * 36),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        await commit_repo.link_commit_to_branch(1, 1, "main")
+
+        commit_repo.add(
+            Commit(
+                id=2,
+                repository_id=1,
+                commit_hash=CommitHash("new0" + "0" * 36),
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+            )
+        )
+        await commit_repo.link_commit_to_branch(1, 2, "main")
+
+        # Two file versions for the SAME path (simulating incremental indexing)
+        file_repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/mod.py",
+                content_hash="old_hash",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        await file_repo.link_file_to_commit(1, 1)  # old version
+
+        file_repo.add(
+            File(
+                id=2,
+                repository_id=1,
+                path="src/mod.py",
+                content_hash="new_hash",
+                size_bytes=150,
+                language="python",
+            )
+        )
+        await file_repo.link_file_to_commit(2, 2)  # latest version
+
+        # Symbol in the latest file version
+        symbol_repo.add(
+            Symbol(
+                id=1,
+                file_id=2,
+                repository_id=1,
+                name="my_func",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+
+        # Reference in the OLD file version (should NOT be resolved)
+        ref_repo.add(
+            Reference(
+                id=1,
+                repository_id=1,
+                source_file_id=1,  # old file version
+                source_line=10,
+                source_column=0,
+                source_end_column=7,
+                reference_text="my_func",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+
+        # Reference in the LATEST file version (should be resolved)
+        ref_repo.add(
+            Reference(
+                id=2,
+                repository_id=1,
+                source_file_id=2,  # latest file version
+                source_line=10,
+                source_column=0,
+                source_end_column=7,
+                reference_text="my_func",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+
+        use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
+        response = await use_case.execute(
+            ResolveReferencesRequest(repository_id=1)
+        )
+
+        # Only 1 resolved: the reference from the latest file version
+        assert response.resolved_count == 1
+
+        # Old file version ref stays unresolved
+        old_ref = await ref_repo.find_by_id(1)
+        assert old_ref is not None
+        assert old_ref.target_symbol_id is None
+
+        # Latest file version ref is resolved
+        new_ref = await ref_repo.find_by_id(2)
+        assert new_ref is not None
+        assert new_ref.target_symbol_id == 1
+
+    @pytest.mark.asyncio
+    async def test_count_unresolved_excludes_stale_files(self) -> None:
+        """count_unresolved_references should only count refs from latest files."""
+        commit_repo = InMemoryCommitRepository()
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
+        ref_repo = InMemoryReferenceRepository(
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+        # Two commits
+        commit_repo.add(
+            Commit(
+                id=1,
+                repository_id=1,
+                commit_hash=CommitHash("old0" + "0" * 36),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        await commit_repo.link_commit_to_branch(1, 1, "main")
+
+        commit_repo.add(
+            Commit(
+                id=2,
+                repository_id=1,
+                commit_hash=CommitHash("new0" + "0" * 36),
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+            )
+        )
+        await commit_repo.link_commit_to_branch(1, 2, "main")
+
+        # Two versions of same file
+        file_repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/mod.py",
+                content_hash="old_hash",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        await file_repo.link_file_to_commit(1, 1)
+
+        file_repo.add(
+            File(
+                id=2,
+                repository_id=1,
+                path="src/mod.py",
+                content_hash="new_hash",
+                size_bytes=150,
+                language="python",
+            )
+        )
+        await file_repo.link_file_to_commit(2, 2)
+
+        # Unresolved refs in both old and new file versions
+        ref_repo.add(
+            Reference(
+                id=1,
+                repository_id=1,
+                source_file_id=1,  # old
+                source_line=5,
+                source_column=0,
+                source_end_column=7,
+                reference_text="some_func",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+        ref_repo.add(
+            Reference(
+                id=2,
+                repository_id=1,
+                source_file_id=2,  # latest
+                source_line=5,
+                source_column=0,
+                source_end_column=7,
+                reference_text="some_func",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=None,
+            )
+        )
+
+        # Should only count the ref from the latest file version
+        count = await ref_repo.count_unresolved_references(repository_id=1)
+        assert count == 1

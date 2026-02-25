@@ -1570,12 +1570,23 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         return len(to_delete)
 
     async def count_unresolved_references(self, repository_id: int) -> int:
-        """Count references that don't have a target_symbol_id set."""
+        """Count references that don't have a target_symbol_id set.
+
+        Only counts references from latest file versions, matching the
+        Postgres adapter behavior.
+        """
+        latest_ids: set[int] | None = None
+        if self._file_repo is not None:
+            latest_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=None
+            )
         return len(
             [
                 r
                 for r in self._references.values()
-                if r.repository_id == repository_id and r.target_symbol_id is None
+                if r.repository_id == repository_id
+                and r.target_symbol_id is None
+                and (latest_ids is None or r.source_file_id in latest_ids)
             ]
         )
 
@@ -1594,20 +1605,17 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     ) -> int:
         """Resolve a batch of unlinked references.
 
-        Processes up to ``batch_size`` unresolved references for the
-        repository and uses repo-wide latest file IDs for symbol
-        candidate filtering (which symbols to match).
-
-        This ensures references can resolve to symbols in any file in the
-        repository, not just files modified on a particular branch.
+        Processes up to ``batch_size`` unresolved references from the
+        latest version of each file path, using repo-wide latest file IDs
+        for both reference source filtering and symbol candidate filtering.
         """
         if self._symbol_repo is None:
             return 0
 
-        # Repo-wide file IDs for symbol candidate filtering
-        symbols_file_ids: set[int] | None = None
+        # Repo-wide latest file IDs for both ref source and symbol filtering
+        latest_file_ids: set[int] | None = None
         if self._file_repo is not None:
-            symbols_file_ids = self._file_repo._compute_latest_file_ids(
+            latest_file_ids = self._file_repo._compute_latest_file_ids(
                 repository_id, branch=None
             )
 
@@ -1621,12 +1629,16 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             if ref.target_symbol_id is not None or ref.repository_id != repository_id:
                 continue
 
+            # Skip references from non-latest file versions
+            if latest_file_ids is not None and ref.source_file_id not in latest_file_ids:
+                continue
+
             candidates: list[Symbol] = [
                 s
                 for s in self._symbol_repo.get_all_symbols()
                 if s.repository_id == repository_id
                 and s.name == ref.reference_text
-                and (symbols_file_ids is None or s.file_id in symbols_file_ids)
+                and (latest_file_ids is None or s.file_id in latest_file_ids)
             ]
 
             if not candidates:
@@ -1708,17 +1720,17 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
     ) -> int:
         """Resolve references to their target symbols.
 
-        Uses repo-wide file IDs for symbol candidate filtering, matching
-        the Postgres adapter behavior where all refs are resolved against
-        symbols from the latest version of each file path.
+        Only resolves references from the latest version of each file path,
+        using repo-wide latest file IDs for both reference source filtering
+        and symbol candidate filtering.
         """
         if self._symbol_repo is None:
             return 0
 
-        # Repo-wide file IDs for symbol candidate filtering
-        symbols_file_ids: set[int] | None = None
+        # Repo-wide latest file IDs for both ref source and symbol filtering
+        latest_file_ids: set[int] | None = None
         if self._file_repo is not None:
-            symbols_file_ids = self._file_repo._compute_latest_file_ids(
+            latest_file_ids = self._file_repo._compute_latest_file_ids(
                 repository_id, branch=None
             )
 
@@ -1729,12 +1741,16 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             if ref.target_symbol_id is not None or ref.repository_id != repository_id:
                 continue
 
+            # Skip references from non-latest file versions
+            if latest_file_ids is not None and ref.source_file_id not in latest_file_ids:
+                continue
+
             candidates: list[Symbol] = [
                 s
                 for s in self._symbol_repo.get_all_symbols()
                 if s.repository_id == repository_id
                 and s.name == ref.reference_text
-                and (symbols_file_ids is None or s.file_id in symbols_file_ids)
+                and (latest_file_ids is None or s.file_id in latest_file_ids)
             ]
 
             matching_symbol = self._pick_best_symbol(ref, candidates)
