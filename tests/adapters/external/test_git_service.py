@@ -6,6 +6,11 @@ import pytest
 from git import Repo
 
 from inxr2.adapters.external.git_service import GitService
+from inxr2.domain.exceptions import (
+    CommitNotFound,
+    GitOperationError,
+    InvalidRepositoryPath,
+)
 
 
 @pytest.fixture
@@ -177,12 +182,12 @@ class TestGitService:
     def test_invalid_repository_path(
         self, git_service: GitService, tmp_path: Path
     ) -> None:
-        """Test handling of invalid repository path."""
+        """Test handling of invalid repository path raises InvalidRepositoryPath."""
         # Create a directory that's not a git repo
         not_git = tmp_path / "not-a-git-repo"
         not_git.mkdir()
 
-        with pytest.raises(ValueError, match="Not a valid git repository"):
+        with pytest.raises(InvalidRepositoryPath, match="Not a valid git repository"):
             git_service.get_repository_info(not_git)
 
 
@@ -496,11 +501,11 @@ class TestGitServiceBranchCommits:
 
 
 class TestGitServiceNarrowedExceptions:
-    """Regression tests: verify narrowed exception catches still handle real GitPython errors.
+    """Regression tests: verify exception translation from GitPython to domain types.
 
-    These tests exercise the actual error paths in GitPython (BadName,
-    GitCommandError) to confirm the narrowed except clauses catch them.
-    If a catch is too narrow, the exception propagates and the test fails.
+    These tests exercise the actual error paths and confirm that GitPython
+    exceptions are properly translated to domain exceptions (CommitNotFound,
+    GitOperationError, InvalidRepositoryPath) or handled internally.
     """
 
     @pytest.fixture
@@ -516,19 +521,31 @@ class TestGitServiceNarrowedExceptions:
         result = git_service.get_current_commit(temp_git_repo, "no-such-branch-xyz")
         assert result == head_hash
 
-    def test_get_changed_files_invalid_commit_raises_valueerror(
+    def test_get_changed_files_invalid_from_commit_raises_commit_not_found(
         self, git_service: GitService, temp_git_repo: Path
     ) -> None:
-        """get_changed_files with garbage commit hash raises ValueError."""
+        """get_changed_files with garbage from_commit raises CommitNotFound."""
         good_hash = git_service.get_current_commit(temp_git_repo)
-        with pytest.raises(ValueError, match="Invalid commit hash"):
-            git_service.get_changed_files(temp_git_repo, "deadbeef" * 5, good_hash)
+        bad_hash = "deadbeef" * 5
+        with pytest.raises(CommitNotFound) as exc_info:
+            git_service.get_changed_files(temp_git_repo, bad_hash, good_hash)
+        assert exc_info.value.commit_hash == bad_hash
 
-    def test_get_blame_invalid_commit_raises_valueerror(
+    def test_get_changed_files_invalid_to_commit_raises_commit_not_found(
         self, git_service: GitService, temp_git_repo: Path
     ) -> None:
-        """get_blame with garbage commit hash raises ValueError."""
-        with pytest.raises(ValueError, match="Cannot access repository or commit"):
+        """get_changed_files with garbage to_commit raises CommitNotFound with correct hash."""
+        good_hash = git_service.get_current_commit(temp_git_repo)
+        bad_hash = "deadbeef" * 5
+        with pytest.raises(CommitNotFound) as exc_info:
+            git_service.get_changed_files(temp_git_repo, good_hash, bad_hash)
+        assert exc_info.value.commit_hash == bad_hash
+
+    def test_get_blame_invalid_commit_raises_commit_not_found(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """get_blame with garbage commit hash raises CommitNotFound."""
+        with pytest.raises(CommitNotFound):
             git_service.get_blame(temp_git_repo, "deadbeef" * 5, "README.md")
 
     def test_get_blame_missing_file_raises_filenotfounderror(
@@ -555,3 +572,71 @@ class TestGitServiceNarrowedExceptions:
         branches = git_service.list_branches(temp_git_repo)
         assert "main" in branches
         assert "feature-branch" in branches
+
+
+class TestGitServiceExceptionTranslation:
+    """Tests that GitService translates git.exc exceptions to domain exceptions."""
+
+    @pytest.fixture
+    def git_service(self) -> GitService:
+        return GitService()
+
+    def test_get_commit_info_bad_hash_raises_commit_not_found(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """get_commit_info with non-existent hash raises CommitNotFound."""
+        with pytest.raises(CommitNotFound) as exc_info:
+            git_service.get_commit_info(temp_git_repo, "deadbeef" * 5)
+        assert exc_info.value.commit_hash == "deadbeef" * 5
+
+    def test_get_commit_info_short_bad_hash_raises_commit_not_found(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """get_commit_info with short non-existent hash raises CommitNotFound."""
+        with pytest.raises(CommitNotFound):
+            git_service.get_commit_info(temp_git_repo, "0000000")
+
+    def test_get_changed_files_in_commit_bad_hash_raises_commit_not_found(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """get_changed_files_in_commit with bad hash raises CommitNotFound."""
+        with pytest.raises(CommitNotFound) as exc_info:
+            git_service.get_changed_files_in_commit(temp_git_repo, "deadbeef" * 5)
+        assert exc_info.value.commit_hash == "deadbeef" * 5
+
+    def test_invalid_repo_path_raises_invalid_repository_path(
+        self, git_service: GitService, tmp_path: Path
+    ) -> None:
+        """Accessing a non-git directory raises InvalidRepositoryPath."""
+        not_git = tmp_path / "not-a-repo"
+        not_git.mkdir()
+
+        with pytest.raises(InvalidRepositoryPath) as exc_info:
+            git_service.get_commit_info(not_git, "abc123")
+        assert str(not_git) in exc_info.value.path
+
+    def test_nonexistent_path_raises_invalid_repository_path(
+        self, git_service: GitService, tmp_path: Path
+    ) -> None:
+        """Accessing a path that doesn't exist raises InvalidRepositoryPath."""
+        missing = tmp_path / "no-such-directory"
+
+        with pytest.raises(InvalidRepositoryPath) as exc_info:
+            git_service.get_commit_info(missing, "abc123")
+        assert str(missing) in exc_info.value.path
+
+    def test_get_commit_info_valid_hash_succeeds(
+        self, git_service: GitService, temp_git_repo: Path
+    ) -> None:
+        """get_commit_info with a valid hash returns CommitInfo."""
+        commit_hash = git_service.get_current_commit(temp_git_repo)
+        info = git_service.get_commit_info(temp_git_repo, commit_hash)
+        assert info.hash == commit_hash
+
+    def test_domain_exceptions_are_domain_exception_subclasses(self) -> None:
+        """Domain exceptions inherit from DomainException for broad catching."""
+        from inxr2.domain.exceptions import DomainException
+
+        assert issubclass(CommitNotFound, DomainException)
+        assert issubclass(GitOperationError, DomainException)
+        assert issubclass(InvalidRepositoryPath, DomainException)
