@@ -1017,5 +1017,3 @@ class TestBranchScopedResolution:
         ref = await ref_repo.find_by_id(1)
         assert ref is not None
         assert ref.target_symbol_id == 1
-
-

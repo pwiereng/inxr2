@@ -9,6 +9,7 @@ ProcessCommitUseCase) while keeping the orchestration logic here.
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any
 
 from inxr2.domain.entities import IndexStatus
 
@@ -301,7 +302,15 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
         # Step 7: Update index status
         last_indexed_commit = commits_data[0].hash if commits_data else current_head
-        oldest_commit_hash = oldest_commit.hash if oldest_commit else None
+        # Preserve the globally oldest indexed commit on forward-fill runs
+        # (request.days is None); only recompute from this run's commits
+        # on fresh/auto-reset/backfill runs.
+        existing_oldest = index_status.oldest_indexed_commit if index_status else None
+        oldest_commit_hash: str | None
+        if request.days is None and existing_oldest:
+            oldest_commit_hash = existing_oldest
+        else:
+            oldest_commit_hash = oldest_commit.hash if oldest_commit else None
         existing_meta = index_status.metadata if index_status else None
         await self._update_index_status(
             repository_id=repo_id,
@@ -467,19 +476,21 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         last_indexed_commit: str | None = None,
         oldest_indexed_commit: str | None = None,
         days: int | None = None,
-        existing_metadata: dict[str, int] | None = None,
+        existing_metadata: dict[str, Any] | None = None,
     ) -> None:
         """Update index status after indexing."""
         from datetime import UTC, datetime
 
-        # Build metadata: set indexed_days when --days is used,
-        # otherwise preserve the previous value so a forward-fill
-        # run doesn't erase the range expansion detection state.
-        metadata: dict[str, int] | None = None
+        # Build metadata: merge with existing, updating indexed_days
+        # when --days is used, otherwise preserving previous values
+        # so a forward-fill run doesn't erase range expansion state.
+        metadata: dict[str, Any] | None = None
+        if existing_metadata:
+            metadata = dict(existing_metadata)
         if days is not None:
-            metadata = {"indexed_days": days}
-        elif existing_metadata and "indexed_days" in existing_metadata:
-            metadata = {"indexed_days": existing_metadata["indexed_days"]}
+            if metadata is None:
+                metadata = {}
+            metadata["indexed_days"] = days
 
         status = IndexStatus(
             id=None,

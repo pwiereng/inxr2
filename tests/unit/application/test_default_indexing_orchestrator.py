@@ -2040,6 +2040,37 @@ class TestDaysRangeExpansionReindex:
         assert statuses2[0].metadata == {"indexed_days": 10}
 
     @pytest.mark.asyncio
+    async def test_forward_fill_preserves_oldest_indexed_commit(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        index_status_repo: InMemoryIndexStatusRepository,
+    ) -> None:
+        """Forward-fill (no --days) should preserve oldest_indexed_commit."""
+        # First run: --days 10 stores oldest_indexed_commit
+        request1 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=10,
+        )
+        response1 = await orchestrator.index_repository(request1)
+        repo_id = response1.repository_id
+
+        statuses = await index_status_repo.list_by_repository(repo_id)
+        original_oldest = statuses[0].oldest_indexed_commit
+        assert original_oldest is not None
+
+        # Second run: forward-fill (no --days)
+        request2 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+        )
+        await orchestrator.index_repository(request2)
+
+        # oldest_indexed_commit should be preserved from the --days run
+        statuses2 = await index_status_repo.list_by_repository(repo_id)
+        assert statuses2[0].oldest_indexed_commit == original_oldest
+
+    @pytest.mark.asyncio
     async def test_days_expansion_after_forward_fill_triggers_reset(
         self,
         orchestrator: DefaultIndexingOrchestrator,
