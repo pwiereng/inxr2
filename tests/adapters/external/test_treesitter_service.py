@@ -32,7 +32,6 @@ class TestTreeSitterService:
     def test_unsupported_language(self, parser_service: TreeSitterService) -> None:
         """Test that unsupported languages are rejected."""
         assert not parser_service.supports_language("rust")
-        assert not parser_service.supports_language("go")
         assert not parser_service.supports_language("kotlin")
 
 
