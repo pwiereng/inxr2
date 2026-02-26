@@ -2008,3 +2008,117 @@ class TestDaysRangeExpansionReindex:
         statuses = await index_status_repo.list_by_repository(response.repository_id)
         assert len(statuses) == 1
         assert statuses[0].oldest_indexed_commit is not None
+
+    @pytest.mark.asyncio
+    async def test_forward_fill_preserves_indexed_days_metadata(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        index_status_repo: InMemoryIndexStatusRepository,
+    ) -> None:
+        """Forward-fill (no --days) should preserve indexed_days from prior run."""
+        # First run: --days 10
+        request1 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=10,
+        )
+        response1 = await orchestrator.index_repository(request1)
+        repo_id = response1.repository_id
+
+        statuses = await index_status_repo.list_by_repository(repo_id)
+        assert statuses[0].metadata == {"indexed_days": 10}
+
+        # Second run: forward-fill (no --days)
+        request2 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+        )
+        await orchestrator.index_repository(request2)
+
+        # indexed_days should be preserved, not overwritten to None
+        statuses2 = await index_status_repo.list_by_repository(repo_id)
+        assert statuses2[0].metadata == {"indexed_days": 10}
+
+    @pytest.mark.asyncio
+    async def test_days_expansion_after_forward_fill_triggers_reset(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        repository_adapter: InMemoryRepositoryRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+    ) -> None:
+        """--days 10, forward-fill, then --days 30 should still auto-reset."""
+        # First run: --days 10
+        request1 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=10,
+        )
+        response1 = await orchestrator.index_repository(request1)
+        first_repo_id = response1.repository_id
+
+        # Second run: forward-fill (no --days)
+        request2 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+        )
+        await orchestrator.index_repository(request2)
+
+        # Third run: --days 30 (range expanded from original 10)
+        request3 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=30,
+        )
+        response3 = await orchestrator.index_repository(request3)
+
+        # Should have reset because 30 > 10
+        assert response3.repository_id != first_repo_id
+        assert await repository_adapter.find_by_id(first_repo_id) is None
+
+    @pytest.mark.asyncio
+    async def test_indexing_method_fresh(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+    ) -> None:
+        """First-time indexing should report method='fresh'."""
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+        )
+        response = await orchestrator.index_repository(request)
+        assert response.indexing_method == "fresh"
+
+    @pytest.mark.asyncio
+    async def test_indexing_method_incremental(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+    ) -> None:
+        """Subsequent indexing should report method='incremental'."""
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+        )
+        await orchestrator.index_repository(request)
+        response2 = await orchestrator.index_repository(request)
+        assert response2.indexing_method == "incremental"
+
+    @pytest.mark.asyncio
+    async def test_indexing_method_auto_reset(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+    ) -> None:
+        """Days expansion should report method='auto-reset'."""
+        request1 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=10,
+        )
+        await orchestrator.index_repository(request1)
+
+        request2 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=30,
+        )
+        response2 = await orchestrator.index_repository(request2)
+        assert response2.indexing_method == "auto-reset"

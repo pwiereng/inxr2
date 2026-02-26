@@ -95,6 +95,8 @@ class IndexRepositoryResponse:
     indexing_seconds: float = 0.0
     resolving_seconds: float = 0.0
     db_stats: DBQueryStats = field(default_factory=DBQueryStats)
+    # Indexing method used (fresh, incremental, auto-reset)
+    indexing_method: str = "fresh"
     # Commit range info for summary
     oldest_commit_hash: str | None = None
     oldest_commit_date: str | None = None

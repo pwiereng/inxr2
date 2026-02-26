@@ -166,6 +166,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         # incremental indexing accumulates stale file versions that inflate
         # resolution JOIN cost by ~7x.  It's faster to delete everything
         # and re-index from scratch than to resolve against bloated tables.
+        indexing_method = "fresh" if created else "incremental"
         if request.days and index_status and index_status.metadata:
             prev_days = index_status.metadata.get("indexed_days")
             if prev_days is not None and request.days > prev_days:
@@ -181,6 +182,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 db_stats.inserts += 1
                 index_status = None
                 last_indexed_hash = None
+                indexing_method = "auto-reset"
 
         # Step 3: Commit selection
         commits_data = self._select_commits(
@@ -300,6 +302,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         # Step 7: Update index status
         last_indexed_commit = commits_data[0].hash if commits_data else current_head
         oldest_commit_hash = oldest_commit.hash if oldest_commit else None
+        existing_meta = index_status.metadata if index_status else None
         await self._update_index_status(
             repository_id=repo_id,
             branch=branch,
@@ -310,6 +313,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             last_indexed_commit=last_indexed_commit,
             oldest_indexed_commit=oldest_commit_hash,
             days=request.days,
+            existing_metadata=existing_meta,
         )
         db_stats.inserts += 1
 
@@ -318,6 +322,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             repository_id=repo_id,
             repository_name=repo_name,
             branch=branch,
+            indexing_method=indexing_method,
             commits_indexed=commits_indexed,
             files_total=total_files,
             files_processed=agg.files_processed,
@@ -462,13 +467,19 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         last_indexed_commit: str | None = None,
         oldest_indexed_commit: str | None = None,
         days: int | None = None,
+        existing_metadata: dict[str, int] | None = None,
     ) -> None:
         """Update index status after indexing."""
         from datetime import UTC, datetime
 
+        # Build metadata: set indexed_days when --days is used,
+        # otherwise preserve the previous value so a forward-fill
+        # run doesn't erase the range expansion detection state.
         metadata: dict[str, int] | None = None
         if days is not None:
             metadata = {"indexed_days": days}
+        elif existing_metadata and "indexed_days" in existing_metadata:
+            metadata = {"indexed_days": existing_metadata["indexed_days"]}
 
         status = IndexStatus(
             id=None,
