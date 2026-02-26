@@ -1874,3 +1874,137 @@ class TestBranchIndexingOptimization:
         assert (
             response.non_code_files_indexed >= 3
         ), "Response should track non-code files indexed"
+
+
+class TestDaysRangeExpansionReindex:
+    """Regression tests for issue #129: auto-reset on --days range expansion.
+
+    When a user indexes with --days 10 then --days 30, incremental indexing
+    accumulates stale file versions that inflate resolution time ~7x.  The
+    orchestrator detects the range expansion and deletes + re-creates the
+    repo so the second run starts fresh.
+    """
+
+    @pytest.mark.asyncio
+    async def test_days_expansion_triggers_repo_reset(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        repository_adapter: InMemoryRepositoryRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+    ) -> None:
+        """--days 10 then --days 30 should delete and re-create the repo."""
+        # First run: --days 10
+        request1 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=10,
+        )
+        response1 = await orchestrator.index_repository(request1)
+        first_repo_id = response1.repository_id
+
+        # Verify metadata was stored
+        statuses = await index_status_repo.list_by_repository(first_repo_id)
+        assert len(statuses) == 1
+        assert statuses[0].metadata == {"indexed_days": 10}
+
+        # Second run: --days 30 (range expanded)
+        request2 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=30,
+        )
+        response2 = await orchestrator.index_repository(request2)
+        second_repo_id = response2.repository_id
+
+        # Repo should have been deleted and re-created with a new ID
+        assert second_repo_id != first_repo_id
+        # Old repo should be gone
+        assert await repository_adapter.find_by_id(first_repo_id) is None
+        # New metadata should reflect the new days value
+        statuses2 = await index_status_repo.list_by_repository(second_repo_id)
+        assert len(statuses2) == 1
+        assert statuses2[0].metadata == {"indexed_days": 30}
+
+    @pytest.mark.asyncio
+    async def test_same_days_does_not_trigger_reset(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        repository_adapter: InMemoryRepositoryRepository,
+    ) -> None:
+        """--days 10 then --days 10 should NOT reset the repo."""
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=10,
+        )
+        response1 = await orchestrator.index_repository(request)
+        first_repo_id = response1.repository_id
+
+        response2 = await orchestrator.index_repository(request)
+        # Same repo ID — no reset
+        assert response2.repository_id == first_repo_id
+
+    @pytest.mark.asyncio
+    async def test_smaller_days_does_not_trigger_reset(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        repository_adapter: InMemoryRepositoryRepository,
+    ) -> None:
+        """--days 30 then --days 10 should NOT reset (range shrinks)."""
+        request1 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=30,
+        )
+        response1 = await orchestrator.index_repository(request1)
+        first_repo_id = response1.repository_id
+
+        request2 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=10,
+        )
+        response2 = await orchestrator.index_repository(request2)
+        # Same repo ID — no reset
+        assert response2.repository_id == first_repo_id
+
+    @pytest.mark.asyncio
+    async def test_no_days_after_days_does_not_trigger_reset(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        repository_adapter: InMemoryRepositoryRepository,
+    ) -> None:
+        """--days 10 then forward-fill (no --days) should NOT reset."""
+        request1 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=10,
+        )
+        response1 = await orchestrator.index_repository(request1)
+        first_repo_id = response1.repository_id
+
+        request2 = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+        )
+        response2 = await orchestrator.index_repository(request2)
+        # Same repo ID — no reset (forward fill only)
+        assert response2.repository_id == first_repo_id
+
+    @pytest.mark.asyncio
+    async def test_days_stores_oldest_indexed_commit(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        index_status_repo: InMemoryIndexStatusRepository,
+    ) -> None:
+        """Indexing with --days should store oldest_indexed_commit in status."""
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            days=30,
+        )
+        response = await orchestrator.index_repository(request)
+
+        statuses = await index_status_repo.list_by_repository(response.repository_id)
+        assert len(statuses) == 1
+        assert statuses[0].oldest_indexed_commit is not None
