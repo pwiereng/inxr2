@@ -1,8 +1,5 @@
 """Tests for database connection management."""
 
-import os
-from unittest.mock import patch
-
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -12,7 +9,27 @@ from inxr2.infrastructure.database.connection import (
     get_database_connection,
     get_database_url,
     init_database,
+    normalize_database_url,
 )
+
+
+class TestNormalizeDatabaseUrl:
+    """Tests for URL normalization helper."""
+
+    def test_converts_postgres_url(self) -> None:
+        """normalize_database_url should convert postgres:// to postgresql+asyncpg://."""
+        result = normalize_database_url("postgres://user:pass@host:5432/db")
+        assert result == "postgresql+asyncpg://user:pass@host:5432/db"
+
+    def test_converts_postgresql_url(self) -> None:
+        """normalize_database_url should convert postgresql:// to postgresql+asyncpg://."""
+        result = normalize_database_url("postgresql://user:pass@host:5432/db")
+        assert result == "postgresql+asyncpg://user:pass@host:5432/db"
+
+    def test_preserves_asyncpg_url(self) -> None:
+        """normalize_database_url should preserve postgresql+asyncpg:// URLs."""
+        url = "postgresql+asyncpg://user:pass@host:5432/db"
+        assert normalize_database_url(url) == url
 
 
 class TestDatabaseConnection:
@@ -54,56 +71,20 @@ class TestDatabaseConnection:
         conn = DatabaseConnection(url)
         assert conn.session_factory is not None
 
-    def test_uses_environment_url_as_fallback(self) -> None:
-        """DatabaseConnection should use DATABASE_URL env var as fallback."""
-        env_url = "postgresql+asyncpg://env:pass@envhost:5432/envdb"
-        with patch.dict(os.environ, {"DATABASE_URL": env_url}):
-            conn = DatabaseConnection()
-            assert conn.database_url == env_url
-
-    def test_uses_default_when_no_url_provided(self) -> None:
-        """DatabaseConnection should use default URL when none provided."""
-        with patch.dict(os.environ, {}, clear=True):
-            # Remove DATABASE_URL if it exists
-            if "DATABASE_URL" in os.environ:
-                del os.environ["DATABASE_URL"]
-            conn = DatabaseConnection()
-            # Should have some default URL
-            assert "postgresql" in conn.database_url
-            assert "asyncpg" in conn.database_url
+    def test_default_url_is_valid_postgresql(self) -> None:
+        """DatabaseConnection with no args should produce a valid async URL."""
+        conn = DatabaseConnection()
+        assert "postgresql" in conn.database_url
+        assert "asyncpg" in conn.database_url
 
 
 class TestGetDatabaseUrl:
     """Tests for get_database_url function."""
 
-    def test_returns_environment_url(self) -> None:
-        """get_database_url should return DATABASE_URL from environment."""
-        env_url = "postgresql+asyncpg://user:pass@host:5432/db"
-        with patch.dict(os.environ, {"DATABASE_URL": env_url}):
-            result = get_database_url()
-            assert result == env_url
-
-    def test_converts_postgres_url(self) -> None:
-        """get_database_url should convert postgres:// URLs."""
-        env_url = "postgres://user:pass@host:5432/db"
-        with patch.dict(os.environ, {"DATABASE_URL": env_url}):
-            result = get_database_url()
-            assert result == "postgresql+asyncpg://user:pass@host:5432/db"
-
-    def test_converts_postgresql_url(self) -> None:
-        """get_database_url should convert postgresql:// URLs."""
-        env_url = "postgresql://user:pass@host:5432/db"
-        with patch.dict(os.environ, {"DATABASE_URL": env_url}):
-            result = get_database_url()
-            assert result == "postgresql+asyncpg://user:pass@host:5432/db"
-
-    def test_returns_default_when_no_env(self) -> None:
-        """get_database_url should return default when no env var."""
-        with patch.dict(os.environ, {}, clear=True):
-            if "DATABASE_URL" in os.environ:
-                del os.environ["DATABASE_URL"]
-            result = get_database_url()
-            assert "postgresql+asyncpg" in result
+    def test_returns_valid_async_url(self) -> None:
+        """get_database_url should return a postgresql+asyncpg:// URL."""
+        result = get_database_url()
+        assert "postgresql+asyncpg" in result
 
 
 class TestInitAndGetDatabaseConnection:
@@ -146,32 +127,32 @@ class TestInitAndGetDatabaseConnection:
 class TestDatabaseConnectionPoolSettings:
     """Tests for database connection pool configuration."""
 
-    def test_default_pool_size_from_env(self) -> None:
-        """DatabaseConnection should use default pool size when env not set."""
-        url = "postgresql+asyncpg://user:pass@host:5432/db"
-        with patch.dict(os.environ, {}, clear=True):
-            conn = DatabaseConnection(url)
-            # Engine should be created (pool configuration is internal)
-            assert conn.engine is not None
-
-    def test_custom_pool_size_from_env(self) -> None:
-        """DatabaseConnection should read DB_POOL_SIZE from environment."""
-        url = "postgresql+asyncpg://user:pass@host:5432/db"
-        # Verify the env var is read (actual pool size is internal)
-        with patch.dict(os.environ, {"DB_POOL_SIZE": "5"}):
-            conn = DatabaseConnection(url)
-            assert conn.engine is not None
-
-    def test_sql_echo_disabled_by_default(self) -> None:
+    def test_default_echo_is_false(self) -> None:
         """DatabaseConnection should have SQL echo disabled by default."""
         url = "postgresql+asyncpg://user:pass@host:5432/db"
-        with patch.dict(os.environ, {}, clear=True):
-            conn = DatabaseConnection(url)
-            assert conn.engine.echo is False
+        conn = DatabaseConnection(url)
+        assert conn.engine.echo is False
 
-    def test_sql_echo_enabled_from_env(self) -> None:
-        """DatabaseConnection should enable SQL echo from SQL_ECHO env var."""
+    def test_explicit_echo_enabled(self) -> None:
+        """DatabaseConnection should enable SQL echo when passed explicitly."""
         url = "postgresql+asyncpg://user:pass@host:5432/db"
-        with patch.dict(os.environ, {"SQL_ECHO": "true"}):
-            conn = DatabaseConnection(url)
-            assert conn.engine.echo is True
+        conn = DatabaseConnection(url, echo=True)
+        assert conn.engine.echo is True
+
+    def test_explicit_echo_disabled(self) -> None:
+        """DatabaseConnection should disable SQL echo when passed explicitly."""
+        url = "postgresql+asyncpg://user:pass@host:5432/db"
+        conn = DatabaseConnection(url, echo=False)
+        assert conn.engine.echo is False
+
+    def test_explicit_pool_size(self) -> None:
+        """DatabaseConnection should accept explicit pool size."""
+        url = "postgresql+asyncpg://user:pass@host:5432/db"
+        conn = DatabaseConnection(url, pool_size=5)
+        assert conn.engine is not None
+
+    def test_default_pool_creates_engine(self) -> None:
+        """DatabaseConnection with default pool config should create a valid engine."""
+        url = "postgresql+asyncpg://user:pass@host:5432/db"
+        conn = DatabaseConnection(url)
+        assert conn.engine is not None

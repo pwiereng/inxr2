@@ -10,39 +10,66 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
+def normalize_database_url(url: str) -> str:
+    """Convert postgres:// or postgresql:// to postgresql+asyncpg://.
+
+    Leaves postgresql+asyncpg:// URLs unchanged.
+    """
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and "+asyncpg" not in url:
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
+
+
 class DatabaseConnection:
     """Manages database connection and session creation."""
 
-    def __init__(self, database_url: str | None = None):
+    def __init__(
+        self,
+        database_url: str | None = None,
+        *,
+        echo: bool | None = None,
+        pool_size: int | None = None,
+        max_overflow: int | None = None,
+    ):
         """
         Initialize database connection.
 
         Args:
             database_url: PostgreSQL connection URL (async format).
                          Defaults to DATABASE_URL environment variable.
+            echo: Enable SQL echo logging. Defaults to SQL_ECHO env var.
+            pool_size: Connection pool size. Defaults to DB_POOL_SIZE env var.
+            max_overflow: Max pool overflow. Defaults to DB_MAX_OVERFLOW env var.
         """
         # Use provided URL or fall back to environment variable with default
         # os.getenv with a default value always returns str (never None)
         default_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/inxr2_dev"
         env_url = os.getenv("DATABASE_URL", default_url)
-        self.database_url: str = database_url or env_url
+        self.database_url: str = normalize_database_url(database_url or env_url)
 
-        # Convert postgres:// to postgresql+asyncpg:// if needed
-        if self.database_url.startswith("postgres://"):
-            self.database_url = self.database_url.replace(
-                "postgres://", "postgresql+asyncpg://", 1
-            )
-        elif self.database_url.startswith("postgresql://"):
-            self.database_url = self.database_url.replace(
-                "postgresql://", "postgresql+asyncpg://", 1
-            )
+        # Resolve engine config: use explicit params or fall back to env vars
+        resolved_echo = (
+            echo
+            if echo is not None
+            else os.getenv("SQL_ECHO", "false").lower() == "true"
+        )
+        resolved_pool_size = (
+            pool_size if pool_size is not None else int(os.getenv("DB_POOL_SIZE", "10"))
+        )
+        resolved_max_overflow = (
+            max_overflow
+            if max_overflow is not None
+            else int(os.getenv("DB_MAX_OVERFLOW", "20"))
+        )
 
         # Create async engine with connection pooling
         self.engine = create_async_engine(
             self.database_url,
-            echo=os.getenv("SQL_ECHO", "false").lower() == "true",
-            pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
-            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
+            echo=resolved_echo,
+            pool_size=resolved_pool_size,
+            max_overflow=resolved_max_overflow,
             pool_pre_ping=True,
         )
 
@@ -142,11 +169,4 @@ def get_database_url() -> str:
         "DATABASE_URL",
         "postgresql+asyncpg://postgres:postgres@localhost:5432/inxr2_dev",
     )
-
-    # Convert postgres:// to postgresql+asyncpg:// if needed
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-    elif url.startswith("postgresql://") and "+asyncpg" not in url:
-        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-
-    return url
+    return normalize_database_url(url)
