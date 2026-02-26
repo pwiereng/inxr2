@@ -250,34 +250,11 @@ class PostgresReferenceRepository(
         return result.rowcount or 0  # type: ignore[attr-defined]
 
     async def count_unresolved_references(self, repository_id: int) -> int:
-        """Count references that don't have a target_symbol_id set.
-
-        Only counts references from the latest version of each file path,
-        matching the scope used by resolve_references_batch.
-        """
-        if self._resolution_tables_for_repo_id == repository_id:
-            # Use pre-computed temp table (fast path, called after prepare_resolution)
-            result = await self.session.execute(
-                text("""
-                    SELECT COUNT(*)
-                    FROM "references" r
-                    WHERE r.repository_id = :repo_id
-                      AND r.target_symbol_id IS NULL
-                      AND r.source_file_id IN (
-                          SELECT file_id FROM _resolve_latest_files
-                      )
-                """),
-                {"repo_id": repository_id},
-            )
-            return result.scalar() or 0
-
-        # Fallback: use ORM subquery for latest files
-        latest_sq = latest_file_ids_subquery(repository_id)
+        """Count references that don't have a target_symbol_id set."""
         result = await self.session.execute(
             select(func.count(ReferenceModel.id)).where(
                 ReferenceModel.repository_id == repository_id,
                 ReferenceModel.target_symbol_id.is_(None),
-                ReferenceModel.source_file_id.in_(select(latest_sq.c.max_id)),
             )
         )
         return result.scalar() or 0
@@ -442,9 +419,6 @@ class PostgresReferenceRepository(
                 {join_clause}
                 WHERE r.repository_id = :repo_id
                   AND r.target_symbol_id IS NULL
-                  AND r.source_file_id IN (
-                      SELECT file_id FROM _resolve_latest_files
-                  )
                 {limit_clause}
             ) sub
             WHERE "references".id = sub.ref_id
