@@ -1,9 +1,8 @@
 """Tests for dependency injection providers."""
 
-from unittest.mock import MagicMock
+from typing import Any
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 import inxr2.infrastructure.dependencies as deps_module
 from inxr2.adapters.external.git_service import GitService
@@ -58,57 +57,68 @@ from inxr2.infrastructure.dependencies import (
     get_repository_tree_use_case,
     get_symbol_adapter,
 )
+from tests.fixtures.test_doubles import (
+    FakeFileSystem,
+    FakeGitService,
+    InMemoryCommitRepository,
+    InMemoryFileRepository,
+    InMemoryFileVersionRepository,
+    InMemoryRepositoryRepository,
+)
 
 
 class TestRepositoryAdapterProviders:
-    """Tests for repository adapter provider functions."""
+    """Tests for repository adapter provider functions.
+
+    These tests verify that DI provider functions create the correct adapter types.
+    The session is stored by constructors but never used, so a stub suffices.
+    """
 
     @pytest.fixture
-    def mock_session(self) -> AsyncSession:
-        """Create a mock AsyncSession."""
-        session = MagicMock(spec=AsyncSession)
-        return session
+    def stub_session(self) -> Any:
+        """Stub standing in for AsyncSession in DI wiring tests."""
+        return object()
 
-    def test_get_repository_adapter(self, mock_session: AsyncSession) -> None:
+    def test_get_repository_adapter(self, stub_session: Any) -> None:
         """get_repository_adapter should return PostgresRepositoryAdapter."""
-        adapter = get_repository_adapter(mock_session)
+        adapter = get_repository_adapter(stub_session)
         assert isinstance(adapter, PostgresRepositoryAdapter)
 
-    def test_get_commit_adapter(self, mock_session: AsyncSession) -> None:
+    def test_get_commit_adapter(self, stub_session: Any) -> None:
         """get_commit_adapter should return PostgresCommitRepository."""
-        adapter = get_commit_adapter(mock_session)
+        adapter = get_commit_adapter(stub_session)
         assert isinstance(adapter, PostgresCommitRepository)
 
-    def test_get_file_adapter(self, mock_session: AsyncSession) -> None:
+    def test_get_file_adapter(self, stub_session: Any) -> None:
         """get_file_adapter should return PostgresFileRepository."""
-        adapter = get_file_adapter(mock_session)
+        adapter = get_file_adapter(stub_session)
         assert isinstance(adapter, PostgresFileRepository)
 
-    def test_get_file_search_adapter(self, mock_session: AsyncSession) -> None:
+    def test_get_file_search_adapter(self, stub_session: Any) -> None:
         """get_file_search_adapter should return PostgresFileSearchRepository."""
-        adapter = get_file_search_adapter(mock_session)
+        adapter = get_file_search_adapter(stub_session)
         assert isinstance(adapter, PostgresFileSearchRepository)
         assert isinstance(adapter, FileSearchPort)
 
-    def test_get_file_version_adapter(self, mock_session: AsyncSession) -> None:
+    def test_get_file_version_adapter(self, stub_session: Any) -> None:
         """get_file_version_adapter should return PostgresFileVersionRepository."""
-        adapter = get_file_version_adapter(mock_session)
+        adapter = get_file_version_adapter(stub_session)
         assert isinstance(adapter, PostgresFileVersionRepository)
         assert isinstance(adapter, FileVersionPort)
 
-    def test_get_symbol_adapter(self, mock_session: AsyncSession) -> None:
+    def test_get_symbol_adapter(self, stub_session: Any) -> None:
         """get_symbol_adapter should return PostgresSymbolRepository."""
-        adapter = get_symbol_adapter(mock_session)
+        adapter = get_symbol_adapter(stub_session)
         assert isinstance(adapter, PostgresSymbolRepository)
 
-    def test_get_reference_adapter(self, mock_session: AsyncSession) -> None:
+    def test_get_reference_adapter(self, stub_session: Any) -> None:
         """get_reference_adapter should return PostgresReferenceRepository."""
-        adapter = get_reference_adapter(mock_session)
+        adapter = get_reference_adapter(stub_session)
         assert isinstance(adapter, PostgresReferenceRepository)
 
-    def test_get_index_status_adapter(self, mock_session: AsyncSession) -> None:
+    def test_get_index_status_adapter(self, stub_session: Any) -> None:
         """get_index_status_adapter should return PostgresIndexStatusRepository."""
-        adapter = get_index_status_adapter(mock_session)
+        adapter = get_index_status_adapter(stub_session)
         assert isinstance(adapter, PostgresIndexStatusRepository)
 
 
@@ -171,69 +181,71 @@ class TestUseCaseProviders:
     """Tests for use case provider functions."""
 
     @pytest.fixture
-    def mock_repository_adapter(self) -> MagicMock:
-        """Create mock repository adapter."""
-        return MagicMock()
+    def fake_repository_adapter(self) -> InMemoryRepositoryRepository:
+        """Create fake repository adapter."""
+        return InMemoryRepositoryRepository()
 
     @pytest.fixture
-    def mock_commit_adapter(self) -> MagicMock:
-        """Create mock commit adapter."""
-        return MagicMock()
+    def fake_commit_adapter(self) -> InMemoryCommitRepository:
+        """Create fake commit adapter."""
+        return InMemoryCommitRepository()
 
     @pytest.fixture
-    def mock_file_adapter(self) -> MagicMock:
-        """Create mock file adapter."""
-        return MagicMock()
+    def fake_file_adapter(self) -> InMemoryFileRepository:
+        """Create fake file adapter."""
+        return InMemoryFileRepository()
 
     def test_get_list_repositories_use_case(
-        self, mock_repository_adapter: MagicMock
+        self, fake_repository_adapter: InMemoryRepositoryRepository
     ) -> None:
         """get_list_repositories_use_case should return ListRepositoriesUseCase."""
-        use_case = get_list_repositories_use_case(mock_repository_adapter)
+        use_case = get_list_repositories_use_case(fake_repository_adapter)
         assert isinstance(use_case, ListRepositoriesUseCase)
 
     def test_get_repository_files_use_case(
         self,
-        mock_repository_adapter: MagicMock,
-        mock_file_adapter: MagicMock,
+        fake_repository_adapter: InMemoryRepositoryRepository,
+        fake_file_adapter: InMemoryFileRepository,
     ) -> None:
         """get_repository_files_use_case should return GetRepositoryFilesUseCase."""
         use_case = get_repository_files_use_case(
-            mock_repository_adapter, mock_file_adapter
+            fake_repository_adapter, fake_file_adapter
         )
         assert isinstance(use_case, GetRepositoryFilesUseCase)
 
     def test_get_index_local_directory_use_case(
         self,
-        mock_repository_adapter: MagicMock,
-        mock_commit_adapter: MagicMock,
-        mock_file_adapter: MagicMock,
+        fake_repository_adapter: InMemoryRepositoryRepository,
+        fake_commit_adapter: InMemoryCommitRepository,
+        fake_file_adapter: InMemoryFileRepository,
     ) -> None:
         """get_index_local_directory_use_case should return IndexLocalDirectoryUseCase."""
-        mock_filesystem = MagicMock()
+        fake_filesystem = FakeFileSystem()
         use_case = get_index_local_directory_use_case(
-            mock_repository_adapter,
-            mock_commit_adapter,
-            mock_file_adapter,
-            mock_filesystem,
+            fake_repository_adapter,
+            fake_commit_adapter,
+            fake_file_adapter,
+            fake_filesystem,
         )
         assert isinstance(use_case, IndexLocalDirectoryUseCase)
 
     def test_get_repository_tree_use_case(
         self,
-        mock_repository_adapter: MagicMock,
-        mock_file_adapter: MagicMock,
-        mock_commit_adapter: MagicMock,
+        fake_repository_adapter: InMemoryRepositoryRepository,
+        fake_file_adapter: InMemoryFileRepository,
+        fake_commit_adapter: InMemoryCommitRepository,
     ) -> None:
         """get_repository_tree_use_case should return GetRepositoryTreeUseCase."""
-        mock_file_version_adapter = MagicMock()
-        mock_git_service = MagicMock()
+        fake_file_version_adapter = InMemoryFileVersionRepository(
+            file_repo=fake_file_adapter
+        )
+        fake_git_service = FakeGitService()
         use_case = get_repository_tree_use_case(
-            mock_repository_adapter,
-            mock_file_adapter,
-            mock_file_version_adapter,
-            mock_commit_adapter,
-            mock_git_service,
+            fake_repository_adapter,
+            fake_file_adapter,
+            fake_file_version_adapter,
+            fake_commit_adapter,
+            fake_git_service,
         )
         assert isinstance(use_case, GetRepositoryTreeUseCase)
 
@@ -243,45 +255,44 @@ class TestUseCaseDependencyWiring:
 
     def test_list_repositories_has_repository_repo(self) -> None:
         """ListRepositoriesUseCase should receive repository adapter."""
-        mock_adapter = MagicMock()
-        use_case = get_list_repositories_use_case(mock_adapter)
-        # Access internal attribute to verify wiring
-        assert use_case._repository_repo is mock_adapter
+        fake_adapter = InMemoryRepositoryRepository()
+        use_case = get_list_repositories_use_case(fake_adapter)
+        assert use_case._repository_repo is fake_adapter
 
     def test_repository_files_has_both_repos(self) -> None:
         """GetRepositoryFilesUseCase should receive both adapters."""
-        mock_repo_adapter = MagicMock()
-        mock_file_adapter = MagicMock()
-        use_case = get_repository_files_use_case(mock_repo_adapter, mock_file_adapter)
-        assert use_case._repository_repo is mock_repo_adapter
-        assert use_case._file_repo is mock_file_adapter
+        fake_repo_adapter = InMemoryRepositoryRepository()
+        fake_file_adapter = InMemoryFileRepository()
+        use_case = get_repository_files_use_case(fake_repo_adapter, fake_file_adapter)
+        assert use_case._repository_repo is fake_repo_adapter
+        assert use_case._file_repo is fake_file_adapter
 
     def test_index_local_directory_has_all_repos(self) -> None:
         """IndexLocalDirectoryUseCase should receive all adapters including filesystem."""
-        mock_repo = MagicMock()
-        mock_commit = MagicMock()
-        mock_file = MagicMock()
-        mock_filesystem = MagicMock()
+        fake_repo = InMemoryRepositoryRepository()
+        fake_commit = InMemoryCommitRepository()
+        fake_file = InMemoryFileRepository()
+        fake_filesystem = FakeFileSystem()
         use_case = get_index_local_directory_use_case(
-            mock_repo, mock_commit, mock_file, mock_filesystem
+            fake_repo, fake_commit, fake_file, fake_filesystem
         )
-        assert use_case._repository_repo is mock_repo
-        assert use_case._commit_repo is mock_commit
-        assert use_case._file_repo is mock_file
-        assert use_case._filesystem is mock_filesystem
+        assert use_case._repository_repo is fake_repo
+        assert use_case._commit_repo is fake_commit
+        assert use_case._file_repo is fake_file
+        assert use_case._filesystem is fake_filesystem
 
     def test_repository_tree_has_all_repos(self) -> None:
         """GetRepositoryTreeUseCase should receive all adapters and git service."""
-        mock_repo = MagicMock()
-        mock_file = MagicMock()
-        mock_file_version = MagicMock()
-        mock_commit = MagicMock()
-        mock_git = MagicMock()
+        fake_repo = InMemoryRepositoryRepository()
+        fake_file = InMemoryFileRepository()
+        fake_file_version = InMemoryFileVersionRepository(file_repo=fake_file)
+        fake_commit = InMemoryCommitRepository()
+        fake_git = FakeGitService()
         use_case = get_repository_tree_use_case(
-            mock_repo, mock_file, mock_file_version, mock_commit, mock_git
+            fake_repo, fake_file, fake_file_version, fake_commit, fake_git
         )
-        assert use_case._repository_repo is mock_repo
-        assert use_case._file_repo is mock_file
-        assert use_case._file_version_repo is mock_file_version
-        assert use_case._commit_repo is mock_commit
-        assert use_case._git_service is mock_git
+        assert use_case._repository_repo is fake_repo
+        assert use_case._file_repo is fake_file
+        assert use_case._file_version_repo is fake_file_version
+        assert use_case._commit_repo is fake_commit
+        assert use_case._git_service is fake_git
