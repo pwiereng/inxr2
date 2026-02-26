@@ -16,7 +16,6 @@ from .base_repository import BaseSQLAlchemyRepository
 from .query_utils import build_text_match_filter
 from .shared_queries import (
     LATEST_FILE_IDS_SQL,
-    head_file_ids_subquery,
     latest_file_ids_subquery,
 )
 
@@ -185,10 +184,11 @@ class PostgresReferenceRepository(
                 ReferenceModel.source_file_id.in_(select(latest_sq.c.max_id))
             )
         elif scope == "latest":
-            # Global scope: filter to HEAD files across all repos
-            head_fids = head_file_ids_subquery()
+            # Global scope: filter to latest file version across all repos
+            # (per-path dedup, not HEAD-only — fixes issue #135)
+            latest_sq = latest_file_ids_subquery()
             base_query = base_query.where(
-                ReferenceModel.source_file_id.in_(select(head_fids.c.file_id))
+                ReferenceModel.source_file_id.in_(select(latest_sq.c.max_id))
             )
 
         # Apply extension filter via files table

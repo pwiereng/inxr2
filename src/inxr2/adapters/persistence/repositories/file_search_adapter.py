@@ -10,7 +10,7 @@ from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
-from .shared_queries import head_file_ids_subquery, latest_file_ids_subquery
+from .shared_queries import latest_file_ids_subquery
 
 
 class PostgresFileSearchRepository(FileSearchPort):
@@ -70,10 +70,11 @@ class PostgresFileSearchRepository(FileSearchPort):
         # Deduplicate / scope filtering when no commit_id
         if commit_id is None:
             if repository_id is None and scope == "latest":
-                # Global search: only files at HEAD of each repo's default branch
-                head_fids = head_file_ids_subquery()
+                # Global search: latest file version across all repos
+                # (per-path dedup, not HEAD-only — fixes issue #135)
+                latest_sq = latest_file_ids_subquery()
                 query_stmt = query_stmt.where(
-                    FileModel.id.in_(select(head_fids.c.file_id))
+                    FileModel.id.in_(select(latest_sq.c.max_id))
                 )
             else:
                 # Deduplicate to latest file version per (repository_id, path)
@@ -126,8 +127,8 @@ class PostgresFileSearchRepository(FileSearchPort):
                     )
                 )
         elif scope == "latest":
-            head_fids = head_file_ids_subquery()
-            query_stmt = query_stmt.where(FileModel.id.in_(select(head_fids.c.file_id)))
+            latest_sq = latest_file_ids_subquery()
+            query_stmt = query_stmt.where(FileModel.id.in_(select(latest_sq.c.max_id)))
 
         query_stmt = query_stmt.distinct().order_by(FileModel.extension)
 

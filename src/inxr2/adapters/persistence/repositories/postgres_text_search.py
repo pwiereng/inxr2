@@ -19,7 +19,7 @@ from ..models.file import FileModel
 from ..models.repository import RepositoryModel
 from ..models.text_content import TextContentModel
 from .query_utils import build_text_match_filter
-from .shared_queries import head_file_ids_subquery
+from .shared_queries import latest_file_ids_subquery
 
 
 class PostgresTextSearch(TextSearchPort):
@@ -140,11 +140,10 @@ class PostgresTextSearch(TextSearchPort):
 
         # Apply global scope filter (when no repository_id is specified)
         if query.repository_id is None and query.scope == "latest":
-            head_fids = head_file_ids_subquery()
-            # For file-derived content: source_file_id must be at HEAD
-            file_scope = TextContentModel.source_file_id.in_(
-                select(head_fids.c.file_id)
-            )
+            # For file-derived content: source_file_id must be latest version
+            # (per-path dedup, not HEAD-only — fixes issue #135)
+            latest_sq = latest_file_ids_subquery()
+            file_scope = TextContentModel.source_file_id.in_(select(latest_sq.c.max_id))
             # For commit messages: include all commits on default branches
             # (not just HEAD), since commit messages are inherently tied to
             # specific commits and filtering to only HEAD would return at

@@ -769,8 +769,8 @@ class InMemoryFileSearchRepository(FileSearchPort):
         # Dedup/scope filtering when no commit_id
         if commit_id is None:
             if repository_id is None and scope == "latest":
-                head_file_ids = self._file_repo._compute_head_file_ids()
-                results = [f for f in results if f.id in head_file_ids]
+                latest_file_ids = self._file_repo._compute_latest_file_ids()
+                results = [f for f in results if f.id in latest_file_ids]
             else:
                 latest_by_repo_path: dict[tuple[int | None, str], File] = {}
                 for f in results:
@@ -807,9 +807,9 @@ class InMemoryFileSearchRepository(FileSearchPort):
         exts: set[str] = set()
 
         if repository_id is None and scope == "latest":
-            head_file_ids = self._file_repo._compute_head_file_ids()
+            latest_file_ids = self._file_repo._compute_latest_file_ids()
             candidate_files = [
-                f for f in self._file_repo._files.values() if f.id in head_file_ids
+                f for f in self._file_repo._files.values() if f.id in latest_file_ids
             ]
         elif repository_id is not None:
             candidate_files = [
@@ -2519,15 +2519,15 @@ class FakeTextSearch(TextSearchPort):
         # Get all text contents
         all_contents = self._text_content_repo.get_all()
 
-        # Compute head file IDs for global scope filtering
-        head_file_ids: set[int] | None = None
+        # Compute latest file IDs for global scope filtering
+        latest_file_ids: set[int] | None = None
         default_branch_commit_ids: set[int] | None = None
         if (
             query.repository_id is None
             and query.scope == "latest"
             and self._file_repo is not None
         ):
-            head_file_ids = self._file_repo._compute_head_file_ids()
+            latest_file_ids = self._file_repo._compute_latest_file_ids()
             # Also compute default branch commit IDs for commit messages.
             # We include ALL commits on the default branch (not just HEAD)
             # because commit messages are tied to specific commits —
@@ -2554,9 +2554,10 @@ class FakeTextSearch(TextSearchPort):
                 continue
 
             # Global scope filter
-            if head_file_ids is not None:
+            if latest_file_ids is not None:
                 file_ok = (
-                    tc.source_file_id is not None and tc.source_file_id in head_file_ids
+                    tc.source_file_id is not None
+                    and tc.source_file_id in latest_file_ids
                 )
                 commit_ok = (
                     default_branch_commit_ids is not None
