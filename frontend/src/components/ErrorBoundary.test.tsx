@@ -1,10 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@/test/utils'
 import { ErrorBoundary } from './ErrorBoundary'
 
 // Suppress console.error from ErrorBoundary.componentDidCatch during tests
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 function ProblemChild({ shouldThrow = true }: { shouldThrow?: boolean }) {
@@ -71,11 +75,15 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     )
 
-    expect(screen.queryByText(/Test error message/)).not.toBeVisible()
+    const hiddenDetails = screen.queryByText(/Test error message/)
+    expect(hiddenDetails).toBeInTheDocument()
+    expect(hiddenDetails).not.toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: /show details/i }))
 
-    expect(screen.getByText(/Test error message/)).toBeVisible()
+    const visibleDetails = screen.queryByText(/Test error message/)
+    expect(visibleDetails).toBeInTheDocument()
+    expect(visibleDetails).toBeVisible()
   })
 
   it('toggles details button text between Show and Hide', () => {

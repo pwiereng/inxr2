@@ -72,18 +72,21 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           >
             Try Again
           </Button>
-          {this.state.error && (
+          {import.meta.env.DEV && this.state.error && (
             <>
               <Button
                 size="small"
                 onClick={this.handleToggleDetails}
                 endIcon={this.state.showDetails ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                 sx={{ color: 'text.secondary' }}
+                aria-expanded={this.state.showDetails}
+                aria-controls="error-details"
               >
                 {this.state.showDetails ? 'Hide Details' : 'Show Details'}
               </Button>
               <Collapse in={this.state.showDetails}>
                 <Box
+                  id="error-details"
                   sx={{
                     mt: 2,
                     p: 2,
