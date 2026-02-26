@@ -58,3 +58,6 @@ class SymbolKind(StrEnum):
     DELEGATE = "delegate"  # Delegate types
     EVENT = "event"  # Event declarations
     INDEXER = "indexer"  # Indexer declarations (this[])
+
+    # Go-specific kinds
+    PACKAGE = "package"  # Go package declarations
