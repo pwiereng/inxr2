@@ -1,8 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import Box from '@mui/material/Box'
-import Typography from '@mui/material/Typography'
-import Button from '@mui/material/Button'
-import Collapse from '@mui/material/Collapse'
+import { Box, Typography, Button, Collapse } from '@mui/material'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
@@ -18,6 +15,11 @@ interface ErrorBoundaryState {
   showDetails: boolean
 }
 
+/**
+ * Error boundary component that catches rendering errors in its child tree
+ * and displays a fallback UI with optional error details instead of crashing
+ * the entire React component tree.
+ */
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props)
@@ -44,6 +46,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.state.hasError) {
       return (
         <Box
+          role="alert"
           sx={{
             display: 'flex',
             flexDirection: 'column',

@@ -75,7 +75,14 @@ function AppContent() {
               </ErrorBoundary>
             }
           />
-          <Route path="*" element={<NotFound />} />
+          <Route
+            path="*"
+            element={
+              <ErrorBoundary>
+                <NotFound />
+              </ErrorBoundary>
+            }
+          />
         </Routes>
       </ErrorBoundary>
     </ThemeProvider>
