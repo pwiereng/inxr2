@@ -432,6 +432,7 @@ async def _run_full_index_async(
                 repo_name=repo_path.name,
                 branch=current_branch,
                 days=days,
+                indexing_method=response.indexing_method,
             )
 
             # Only log when actual indexing work was done

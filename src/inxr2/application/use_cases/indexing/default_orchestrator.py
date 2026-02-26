@@ -9,6 +9,7 @@ ProcessCommitUseCase) while keeping the orchestration logic here.
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any
 
 from inxr2.domain.entities import IndexStatus
 
@@ -161,6 +162,29 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             branch=branch,
         )
 
+        # Step 2.5: Detect --days range expansion
+        # When the user increases --days (e.g. --days 10 then --days 30),
+        # incremental indexing accumulates stale file versions that inflate
+        # resolution JOIN cost by ~7x.  It's faster to delete everything
+        # and re-index from scratch than to resolve against bloated tables.
+        indexing_method = "fresh" if created else "incremental"
+        if request.days and index_status and index_status.metadata:
+            prev_days = index_status.metadata.get("indexed_days")
+            if prev_days is not None and request.days > prev_days:
+                await self._repository_repo.delete(repo_id)
+                db_stats.deletes += 1
+                repository, _ = await self._repository_repo.get_or_create(
+                    name=repo_name,
+                    url=str(request.repository_path),
+                    default_branch=branch,
+                )
+                repo_id = repository.id
+                assert repo_id is not None
+                db_stats.inserts += 1
+                index_status = None
+                last_indexed_hash = None
+                indexing_method = "auto-reset"
+
         # Step 3: Commit selection
         commits_data = self._select_commits(
             request, branch, last_indexed_hash, current_head
@@ -278,6 +302,16 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
 
         # Step 7: Update index status
         last_indexed_commit = commits_data[0].hash if commits_data else current_head
+        # Preserve the globally oldest indexed commit on forward-fill runs
+        # (request.days is None); only recompute from this run's commits
+        # on fresh/auto-reset/backfill runs.
+        existing_oldest = index_status.oldest_indexed_commit if index_status else None
+        oldest_commit_hash: str | None
+        if request.days is None and existing_oldest:
+            oldest_commit_hash = existing_oldest
+        else:
+            oldest_commit_hash = oldest_commit.hash if oldest_commit else None
+        existing_meta = index_status.metadata if index_status else None
         await self._update_index_status(
             repository_id=repo_id,
             branch=branch,
@@ -286,6 +320,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             symbols_indexed=agg.symbols_found,
             references_indexed=agg.references_found,
             last_indexed_commit=last_indexed_commit,
+            oldest_indexed_commit=oldest_commit_hash,
+            days=request.days,
+            existing_metadata=existing_meta,
         )
         db_stats.inserts += 1
 
@@ -294,6 +331,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             repository_id=repo_id,
             repository_name=repo_name,
             branch=branch,
+            indexing_method=indexing_method,
             commits_indexed=commits_indexed,
             files_total=total_files,
             files_processed=agg.files_processed,
@@ -436,9 +474,23 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         symbols_indexed: int,
         references_indexed: int,
         last_indexed_commit: str | None = None,
+        oldest_indexed_commit: str | None = None,
+        days: int | None = None,
+        existing_metadata: dict[str, Any] | None = None,
     ) -> None:
         """Update index status after indexing."""
         from datetime import UTC, datetime
+
+        # Build metadata: merge with existing, updating indexed_days
+        # when --days is used, otherwise preserving previous values
+        # so a forward-fill run doesn't erase range expansion state.
+        metadata: dict[str, Any] | None = None
+        if existing_metadata:
+            metadata = dict(existing_metadata)
+        if days is not None:
+            if metadata is None:
+                metadata = {}
+            metadata["indexed_days"] = days
 
         status = IndexStatus(
             id=None,
@@ -450,7 +502,9 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             total_symbols_indexed=symbols_indexed,
             total_references_indexed=references_indexed,
             last_indexed_commit=last_indexed_commit,
+            oldest_indexed_commit=oldest_indexed_commit,
             last_indexed_at=datetime.now(UTC).replace(tzinfo=None),
             indexer_version="0.1.0",
+            metadata=metadata,
         )
         await self._index_status_repo.save(status)

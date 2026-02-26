@@ -225,6 +225,7 @@ class IndexingProgressRenderer:
         repo_name: str | None = None,
         branch: str | None = None,
         days: int | None = None,
+        indexing_method: str | None = None,
     ) -> None:
         """Print indexing summary as a Rich panel with a table."""
         console = self._console
@@ -240,6 +241,9 @@ class IndexingProgressRenderer:
             table.add_row("Branch", f"[cyan]{branch}[/cyan]")
         if days is not None:
             table.add_row("Range", f"[dim]last {days} days[/dim]")
+        if indexing_method:
+            style = "[yellow]" if indexing_method == "auto-reset" else "[dim]"
+            table.add_row("Method", f"{style}{indexing_method}[/]")
 
         if repo_name or branch:
             table.add_row("", "")

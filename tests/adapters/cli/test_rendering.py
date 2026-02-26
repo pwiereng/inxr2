@@ -193,6 +193,22 @@ class TestPrintSummary:
         assert "Repository" not in output
         assert "Branch" not in output
 
+    def test_shows_indexing_method(self) -> None:
+        """Should display the indexing method used."""
+        console, buf = _capture_console()
+        renderer = IndexingProgressRenderer(console)
+        renderer.print_summary(IndexingStats(), indexing_method="auto-reset")
+        output = buf.getvalue()
+        assert "Method" in output
+        assert "auto-reset" in output
+
+    def test_shows_incremental_method(self) -> None:
+        console, buf = _capture_console()
+        renderer = IndexingProgressRenderer(console)
+        renderer.print_summary(IndexingStats(), indexing_method="incremental")
+        output = buf.getvalue()
+        assert "incremental" in output
+
 
 class TestProgressCallback:
     """Tests for IndexingProgressRenderer.create_progress_callback."""
