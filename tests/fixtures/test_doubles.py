@@ -175,15 +175,16 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         When repository_id is set and file_repo is available, filters to
         only symbols from the latest version of each file (matching Postgres).
         When scope is "latest" and repository_id is None, filters to symbols
-        from files at HEAD of each repo's default branch.
+        from the latest version of each file across all repositories.
 
         Note: ``branch`` only takes effect when ``repository_id`` is
         provided, since branch-scoped dedup requires a repository context.
         """
-        # Global scope: filter to HEAD file IDs across all repos
-        head_file_ids: set[int] | None = None
+        # Global scope: filter to latest file IDs across all repos
+        # (per-path dedup, not HEAD-only — fixes issue #135)
+        global_latest_file_ids: set[int] | None = None
         if repository_id is None and scope == "latest" and self._file_repo is not None:
-            head_file_ids = self._file_repo._compute_head_file_ids()
+            global_latest_file_ids = self._file_repo._compute_latest_file_ids()
 
         # Compute latest file IDs for filtering (matches Postgres behavior).
         # When branch is set, dedup is scoped to that branch.
@@ -229,7 +230,10 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 continue
             if kind is not None and symbol.kind.value != kind:
                 continue
-            if head_file_ids is not None and symbol.file_id not in head_file_ids:
+            if (
+                global_latest_file_ids is not None
+                and symbol.file_id not in global_latest_file_ids
+            ):
                 continue
             if latest_file_ids is not None and symbol.file_id not in latest_file_ids:
                 continue
@@ -541,13 +545,16 @@ class InMemoryFileRepository(FileRepositoryPort):
         return None
 
     def _compute_latest_file_ids(
-        self, repository_id: int, branch: str | None = None
+        self, repository_id: int | None = None, branch: str | None = None
     ) -> set[int]:
-        """Compute the latest file IDs for a repository.
+        """Compute the latest file IDs, optionally scoped to a repository.
 
         Returns the latest version of each unique (repository_id, path) pair,
         determined by the newest commit date (not file ID). This handles
         HEAD-first indexing where newer commits may have lower file IDs.
+
+        When repository_id is None, returns the latest files across all
+        repositories. When provided, filters to that specific repository.
 
         When branch is provided, only considers files from commits on that
         branch, so "latest" is scoped to the branch rather than global.
@@ -557,7 +564,7 @@ class InMemoryFileRepository(FileRepositoryPort):
         if branch is not None and self._commit_repo is not None:
             branch_commit_ids = set()
             for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
-                if repo_id == repository_id and b == branch:
+                if (repository_id is None or repo_id == repository_id) and b == branch:
                     branch_commit_ids.add(cid)
 
         # Build file_id → max commit date mapping
@@ -574,18 +581,20 @@ class InMemoryFileRepository(FileRepositoryPort):
                     if existing is None or key > existing:
                         file_max_date[fid] = key
 
-        # Among linked files for this repo, keep latest per path by commit date
-        latest_by_path: dict[str, tuple[int, tuple]] = {}  # path → (file_id, date_key)
+        # Among linked files, keep latest per (repo, path) by commit date
+        # Key includes repository_id for cross-repo dedup
+        latest_by_path: dict[tuple[int | None, str], tuple[int, tuple]] = {}
         for file in self._files.values():
             if (
-                file.repository_id == repository_id
+                (repository_id is None or file.repository_id == repository_id)
                 and file.id is not None
                 and file.id in file_max_date
             ):
                 date_key = file_max_date[file.id]
-                existing = latest_by_path.get(file.path)
+                path_key = (file.repository_id, file.path)
+                existing = latest_by_path.get(path_key)
                 if existing is None or date_key > existing[1]:
-                    latest_by_path[file.path] = (file.id, date_key)
+                    latest_by_path[path_key] = (file.id, date_key)
 
         if latest_by_path:
             return {fid for fid, _ in latest_by_path.values()}
@@ -595,11 +604,12 @@ class InMemoryFileRepository(FileRepositoryPort):
         if branch is not None:
             return set()
 
-        # Fallback: return all file_ids for this repository
+        # Fallback: return all file_ids (optionally scoped to repository)
         return {
             f.id
             for f in self._files.values()
-            if f.repository_id == repository_id and f.id is not None
+            if (repository_id is None or f.repository_id == repository_id)
+            and f.id is not None
         }
 
     def _compute_head_file_ids(self) -> set[int]:

@@ -406,6 +406,141 @@ class TestSearchSymbolsGlobalScope:
         assert result.symbols[0].symbol.repository_id == 1
 
 
+class TestGlobalSearchIncludesOlderCommitFiles:
+    """Regression test for issue #135.
+
+    Global search (scope=latest, no repository_id) must include symbols
+    from files that were NOT modified in the HEAD commit. The bug was
+    that head_file_ids_subquery() only returned files linked to the HEAD
+    commit, missing files last modified in older commits.
+    """
+
+    @pytest.fixture
+    def commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        # Commit 1 (older) on main
+        c1 = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("aaa111"),
+            author_date=datetime(2025, 1, 1, 12, 0, 0),
+            commit_date=datetime(2025, 1, 1, 12, 0, 0),
+        )
+        repo._commits[1] = c1
+        repo._branch_commits[(1, "main", 1)] = True
+
+        # Commit 2 (HEAD, newer) on main
+        c2 = Commit(
+            id=2,
+            repository_id=1,
+            commit_hash=CommitHash("bbb222"),
+            author_date=datetime(2025, 1, 2, 12, 0, 0),
+            commit_date=datetime(2025, 1, 2, 12, 0, 0),
+        )
+        repo._commits[2] = c2
+        repo._branch_commits[(1, "main", 2)] = True
+        return repo
+
+    @pytest.fixture
+    def file_repo(
+        self, commit_repo: InMemoryCommitRepository
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        # File A: modified only in commit 1 (NOT in HEAD commit 2)
+        repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/old_module.py",
+                content_hash="h1",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        repo._commit_files.add((1, 1))  # linked to commit 1 only
+
+        # File B: modified in commit 2 (HEAD)
+        repo.add(
+            File(
+                id=2,
+                repository_id=1,
+                path="src/new_module.py",
+                content_hash="h2",
+                size_bytes=200,
+                language="python",
+            )
+        )
+        repo._commit_files.add((2, 2))  # linked to commit 2 only
+        return repo
+
+    @pytest.fixture
+    def symbol_repo(
+        self, file_repo: InMemoryFileRepository
+    ) -> InMemorySymbolRepository:
+        repo = InMemorySymbolRepository(file_repo=file_repo)
+        # Symbol X in file A (older commit)
+        repo.add(
+            Symbol(
+                id=1,
+                repository_id=1,
+                file_id=1,
+                name="old_function",
+                qualified_name="old_module.old_function",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            )
+        )
+        # Symbol Y in file B (HEAD commit)
+        repo.add(
+            Symbol(
+                id=2,
+                repository_id=1,
+                file_id=2,
+                name="new_function",
+                qualified_name="new_module.new_function",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    def use_case(
+        self,
+        symbol_repo: InMemorySymbolRepository,
+        file_repo: InMemoryFileRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> SearchSymbolsUseCase:
+        return SearchSymbolsUseCase(
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_global_search_finds_symbols_from_older_commits(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """Global search must find symbols from files not in HEAD commit."""
+        request = SearchSymbolsRequest(query="function", scope="latest")
+        result = await use_case.execute(request)
+
+        names = {s.symbol.name for s in result.symbols}
+        assert (
+            "old_function" in names
+        ), "Symbol from file modified in older commit should be found"
+        assert (
+            "new_function" in names
+        ), "Symbol from file modified in HEAD commit should be found"
+        assert result.total == 2
+
+
 class TestSearchSymbolsExtensionFilter:
     """Tests for symbol search with extension filtering."""
 

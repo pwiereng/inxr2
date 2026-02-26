@@ -11,7 +11,7 @@ from ..models.file import FileModel
 from ..models.symbol import SymbolModel
 from .base_repository import BaseSQLAlchemyRepository
 from .query_utils import build_text_match_filter
-from .shared_queries import head_file_ids_subquery, latest_file_ids_subquery
+from .shared_queries import latest_file_ids_subquery
 
 
 class PostgresSymbolRepository(
@@ -55,9 +55,12 @@ class PostgresSymbolRepository(
         query = select(SymbolModel).where(name_filter)
 
         if repository_id is None and scope == "latest":
-            # Global search: only symbols from HEAD of each repo's default branch
-            head_fids = head_file_ids_subquery()
-            query = query.where(SymbolModel.file_id.in_(select(head_fids.c.file_id)))
+            # Global search: only symbols from the latest version of each file
+            # across all repositories. Uses latest_file_ids_subquery() which
+            # does per-path dedup, ensuring files not modified in the HEAD
+            # commit are still included (fixes issue #135).
+            latest_sq = latest_file_ids_subquery()
+            query = query.where(SymbolModel.file_id.in_(select(latest_sq.c.max_id)))
         elif repository_id is not None:
             query = query.where(SymbolModel.repository_id == repository_id)
             # Deduplicate: only symbols from latest file version per path.
