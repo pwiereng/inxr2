@@ -732,7 +732,15 @@ async with db.session() as session:
 
 Strict type checking enabled:
 - Python: mypy with strict settings
-- TypeScript: `"strict": true` in tsconfig.json
+- TypeScript: `"strict": true` in tsconfig.json plus `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`, `noUncheckedIndexedAccess`
+
+**TypeScript strict rules — all new code MUST:**
+- Never use `any` — use proper types, `unknown`, or generics instead
+- Handle `undefined` from indexed access (enabled via `noUncheckedIndexedAccess`)
+- Explicitly type all function parameters and return types for public/exported functions
+- Use type narrowing (type guards, discriminated unions) instead of type assertions (`as`)
+- Prefer `interface` for object shapes and `type` for unions/intersections
+- Never suppress with `@ts-ignore` — use `@ts-expect-error` with explanation only if truly unavoidable
 
 ### Error Handling
 
