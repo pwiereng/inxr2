@@ -34,7 +34,7 @@ interface File {
   line_count: number | null
 }
 
-export default function Files() {
+export default function Files(): React.ReactElement {
   const { repositoryId } = useParams<{ repositoryId: string }>()
   const [files, setFiles] = useState<File[]>([])
   const [loading, setLoading] = useState(true)

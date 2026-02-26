@@ -35,7 +35,7 @@ export function BranchSelector({
   repoName,
   filePath,
   compact = false,
-}: BranchSelectorProps) {
+}: BranchSelectorProps): React.ReactElement | null {
   const [branches, setBranches] = useState<BranchInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

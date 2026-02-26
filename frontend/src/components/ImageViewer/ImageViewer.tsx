@@ -12,7 +12,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function ImageViewer({ rawContent }: ImageViewerProps) {
+export function ImageViewer({ rawContent }: ImageViewerProps): React.ReactElement {
   const imgSrc = useMemo(() => {
     if (rawContent.encoding === 'utf-8' && rawContent.content_type === 'image/svg+xml') {
       // SVG as UTF-8 text — use a data URI with the raw SVG

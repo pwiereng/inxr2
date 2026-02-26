@@ -5,7 +5,7 @@ import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { getCommits, type CommitInfo } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
 
-export function History() {
+export function History(): React.ReactElement {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
 

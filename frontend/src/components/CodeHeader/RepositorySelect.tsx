@@ -19,7 +19,7 @@ export function RepositorySelect({
   repoName,
   currentTab,
   onRepoChange,
-}: RepositorySelectProps) {
+}: RepositorySelectProps): React.ReactElement | null {
   if (loading) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center' }}>

@@ -178,7 +178,12 @@ function TreeNodeItem({
   )
 }
 
-export function FileTree({ nodes, selectedFileId, onFileSelect, loading = false }: FileTreeProps) {
+export function FileTree({
+  nodes,
+  selectedFileId,
+  onFileSelect,
+  loading = false,
+}: FileTreeProps): React.ReactElement {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [filterText, setFilterText] = useState('')
   const selectedRef = useRef<HTMLDivElement>(null!)

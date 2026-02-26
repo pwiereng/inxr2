@@ -56,7 +56,7 @@ interface AppProviderProps {
  * App Provider component
  * Provides app-wide services and state via context (dependency injection)
  */
-export function AppProvider({ children, apiClient }: AppProviderProps) {
+export function AppProvider({ children, apiClient }: AppProviderProps): React.ReactElement {
   const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode)
 
   // Persist to localStorage and sync body class for Prism CSS.

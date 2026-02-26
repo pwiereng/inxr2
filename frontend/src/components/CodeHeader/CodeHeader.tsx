@@ -33,7 +33,7 @@ export function CodeHeader({
   onBranchChange,
   onCommitChange,
   onTabChange,
-}: CodeHeaderProps) {
+}: CodeHeaderProps): React.ReactElement {
   const navigate = useNavigate()
   const { themeMode, toggleThemeMode } = useApp()
 

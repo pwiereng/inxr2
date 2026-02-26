@@ -5,7 +5,9 @@ interface CommitDateIndicatorProps {
   currentCommitDate: string
 }
 
-export function CommitDateIndicator({ currentCommitDate }: CommitDateIndicatorProps) {
+export function CommitDateIndicator({
+  currentCommitDate,
+}: CommitDateIndicatorProps): React.ReactElement {
   return (
     <Tooltip title={`Browsing code as of ${currentCommitDate}`}>
       <Box

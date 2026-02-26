@@ -22,7 +22,7 @@ export const mockRootResponse = {
 /**
  * Mock API response for hello endpoint
  */
-export const mockHelloResponse = (name: string) => ({
+export const mockHelloResponse = (name: string): { message: string; from: string } => ({
   message: `Hello, ${name}!`,
   from: 'INXR2',
 })

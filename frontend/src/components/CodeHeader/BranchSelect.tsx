@@ -17,7 +17,7 @@ export function BranchSelect({
   branch,
   defaultBranch,
   onBranchChange,
-}: BranchSelectProps) {
+}: BranchSelectProps): React.ReactElement | null {
   if (loading) {
     return <CircularProgress size={20} />
   }

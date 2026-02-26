@@ -188,7 +188,17 @@ export interface BrowseComputedState {
 // Hook Implementation
 // ============================================================================
 
-export function useBrowseState(repoNameProp?: string) {
+interface UseBrowseStateResult {
+  urlState: BrowseUrlState
+  dataState: BrowseDataState
+  diffState: BrowseDiffState
+  uiState: BrowseUIState
+  refsState: BrowseRefsState
+  computedState: BrowseComputedState
+  actions: BrowseActions
+}
+
+export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
   const { repoName: repoNameParam, '*': splatPath } = useParams<{ repoName: string; '*': string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()

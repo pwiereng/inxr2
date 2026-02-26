@@ -119,7 +119,7 @@ export function DiffCodeViewer({
   onLineClick,
   onClosePanel,
   onSearchText,
-}: DiffCodeViewerProps) {
+}: DiffCodeViewerProps): React.ReactElement {
   const leftContainerRef = useRef<HTMLDivElement>(null)
   const rightContainerRef = useRef<HTMLDivElement>(null)
   const [syncScroll] = useState(true)

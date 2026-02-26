@@ -31,7 +31,7 @@ export function VersionSelector({
   onVersionChange,
   selectedBranch,
   compact = false,
-}: VersionSelectorProps) {
+}: VersionSelectorProps): React.ReactElement | null {
   const [versions, setVersions] = useState<FileVersion[]>([])
   const [loading, setLoading] = useState(true) // Start true to show loading until first fetch completes
   const [error, setError] = useState<string | null>(null)

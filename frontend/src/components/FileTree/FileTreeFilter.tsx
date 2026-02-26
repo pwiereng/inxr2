@@ -35,7 +35,7 @@ export function FileTreeFilter({
   onFilterChange,
   onFileSelect,
   onDirectorySelect,
-}: FileTreeFilterProps) {
+}: FileTreeFilterProps): React.ReactElement {
   const theme = useTheme()
   const [activeIndex, setActiveIndex] = useState(0)
   const listRef = useRef<HTMLUListElement>(null)

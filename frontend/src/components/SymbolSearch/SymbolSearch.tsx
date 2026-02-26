@@ -74,7 +74,7 @@ export function SymbolSearch({
   placeholder = 'Search symbols...',
   value,
   onValueChange,
-}: SymbolSearchProps) {
+}: SymbolSearchProps): React.ReactElement {
   const [internalValue, setInternalValue] = useState('')
   const [options, setOptions] = useState<Symbol[]>([])
   const [loading, setLoading] = useState(false)

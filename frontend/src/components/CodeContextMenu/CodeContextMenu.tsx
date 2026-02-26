@@ -30,7 +30,11 @@ interface CodeContextMenuProps {
  * By using Popper directly, we bypass the Modal/FocusTrap layer entirely,
  * eliminating the aria-hidden warning while preserving the same visual behavior.
  */
-export function CodeContextMenu({ contextMenu, onSearch, onClose }: CodeContextMenuProps) {
+export function CodeContextMenu({
+  contextMenu,
+  onSearch,
+  onClose,
+}: CodeContextMenuProps): React.ReactElement {
   const open = contextMenu !== null
 
   // Virtual anchor element for Popper positioning at mouse coordinates.

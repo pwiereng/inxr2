@@ -45,7 +45,7 @@ interface BrowseProps {
   repoName?: string
 }
 
-export default function Browse({ repoName: repoNameProp }: BrowseProps) {
+export default function Browse({ repoName: repoNameProp }: BrowseProps): React.ReactElement {
   const navigate = useNavigate()
   const { urlState, dataState, diffState, uiState, refsState, computedState, actions } =
     useBrowseState(repoNameProp)

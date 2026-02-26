@@ -41,7 +41,7 @@ function formatDate(iso: string): string {
  * Home page component
  * Displays repository cards that navigate to Browse view
  */
-export function Home() {
+export function Home(): React.ReactElement {
   const navigate = useNavigate()
   const { themeMode } = useApp()
   const [repositories, setRepositories] = useState<Repository[]>([])

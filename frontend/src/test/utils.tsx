@@ -1,5 +1,5 @@
 import { ReactElement } from 'react'
-import { render, RenderOptions } from '@testing-library/react'
+import { render, type RenderOptions, type RenderResult } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -42,7 +42,7 @@ function AllProviders({ children }: AllProvidersProps) {
 /**
  * Custom render function that wraps components with all necessary providers
  */
-function customRender(ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) {
+function customRender(ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>): RenderResult {
   return render(ui, { wrapper: AllProviders, ...options })
 }
 

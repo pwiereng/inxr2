@@ -5,7 +5,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 /**
  * 404 Not Found page component
  */
-export function NotFound() {
+export function NotFound(): React.ReactElement {
   return (
     <Container maxWidth="sm">
       <Box

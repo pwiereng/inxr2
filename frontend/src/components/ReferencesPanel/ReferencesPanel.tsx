@@ -99,7 +99,7 @@ export function ReferencesPanel({
   onReferenceClick,
   onDefinitionClick,
   onClose,
-}: ReferencesPanelProps) {
+}: ReferencesPanelProps): React.ReactElement {
   const [references, setReferences] = useState<Reference[]>([])
   const [allDefinitions, setAllDefinitions] = useState<Symbol[]>([])
   const [loading, setLoading] = useState(false)
@@ -206,17 +206,14 @@ export function ReferencesPanel({
   }
 
   // Group references by file
-  const referencesByFile = references.reduce(
-    (acc, ref) => {
-      const file = ref.source_file_path || `File ${ref.source_file_id}`
-      if (!acc[file]) {
-        acc[file] = []
-      }
-      acc[file].push(ref)
-      return acc
-    },
-    {} as Record<string, Reference[]>
-  )
+  const referencesByFile = references.reduce<Record<string, Reference[]>>((acc, ref) => {
+    const file = ref.source_file_path || `File ${ref.source_file_id}`
+    if (!acc[file]) {
+      acc[file] = []
+    }
+    acc[file].push(ref)
+    return acc
+  }, {})
 
   const iconPalette = theme.palette.symbolIcon
 

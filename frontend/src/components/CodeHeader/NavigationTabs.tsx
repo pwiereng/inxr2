@@ -9,7 +9,10 @@ interface NavigationTabsProps {
   onTabChange: (tab: TabValue) => void
 }
 
-export function NavigationTabs({ currentTab, onTabChange }: NavigationTabsProps) {
+export function NavigationTabs({
+  currentTab,
+  onTabChange,
+}: NavigationTabsProps): React.ReactElement {
   const handleTabChange = (_event: React.SyntheticEvent, newValue: TabValue) => {
     onTabChange(newValue)
   }

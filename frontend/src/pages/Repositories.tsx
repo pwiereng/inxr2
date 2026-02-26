@@ -26,7 +26,7 @@ interface Repository {
   updated_at: string | null
 }
 
-export default function Repositories() {
+export default function Repositories(): React.ReactElement {
   const [repositories, setRepositories] = useState<Repository[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

@@ -26,7 +26,7 @@ export function CommitSelect({
   loading,
   commitDisplayValue,
   onCommitChange,
-}: CommitSelectProps) {
+}: CommitSelectProps): React.ReactElement | null {
   if (loading) {
     return <CircularProgress size={20} />
   }

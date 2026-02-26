@@ -69,7 +69,7 @@ const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => !NON_TEXT_TYPES.has(t.va
 
 const RESULTS_PER_PAGE = 20
 
-export default function Search() {
+export default function Search(): React.ReactElement {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 

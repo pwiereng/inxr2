@@ -10,7 +10,7 @@ interface MarkdownViewerProps {
   content: string
 }
 
-export function MarkdownViewer({ content }: MarkdownViewerProps) {
+export function MarkdownViewer({ content }: MarkdownViewerProps): React.ReactElement {
   const theme = useTheme()
 
   const markdownStyles = useMemo(

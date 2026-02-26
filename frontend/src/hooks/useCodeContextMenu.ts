@@ -14,7 +14,13 @@ function truncateAndCollapse(text: string, maxLength: number = 40): string {
   return collapsed.substring(0, maxLength) + '...'
 }
 
-export function useCodeContextMenu() {
+interface UseCodeContextMenuResult {
+  contextMenu: ContextMenuState | null
+  handleContextMenu: (event: React.MouseEvent) => void
+  handleClose: () => void
+}
+
+export function useCodeContextMenu(): UseCodeContextMenuResult {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
 
   const handleContextMenu = useCallback((event: React.MouseEvent) => {

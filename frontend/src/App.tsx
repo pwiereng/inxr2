@@ -41,7 +41,7 @@ function AppContent() {
  * Main App component
  * Provides app-wide context and routing
  */
-function App() {
+function App(): React.ReactElement {
   return (
     <AppProvider>
       <AppContent />

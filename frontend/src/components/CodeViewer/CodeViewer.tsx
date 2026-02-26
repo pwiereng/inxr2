@@ -46,7 +46,7 @@ export function CodeViewer({
   onLineClick,
   onBlameCommitClick,
   onSearchText,
-}: CodeViewerProps) {
+}: CodeViewerProps): React.ReactElement {
   const codeRef = useRef<HTMLElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const theme = useTheme()
