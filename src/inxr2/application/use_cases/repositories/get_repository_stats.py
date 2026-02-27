@@ -5,8 +5,10 @@ symbol counts, reference counts, and language distribution.
 """
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 from ....domain.entities import File, Repository
 from ....domain.exceptions import RepositoryNotFound
@@ -14,10 +16,14 @@ from ...ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
     FileVersionPort,
+    IndexStatusRepositoryPort,
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
 )
+from ...ports.services import GitServicePort
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -38,6 +44,10 @@ class RepositoryStats:
     total_references_unresolved: int = 0
     commit_date_earliest: datetime | None = None
     commit_date_latest: datetime | None = None
+    last_indexed_at: datetime | None = None
+    last_indexed_commit: str | None = None
+    git_head_commit: str | None = None
+    is_stale: bool = False
 
 
 @dataclass
@@ -73,6 +83,8 @@ class GetRepositoryStatsUseCase:
         reference_repo: ReferenceRepositoryPort,
         file_version_repo: FileVersionPort,
         commit_repo: CommitRepositoryPort | None = None,
+        index_status_repo: IndexStatusRepositoryPort | None = None,
+        git_service: GitServicePort | None = None,
     ) -> None:
         """Initialize use case with required repositories.
 
@@ -83,6 +95,8 @@ class GetRepositoryStatsUseCase:
             symbol_repo: Repository for accessing symbols
             reference_repo: Repository for accessing references
             commit_repo: Repository for accessing commits (used to get HEAD files)
+            index_status_repo: Repository for index status (staleness check)
+            git_service: Git service for fetching current HEAD (staleness check)
         """
         self._repository_repo = repository_repo
         self._file_repo = file_repo
@@ -90,6 +104,8 @@ class GetRepositoryStatsUseCase:
         self._symbol_repo = symbol_repo
         self._reference_repo = reference_repo
         self._commit_repo = commit_repo
+        self._index_status_repo = index_status_repo
+        self._git_service = git_service
 
     async def execute(self, request: GetRepositoryStatsRequest) -> RepositoryStats:
         """Execute statistics aggregation.
@@ -148,6 +164,9 @@ class GetRepositoryStatsUseCase:
         # 5. Compute total lines from files
         total_lines = sum(f.line_count or 0 for f in unique_files)
 
+        # 6. Compute staleness
+        staleness = await self._compute_staleness(repository, repository_id)
+
         return RepositoryStats(
             repository_id=repository_id,
             name=repository.name,
@@ -160,6 +179,10 @@ class GetRepositoryStatsUseCase:
             total_references_unresolved=unresolved_count,
             commit_date_earliest=date_range[0] if date_range else None,
             commit_date_latest=date_range[1] if date_range else None,
+            last_indexed_at=staleness.last_indexed_at,
+            last_indexed_commit=staleness.last_indexed_commit,
+            git_head_commit=staleness.git_head_commit,
+            is_stale=staleness.is_stale,
         )
 
     async def _resolve_repository(
@@ -220,6 +243,75 @@ class GetRepositoryStatsUseCase:
         # Fallback: list all and deduplicate
         files = await self._file_repo.list_by_repository(repository_id)
         return self._deduplicate_files_by_path(files)
+
+    async def _compute_staleness(
+        self, repository: Repository, repository_id: int
+    ) -> RepositoryStats:
+        """Compute index staleness by comparing last indexed commit with git HEAD.
+
+        Returns a partial RepositoryStats with only staleness fields set.
+        """
+        last_indexed_at: datetime | None = None
+        last_indexed_commit: str | None = None
+        git_head_commit: str | None = None
+        is_stale = False
+
+        if self._index_status_repo is None or self._git_service is None:
+            return RepositoryStats(
+                repository_id=repository_id,
+                name=repository.name,
+                total_files=0,
+                total_symbols=0,
+                total_references=0,
+            )
+
+        default_branch = repository.default_branch or "main"
+
+        # Get index status
+        index_status = await self._index_status_repo.find_by_repository_and_branch(
+            repository_id, default_branch
+        )
+        if index_status is not None:
+            last_indexed_at = index_status.last_indexed_at
+            last_indexed_commit = index_status.last_indexed_commit
+
+        # Get git HEAD (sync call)
+        try:
+            git_head_commit = self._git_service.get_current_commit(
+                Path(repository.url), default_branch
+            )
+        except Exception:
+            logger.debug(
+                "Could not get git HEAD for %s: graceful degradation",
+                repository.name,
+            )
+            return RepositoryStats(
+                repository_id=repository_id,
+                name=repository.name,
+                total_files=0,
+                total_symbols=0,
+                total_references=0,
+                last_indexed_at=last_indexed_at,
+                last_indexed_commit=last_indexed_commit,
+                git_head_commit=None,
+                is_stale=False,
+            )
+
+        # Compare: stale if index exists and HEAD differs
+        if last_indexed_commit is not None and git_head_commit is not None:
+            is_stale = last_indexed_commit != git_head_commit
+
+        return RepositoryStats(
+            repository_id=repository_id,
+            name=repository.name,
+            total_files=0,
+            total_symbols=0,
+            total_references=0,
+            last_indexed_at=last_indexed_at,
+            last_indexed_commit=last_indexed_commit,
+            git_head_commit=git_head_commit,
+            is_stale=is_stale,
+        )
 
     def _deduplicate_files_by_path(self, files: list[File]) -> list[File]:
         """Deduplicate files by path, keeping the latest version.
