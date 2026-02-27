@@ -7,6 +7,7 @@ during indexing. Uses content-addressable file versioning: if a file version
 """
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +30,8 @@ from ...ports.repositories import (
     TextContentRepositoryPort,
 )
 from ...ports.services import GitServicePort, ParserServicePort, PlaintextParserPort
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -254,6 +257,19 @@ class ProcessFileUseCase:
                 )
             )
 
+            # Filter out symbols with empty names (can happen with
+            # macro-heavy code where tree-sitter produces empty identifiers)
+            valid_symbols_data = []
+            for sd in symbols_data:
+                if sd.get("name"):
+                    valid_symbols_data.append(sd)
+                else:
+                    logger.debug(
+                        "Skipping symbol with empty name at line %d in %s",
+                        sd.get("start_line", 0),
+                        request.file_path,
+                    )
+
             # Save symbols (batch)
             symbols = [
                 Symbol(
@@ -270,7 +286,7 @@ class ProcessFileUseCase:
                     signature=symbol_data.get("signature"),
                     metadata=symbol_data.get("metadata", {}),
                 )
-                for symbol_data in symbols_data
+                for symbol_data in valid_symbols_data
             ]
             if symbols:
                 await self._symbol_repo.save_many(symbols)

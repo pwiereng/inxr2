@@ -11,6 +11,8 @@ SUPPORTED_LANGUAGES_WITH_PARSERS = (
     "typescript",
     "javascript",
     "c",
+    "cpp",
     "java",
     "csharp",
+    "go",
 )

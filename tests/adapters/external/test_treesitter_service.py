@@ -29,6 +29,12 @@ class TestTreeSitterService:
         assert parser_service.supports_language("javascript")
         assert parser_service.supports_language("JavaScript")
 
+    def test_supports_cpp(self, parser_service: TreeSitterService) -> None:
+        """Test that C++ is supported."""
+        assert parser_service.supports_language("cpp")
+        assert parser_service.supports_language("Cpp")
+        assert parser_service.supports_language("CPP")
+
     def test_unsupported_language(self, parser_service: TreeSitterService) -> None:
         """Test that unsupported languages are rejected."""
         assert not parser_service.supports_language("rust")

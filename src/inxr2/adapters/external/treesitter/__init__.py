@@ -11,6 +11,7 @@ To add a new language:
 
 from .base import BaseLanguageParser
 from .c_parser import CParser
+from .cpp_parser import CppParser
 from .csharp_parser import CSharpParser
 from .go_parser import GoParser
 from .java_parser import JavaParser
@@ -22,6 +23,7 @@ __all__ = [
     "TreeSitterService",
     "BaseLanguageParser",
     "CParser",
+    "CppParser",
     "CSharpParser",
     "GoParser",
     "JavaParser",
