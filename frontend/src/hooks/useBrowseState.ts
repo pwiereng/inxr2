@@ -20,12 +20,13 @@ import { useBrowseData } from './useBrowseData'
 import { useBrowseRefsState } from './useBrowseRefsState'
 import { computeTreeCommit } from './useBrowseTypes'
 import type {
+  BrowseActions,
   BrowseComputedState,
   BrowseDataState,
   BrowseDiffState,
-  BrowseUIState,
   BrowseRefsState,
-  BrowseActions,
+  BrowseUIState,
+  BrowseUrlState,
 } from './useBrowseTypes'
 
 // Re-export all types so existing consumers can still import from useBrowseState
@@ -44,7 +45,7 @@ export type {
 // ============================================================================
 
 interface UseBrowseStateResult {
-  urlState: import('./useBrowseTypes').BrowseUrlState
+  urlState: BrowseUrlState
   dataState: BrowseDataState
   diffState: BrowseDiffState
   uiState: BrowseUIState
