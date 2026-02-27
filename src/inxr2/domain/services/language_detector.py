@@ -40,13 +40,15 @@ class LanguageDetector:
         ".groovy": "groovy",
         # C/C++
         ".c": "c",
-        ".h": "c",
+        ".h": "cpp",
         ".cpp": "cpp",
         ".cc": "cpp",
         ".cxx": "cpp",
+        ".c++": "cpp",
         ".hpp": "cpp",
         ".hh": "cpp",
         ".hxx": "cpp",
+        ".h++": "cpp",
         # C#
         ".cs": "csharp",
         # Go
