@@ -50,6 +50,10 @@ class CppParser(BaseLanguageParser):
                 return f"{parent_scope}.{name}"
             return name
 
+        # Track namespace names to distinguish namespace::func (function)
+        # from Class::method (method) in out-of-class definitions.
+        known_namespaces: set[str] = set()
+
         # --- Symbol extraction ---
 
         def process_node(node: Node, scope: str | None = None) -> None:
@@ -115,6 +119,7 @@ class CppParser(BaseLanguageParser):
                     )
                 )
                 inner_scope = make_scope(scope, ns_name)
+                known_namespaces.add(inner_scope)
             else:
                 # Anonymous namespace
                 inner_scope = scope
@@ -196,8 +201,10 @@ class CppParser(BaseLanguageParser):
                 kind = "method"
                 method_scope = scope
             elif qual_scope:
-                kind = "method"
-                method_scope = make_scope(scope, qual_scope) if scope else qual_scope
+                full_qual = make_scope(scope, qual_scope) if scope else qual_scope
+                # Namespace-qualified → free function, class-qualified → method
+                kind = "function" if full_qual in known_namespaces else "method"
+                method_scope = full_qual
             else:
                 kind = "function"
                 method_scope = scope
@@ -601,11 +608,13 @@ class CppParser(BaseLanguageParser):
             # Type identifiers
             if node.type == "type_identifier":
                 parent = node.parent
-                # Skip the type's own name in class/struct/enum definitions
+                # Skip the type's own name in definitions
                 if parent and parent.type in (
                     "class_specifier",
                     "struct_specifier",
                     "enum_specifier",
+                    "type_definition",
+                    "alias_declaration",
                 ):
                     pass
                 else:
@@ -685,14 +694,9 @@ class CppParser(BaseLanguageParser):
                 qual_text = get_text(func_node)
                 parts = qual_text.split("::")
                 if parts and is_std_lib_prefix(parts[0]):
-                    # Standard library call — record with qualified name
-                    add_reference(
-                        self._make_reference(qual_text, "call", func_node, scope)
-                    )
-                else:
-                    add_reference(
-                        self._make_reference(qual_text, "call", func_node, scope)
-                    )
+                    # Standard library call — exclude from references
+                    return
+                add_reference(self._make_reference(qual_text, "call", func_node, scope))
             elif func_node.type == "field_expression":
                 # obj.method() or obj->method()
                 field = func_node.child_by_field_name("field")

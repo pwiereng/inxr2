@@ -797,6 +797,67 @@ class Broken {
         assert isinstance(references, list)
 
     @pytest.mark.asyncio
+    async def test_namespace_qualified_function_not_method(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that namespace::func is classified as function, not method."""
+        code = """
+namespace N {
+    void f();
+}
+void N::f() {}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="cpp", file_path="ns_func.cpp"
+        )
+
+        # The out-of-class definition should be a function, not a method
+        out_of_class = [
+            s for s in symbols if s["name"] == "f" and s["kind"] == "function"
+        ]
+        assert len(out_of_class) >= 1
+        methods = [s for s in symbols if s["name"] == "f" and s["kind"] == "method"]
+        assert len(methods) == 0
+
+    @pytest.mark.asyncio
+    async def test_class_qualified_function_is_method(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that Class::method is classified as method."""
+        code = """
+class MyClass {
+public:
+    void doWork();
+};
+void MyClass::doWork() {}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="cpp", file_path="class_method.cpp"
+        )
+
+        methods = [
+            s for s in symbols if s["name"] == "doWork" and s["kind"] == "method"
+        ]
+        assert len(methods) >= 1
+
+    @pytest.mark.asyncio
+    async def test_typedef_no_self_reference(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that typedef/using alias names don't create self-references."""
+        code = """
+typedef int MyInt;
+using MyFloat = float;
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="cpp", file_path="aliases.cpp"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "MyInt" not in ref_texts
+        assert "MyFloat" not in ref_texts
+
+    @pytest.mark.asyncio
     async def test_function_symbol_line_points_to_name(
         self, parser_service: TreeSitterService
     ) -> None:
