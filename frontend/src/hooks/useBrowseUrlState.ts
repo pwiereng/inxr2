@@ -290,7 +290,7 @@ export function useBrowseUrlState(
       const query = params.toString()
       navigate(`${basePath}${query ? `?${query}` : ''}`)
     },
-    [navigate, urlState, refs.resetRefsPanelRef]
+    [navigate, urlState]
   )
 
   const changeDiffVersion = useCallback(
@@ -317,7 +317,7 @@ export function useBrowseUrlState(
         `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
       )
     },
-    [navigate, urlState, refs.resetRefsPanelRef]
+    [navigate, urlState]
   )
 
   // ========== Branch Change Actions ==========
@@ -348,7 +348,7 @@ export function useBrowseUrlState(
         navigate(`/browse/${encodeURIComponent(urlState.repoName!)}?${params}`)
       }
     },
-    [navigate, urlState, refs.resetRefsPanelRef]
+    [navigate, urlState]
   )
 
   const changeDiffBranch = useCallback(
@@ -379,7 +379,7 @@ export function useBrowseUrlState(
         `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
       )
     },
-    [navigate, urlState, refs.resetRefsPanelRef]
+    [navigate, urlState]
   )
 
   const resetToFileTree = useCallback(() => {
@@ -393,7 +393,7 @@ export function useBrowseUrlState(
     if (urlState.changedOnly) params.set('co', '1')
     const query = params.toString()
     navigate(`/browse/${encodeURIComponent(urlState.repoName)}${query ? `?${query}` : ''}`)
-  }, [navigate, urlState, refs.resetRefsPanelRef, refs.setErrorRef])
+  }, [navigate, urlState])
 
   return {
     urlState,

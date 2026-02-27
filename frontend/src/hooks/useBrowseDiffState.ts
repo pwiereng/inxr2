@@ -172,7 +172,7 @@ export function useBrowseDiffState({
     navigate(
       `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
     )
-  }, [navigate, urlState, refs.fileVersionsRef, refs.repositoryRef])
+  }, [navigate, urlState])
 
   const exitDiffMode = useCallback(() => {
     if (!urlState.filePath) return
@@ -225,7 +225,7 @@ export function useBrowseDiffState({
       // Closing right panel - keep the left panel's version/branch
       exitDiffMode()
     },
-    [navigate, urlState, refs.rightCommitRef, exitDiffMode]
+    [navigate, urlState, exitDiffMode]
   )
 
   return {
