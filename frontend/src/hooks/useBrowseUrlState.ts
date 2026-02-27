@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import type { MutableRefObject } from 'react'
-import type { BrowseUrlState } from './useBrowseState'
+import type { BrowseUrlState } from './useBrowseTypes'
 
 /**
  * Encode a file path for use in URLs, preserving directory separators.

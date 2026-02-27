@@ -7,7 +7,7 @@ import {
   type Symbol,
   type Repository,
 } from '@/lib/api'
-import type { BrowseUrlState } from './useBrowseState'
+import type { BrowseUrlState } from './useBrowseTypes'
 import { encodeFilePath } from './useBrowseUrlState'
 
 export interface UseBrowseRefsStateParams {

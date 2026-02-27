@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import type { NavigateFunction } from 'react-router-dom'
 import {
   getRepositories,
@@ -19,7 +19,8 @@ import {
   type RawFileContent,
 } from '@/lib/api'
 import { isImageFile } from '@/lib/fileUtils'
-import type { BrowseUrlState } from './useBrowseState'
+import type { BrowseUrlState } from './useBrowseTypes'
+import { computeTreeCommit } from './useBrowseTypes'
 
 export interface UseBrowseDataParams {
   urlState: BrowseUrlState
@@ -68,16 +69,8 @@ export function useBrowseData({
   const [fileLoading, setFileLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Compute treeCommit internally (needed for tree loading effect)
-  const treeCommit = useMemo(() => {
-    const leftCommit = urlState.selectedCommit || latestBranchCommit || fileVersions[0]?.commit_hash
-    const rightCommit = urlState.diffCommit || diffFileVersions[0]?.commit_hash || null
-    return urlState.diffMode
-      ? urlState.treePanel === 'left'
-        ? leftCommit
-        : rightCommit
-      : urlState.selectedCommit || latestBranchCommit
-  }, [urlState, fileVersions, diffFileVersions, latestBranchCommit])
+  // Compute treeCommit using shared helper (same logic as orchestrator's computedState)
+  const treeCommit = computeTreeCommit(urlState, fileVersions, diffFileVersions, latestBranchCommit)
 
   // ========== Data Loading Effects ==========
 
