@@ -13,7 +13,16 @@
  */
 
 import { useRef, useMemo } from 'react'
-import type { FileVersion, Repository, Symbol } from '@/lib/api'
+import type {
+  FileContent,
+  FileReference,
+  FileSymbol,
+  FileVersion,
+  RawFileContent,
+  Repository,
+  Symbol,
+  TreeNode,
+} from '@/lib/api'
 import { useBrowseUrlState } from './useBrowseUrlState'
 import { useBrowseDiffState } from './useBrowseDiffState'
 import { useBrowseData } from './useBrowseData'
@@ -56,18 +65,18 @@ export interface BrowseUrlState {
 export interface BrowseDataState {
   allRepositories: Repository[]
   repository: Repository | null
-  treeNodes: import('@/lib/api').TreeNode[]
-  fileContent: import('@/lib/api').FileContent | null
-  fileSymbols: import('@/lib/api').FileSymbol[]
-  fileReferences: import('@/lib/api').FileReference[]
+  treeNodes: TreeNode[]
+  fileContent: FileContent | null
+  fileSymbols: FileSymbol[]
+  fileReferences: FileReference[]
   fileVersions: FileVersion[]
-  rawContent: import('@/lib/api').RawFileContent | null
+  rawContent: RawFileContent | null
 }
 
 export interface BrowseDiffState {
-  diffContent: import('@/lib/api').FileContent | null
-  diffSymbols: import('@/lib/api').FileSymbol[]
-  diffReferences: import('@/lib/api').FileReference[]
+  diffContent: FileContent | null
+  diffSymbols: FileSymbol[]
+  diffReferences: FileReference[]
   activePanel: 'left' | 'right'
   treePanel: 'left' | 'right'
   refPanel: 'left' | 'right'
@@ -132,16 +141,10 @@ export interface BrowseActions {
   setSearchQuery: (query: string) => void
 
   // Symbol/Reference clicks
-  handleSymbolClick: (fileSymbol: import('@/lib/api').FileSymbol) => Promise<void>
-  handleDiffSymbolClick: (
-    fileSymbol: import('@/lib/api').FileSymbol,
-    panel: 'left' | 'right'
-  ) => Promise<void>
-  handleCodeReferenceClick: (ref: import('@/lib/api').FileReference) => Promise<void>
-  handleDiffReferenceClick: (
-    ref: import('@/lib/api').FileReference,
-    panel: 'left' | 'right'
-  ) => Promise<void>
+  handleSymbolClick: (fileSymbol: FileSymbol) => Promise<void>
+  handleDiffSymbolClick: (fileSymbol: FileSymbol, panel: 'left' | 'right') => Promise<void>
+  handleCodeReferenceClick: (ref: FileReference) => Promise<void>
+  handleDiffReferenceClick: (ref: FileReference, panel: 'left' | 'right') => Promise<void>
   handleRefPanelClick: (reference: { source_file_path: string | null; source_line: number }) => void
   handleDefinitionClick: (sym: Symbol) => void
   handleDiffLineClick: (line: number, panel: 'left' | 'right') => void
