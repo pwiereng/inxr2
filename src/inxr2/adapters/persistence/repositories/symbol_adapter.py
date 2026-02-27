@@ -44,7 +44,7 @@ class PostgresSymbolRepository(
         When repository_id is provided, deduplicates by filtering to
         only the latest file version per (repository_id, path).
         When scope is "latest" and repository_id is None, filters to
-        symbols from files at HEAD of each repo's default branch.
+        symbols from the latest version of each file across all repositories.
 
         Note: ``branch`` only takes effect when ``repository_id`` is
         provided, since branch-scoped dedup requires a repository context.

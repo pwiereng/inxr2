@@ -34,9 +34,9 @@ class PostgresFileSearchRepository(FileSearchPort):
 
         Uses case-insensitive pattern matching. When commit_id is specified,
         filters via commit_files. When commit_id is None, deduplicates by
-        returning only the latest version of each path (highest file ID).
-        When scope is "latest" and repository_id is None, filters to files
-        at HEAD of each repo's default branch.
+        returning only the latest version of each path (by commit date).
+        When scope is "latest" and repository_id is None, filters to the
+        latest version of each file across all repositories.
         """
         query_lower = query.lower()
 

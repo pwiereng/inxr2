@@ -11,7 +11,6 @@ from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
-from ..models.repository import RepositoryModel
 
 # ---------------------------------------------------------------------------
 # Raw SQL version of latest_file_ids_subquery (used by resolve_references_batch
@@ -80,37 +79,3 @@ def latest_file_ids_subquery(
         )
     inner = inner_query.subquery()
     return select(inner.c.file_id.label("max_id")).where(inner.c.rn == 1).subquery()
-
-
-def head_file_ids_subquery() -> Subquery:
-    """File IDs at HEAD of each repo's default branch (for global search).
-
-    Finds the latest commit on each repository's default branch, then
-    returns all file IDs linked to those HEAD commits via commit_files.
-    """
-    inner = (
-        select(
-            RepositoryModel.id.label("repo_id"),
-            BranchCommitModel.commit_id.label("commit_id"),
-            func.row_number()
-            .over(
-                partition_by=RepositoryModel.id,
-                order_by=[CommitModel.commit_date.desc(), CommitModel.id.desc()],
-            )
-            .label("rn"),
-        )
-        .join(
-            BranchCommitModel,
-            (BranchCommitModel.repository_id == RepositoryModel.id)
-            & (BranchCommitModel.branch == RepositoryModel.default_branch),
-        )
-        .join(CommitModel, CommitModel.id == BranchCommitModel.commit_id)
-        .subquery()
-    )
-    head_commits = select(inner.c.commit_id).where(inner.c.rn == 1).subquery()
-
-    return (
-        select(CommitFileModel.file_id.label("file_id"))
-        .where(CommitFileModel.commit_id.in_(select(head_commits.c.commit_id)))
-        .subquery()
-    )

@@ -612,56 +612,6 @@ class InMemoryFileRepository(FileRepositoryPort):
             and f.id is not None
         }
 
-    def _compute_head_file_ids(self) -> set[int]:
-        """Compute file IDs at HEAD of each repo's default branch.
-
-        For global search: finds the latest commit on each repo's default
-        branch and returns file IDs linked to those commits.
-        """
-        if self._commit_repo is None:
-            # No commit repo, can't determine HEAD - return all file IDs
-            return {f.id for f in self._files.values() if f.id is not None}
-
-        # We need repository info to know default branches.
-        # Look up via the commit_repo's repository links.
-        # Build repo_id → default_branch from the repository_repo if available.
-        # For simplicity, we scan branch_commits to find HEAD per repo.
-
-        # Step 1: Find all repo IDs from files
-        repo_ids = {f.repository_id for f in self._files.values() if f.repository_id}
-
-        # Step 2: For each repo, find the default branch and HEAD commit
-        head_commit_ids: set[int] = set()
-        for repo_id in repo_ids:
-            # Find the default branch for this repo
-            # We need to look up from a repository repository, but the file repo
-            # doesn't have one. Instead, look for branch "main" or "master" as common defaults.
-            # However, the proper way is to get the repo's default_branch.
-            # For the test double, we'll look at the repository repo if available
-            # through the commit repo, or fall back to finding the latest commit
-            # on any branch.
-            default_branch = self._get_default_branch_for_repo(repo_id)
-            if default_branch is None:
-                continue
-
-            # Find the latest commit on the default branch for this repo
-            latest_commit_id = None
-            latest_date: tuple[datetime, int] | None = None
-            for (r_id, branch, c_id), _ in self._commit_repo._branch_commits.items():
-                if r_id == repo_id and branch == default_branch:
-                    commit = self._commit_repo._commits.get(c_id)
-                    if commit is not None:
-                        key = (commit.commit_date, c_id)
-                        if latest_date is None or key > latest_date:
-                            latest_date = key
-                            latest_commit_id = c_id
-
-            if latest_commit_id is not None:
-                head_commit_ids.add(latest_commit_id)
-
-        # Step 3: Collect file IDs at those HEAD commits
-        return {fid for cid, fid in self._commit_files if cid in head_commit_ids}
-
     def _get_default_branch_for_repo(self, repo_id: int) -> str | None:
         """Get the default branch for a repository.
 
