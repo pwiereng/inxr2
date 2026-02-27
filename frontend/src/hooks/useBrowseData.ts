@@ -184,6 +184,10 @@ export function useBrowseData({
     if (treeNodes.length > 0 && !fileInTree(treeNodes, urlState.filePath)) {
       // File not in the changed-files tree — clear selection
       const params = new URLSearchParams(searchParams)
+      // Remove file-scoped params so the selection actually clears
+      // (prevents loop if file was set via legacy ?file= param)
+      params.delete('file')
+      params.delete('line')
       navigate(`/browse/${encodeURIComponent(urlState.repoName)}?${params}`, { replace: true })
     }
   }, [
