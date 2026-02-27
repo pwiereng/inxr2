@@ -84,6 +84,10 @@ class RepositoryStatsResponse(BaseModel):
     total_references_unresolved: int = 0
     commit_date_earliest: str | None = None
     commit_date_latest: str | None = None
+    last_indexed_at: str | None = None
+    last_indexed_commit: str | None = None
+    git_head_commit: str | None = None
+    is_stale: bool = False
 
 
 class BranchInfoResponse(BaseModel):
@@ -206,6 +210,12 @@ def _stats_to_response(
         commit_date_latest=(
             stats.commit_date_latest.isoformat() if stats.commit_date_latest else None
         ),
+        last_indexed_at=(
+            stats.last_indexed_at.isoformat() if stats.last_indexed_at else None
+        ),
+        last_indexed_commit=stats.last_indexed_commit,
+        git_head_commit=stats.git_head_commit,
+        is_stale=stats.is_stale,
     )
 
 

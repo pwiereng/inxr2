@@ -140,6 +140,10 @@ export interface RepositoryStats {
   total_references_unresolved: number
   commit_date_earliest: string | null
   commit_date_latest: string | null
+  last_indexed_at: string | null
+  last_indexed_commit: string | null
+  git_head_commit: string | null
+  is_stale: boolean
 }
 
 // Time Travel types

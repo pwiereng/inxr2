@@ -1,4 +1,4 @@
-import { Box, AppBar, Toolbar, IconButton, Tooltip } from '@mui/material'
+import { Box, AppBar, Toolbar, IconButton, Tooltip, Alert } from '@mui/material'
 import HomeIcon from '@mui/icons-material/Home'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
@@ -47,6 +47,7 @@ export function CodeHeader({
     defaultBranch,
     commitDisplayValue,
     currentCommitDate,
+    isIndexStale,
   } = useRepositorySelector({ repoName, branch, commit })
 
   const handleHomeClick = () => {
@@ -130,6 +131,13 @@ export function CodeHeader({
           </IconButton>
         </Tooltip>
       </Toolbar>
+
+      {/* Stale index warning */}
+      {isIndexStale && (
+        <Alert severity="warning" sx={{ py: 0 }}>
+          Index is outdated — some recent commits may not be browsable
+        </Alert>
+      )}
 
       {/* Row 2: Tabs */}
       <NavigationTabs currentTab={currentTab} onTabChange={onTabChange} />

@@ -280,6 +280,8 @@ def get_repository_stats_use_case(
     symbol_adapter: SymbolAdapter,
     reference_adapter: ReferenceAdapter,
     commit_adapter: CommitAdapter,
+    index_status_adapter: IndexStatusAdapter,
+    git_service: GitServiceDep,
 ) -> GetRepositoryStatsUseCase:
     """Provide GetRepositoryStatsUseCase with dependencies."""
     return GetRepositoryStatsUseCase(
@@ -289,6 +291,8 @@ def get_repository_stats_use_case(
         symbol_repo=symbol_adapter,
         reference_repo=reference_adapter,
         commit_repo=commit_adapter,
+        index_status_repo=index_status_adapter,
+        git_service=git_service,
     )
 
 
@@ -299,6 +303,8 @@ def get_all_repository_stats_use_case(
     symbol_adapter: SymbolAdapter,
     reference_adapter: ReferenceAdapter,
     commit_adapter: CommitAdapter,
+    index_status_adapter: IndexStatusAdapter,
+    git_service: GitServiceDep,
 ) -> GetAllRepositoryStatsUseCase:
     """Provide GetAllRepositoryStatsUseCase with dependencies."""
     return GetAllRepositoryStatsUseCase(
@@ -308,6 +314,8 @@ def get_all_repository_stats_use_case(
         symbol_repo=symbol_adapter,
         reference_repo=reference_adapter,
         commit_repo=commit_adapter,
+        index_status_repo=index_status_adapter,
+        git_service=git_service,
     )
 
 

@@ -54,6 +54,10 @@ const mockStats: RepositoryStats[] = [
     total_references_unresolved: 50,
     commit_date_earliest: '2024-01-01T00:00:00',
     commit_date_latest: '2024-06-15T00:00:00',
+    last_indexed_at: '2024-06-15T00:00:00',
+    last_indexed_commit: 'abc123',
+    git_head_commit: 'abc123',
+    is_stale: false,
   },
   {
     repository_id: 2,
@@ -67,6 +71,10 @@ const mockStats: RepositoryStats[] = [
     total_references_unresolved: 0,
     commit_date_earliest: '2024-03-01T00:00:00',
     commit_date_latest: '2024-03-01T00:00:00',
+    last_indexed_at: '2024-03-01T00:00:00',
+    last_indexed_commit: 'def456',
+    git_head_commit: 'def456',
+    is_stale: false,
   },
 ]
 
@@ -203,5 +211,31 @@ describe('Home', () => {
 
     // Stats should not appear
     expect(screen.queryAllByTestId('repo-stats')).toHaveLength(0)
+  })
+
+  it('should show stale indicator when is_stale is true', async () => {
+    const api = await import('@/lib/api')
+    const staleStats: RepositoryStats[] = mockStats.map((s) =>
+      s.repository_id === 1
+        ? { ...s, is_stale: true, git_head_commit: 'new999', last_indexed_at: '2024-06-15T00:00:00' }
+        : s
+    )
+    vi.mocked(api.getAllRepositoryStats).mockResolvedValue(staleStats)
+
+    render(<Home />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Index outdated')).toBeInTheDocument()
+    })
+  })
+
+  it('should not show stale indicator when is_stale is false', async () => {
+    render(<Home />)
+
+    await waitFor(() => {
+      expect(screen.getByText('test-repo')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('Index outdated')).not.toBeInTheDocument()
   })
 })

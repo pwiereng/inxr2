@@ -11,8 +11,10 @@ import {
   CardContent,
   CardActionArea,
   Chip,
+  Tooltip,
 } from '@mui/material'
 import FolderIcon from '@mui/icons-material/Folder'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { useApp } from '@/contexts/AppContext'
 import {
   getRepositories,
@@ -186,6 +188,18 @@ export function Home(): React.ReactElement {
                           sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}
                           data-testid="repo-stats"
                         >
+                          {stats.is_stale && (
+                            <Tooltip
+                              title={`Last indexed: ${stats.last_indexed_at ? formatDate(stats.last_indexed_at) : 'unknown'}. Run \`inxr2 index\` to update.`}
+                            >
+                              <Chip
+                                icon={<WarningAmberIcon />}
+                                label="Index outdated"
+                                size="small"
+                                color="warning"
+                              />
+                            </Tooltip>
+                          )}
                           <Chip
                             label={`${formatNumber(stats.total_lines)} lines`}
                             size="small"

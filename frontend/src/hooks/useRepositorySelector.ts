@@ -26,6 +26,7 @@ interface UseRepositorySelectorResult {
   defaultBranch: string
   commitDisplayValue: string
   currentCommitDate: string
+  isIndexStale: boolean
 }
 
 export function useRepositorySelector({
@@ -37,6 +38,7 @@ export function useRepositorySelector({
   const [repositories, setRepositories] = useState<Repository[]>([])
   const [branches, setBranches] = useState<BranchInfo[]>([])
   const [commits, setCommits] = useState<CommitInfo[]>([])
+  const [isIndexStale, setIsIndexStale] = useState(false)
 
   // Loading state
   const [loadingRepos, setLoadingRepos] = useState(true)
@@ -91,6 +93,7 @@ export function useRepositorySelector({
   useEffect(() => {
     if (!repoName) {
       setCommits([])
+      setIsIndexStale(false)
       return
     }
 
@@ -98,7 +101,12 @@ export function useRepositorySelector({
       setLoadingCommits(true)
       try {
         const response = await getCommits(repoName, branch || undefined, 500)
-        // Only show indexed commits in the version dropdown (browseable)
+        // Check if latest git commit is unindexed (stale index)
+        const firstCommit = response.commits[0]
+        setIsIndexStale(
+          firstCommit !== undefined && !firstCommit.is_indexed
+        )
+        // Only show indexed commits in the version dropdown (browsable)
         setCommits(response.commits.filter((c) => c.is_indexed))
       } catch (error) {
         console.error('Failed to load commits:', error)
@@ -131,5 +139,6 @@ export function useRepositorySelector({
     defaultBranch,
     commitDisplayValue,
     currentCommitDate,
+    isIndexStale,
   }
 }
