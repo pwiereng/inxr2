@@ -50,6 +50,16 @@ class RepositoryStats:
     is_stale: bool = False
 
 
+@dataclass(frozen=True)
+class StalenessInfo:
+    """Index staleness information for a repository."""
+
+    last_indexed_at: datetime | None = None
+    last_indexed_commit: str | None = None
+    git_head_commit: str | None = None
+    is_stale: bool = False
+
+
 @dataclass
 class GetRepositoryStatsRequest:
     """Request to get repository statistics.
@@ -246,26 +256,14 @@ class GetRepositoryStatsUseCase:
 
     async def _compute_staleness(
         self, repository: Repository, repository_id: int
-    ) -> RepositoryStats:
-        """Compute index staleness by comparing last indexed commit with git HEAD.
-
-        Returns a partial RepositoryStats with only staleness fields set.
-        """
-        last_indexed_at: datetime | None = None
-        last_indexed_commit: str | None = None
-        git_head_commit: str | None = None
-        is_stale = False
-
+    ) -> StalenessInfo:
+        """Compute index staleness by comparing last indexed commit with git HEAD."""
         if self._index_status_repo is None or self._git_service is None:
-            return RepositoryStats(
-                repository_id=repository_id,
-                name=repository.name,
-                total_files=0,
-                total_symbols=0,
-                total_references=0,
-            )
+            return StalenessInfo()
 
         default_branch = repository.default_branch or "main"
+        last_indexed_at: datetime | None = None
+        last_indexed_commit: str | None = None
 
         # Get index status
         index_status = await self._index_status_repo.find_by_repository_and_branch(
@@ -285,28 +283,19 @@ class GetRepositoryStatsUseCase:
                 "Could not get git HEAD for %s: graceful degradation",
                 repository.name,
             )
-            return RepositoryStats(
-                repository_id=repository_id,
-                name=repository.name,
-                total_files=0,
-                total_symbols=0,
-                total_references=0,
+            return StalenessInfo(
                 last_indexed_at=last_indexed_at,
                 last_indexed_commit=last_indexed_commit,
-                git_head_commit=None,
-                is_stale=False,
             )
 
         # Compare: stale if index exists and HEAD differs
-        if last_indexed_commit is not None and git_head_commit is not None:
-            is_stale = last_indexed_commit != git_head_commit
+        is_stale = (
+            last_indexed_commit is not None
+            and git_head_commit is not None
+            and last_indexed_commit != git_head_commit
+        )
 
-        return RepositoryStats(
-            repository_id=repository_id,
-            name=repository.name,
-            total_files=0,
-            total_symbols=0,
-            total_references=0,
+        return StalenessInfo(
             last_indexed_at=last_indexed_at,
             last_indexed_commit=last_indexed_commit,
             git_head_commit=git_head_commit,

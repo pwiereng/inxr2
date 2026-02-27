@@ -1,9 +1,7 @@
-import { useState } from 'react'
 import { Box, AppBar, Toolbar, IconButton, Tooltip, Alert } from '@mui/material'
 import HomeIcon from '@mui/icons-material/Home'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
-import CloseIcon from '@mui/icons-material/Close'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '@/contexts/AppContext'
 import { useRepositorySelector } from '@/hooks/useRepositorySelector'
@@ -38,7 +36,6 @@ export function CodeHeader({
 }: CodeHeaderProps): React.ReactElement {
   const navigate = useNavigate()
   const { themeMode, toggleThemeMode } = useApp()
-  const [showStaleBanner, setShowStaleBanner] = useState(true)
 
   const {
     repositories,
@@ -135,27 +132,11 @@ export function CodeHeader({
       </Toolbar>
 
       {/* Stale index warning */}
-      {showStaleBanner &&
-        commits.length > 0 &&
-        commits[0] !== undefined &&
-        !commits[0].is_indexed && (
-          <Alert
-            severity="warning"
-            action={
-              <IconButton
-                aria-label="close"
-                color="inherit"
-                size="small"
-                onClick={() => setShowStaleBanner(false)}
-              >
-                <CloseIcon fontSize="inherit" />
-              </IconButton>
-            }
-            sx={{ py: 0 }}
-          >
-            Index is outdated — some recent commits may not be browseable
-          </Alert>
-        )}
+      {commits.length > 0 && commits[0] !== undefined && !commits[0].is_indexed && (
+        <Alert severity="warning" sx={{ py: 0 }}>
+          Index is outdated — some recent commits may not be browsable
+        </Alert>
+      )}
 
       {/* Row 2: Tabs */}
       <NavigationTabs currentTab={currentTab} onTabChange={onTabChange} />
