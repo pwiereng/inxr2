@@ -328,10 +328,35 @@ class CppParser(BaseLanguageParser):
             if not scope:
                 return
 
-            # Skip method declarations (has function_declarator as direct child)
+            # Handle method declarations (function_declarator children)
+            # as method symbols — common in headers without bodies.
+            has_method_declarator = False
             for child in node.children:
                 if child.type == "function_declarator":
-                    return
+                    has_method_declarator = True
+                    method_name, name_node = extract_function_name_and_node(child)
+                    if not method_name or not name_node:
+                        continue
+                    return_type = extract_return_type(node)
+                    params = extract_parameter_text(child)
+                    signature = (
+                        f"{return_type} {method_name}({params})"
+                        if return_type
+                        else f"{method_name}({params})"
+                    )
+                    symbols.append(
+                        self._make_symbol(
+                            method_name,
+                            "method",
+                            name_node,
+                            scope,
+                            signature=signature,
+                            is_declaration=True,
+                        )
+                    )
+
+            if has_method_declarator:
+                return
 
             # Extract field names recursively from declarators
             _extract_field_identifiers(node, scope)
@@ -696,7 +721,12 @@ class CppParser(BaseLanguageParser):
                 if parts and is_std_lib_prefix(parts[0]):
                     # Standard library call — exclude from references
                     return
-                add_reference(self._make_reference(qual_text, "call", func_node, scope))
+                # Use terminal name so resolution matches symbol names
+                terminal_name = parts[-1] if parts else qual_text
+                if not is_builtin_or_primitive(terminal_name):
+                    add_reference(
+                        self._make_reference(terminal_name, "call", func_node, scope)
+                    )
             elif func_node.type == "field_expression":
                 # obj.method() or obj->method()
                 field = func_node.child_by_field_name("field")

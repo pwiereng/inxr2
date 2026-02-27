@@ -858,6 +858,58 @@ using MyFloat = float;
         assert "MyFloat" not in ref_texts
 
     @pytest.mark.asyncio
+    async def test_qualified_call_uses_terminal_name(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that qualified calls store terminal name for resolution."""
+        code = """
+namespace NS {
+    void helper();
+}
+void foo() {
+    NS::helper();
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="cpp", file_path="calls.cpp"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_texts = [r["text"] for r in call_refs]
+        # Should store "helper" not "NS::helper" for resolution
+        assert "helper" in call_texts
+        assert "NS::helper" not in call_texts
+
+    @pytest.mark.asyncio
+    async def test_method_declarations_in_header(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that method declarations without bodies are indexed."""
+        code = """
+class Widget {
+public:
+    void draw();
+    int width() const;
+    void resize(int w, int h);
+private:
+    int m_width;
+};
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="cpp", file_path="widget.h"
+        )
+
+        methods = [s for s in symbols if s["kind"] == "method"]
+        method_names = [m["name"] for m in methods]
+        assert "draw" in method_names
+        assert "width" in method_names
+        assert "resize" in method_names
+
+        # Fields should still be extracted
+        fields = [s for s in symbols if s["kind"] == "field"]
+        assert any(f["name"] == "m_width" for f in fields)
+
+    @pytest.mark.asyncio
     async def test_pure_c_header_parsed_as_cpp(
         self, parser_service: TreeSitterService
     ) -> None:
