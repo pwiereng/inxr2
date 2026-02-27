@@ -858,6 +858,63 @@ using MyFloat = float;
         assert "MyFloat" not in ref_texts
 
     @pytest.mark.asyncio
+    async def test_pure_c_header_parsed_as_cpp(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that pure C code in .h files is parsed correctly by C++ parser."""
+        code = """
+#ifndef MY_HEADER_H
+#define MY_HEADER_H
+
+#include <stdio.h>
+
+#define BUFFER_SIZE 1024
+
+typedef struct {
+    int x;
+    int y;
+} Point;
+
+enum Color { RED, GREEN, BLUE };
+
+static int counter = 0;
+
+int add(int a, int b);
+void print_point(const Point *p);
+
+#endif
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="cpp", file_path="utils.h"
+        )
+
+        sym_names = [s["name"] for s in symbols]
+        sym_kinds = {s["name"]: s["kind"] for s in symbols}
+
+        # Header guard and macro
+        assert "MY_HEADER_H" in sym_names
+        assert "BUFFER_SIZE" in sym_names
+        assert sym_kinds["BUFFER_SIZE"] == "constant"
+
+        # Typedef struct
+        assert "Point" in sym_names
+
+        # Enum and values
+        assert "Color" in sym_names
+        assert "RED" in sym_names
+
+        # Variable
+        assert "counter" in sym_names
+
+        # Function declarations
+        assert "add" in sym_names
+        assert "print_point" in sym_names
+
+        # Include reference
+        include_refs = [r for r in references if r["type"] == "include"]
+        assert any(r["text"] == "stdio.h" for r in include_refs)
+
+    @pytest.mark.asyncio
     async def test_function_symbol_line_points_to_name(
         self, parser_service: TreeSitterService
     ) -> None:

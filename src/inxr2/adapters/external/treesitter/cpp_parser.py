@@ -224,7 +224,7 @@ class CppParser(BaseLanguageParser):
                     func_name,
                     kind,
                     loc_node,
-                    method_scope if kind == "method" else scope,
+                    method_scope,
                     end_line=node.end_point[0] + 1,
                     end_column=node.end_point[1],
                     signature=signature,
