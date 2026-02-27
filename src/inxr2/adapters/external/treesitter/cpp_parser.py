@@ -64,6 +64,8 @@ class CppParser(BaseLanguageParser):
                 process_class_or_struct(node, scope, "class")
             elif node.type == "struct_specifier":
                 process_class_or_struct(node, scope, "struct")
+            elif node.type == "union_specifier":
+                process_union(node, scope)
             elif node.type == "function_definition":
                 process_function_definition(node, scope)
             elif node.type == "declaration":
@@ -182,6 +184,40 @@ class CppParser(BaseLanguageParser):
                     add_reference(
                         self._make_reference(qual_name, "type_annotation", child, scope)
                     )
+
+        def process_union(node: Node, scope: str | None) -> None:
+            """Process a union specifier."""
+            union_name = None
+            name_node = None
+
+            for child in node.children:
+                if child.type == "type_identifier":
+                    union_name = get_text(child)
+                    name_node = child
+                    break
+
+            if not union_name:
+                return
+
+            loc_node = name_node or node
+            symbols.append(
+                self._make_symbol(
+                    union_name,
+                    "union",
+                    loc_node,
+                    scope,
+                    end_line=node.end_point[0] + 1,
+                    end_column=node.end_point[1],
+                )
+            )
+
+            # Process union fields
+            inner_scope = make_scope(scope, union_name)
+            for child in node.children:
+                if child.type == "field_declaration_list":
+                    for field_child in child.children:
+                        if field_child.type == "field_declaration":
+                            _extract_field_identifiers(field_child, inner_scope)
 
         def process_function_definition(node: Node, scope: str | None) -> None:
             """Process a function definition (function or method)."""
@@ -445,6 +481,8 @@ class CppParser(BaseLanguageParser):
                     process_class_or_struct(child, scope, "class")
                 elif child.type == "enum_specifier":
                     process_enum_specifier(child, scope)
+                elif child.type == "union_specifier":
+                    process_union(child, scope)
 
             if typedef_name:
                 symbols.append(self._make_symbol(typedef_name, "typedef", node, scope))
@@ -489,6 +527,7 @@ class CppParser(BaseLanguageParser):
                     "function_definition",
                     "class_specifier",
                     "struct_specifier",
+                    "union_specifier",
                     "declaration",
                     "alias_declaration",
                     "template_declaration",
@@ -512,7 +551,7 @@ class CppParser(BaseLanguageParser):
                 if child_text in ("constexpr", "const"):
                     is_constexpr = True
 
-            # Check for struct/class/enum specifier in type
+            # Check for struct/class/enum/union specifier in type
             type_node = node.child_by_field_name("type")
             if type_node:
                 if type_node.type == "struct_specifier":
@@ -521,6 +560,8 @@ class CppParser(BaseLanguageParser):
                     process_class_or_struct(type_node, scope, "class")
                 elif type_node.type == "enum_specifier":
                     process_enum_specifier(type_node, scope)
+                elif type_node.type == "union_specifier":
+                    process_union(type_node, scope)
 
             # Process declarators
             for child in node.children:

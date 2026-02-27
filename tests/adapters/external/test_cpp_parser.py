@@ -760,6 +760,55 @@ constexpr int BUFFER_SIZE = 4096;
         assert "PI" in const_names
 
 
+class TestCppUnions:
+    """Tests for C++ union parsing."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_parse_union(self, parser_service: TreeSitterService) -> None:
+        """Test parsing a union with fields."""
+        code = """
+union Data {
+    int i;
+    float f;
+    char c;
+};
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="cpp", file_path="data.cpp"
+        )
+
+        unions = [s for s in symbols if s["kind"] == "union"]
+        assert len(unions) == 1
+        assert unions[0]["name"] == "Data"
+
+        fields = [s for s in symbols if s["kind"] == "field"]
+        field_names = [f["name"] for f in fields]
+        assert "i" in field_names
+        assert "f" in field_names
+        assert "c" in field_names
+
+    @pytest.mark.asyncio
+    async def test_parse_typedef_union(self, parser_service: TreeSitterService) -> None:
+        """Test parsing a typedef union."""
+        code = """
+typedef union {
+    int value;
+    float fval;
+} Variant;
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="cpp", file_path="variant.cpp"
+        )
+
+        typedefs = [s for s in symbols if s["kind"] == "typedef"]
+        assert any(t["name"] == "Variant" for t in typedefs)
+
+
 class TestCppEdgeCases:
     """Tests for edge cases in C++ parsing."""
 

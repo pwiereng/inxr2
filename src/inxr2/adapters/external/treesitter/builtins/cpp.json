@@ -3,7 +3,7 @@
     "sizeof", "alignof", "typeid", "decltype", "static_cast",
     "dynamic_cast", "const_cast", "reinterpret_cast", "new", "delete",
     "throw", "noexcept", "nullptr", "true", "false", "this",
-    "main", "offsetof", "va_start", "va_end", "va_arg", "va_copy"
+    "offsetof", "va_start", "va_end", "va_arg", "va_copy"
   ],
   "primitive_types": [
     "void", "bool", "char", "wchar_t", "char8_t", "char16_t", "char32_t",
