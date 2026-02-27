@@ -11,7 +11,11 @@ from datetime import datetime
 from pathlib import Path
 
 from ....domain.entities import File, Repository
-from ....domain.exceptions import RepositoryNotFound
+from ....domain.exceptions import (
+    GitOperationError,
+    InvalidRepositoryPath,
+    RepositoryNotFound,
+)
 from ...ports.repositories import (
     CommitRepositoryPort,
     FileRepositoryPort,
@@ -278,10 +282,11 @@ class GetRepositoryStatsUseCase:
             git_head_commit = self._git_service.get_current_commit(
                 Path(repository.url), default_branch
             )
-        except Exception:
+        except (InvalidRepositoryPath, GitOperationError, OSError, ValueError):
             logger.debug(
                 "Could not get git HEAD for %s: graceful degradation",
                 repository.name,
+                exc_info=True,
             )
             return StalenessInfo(
                 last_indexed_at=last_indexed_at,

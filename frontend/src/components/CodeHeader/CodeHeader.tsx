@@ -47,6 +47,7 @@ export function CodeHeader({
     defaultBranch,
     commitDisplayValue,
     currentCommitDate,
+    isIndexStale,
   } = useRepositorySelector({ repoName, branch, commit })
 
   const handleHomeClick = () => {
@@ -132,7 +133,7 @@ export function CodeHeader({
       </Toolbar>
 
       {/* Stale index warning */}
-      {commits.length > 0 && commits[0] !== undefined && !commits[0].is_indexed && (
+      {isIndexStale && (
         <Alert severity="warning" sx={{ py: 0 }}>
           Index is outdated — some recent commits may not be browsable
         </Alert>
