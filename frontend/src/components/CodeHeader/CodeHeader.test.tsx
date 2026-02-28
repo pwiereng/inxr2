@@ -155,9 +155,9 @@ describe('CodeHeader', () => {
       render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
-        // Should show the repo name - may have multiple comboboxes (repo, branch, commit)
+        // Should show the repo name in autocomplete input
         expect(screen.getAllByRole('combobox').length).toBeGreaterThan(0)
-        expect(screen.getByText('test-repo')).toBeInTheDocument()
+        expect(screen.getByDisplayValue('test-repo')).toBeInTheDocument()
       })
     })
 
@@ -183,14 +183,14 @@ describe('CodeHeader', () => {
       render(<CodeHeader {...defaultProps} onRepoChange={onRepoChange} />)
 
       await waitFor(() => {
-        expect(screen.getByText('test-repo')).toBeInTheDocument()
+        expect(screen.getByDisplayValue('test-repo')).toBeInTheDocument()
       })
 
-      // Open the select
-      const repoSelect = screen.getAllByRole('combobox')[0]!
-      fireEvent.mouseDown(repoSelect)
+      // Open the autocomplete dropdown by clicking the Open button
+      const openButton = screen.getByTitle('Open')
+      fireEvent.click(openButton)
 
-      // Click another repo
+      // Click another repo in the dropdown
       const anotherRepoOption = await screen.findByText('another-repo')
       fireEvent.click(anotherRepoOption)
 

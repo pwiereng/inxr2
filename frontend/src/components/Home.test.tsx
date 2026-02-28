@@ -39,6 +39,15 @@ const mockRepositories = [
     created_at: '2024-01-01',
     updated_at: '2024-01-01',
   },
+  {
+    id: 3,
+    name: 'demo-project',
+    url: 'https://github.com/test/demo-project',
+    description: 'A demo project',
+    default_branch: 'main',
+    created_at: '2024-01-01',
+    updated_at: '2024-01-01',
+  },
 ]
 
 const mockStats: RepositoryStats[] = [
@@ -76,11 +85,29 @@ const mockStats: RepositoryStats[] = [
     git_head_commit: 'def456',
     is_stale: false,
   },
+  {
+    repository_id: 3,
+    name: 'demo-project',
+    total_files: 5,
+    total_symbols: 10,
+    total_references: 0,
+    languages: { Rust: 5 },
+    total_lines: 200,
+    total_references_resolved: 0,
+    total_references_unresolved: 0,
+    commit_date_earliest: '2024-02-01T00:00:00',
+    commit_date_latest: '2024-02-01T00:00:00',
+    last_indexed_at: '2024-02-01T00:00:00',
+    last_indexed_commit: 'ghi789',
+    git_head_commit: 'ghi789',
+    is_stale: false,
+  },
 ]
 
 describe('Home', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    localStorage.clear()
     const api = await import('@/lib/api')
     vi.mocked(api.getRepositories).mockResolvedValue(mockRepositories)
     vi.mocked(api.getAllRepositoryStats).mockResolvedValue(mockStats)
@@ -89,7 +116,6 @@ describe('Home', () => {
   it('should render the home page with title', async () => {
     render(<Home />)
 
-    // Wait for async data loading to complete to avoid act() warnings
     await waitFor(() => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
     })
@@ -109,12 +135,13 @@ describe('Home', () => {
     expect(screen.getByRole('progressbar')).toBeInTheDocument()
   })
 
-  it('should display repository cards when loaded', async () => {
+  it('should display repositories when loaded', async () => {
     render(<Home />)
 
     await waitFor(() => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
       expect(screen.getByText('another-repo')).toBeInTheDocument()
+      expect(screen.getByText('demo-project')).toBeInTheDocument()
     })
   })
 
@@ -126,7 +153,7 @@ describe('Home', () => {
     })
   })
 
-  it('should navigate to browse when clicking a repository card', async () => {
+  it('should navigate to browse when clicking a repository in grid view', async () => {
     render(<Home />)
 
     await waitFor(() => {
@@ -137,6 +164,23 @@ describe('Home', () => {
     if (repoCard) {
       fireEvent.click(repoCard)
     }
+
+    expect(mockNavigate).toHaveBeenCalledWith('/browse/test-repo?branch=main')
+  })
+
+  it('should navigate to browse when clicking a repository in list view', async () => {
+    render(<Home />)
+
+    await waitFor(() => {
+      expect(screen.getByText('test-repo')).toBeInTheDocument()
+    })
+
+    // Switch to list view
+    fireEvent.click(screen.getByLabelText('Switch to list view'))
+
+    const repoRow = screen.getByText('test-repo').closest('[role="button"]')
+    expect(repoRow).not.toBeNull()
+    fireEvent.click(repoRow!)
 
     expect(mockNavigate).toHaveBeenCalledWith('/browse/test-repo?branch=main')
   })
@@ -163,53 +207,64 @@ describe('Home', () => {
     })
   })
 
-  it('should display stats on repository cards', async () => {
+  it('should display stats in grid view', async () => {
     render(<Home />)
 
     await waitFor(() => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
     })
 
-    // Check stats chips appear
     const statsContainers = screen.getAllByTestId('repo-stats')
-    expect(statsContainers).toHaveLength(2)
+    expect(statsContainers).toHaveLength(3)
 
-    // Check specific stats values for test-repo
     expect(screen.getByText('5.0K lines')).toBeInTheDocument()
     expect(screen.getByText('42 files')).toBeInTheDocument()
     expect(screen.getByText('150 symbols')).toBeInTheDocument()
-    // 250/300 = 83%
     expect(screen.getByText('83% resolved')).toBeInTheDocument()
-    // Top languages shown
     expect(screen.getByText('Python')).toBeInTheDocument()
     expect(screen.getByText('TypeScript')).toBeInTheDocument()
   })
 
-  it('should display commit date range when available', async () => {
+  it('should display stats in list view', async () => {
     render(<Home />)
 
     await waitFor(() => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
     })
 
-    // Check for date range text (format depends on locale, just check "Commits:" prefix exists)
+    fireEvent.click(screen.getByLabelText('Switch to list view'))
+
+    const statsContainers = screen.getAllByTestId('repo-stats')
+    expect(statsContainers).toHaveLength(3)
+
+    expect(screen.getByText('42 files')).toBeInTheDocument()
+    expect(screen.getByText('150 symbols')).toBeInTheDocument()
+    expect(screen.getByText('83% resolved')).toBeInTheDocument()
+    expect(screen.getByText('Python')).toBeInTheDocument()
+  })
+
+  it('should display commit date range in grid view', async () => {
+    render(<Home />)
+
+    await waitFor(() => {
+      expect(screen.getByText('test-repo')).toBeInTheDocument()
+    })
+
     const commitTexts = screen.getAllByText(/^Commits:/)
     expect(commitTexts.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('should render cards gracefully when stats fetch fails', async () => {
+  it('should render gracefully when stats fetch fails', async () => {
     const api = await import('@/lib/api')
     vi.mocked(api.getAllRepositoryStats).mockRejectedValue(new Error('Stats failed'))
 
     render(<Home />)
 
-    // Cards should still render without stats
     await waitFor(() => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
       expect(screen.getByText('another-repo')).toBeInTheDocument()
     })
 
-    // Stats should not appear
     expect(screen.queryAllByTestId('repo-stats')).toHaveLength(0)
   })
 
@@ -242,5 +297,193 @@ describe('Home', () => {
     })
 
     expect(screen.queryByText('Index outdated')).not.toBeInTheDocument()
+  })
+
+  describe('view mode toggle', () => {
+    it('should default to grid view', async () => {
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText('test-repo')).toBeInTheDocument()
+      })
+
+      // Grid view shows the list view toggle icon
+      expect(screen.getByLabelText('Switch to list view')).toBeInTheDocument()
+    })
+
+    it('should toggle between grid and list views', async () => {
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText('test-repo')).toBeInTheDocument()
+      })
+
+      // Initially grid — toggle button says "Switch to list view"
+      const toggleBtn = screen.getByLabelText('Switch to list view')
+      fireEvent.click(toggleBtn)
+
+      // Now in list view — toggle button says "Switch to grid view"
+      expect(screen.getByLabelText('Switch to grid view')).toBeInTheDocument()
+
+      // Toggle back
+      fireEvent.click(screen.getByLabelText('Switch to grid view'))
+      expect(screen.getByLabelText('Switch to list view')).toBeInTheDocument()
+    })
+
+    it('should persist view mode in localStorage', async () => {
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText('test-repo')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByLabelText('Switch to list view'))
+      expect(localStorage.getItem('inxr2-home-view-mode')).toBe('list')
+
+      fireEvent.click(screen.getByLabelText('Switch to grid view'))
+      expect(localStorage.getItem('inxr2-home-view-mode')).toBe('grid')
+    })
+
+    it('should restore view mode from localStorage', async () => {
+      localStorage.setItem('inxr2-home-view-mode', 'list')
+
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText('test-repo')).toBeInTheDocument()
+      })
+
+      // Should start in list view
+      expect(screen.getByLabelText('Switch to grid view')).toBeInTheDocument()
+    })
+
+    it('should not show toggle when no repos exist', async () => {
+      const api = await import('@/lib/api')
+      vi.mocked(api.getRepositories).mockResolvedValue([])
+
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/No repositories indexed yet/i)).toBeInTheDocument()
+      })
+
+      expect(screen.queryByLabelText('Switch to list view')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Switch to grid view')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('filter', () => {
+    it('should render filter input', async () => {
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText('test-repo')).toBeInTheDocument()
+      })
+
+      expect(screen.getByPlaceholderText('Filter repositories...')).toBeInTheDocument()
+    })
+
+    it('should filter repositories by name as user types', async () => {
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText('test-repo')).toBeInTheDocument()
+      })
+
+      const input = screen.getByPlaceholderText('Filter repositories...')
+      fireEvent.change(input, { target: { value: 'test' } })
+
+      expect(screen.getByText('test-repo')).toBeInTheDocument()
+      expect(screen.queryByText('another-repo')).not.toBeInTheDocument()
+      expect(screen.queryByText('demo-project')).not.toBeInTheDocument()
+    })
+
+    it('should filter case-insensitively', async () => {
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText('test-repo')).toBeInTheDocument()
+      })
+
+      const input = screen.getByPlaceholderText('Filter repositories...')
+      fireEvent.change(input, { target: { value: 'TEST' } })
+
+      expect(screen.getByText('test-repo')).toBeInTheDocument()
+    })
+
+    it('should show all repos when filter is cleared', async () => {
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText('test-repo')).toBeInTheDocument()
+      })
+
+      const input = screen.getByPlaceholderText('Filter repositories...')
+      fireEvent.change(input, { target: { value: 'test' } })
+      expect(screen.queryByText('another-repo')).not.toBeInTheDocument()
+
+      fireEvent.change(input, { target: { value: '' } })
+      expect(screen.getByText('test-repo')).toBeInTheDocument()
+      expect(screen.getByText('another-repo')).toBeInTheDocument()
+      expect(screen.getByText('demo-project')).toBeInTheDocument()
+    })
+
+    it('should show "no match" message when filter matches nothing', async () => {
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText('test-repo')).toBeInTheDocument()
+      })
+
+      const input = screen.getByPlaceholderText('Filter repositories...')
+      fireEvent.change(input, { target: { value: 'zzz-no-match' } })
+
+      expect(screen.getByText(/No repositories match/)).toBeInTheDocument()
+    })
+
+    it('should show filtered count', async () => {
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText('test-repo')).toBeInTheDocument()
+      })
+
+      expect(screen.getByText('3 repositories')).toBeInTheDocument()
+
+      const input = screen.getByPlaceholderText('Filter repositories...')
+      fireEvent.change(input, { target: { value: 'repo' } })
+
+      expect(screen.getByText('Showing 2 of 3 repositories')).toBeInTheDocument()
+    })
+
+    it('should not show filter when no repos exist', async () => {
+      const api = await import('@/lib/api')
+      vi.mocked(api.getRepositories).mockResolvedValue([])
+
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/No repositories indexed yet/i)).toBeInTheDocument()
+      })
+
+      expect(screen.queryByPlaceholderText('Filter repositories...')).not.toBeInTheDocument()
+    })
+
+    it('should filter in list view too', async () => {
+      render(<Home />)
+
+      await waitFor(() => {
+        expect(screen.getByText('test-repo')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByLabelText('Switch to list view'))
+
+      const input = screen.getByPlaceholderText('Filter repositories...')
+      fireEvent.change(input, { target: { value: 'demo' } })
+
+      expect(screen.getByText('demo-project')).toBeInTheDocument()
+      expect(screen.queryByText('test-repo')).not.toBeInTheDocument()
+      expect(screen.queryByText('another-repo')).not.toBeInTheDocument()
+    })
   })
 })

@@ -1,8 +1,7 @@
-import { Box, Select, MenuItem, FormControl, CircularProgress } from '@mui/material'
+import { Box, Autocomplete, TextField, CircularProgress } from '@mui/material'
 import FolderIcon from '@mui/icons-material/Folder'
 import PublicIcon from '@mui/icons-material/Public'
 import type { Repository } from '@/lib/api'
-import { MENU_PROPS } from '@/lib/menuProps'
 import type { TabValue } from './CodeHeader'
 
 interface RepositorySelectProps {
@@ -12,6 +11,8 @@ interface RepositorySelectProps {
   currentTab: TabValue
   onRepoChange: (repoName: string) => void
 }
+
+const ALL_REPOS_OPTION = '__all__'
 
 export function RepositorySelect({
   repositories,
@@ -29,36 +30,60 @@ export function RepositorySelect({
   }
 
   if (repositories.length > 1 || currentTab === 'search') {
+    const options =
+      currentTab === 'search'
+        ? [ALL_REPOS_OPTION, ...repositories.map((r) => r.name)]
+        : repositories.map((r) => r.name)
+
+    const value = repoName || (currentTab === 'search' ? ALL_REPOS_OPTION : undefined)
+
     return (
-      <FormControl size="small" sx={{ minWidth: 150 }}>
-        <Select
-          value={repoName || ''}
-          onChange={(e) => onRepoChange(e.target.value as string)}
-          displayEmpty
-          MenuProps={MENU_PROPS}
-          sx={{
-            '& .MuiSelect-select': {
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5,
-              py: 0.5,
-            },
-          }}
-        >
-          {currentTab === 'search' && (
-            <MenuItem value="">
+      <Autocomplete
+        size="small"
+        options={options}
+        value={value}
+        onChange={(_e, newValue) => {
+          if (newValue === ALL_REPOS_OPTION) {
+            onRepoChange('')
+          } else if (newValue) {
+            onRepoChange(newValue)
+          }
+        }}
+        disableClearable
+        getOptionLabel={(option) =>
+          option === ALL_REPOS_OPTION ? 'All Repositories' : option
+        }
+        renderOption={({ key, ...props }, option) => (
+          <li key={key} {...props}>
+            {option === ALL_REPOS_OPTION ? (
               <PublicIcon fontSize="small" sx={{ mr: 1 }} />
-              All Repositories
-            </MenuItem>
-          )}
-          {repositories.map((repo) => (
-            <MenuItem key={repo.id} value={repo.name}>
+            ) : (
               <FolderIcon fontSize="small" sx={{ mr: 1 }} />
-              {repo.name}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+            )}
+            {option === ALL_REPOS_OPTION ? 'All Repositories' : option}
+          </li>
+        )}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            placeholder="Repository..."
+            InputProps={{
+              ...params.InputProps,
+              startAdornment: (
+                <>
+                  {value === ALL_REPOS_OPTION ? (
+                    <PublicIcon fontSize="small" sx={{ ml: 0.5, mr: 0.5 }} />
+                  ) : (
+                    <FolderIcon fontSize="small" sx={{ ml: 0.5, mr: 0.5 }} />
+                  )}
+                  {params.InputProps.startAdornment}
+                </>
+              ),
+            }}
+          />
+        )}
+        sx={{ minWidth: 200 }}
+      />
     )
   }
 
