@@ -148,6 +148,7 @@ class GetSymbolReferencesUseCase:
                 limit=request.limit,
                 commit_id=commit_id,
                 branch=request.branch,
+                repository_id=symbol.repository_id,
             )
 
         # Batch fetch file paths

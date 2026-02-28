@@ -238,6 +238,97 @@ class TestFindReferencesToSymbolBranchDedup:
         assert results[0].source_line == 541
 
 
+class TestFindReferencesToSymbolWithRepositoryId:
+    """find_references_to_symbol with repository_id scopes dedup correctly.
+
+    Regression test for issue #148: Without repository_id, the
+    latest_file_ids_subquery scans ALL repositories, causing cross-repo
+    pollution when multiple repos share the same branch name.
+
+    Uses TWO repositories that both have a "main" branch to verify that
+    passing repository_id restricts the latest-file dedup to the correct repo.
+    """
+
+    async def test_repository_id_scopes_dedup_across_repos(
+        self, repos: Repos
+    ) -> None:
+        """With two repos sharing branch 'main', repository_id prevents cross-repo pollution.
+
+        Bug #148: find_references_to_symbol didn't pass repository_id to
+        latest_file_ids_subquery, so the branch filter matched commits
+        across all repos with that branch name.
+        """
+        from inxr2.domain.entities import Repository
+
+        # --- Repo A ---
+        repo_a = await repos.repository.save(
+            Repository(name="repo-a", url="https://example.com/a.git")
+        )
+        assert repo_a.id is not None
+        commit_a = await create_test_commit(repos, repo_a.id, "a" * 40, date_offset_days=0)
+        await repos.commit.link_commit_to_branch(repo_a.id, commit_a, "main")
+        file_a = await create_test_file(
+            repos, repo_a.id, commit_a, "src/app.py", "ca" * 20
+        )
+        symbol_a = await create_test_symbol(
+            repos, file_a, repo_a.id, commit_a, "handler", "mod.handler"
+        )
+        await repos.reference.save(
+            Reference(
+                repository_id=repo_a.id,
+                source_file_id=file_a,
+                source_line=10,
+                source_column=0,
+                source_end_column=7,
+                reference_text="handler",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=symbol_a,
+            )
+        )
+
+        # --- Repo B (same branch name "main", same file path) ---
+        repo_b = await repos.repository.save(
+            Repository(name="repo-b", url="https://example.com/b.git")
+        )
+        assert repo_b.id is not None
+        commit_b = await create_test_commit(repos, repo_b.id, "b" * 40, date_offset_days=1)
+        await repos.commit.link_commit_to_branch(repo_b.id, commit_b, "main")
+        file_b = await create_test_file(
+            repos, repo_b.id, commit_b, "src/app.py", "cb" * 20
+        )
+
+        # Reference in repo B that intentionally targets symbol_a, simulating
+        # a data integrity issue where a reference points at a symbol in
+        # a different repository.
+        await repos.reference.save(
+            Reference(
+                repository_id=repo_b.id,
+                source_file_id=file_b,
+                source_line=99,
+                source_column=0,
+                source_end_column=7,
+                reference_text="handler",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=symbol_a,
+            )
+        )
+
+        # Query scoped to repo A — should only return repo A's reference
+        results = await repos.reference.find_references_to_symbol(
+            symbol_a,
+            branch="main",
+            repository_id=repo_a.id,
+        )
+
+        assert len(results) == 1, (
+            f"Expected 1 reference from repo A, got {len(results)}. "
+            "Bug #148: repository_id not passed to latest_file_ids_subquery, "
+            "so files from repo B leaked into the result set."
+        )
+        assert results[0].source_file_id == file_a
+        assert results[0].source_line == 10
+
+
 class TestFindReferencesByTextBranchDedup:
     """find_references_by_text with branch should scope dedup to that branch."""
 
