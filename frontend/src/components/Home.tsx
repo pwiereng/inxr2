@@ -138,7 +138,15 @@ export function Home(): React.ReactElement {
         </Typography>
       </Box>
 
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 4, mb: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          mt: 4,
+          mb: 2,
+        }}
+      >
         <Typography variant="h5">Repositories</Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {!loading && !error && repositories.length > 0 && (
@@ -346,10 +354,7 @@ export function Home(): React.ReactElement {
                       px: 2,
                       py: 1.5,
                       cursor: 'pointer',
-                      borderBottom:
-                        index < filteredRepositories.length - 1
-                          ? '1px solid'
-                          : 'none',
+                      borderBottom: index < filteredRepositories.length - 1 ? '1px solid' : 'none',
                       borderColor: 'divider',
                       '&:hover': {
                         bgcolor: 'action.hover',
@@ -387,18 +392,21 @@ export function Home(): React.ReactElement {
                         )}
                       </Box>
                       {repo.description && (
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          noWrap
-                        >
+                        <Typography variant="body2" color="text.secondary" noWrap>
                           {repo.description}
                         </Typography>
                       )}
                     </Box>
                     {stats && (
                       <Box
-                        sx={{ display: 'flex', gap: 0.5, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 400 }}
+                        sx={{
+                          display: 'flex',
+                          gap: 0.5,
+                          flexShrink: 0,
+                          flexWrap: 'wrap',
+                          justifyContent: 'flex-end',
+                          maxWidth: 400,
+                        }}
                         data-testid="repo-stats"
                       >
                         <Chip

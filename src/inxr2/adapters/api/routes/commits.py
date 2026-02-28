@@ -78,7 +78,7 @@ async def list_commits(
     use_case: ListCommitsUseCaseDep,
     repo: str = Query(..., description="Repository name"),
     branch: str | None = Query(None, description="Branch name (optional)"),
-    limit: int = Query(50, ge=1, le=500, description="Maximum commits to return"),
+    limit: int = Query(1000, ge=1, le=5000, description="Maximum commits to return"),
 ) -> CommitListResponse:
     """
     List commits for a repository.

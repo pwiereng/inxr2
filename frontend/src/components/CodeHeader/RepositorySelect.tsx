@@ -50,9 +50,7 @@ export function RepositorySelect({
           }
         }}
         disableClearable
-        getOptionLabel={(option) =>
-          option === ALL_REPOS_OPTION ? 'All Repositories' : option
-        }
+        getOptionLabel={(option) => (option === ALL_REPOS_OPTION ? 'All Repositories' : option)}
         renderOption={({ key, ...props }, option) => (
           <li key={key} {...props}>
             {option === ALL_REPOS_OPTION ? (

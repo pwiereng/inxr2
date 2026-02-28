@@ -78,7 +78,7 @@ class ListCommitsRequest:
 
     repository_name: str
     branch: str | None = None
-    limit: int = 50
+    limit: int = 1000
 
 
 @dataclass
