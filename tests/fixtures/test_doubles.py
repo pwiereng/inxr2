@@ -1445,7 +1445,11 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         elif commit_id is None and self._file_repo is not None:
             # Default mode: filter to latest file versions (matches Postgres).
             # When branch is set, dedup is scoped to that branch and repository.
-            effective_repo_id = repository_id or self._get_repo_id_from_refs(refs)
+            effective_repo_id = (
+                repository_id
+                if repository_id is not None
+                else self._get_repo_id_from_refs(refs)
+            )
             if effective_repo_id is not None:
                 latest_ids = self._file_repo._compute_latest_file_ids(
                     effective_repo_id, branch=branch
