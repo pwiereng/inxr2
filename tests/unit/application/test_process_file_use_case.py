@@ -6,8 +6,10 @@ import pytest
 
 from inxr2.application.ports.services import ParserServicePort
 from inxr2.application.use_cases.indexing.process_file import (
+    MAX_TSVECTOR_CONTENT_BYTES,
     ProcessFileRequest,
     ProcessFileUseCase,
+    truncate_for_tsvector,
 )
 from tests.fixtures.test_doubles import (
     FakeGitService,
@@ -492,3 +494,148 @@ class TestProcessFileUseCase:
         assert result2.processed is True
         assert result2.file_version_created is False
         assert result2.file_id == result1.file_id
+
+
+class TestTruncateForTsvector:
+    """Tests for the truncate_for_tsvector utility function."""
+
+    def test_short_content_unchanged(self) -> None:
+        """Content under the limit is returned unchanged."""
+        content = "Hello world"
+        result = truncate_for_tsvector(content)
+        assert result == content
+
+    def test_empty_content_unchanged(self) -> None:
+        """Empty content is returned unchanged."""
+        result = truncate_for_tsvector("")
+        assert result == ""
+
+    def test_content_at_limit_unchanged(self) -> None:
+        """Content exactly at the byte limit is not truncated."""
+        content = "a" * MAX_TSVECTOR_CONTENT_BYTES
+        assert len(content.encode("utf-8")) == MAX_TSVECTOR_CONTENT_BYTES
+        result = truncate_for_tsvector(content)
+        assert result == content
+
+    def test_content_over_limit_is_truncated(self) -> None:
+        """Content exceeding the byte limit is truncated."""
+        content = "a" * (MAX_TSVECTOR_CONTENT_BYTES + 10_000)
+        result = truncate_for_tsvector(content)
+        assert len(result.encode("utf-8")) <= MAX_TSVECTOR_CONTENT_BYTES
+
+    def test_multibyte_content_truncated_safely(self) -> None:
+        """Multi-byte characters are not split mid-character."""
+        # Each emoji is 4 bytes in UTF-8
+        emoji = "\U0001f600"  # 😀
+        assert len(emoji.encode("utf-8")) == 4
+        # Fill up to just over the limit
+        count = (MAX_TSVECTOR_CONTENT_BYTES // 4) + 100
+        content = emoji * count
+        result = truncate_for_tsvector(content)
+        # Must be valid UTF-8 and under the limit
+        encoded = result.encode("utf-8")
+        assert len(encoded) <= MAX_TSVECTOR_CONTENT_BYTES
+        # Must not have partial characters (decoding should succeed)
+        result.encode("utf-8").decode("utf-8")
+
+
+class TestLargeContentTruncation:
+    """Tests that large content is truncated during file processing."""
+
+    @pytest.mark.asyncio
+    async def test_large_non_code_file_content_is_truncated(
+        self,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        text_content_repo: InMemoryTextContentRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Non-code file with content > 1MB should have content truncated, not fail."""
+        large_content = "x" * (MAX_TSVECTOR_CONTENT_BYTES + 100_000)
+        git_service = FakeGitService()
+        git_service.set_file_content(
+            repo_path="/repos/test-repo",
+            commit_hash="abc123",
+            file_path="large_file.md",
+            content=large_content,
+        )
+
+        use_case = ProcessFileUseCase(
+            git_service=git_service,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            text_content_repo=text_content_repo,
+            parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
+        )
+
+        request = ProcessFileRequest(
+            repository_id=1,
+            file_path="large_file.md",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+        )
+
+        result = await use_case.execute(request)
+
+        # Should succeed, not fail
+        assert result.failed is False
+        assert result.non_code_file_indexed is True
+
+        # All saved text contents should be under the limit
+        for tc in text_content_repo.get_all():
+            assert len(tc.content.encode("utf-8")) <= MAX_TSVECTOR_CONTENT_BYTES
+
+    @pytest.mark.asyncio
+    async def test_large_comment_content_is_truncated(
+        self,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        text_content_repo: InMemoryTextContentRepository,
+    ) -> None:
+        """Code file with a huge comment/docstring should truncate, not fail."""
+        large_comment = "x" * (MAX_TSVECTOR_CONTENT_BYTES + 50_000)
+
+        class LargeCommentParserService(FakeParserService):
+            async def extract_comments(
+                self, content: str, language: str, file_path: str
+            ) -> list[dict]:
+                return [
+                    {
+                        "content": large_comment,
+                        "content_type": "block_comment",
+                        "source_line": 1,
+                        "source_end_line": 10,
+                    }
+                ]
+
+        git_service = FakeGitService()
+        use_case = ProcessFileUseCase(
+            git_service=git_service,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            text_content_repo=text_content_repo,
+            parser_service=LargeCommentParserService(),
+            plaintext_parser=FakePlaintextParser(),
+        )
+
+        request = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/big.py",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+        )
+
+        result = await use_case.execute(request)
+
+        assert result.failed is False
+        assert result.comments_indexed == 1
+
+        # The saved comment should be truncated to fit
+        for tc in text_content_repo.get_all():
+            if tc.content_type == "block_comment":
+                assert len(tc.content.encode("utf-8")) <= MAX_TSVECTOR_CONTENT_BYTES

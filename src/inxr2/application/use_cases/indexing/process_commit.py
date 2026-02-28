@@ -20,7 +20,12 @@ from ...ports.repositories import (
     TextContentRepositoryPort,
 )
 from ...ports.services import CommitInfo, GitServicePort
-from .process_file import ProcessFileRequest, ProcessFileResult, ProcessFileUseCase
+from .process_file import (
+    ProcessFileRequest,
+    ProcessFileResult,
+    ProcessFileUseCase,
+    truncate_for_tsvector,
+)
 
 
 @dataclass
@@ -241,6 +246,8 @@ class ProcessCommitUseCase:
             commit_message = commit_data.message.strip()
             if not commit_message:
                 return
+
+            commit_message = truncate_for_tsvector(commit_message)
 
             text_content = TextContent(
                 id=None,

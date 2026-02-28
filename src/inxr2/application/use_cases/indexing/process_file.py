@@ -33,6 +33,23 @@ from ...ports.services import GitServicePort, ParserServicePort, PlaintextParser
 
 logger = logging.getLogger(__name__)
 
+# PostgreSQL tsvector has a hard limit of 1,048,575 bytes.
+# We use a slightly lower limit to leave room for overhead.
+MAX_TSVECTOR_CONTENT_BYTES = 1_000_000
+
+
+def truncate_for_tsvector(content: str) -> str:
+    """Truncate content to fit within PostgreSQL's tsvector byte limit.
+
+    Truncates on a UTF-8 byte boundary so multi-byte characters are never split.
+    """
+    encoded = content.encode("utf-8")
+    if len(encoded) <= MAX_TSVECTOR_CONTENT_BYTES:
+        return content
+    # Truncate the raw bytes, then decode ignoring any trailing partial character
+    truncated = encoded[:MAX_TSVECTOR_CONTENT_BYTES]
+    return truncated.decode("utf-8", errors="ignore")
+
 
 @dataclass
 class ProcessFileRequest:
@@ -419,6 +436,18 @@ class ProcessFileUseCase:
                 if not comment_content or not comment_content.strip():
                     continue
 
+                comment_content = truncate_for_tsvector(comment_content)
+                if len(comment_content.encode("utf-8")) < len(
+                    comment_data.get("content", "").encode("utf-8")
+                ):
+                    logger.warning(
+                        "Truncated comment content in %s (line %d) "
+                        "to fit tsvector limit (%d bytes)",
+                        file_path_str,
+                        comment_data.get("source_line", 0),
+                        MAX_TSVECTOR_CONTENT_BYTES,
+                    )
+
                 content_type = comment_data.get("content_type", "single_line_comment")
                 if content_type == "docstring":
                     source_type = TextSearchSourceType.DOCSTRING.value
@@ -480,6 +509,17 @@ class ProcessFileUseCase:
 
             text_contents: list[TextContent] = []
             for chunk in chunks:
+                chunk_content = truncate_for_tsvector(chunk["content"])
+                if len(chunk_content.encode("utf-8")) < len(
+                    chunk["content"].encode("utf-8")
+                ):
+                    logger.warning(
+                        "Truncated text content in %s (line %d) "
+                        "to fit tsvector limit (%d bytes)",
+                        file_path_str,
+                        chunk.get("source_line", 0),
+                        MAX_TSVECTOR_CONTENT_BYTES,
+                    )
                 text_contents.append(
                     TextContent(
                         id=None,
@@ -489,7 +529,7 @@ class ProcessFileUseCase:
                         source_file_id=file_id,
                         source_line=chunk["source_line"],
                         source_end_line=chunk.get("source_end_line"),
-                        content=chunk["content"],
+                        content=chunk_content,
                         language=None,
                         content_type=chunk["content_type"],
                     )
