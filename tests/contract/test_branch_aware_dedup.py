@@ -297,8 +297,9 @@ class TestFindReferencesToSymbolWithRepositoryId:
             repos, repo_b.id, commit_b, "src/app.py", "cb" * 20
         )
 
-        # Reference in repo B that also targets symbol_a (simulates cross-repo
-        # linkage that could happen with shared symbol IDs in the DB)
+        # Reference in repo B that intentionally targets symbol_a, simulating
+        # a data integrity issue where a reference points at a symbol in
+        # a different repository.
         await repos.reference.save(
             Reference(
                 repository_id=repo_b.id,

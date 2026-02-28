@@ -1436,6 +1436,11 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         """
         refs = [r for r in self._references.values() if r.target_symbol_id == symbol_id]
 
+        # When repository_id is provided, filter refs to that repository
+        # (mirrors the Postgres adapter where latest_file_ids scopes by repo).
+        if repository_id is not None:
+            refs = [r for r in refs if r.repository_id == repository_id]
+
         if commit_id is not None and self._file_repo is not None:
             # Filter to refs whose source_file_id is linked to this commit
             commit_file_ids = {
