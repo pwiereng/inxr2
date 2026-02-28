@@ -249,9 +249,7 @@ class TestFindReferencesToSymbolWithRepositoryId:
     passing repository_id restricts the latest-file dedup to the correct repo.
     """
 
-    async def test_repository_id_scopes_dedup_across_repos(
-        self, repos: Repos
-    ) -> None:
+    async def test_repository_id_scopes_dedup_across_repos(self, repos: Repos) -> None:
         """With two repos sharing branch 'main', repository_id prevents cross-repo pollution.
 
         Bug #148: find_references_to_symbol didn't pass repository_id to
@@ -265,7 +263,9 @@ class TestFindReferencesToSymbolWithRepositoryId:
             Repository(name="repo-a", url="https://example.com/a.git")
         )
         assert repo_a.id is not None
-        commit_a = await create_test_commit(repos, repo_a.id, "a" * 40, date_offset_days=0)
+        commit_a = await create_test_commit(
+            repos, repo_a.id, "a" * 40, date_offset_days=0
+        )
         await repos.commit.link_commit_to_branch(repo_a.id, commit_a, "main")
         file_a = await create_test_file(
             repos, repo_a.id, commit_a, "src/app.py", "ca" * 20
@@ -291,7 +291,9 @@ class TestFindReferencesToSymbolWithRepositoryId:
             Repository(name="repo-b", url="https://example.com/b.git")
         )
         assert repo_b.id is not None
-        commit_b = await create_test_commit(repos, repo_b.id, "b" * 40, date_offset_days=1)
+        commit_b = await create_test_commit(
+            repos, repo_b.id, "b" * 40, date_offset_days=1
+        )
         await repos.commit.link_commit_to_branch(repo_b.id, commit_b, "main")
         file_b = await create_test_file(
             repos, repo_b.id, commit_b, "src/app.py", "cb" * 20
