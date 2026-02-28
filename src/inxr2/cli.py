@@ -228,7 +228,7 @@ def _run_config_based_index(
 
             # Show indexing strategy
             if effective_days is not None:
-                if repo.days and effective_days != days:
+                if repo.days is not None and effective_days != days:
                     console.print(
                         f"  [dim]Strategy: last {effective_days} days "
                         f"(per-repo override)[/dim]"

@@ -352,6 +352,12 @@ class TestRepositoryConfigModel:
         repo = model.to_domain()
         assert repo.days is None
 
+    @pytest.mark.parametrize("days_value", [0, -5])
+    def test_repository_rejects_non_positive_days(self, days_value: int) -> None:
+        """Test that zero or negative days values are rejected."""
+        with pytest.raises(ValueError, match="greater than 0"):
+            RepositoryConfigModel(name="test", path="/some/path", days=days_value)
+
 
 class TestAppConfigModel:
     """Tests for AppConfig domain model."""

@@ -31,6 +31,7 @@ class RepositoryConfigModel(BaseModel):
     )
     days: int | None = Field(
         default=None,
+        gt=0,
         description="Per-repo indexing depth in days (overrides CLI --days if larger)",
     )
 
