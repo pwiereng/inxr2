@@ -173,7 +173,7 @@ def _run_config_based_index(
 
         # Index each branch
         # First branch in config is the primary branch (main/master/trunk)
-        # Primary branch is always indexed; other branches filtered by --days
+        # Primary branch is always indexed; other branches filtered by effective days
         total_branches = len(branches_to_index)
 
         for branch_idx, branch in enumerate(branches_to_index, 1):
