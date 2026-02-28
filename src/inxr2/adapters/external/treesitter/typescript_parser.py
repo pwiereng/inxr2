@@ -395,6 +395,33 @@ class TypeScriptParser(BaseLanguageParser):
                                 )
                             )
 
+            # New object creation (new ClassName())
+            if node.type == "new_expression":
+                constructor_node = node.child_by_field_name("constructor")
+                if constructor_node:
+                    if constructor_node.type == "identifier":
+                        class_name = get_text(constructor_node)
+                        if class_name not in TS_BUILTINS:
+                            add_reference(
+                                self._make_reference(
+                                    class_name,
+                                    "instantiation",
+                                    constructor_node,
+                                    scope,
+                                )
+                            )
+                    elif constructor_node.type == "member_expression":
+                        prop = constructor_node.child_by_field_name("property")
+                        if prop:
+                            add_reference(
+                                self._make_reference(
+                                    get_text(prop),
+                                    "instantiation",
+                                    prop,
+                                    scope,
+                                )
+                            )
+
             # Type references
             if node.type == "type_identifier":
                 type_name = get_text(node)
