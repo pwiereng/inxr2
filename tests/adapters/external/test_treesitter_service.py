@@ -835,6 +835,126 @@ def my_function():
         ), f"Expected 'my_function' but got: {func_names}"
 
 
+class TestTypeScriptNewExpression:
+    """Tests for new_expression reference extraction in TypeScript (issue #145).
+
+    Verifies that `new ClassName(...)` is indexed as a reference with
+    type=="instantiation".
+    """
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_new_simple_class(self, parser_service: TreeSitterService) -> None:
+        """Test that `new Foo()` creates an instantiation reference to Foo."""
+        code = """
+class Foo {
+    constructor() {}
+}
+
+function create() {
+    const f = new Foo();
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inst_refs = [r for r in references if r["type"] == "instantiation"]
+        inst_names = [r["text"] for r in inst_refs]
+        assert "Foo" in inst_names
+
+    @pytest.mark.asyncio
+    async def test_new_member_expression(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `new module.Foo()` creates an instantiation reference to Foo."""
+        code = """
+function create() {
+    const f = new some.module.Foo();
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inst_refs = [r for r in references if r["type"] == "instantiation"]
+        inst_names = [r["text"] for r in inst_refs]
+        assert "Foo" in inst_names
+
+    @pytest.mark.asyncio
+    async def test_new_builtin_excluded(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `new Map()` is excluded as a builtin."""
+        code = """
+function create() {
+    const m = new Map();
+    const s = new Set();
+    const f = new MyClass();
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inst_refs = [r for r in references if r["type"] == "instantiation"]
+        inst_names = [r["text"] for r in inst_refs]
+        # Map and Set are builtins and should be excluded
+        assert "Map" not in inst_names
+        assert "Set" not in inst_names
+        # MyClass is not a builtin and should be included
+        assert "MyClass" in inst_names
+
+    @pytest.mark.asyncio
+    async def test_new_expression_line_column(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that line and column numbers are correct for new expressions."""
+        code = """function create() {
+    const f = new Foo();
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inst_refs = [r for r in references if r["type"] == "instantiation"]
+        foo_ref = [r for r in inst_refs if r["text"] == "Foo"]
+        assert len(foo_ref) == 1
+        assert foo_ref[0]["source_line"] == 2
+        assert foo_ref[0]["source_column"] == 18
+
+    @pytest.mark.asyncio
+    async def test_new_expression_not_confused_with_call(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `new Foo()` is 'instantiation', not 'call'."""
+        code = """
+function test() {
+    const a = new Foo();
+    const b = bar();
+}
+"""
+        symbols, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inst_refs = [r for r in references if r["type"] == "instantiation"]
+        call_refs = [r for r in references if r["type"] == "call"]
+
+        inst_names = [r["text"] for r in inst_refs]
+        call_names = [r["text"] for r in call_refs]
+
+        assert "Foo" in inst_names
+        assert "Foo" not in call_names
+        assert "bar" in call_names
+        assert "bar" not in inst_names
+
+
 class TestPythonNestedFunctions:
     """Tests for nested function extraction in Python (issue #43)."""
 
