@@ -273,7 +273,7 @@ class TestFindReferencesToSymbolWithRepositoryId:
         symbol_a = await create_test_symbol(
             repos, file_a, repo_a.id, commit_a, "handler", "mod.handler"
         )
-        ref_a = await repos.reference.save(
+        await repos.reference.save(
             Reference(
                 repository_id=repo_a.id,
                 source_file_id=file_a,
