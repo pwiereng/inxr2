@@ -502,26 +502,30 @@ class TestTruncateForTsvector:
     def test_short_content_unchanged(self) -> None:
         """Content under the limit is returned unchanged."""
         content = "Hello world"
-        result = truncate_for_tsvector(content)
+        result, was_truncated = truncate_for_tsvector(content)
         assert result == content
+        assert was_truncated is False
 
     def test_empty_content_unchanged(self) -> None:
         """Empty content is returned unchanged."""
-        result = truncate_for_tsvector("")
+        result, was_truncated = truncate_for_tsvector("")
         assert result == ""
+        assert was_truncated is False
 
     def test_content_at_limit_unchanged(self) -> None:
         """Content exactly at the byte limit is not truncated."""
         content = "a" * MAX_TSVECTOR_CONTENT_BYTES
         assert len(content.encode("utf-8")) == MAX_TSVECTOR_CONTENT_BYTES
-        result = truncate_for_tsvector(content)
+        result, was_truncated = truncate_for_tsvector(content)
         assert result == content
+        assert was_truncated is False
 
     def test_content_over_limit_is_truncated(self) -> None:
         """Content exceeding the byte limit is truncated."""
         content = "a" * (MAX_TSVECTOR_CONTENT_BYTES + 10_000)
-        result = truncate_for_tsvector(content)
+        result, was_truncated = truncate_for_tsvector(content)
         assert len(result.encode("utf-8")) <= MAX_TSVECTOR_CONTENT_BYTES
+        assert was_truncated is True
 
     def test_multibyte_content_truncated_safely(self) -> None:
         """Multi-byte characters are not split mid-character."""
@@ -531,12 +535,16 @@ class TestTruncateForTsvector:
         # Fill up to just over the limit
         count = (MAX_TSVECTOR_CONTENT_BYTES // 4) + 100
         content = emoji * count
-        result = truncate_for_tsvector(content)
-        # Must be valid UTF-8 and under the limit
+        result, was_truncated = truncate_for_tsvector(content)
+        assert was_truncated is True
+        # Must be under the byte limit
         encoded = result.encode("utf-8")
         assert len(encoded) <= MAX_TSVECTOR_CONTENT_BYTES
-        # Must not have partial characters (decoding should succeed)
-        result.encode("utf-8").decode("utf-8")
+        # Result should be the longest valid UTF-8 prefix within the limit.
+        # Since each emoji is 4 bytes, truncation should land on a 4-byte
+        # boundary (MAX_TSVECTOR_CONTENT_BYTES // 4 emojis).
+        expected_count = MAX_TSVECTOR_CONTENT_BYTES // 4
+        assert result == emoji * expected_count
 
 
 class TestLargeContentTruncation:

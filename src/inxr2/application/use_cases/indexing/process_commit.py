@@ -247,7 +247,7 @@ class ProcessCommitUseCase:
             if not commit_message:
                 return
 
-            commit_message = truncate_for_tsvector(commit_message)
+            commit_message, _ = truncate_for_tsvector(commit_message)
 
             text_content = TextContent(
                 id=None,

@@ -33,22 +33,26 @@ from ...ports.services import GitServicePort, ParserServicePort, PlaintextParser
 
 logger = logging.getLogger(__name__)
 
-# PostgreSQL tsvector has a hard limit of 1,048,575 bytes.
-# We use a slightly lower limit to leave room for overhead.
-MAX_TSVECTOR_CONTENT_BYTES = 1_000_000
+# PostgreSQL tsvector has a hard limit of 1,048,575 bytes on the *generated*
+# tsvector, which can be larger than the input text due to positional data
+# and lexeme overhead. We use a conservative limit to account for this.
+MAX_TSVECTOR_CONTENT_BYTES = 750_000
 
 
-def truncate_for_tsvector(content: str) -> str:
+def truncate_for_tsvector(content: str) -> tuple[str, bool]:
     """Truncate content to fit within PostgreSQL's tsvector byte limit.
 
     Truncates on a UTF-8 byte boundary so multi-byte characters are never split.
+
+    Returns:
+        Tuple of (possibly truncated content, whether truncation occurred).
     """
     encoded = content.encode("utf-8")
     if len(encoded) <= MAX_TSVECTOR_CONTENT_BYTES:
-        return content
+        return content, False
     # Truncate the raw bytes, then decode ignoring any trailing partial character
     truncated = encoded[:MAX_TSVECTOR_CONTENT_BYTES]
-    return truncated.decode("utf-8", errors="ignore")
+    return truncated.decode("utf-8", errors="ignore"), True
 
 
 @dataclass
@@ -436,10 +440,8 @@ class ProcessFileUseCase:
                 if not comment_content or not comment_content.strip():
                     continue
 
-                comment_content = truncate_for_tsvector(comment_content)
-                if len(comment_content.encode("utf-8")) < len(
-                    comment_data.get("content", "").encode("utf-8")
-                ):
+                comment_content, was_truncated = truncate_for_tsvector(comment_content)
+                if was_truncated:
                     logger.warning(
                         "Truncated comment content in %s (line %d) "
                         "to fit tsvector limit (%d bytes)",
@@ -509,10 +511,8 @@ class ProcessFileUseCase:
 
             text_contents: list[TextContent] = []
             for chunk in chunks:
-                chunk_content = truncate_for_tsvector(chunk["content"])
-                if len(chunk_content.encode("utf-8")) < len(
-                    chunk["content"].encode("utf-8")
-                ):
+                chunk_content, was_truncated = truncate_for_tsvector(chunk["content"])
+                if was_truncated:
                     logger.warning(
                         "Truncated text content in %s (line %d) "
                         "to fit tsvector limit (%d bytes)",
