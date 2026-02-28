@@ -559,7 +559,7 @@ class TestLargeContentTruncation:
         text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
-        """Non-code file with content > 1MB should have content truncated, not fail."""
+        """Non-code file exceeding tsvector limit should be truncated, not fail."""
         large_content = "x" * (MAX_TSVECTOR_CONTENT_BYTES + 100_000)
         git_service = FakeGitService()
         git_service.set_file_content(
@@ -604,7 +604,7 @@ class TestLargeContentTruncation:
         reference_repo: InMemoryReferenceRepository,
         text_content_repo: InMemoryTextContentRepository,
     ) -> None:
-        """Code file with a huge comment/docstring should truncate, not fail."""
+        """Code file with comment exceeding tsvector limit should truncate, not fail."""
         large_comment = "x" * (MAX_TSVECTOR_CONTENT_BYTES + 50_000)
 
         class LargeCommentParserService(FakeParserService):

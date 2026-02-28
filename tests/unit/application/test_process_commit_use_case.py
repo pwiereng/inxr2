@@ -10,7 +10,10 @@ from inxr2.application.use_cases.indexing.process_commit import (
     ProcessCommitRequest,
     ProcessCommitUseCase,
 )
-from inxr2.application.use_cases.indexing.process_file import ProcessFileUseCase
+from inxr2.application.use_cases.indexing.process_file import (
+    MAX_TSVECTOR_CONTENT_BYTES,
+    ProcessFileUseCase,
+)
 from tests.fixtures.test_doubles import (
     FakeGitService,
     FakePlaintextParser,
@@ -344,3 +347,26 @@ class TestProcessCommitUseCase:
         all_text = text_content_repo.get_all()
         commit_msgs = [tc for tc in all_text if tc.source_type == "commit_message"]
         assert len(commit_msgs) == 1, "Commit message should not be duplicated"
+
+    @pytest.mark.asyncio
+    async def test_oversized_commit_message_is_truncated(
+        self,
+        use_case: ProcessCommitUseCase,
+        text_content_repo: InMemoryTextContentRepository,
+    ) -> None:
+        """Commit message exceeding tsvector limit should be truncated, not fail."""
+        large_message = "word " * (MAX_TSVECTOR_CONTENT_BYTES // 2)
+        request = ProcessCommitRequest(
+            repository_id=1,
+            commit_data=_make_commit(message=large_message),
+            repo_path=Path("/repos/test-repo"),
+            branch="main",
+        )
+
+        result = await use_case.execute(request)
+
+        assert result.commit_messages_indexed == 1
+        all_text = text_content_repo.get_all()
+        commit_msgs = [tc for tc in all_text if tc.source_type == "commit_message"]
+        assert len(commit_msgs) == 1
+        assert len(commit_msgs[0].content.encode("utf-8")) <= MAX_TSVECTOR_CONTENT_BYTES
