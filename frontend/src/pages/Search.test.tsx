@@ -539,6 +539,47 @@ describe('Search', () => {
     })
   })
 
+  it('should not search until repos are loaded when repo param is set (race condition fix)', async () => {
+    // Simulate slow repo loading by making getRepositories return a promise
+    // that we control
+    let resolveRepos!: (repos: api.Repository[]) => void
+    mockGetRepositories.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRepos = resolve
+      })
+    )
+
+    window.history.pushState({}, '', '?repo=test-repo&query=test')
+    render(<Search />)
+
+    // Search should NOT have been called yet — repos haven't loaded
+    expect(mockSearchText).not.toHaveBeenCalled()
+    expect(mockSearchSymbols).not.toHaveBeenCalled()
+
+    // Now resolve repos
+    resolveRepos([
+      {
+        id: 1,
+        name: 'test-repo',
+        url: 'https://github.com/test/repo',
+        description: 'Test repository',
+        default_branch: 'main',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ])
+
+    // After repos load, search should fire with the correct repo ID
+    await waitFor(() => {
+      expect(mockSearchText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'test',
+          repo: 1,
+        })
+      )
+    })
+  })
+
   it('should filter by repository when repo param is in URL', async () => {
     mockGetRepositories.mockResolvedValue([
       {

@@ -103,9 +103,7 @@ export function useRepositorySelector({
         const response = await getCommits(repoName, branch || undefined, 500)
         // Check if latest git commit is unindexed (stale index)
         const firstCommit = response.commits[0]
-        setIsIndexStale(
-          firstCommit !== undefined && !firstCommit.is_indexed
-        )
+        setIsIndexStale(firstCommit !== undefined && !firstCommit.is_indexed)
         // Only show indexed commits in the version dropdown (browsable)
         setCommits(response.commits.filter((c) => c.is_indexed))
       } catch (error) {
