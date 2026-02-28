@@ -7,6 +7,7 @@ to ProcessFileUseCase. After all files are processed, bulk-links file versions
 to the commit via commit_files.
 """
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,7 +21,15 @@ from ...ports.repositories import (
     TextContentRepositoryPort,
 )
 from ...ports.services import CommitInfo, GitServicePort
-from .process_file import ProcessFileRequest, ProcessFileResult, ProcessFileUseCase
+from .process_file import (
+    MAX_TSVECTOR_CONTENT_BYTES,
+    ProcessFileRequest,
+    ProcessFileResult,
+    ProcessFileUseCase,
+    truncate_for_tsvector,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -241,6 +250,15 @@ class ProcessCommitUseCase:
             commit_message = commit_data.message.strip()
             if not commit_message:
                 return
+
+            commit_message, was_truncated = truncate_for_tsvector(commit_message)
+            if was_truncated:
+                logger.warning(
+                    "Truncated commit message for %s to fit tsvector "
+                    "limit (%d bytes)",
+                    commit_data.hash,
+                    MAX_TSVECTOR_CONTENT_BYTES,
+                )
 
             text_content = TextContent(
                 id=None,
