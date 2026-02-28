@@ -29,6 +29,11 @@ class RepositoryConfigModel(BaseModel):
         default_factory=list,
         description="Glob patterns for files/directories to exclude",
     )
+    days: int | None = Field(
+        default=None,
+        gt=0,
+        description="Per-repo indexing depth in days (overrides CLI --days if larger)",
+    )
 
     @model_validator(mode="after")
     def validate_path_or_url(self) -> "RepositoryConfigModel":
@@ -45,6 +50,7 @@ class RepositoryConfigModel(BaseModel):
             url=self.url,
             branches=tuple(self.branches),
             exclude_patterns=tuple(self.exclude_patterns),
+            days=self.days,
         )
 
 

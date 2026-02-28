@@ -141,6 +141,26 @@ repositories:
         with pytest.raises(ValueError, match="path does not exist"):
             config_service.load(config_path)
 
+    def test_load_config_with_per_repo_days(
+        self, config_service: YamlConfigService, temp_dir: Path
+    ) -> None:
+        """Test loading config with per-repo days field."""
+        config_content = f"""
+repositories:
+  - name: active-repo
+    path: {temp_dir}
+    days: 90
+  - name: default-repo
+    path: {temp_dir}
+"""
+        config_path = temp_dir / "config.yaml"
+        config_path.write_text(config_content)
+
+        config = config_service.load(config_path)
+
+        assert config.repositories[0].days == 90
+        assert config.repositories[1].days is None
+
     def test_load_config_not_git_repo(
         self, config_service: YamlConfigService, temp_dir: Path
     ) -> None:
@@ -319,6 +339,24 @@ class TestRepositoryConfigModel:
         """Test that resolved path is None for URL-based repos."""
         repo = RepositoryConfig(name="test", url="https://github.com/user/repo")
         assert repo.get_resolved_path() is None
+
+    def test_repository_with_days(self) -> None:
+        """Test creating repository config with per-repo days."""
+        model = RepositoryConfigModel(name="test", path="/some/path", days=90)
+        repo = model.to_domain()
+        assert repo.days == 90
+
+    def test_repository_without_days_defaults_to_none(self) -> None:
+        """Test that days defaults to None when not specified."""
+        model = RepositoryConfigModel(name="test", path="/some/path")
+        repo = model.to_domain()
+        assert repo.days is None
+
+    @pytest.mark.parametrize("days_value", [0, -5])
+    def test_repository_rejects_non_positive_days(self, days_value: int) -> None:
+        """Test that zero or negative days values are rejected."""
+        with pytest.raises(ValueError, match="greater than 0"):
+            RepositoryConfigModel(name="test", path="/some/path", days=days_value)
 
 
 class TestAppConfigModel:

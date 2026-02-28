@@ -17,6 +17,7 @@ class RepositoryConfig:
     url: str | None = None
     branches: tuple[str, ...] = ("main",)
     exclude_patterns: tuple[str, ...] = ()
+    days: int | None = None
 
     def get_resolved_path(self) -> Path | None:
         """Get the resolved path (with env vars expanded)."""
