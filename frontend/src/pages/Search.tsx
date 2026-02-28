@@ -102,6 +102,7 @@ export default function Search(): React.ReactElement {
 
   // Data state
   const [repositories, setRepositories] = useState<Repository[]>([])
+  const [reposLoading, setReposLoading] = useState(true)
   const [availableExtensions, setAvailableExtensions] = useState<string[]>([])
   const [results, setResults] = useState<UnifiedResult[]>([])
   const [fileResults, setFileResults] = useState<FileSearchResult[]>([])
@@ -139,6 +140,8 @@ export default function Search(): React.ReactElement {
         setRepositories(repos)
       } catch (err) {
         console.error('Failed to load repositories:', err)
+      } finally {
+        setReposLoading(false)
       }
     }
     loadRepos()
@@ -169,6 +172,12 @@ export default function Search(): React.ReactElement {
       setFileResults([])
       setTotalResults(0)
       setPaginationTotal(0)
+      return
+    }
+
+    // Don't search until repos are loaded when a repo filter is set,
+    // otherwise selectedRepoId is undefined and the search runs unfiltered.
+    if (repoNameParam && reposLoading) {
       return
     }
 
@@ -316,6 +325,7 @@ export default function Search(): React.ReactElement {
     caseSensitive,
     selectedRepoId,
     repoNameParam,
+    reposLoading,
     branchParam,
     commitParam,
     excludeTypesKey,

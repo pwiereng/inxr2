@@ -217,7 +217,12 @@ describe('Home', () => {
     const api = await import('@/lib/api')
     const staleStats: RepositoryStats[] = mockStats.map((s) =>
       s.repository_id === 1
-        ? { ...s, is_stale: true, git_head_commit: 'new999', last_indexed_at: '2024-06-15T00:00:00' }
+        ? {
+            ...s,
+            is_stale: true,
+            git_head_commit: 'new999',
+            last_indexed_at: '2024-06-15T00:00:00',
+          }
         : s
     )
     vi.mocked(api.getAllRepositoryStats).mockResolvedValue(staleStats)
