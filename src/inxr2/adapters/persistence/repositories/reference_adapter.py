@@ -79,6 +79,8 @@ class PostgresReferenceRepository(
                     CommitFileModel.commit_id == commit_id,
                 )
             )
+            if repository_id is not None:
+                query = query.where(ReferenceModel.repository_id == repository_id)
 
             result = await self.session.execute(
                 query.order_by(ReferenceModel.source_line).limit(limit)
