@@ -1426,11 +1426,13 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         limit: int = 100,
         commit_id: int | None = None,
         branch: str | None = None,
+        repository_id: int | None = None,
     ) -> list[Reference]:
         """Find all references to a symbol.
 
         When commit_id is provided, filters via commit_files junction table.
         When branch is provided, filters to files on that branch via commit_files.
+        When repository_id is provided, scopes dedup to that repository.
         """
         refs = [r for r in self._references.values() if r.target_symbol_id == symbol_id]
 
@@ -1442,11 +1444,11 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             refs = [r for r in refs if r.source_file_id in commit_file_ids]
         elif commit_id is None and self._file_repo is not None:
             # Default mode: filter to latest file versions (matches Postgres).
-            # When branch is set, dedup is scoped to that branch.
-            inferred_repo_id = self._get_repo_id_from_refs(refs)
-            if inferred_repo_id is not None:
+            # When branch is set, dedup is scoped to that branch and repository.
+            effective_repo_id = repository_id or self._get_repo_id_from_refs(refs)
+            if effective_repo_id is not None:
                 latest_ids = self._file_repo._compute_latest_file_ids(
-                    inferred_repo_id, branch=branch
+                    effective_repo_id, branch=branch
                 )
                 refs = [r for r in refs if r.source_file_id in latest_ids]
 

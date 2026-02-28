@@ -31,6 +31,7 @@ class ReferenceRepositoryPort(ABC):
         limit: int = 100,
         commit_id: int | None = None,
         branch: str | None = None,
+        repository_id: int | None = None,
     ) -> list[Reference]:
         """Find all references TO a symbol (find usages).
 
@@ -40,6 +41,7 @@ class ReferenceRepositoryPort(ABC):
             commit_id: Filter by specific commit via commit_files (optional).
                        If None, returns from latest version of each file.
             branch: Filter by branch name (only show refs from files on this branch).
+            repository_id: Filter by repository (scopes the latest-file dedup).
         """
         pass
 

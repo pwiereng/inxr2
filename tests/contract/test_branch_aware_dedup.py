@@ -238,6 +238,54 @@ class TestFindReferencesToSymbolBranchDedup:
         assert results[0].source_line == 541
 
 
+class TestFindReferencesToSymbolWithRepositoryId:
+    """find_references_to_symbol with repository_id scopes dedup correctly.
+
+    Regression test for issue #148: Without repository_id, the
+    latest_file_ids_subquery scans ALL repositories, causing cross-repo
+    pollution when multiple repos share the same branch name.
+    """
+
+    async def test_repository_id_scopes_dedup_to_correct_repo(
+        self, repos: Repos
+    ) -> None:
+        """Passing repository_id ensures dedup only considers files from that repo.
+
+        Bug #148: find_references_to_symbol didn't pass repository_id to
+        latest_file_ids_subquery, so the branch filter matched commits
+        across all repos with that branch name.
+        """
+        data = await _setup_two_branches(repos)
+
+        # Reference on main's file version
+        await repos.reference.save(
+            Reference(
+                repository_id=data["repo_id"],
+                source_file_id=data["file1_id"],
+                source_line=10,
+                source_column=0,
+                source_end_column=13,
+                reference_text="setup_logging",
+                reference_type=ReferenceType.CALL,
+                target_symbol_id=data["symbol1_id"],
+            )
+        )
+
+        # Query with explicit repository_id (the fix)
+        results = await repos.reference.find_references_to_symbol(
+            data["symbol1_id"],
+            branch="main",
+            repository_id=data["repo_id"],
+        )
+
+        assert len(results) == 1, (
+            f"Expected 1 reference on 'main' for repo {data['repo_id']}, "
+            f"got {len(results)}. "
+            "Bug #148: repository_id not passed to latest_file_ids_subquery."
+        )
+        assert results[0].source_file_id == data["file1_id"]
+
+
 class TestFindReferencesByTextBranchDedup:
     """find_references_by_text with branch should scope dedup to that branch."""
 

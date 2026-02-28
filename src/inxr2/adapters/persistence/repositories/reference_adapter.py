@@ -54,6 +54,7 @@ class PostgresReferenceRepository(
         limit: int = 100,
         commit_id: int | None = None,
         branch: str | None = None,
+        repository_id: int | None = None,
     ) -> list[Reference]:
         """Find all references TO a symbol (find usages).
 
@@ -62,8 +63,8 @@ class PostgresReferenceRepository(
         to show only references from files at that commit.
 
         Note: ``branch`` scopes the latest-file dedup to that branch's
-        commits. It requires a repository context (inferred from the
-        symbol's references).
+        commits. ``repository_id`` ensures the dedup is scoped to the
+        correct repository.
         """
         if commit_id is not None:
             # Time travel mode: filter via commit_files junction
@@ -87,8 +88,8 @@ class PostgresReferenceRepository(
 
         # Default: get from latest version of each file.
         # Deduplicate by filtering to only the latest file version per path.
-        # When branch is set, dedup is scoped to that branch.
-        latest_sq = latest_file_ids_subquery(branch=branch)
+        # When branch is set, dedup is scoped to that branch and repository.
+        latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
         result = await self.session.execute(
             select(ReferenceModel)
             .where(
