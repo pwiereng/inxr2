@@ -406,3 +406,171 @@ indexing:
                 break
 
         assert not main_skipped, "Primary branch should never be skipped"
+
+
+class TestPerRepoDays:
+    """Tests for per-repository days configuration.
+
+    Verifies the "whichever is greater wins" resolution rule:
+    effective_days = max(repo_config.days or 0, cli_days or 0) or None
+    """
+
+    @pytest.fixture
+    def runner(self, isolated_cli_runner: CliRunner) -> CliRunner:
+        """Use the isolated CLI runner with test database."""
+        return isolated_cli_runner
+
+    @pytest.fixture
+    def temp_git_repo(self, tmp_path: Path) -> Path:
+        """Create a temp git repo with a recent commit."""
+        repo_path = tmp_path / "per-repo-days-test"
+        repo_path.mkdir()
+
+        repo = Repo.init(repo_path, initial_branch="main")
+        repo.config_writer().set_value("user", "name", "Test User").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+        test_file = repo_path / "main.py"
+        test_file.write_text("def main():\n    pass\n")
+        repo.index.add(["main.py"])
+        repo.index.commit("Initial commit")
+
+        return repo_path
+
+    def test_per_repo_days_greater_than_cli_days(
+        self, runner: CliRunner, tmp_path: Path, temp_git_repo: Path
+    ) -> None:
+        """Test that per-repo days wins when larger than CLI --days."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(f"""
+repositories:
+  - name: test-repo
+    path: {temp_git_repo}
+    days: 90
+    branches:
+      - main
+
+indexing:
+  max_commit_history: 100
+""")
+
+        result = runner.invoke(
+            main,
+            ["index", "--config", str(config_path), "--days", "30"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        # Should use 90 (per-repo) since max(90, 30) = 90
+        assert "last 90 days" in result.output
+        assert "per-repo override" in result.output
+
+    def test_cli_days_greater_than_per_repo_days(
+        self, runner: CliRunner, tmp_path: Path, temp_git_repo: Path
+    ) -> None:
+        """Test that CLI --days wins when larger than per-repo days."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(f"""
+repositories:
+  - name: test-repo
+    path: {temp_git_repo}
+    days: 10
+    branches:
+      - main
+
+indexing:
+  max_commit_history: 100
+""")
+
+        result = runner.invoke(
+            main,
+            ["index", "--config", str(config_path), "--days", "30"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        # Should use 30 (CLI) since max(10, 30) = 30
+        assert "last 30 days" in result.output
+        assert "per-repo override" not in result.output
+
+    def test_no_per_repo_days_uses_cli_days(
+        self, runner: CliRunner, tmp_path: Path, temp_git_repo: Path
+    ) -> None:
+        """Test that missing per-repo days falls back to CLI --days."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(f"""
+repositories:
+  - name: test-repo
+    path: {temp_git_repo}
+    branches:
+      - main
+
+indexing:
+  max_commit_history: 100
+""")
+
+        result = runner.invoke(
+            main,
+            ["index", "--config", str(config_path), "--days", "30"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        # Should use 30 (CLI) since max(0, 30) = 30
+        assert "last 30 days" in result.output
+        assert "per-repo override" not in result.output
+
+    def test_per_repo_days_without_cli_days(
+        self, runner: CliRunner, tmp_path: Path, temp_git_repo: Path
+    ) -> None:
+        """Test that per-repo days works when CLI --days is not specified."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(f"""
+repositories:
+  - name: test-repo
+    path: {temp_git_repo}
+    days: 60
+    branches:
+      - main
+
+indexing:
+  max_commit_history: 100
+""")
+
+        result = runner.invoke(
+            main,
+            ["index", "--config", str(config_path)],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        # Should use 60 (per-repo) since max(60, 0) = 60
+        assert "last 60 days" in result.output
+        assert "per-repo override" in result.output
+
+    def test_neither_days_set_results_in_no_filter(
+        self, runner: CliRunner, tmp_path: Path, temp_git_repo: Path
+    ) -> None:
+        """Test that no days results in no date filter."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(f"""
+repositories:
+  - name: test-repo
+    path: {temp_git_repo}
+    branches:
+      - main
+
+indexing:
+  max_commit_history: 100
+""")
+
+        result = runner.invoke(
+            main,
+            ["index", "--config", str(config_path)],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        # Should have no date filter at all
+        assert "Date filter" not in result.output
+        assert "Strategy: last" not in result.output

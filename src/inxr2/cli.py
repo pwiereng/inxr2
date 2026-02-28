@@ -141,7 +141,7 @@ def _run_config_based_index(
     console.print(f"  Config: {config_path}")
     console.print(f"  Repositories: {total_repos}")
     if days is not None:
-        console.print(f"  Date filter: last {days} days")
+        console.print(f"  Date filter: last {days} days (global)")
     console.print()
 
     # Track overall stats
@@ -153,6 +153,9 @@ def _run_config_based_index(
         resolved_path = repo.get_resolved_path()
         if resolved_path is None:
             continue  # Should never happen, but satisfies type checker
+
+        # Compute effective days: whichever is greater wins
+        effective_days = max(repo.days or 0, days or 0) or None
 
         # Determine branches to index (override > all config branches > None for current)
         branches_to_index: list[str | None]
@@ -180,13 +183,13 @@ def _run_config_based_index(
             repo_info = git_service.get_repository_info(resolved_path)
             branch_name = branch or repo_info.current_branch or "main"
 
-            # Determine if non-primary branch should be skipped based on --days
-            if days is not None and not is_primary_branch:
+            # Determine if non-primary branch should be skipped based on effective days
+            if effective_days is not None and not is_primary_branch:
                 commits = git_service.list_commits(
                     repo_path=resolved_path,
                     branch=branch_name,
                     max_count=1,
-                    since_days=days,
+                    since_days=effective_days,
                 )
                 if len(commits) == 0:
                     console.print(
@@ -196,7 +199,7 @@ def _run_config_based_index(
                     console.print(f"  Branch: {branch_name}")
                     console.print(
                         f"  [yellow]Skipped:[/yellow] No commits within "
-                        f"last {days} days"
+                        f"last {effective_days} days"
                     )
                     console.print()
                     continue
@@ -224,8 +227,14 @@ def _run_config_based_index(
             console.print(branch_line)
 
             # Show indexing strategy
-            if days is not None:
-                console.print(f"  [dim]Strategy: last {days} days[/dim]")
+            if effective_days is not None:
+                if repo.days and effective_days != days:
+                    console.print(
+                        f"  [dim]Strategy: last {effective_days} days "
+                        f"(per-repo override)[/dim]"
+                    )
+                else:
+                    console.print(f"  [dim]Strategy: last {effective_days} days[/dim]")
             console.print()
 
             try:
@@ -234,8 +243,8 @@ def _run_config_based_index(
                     "branch": branch,
                     "console": console,
                 }
-                if days is not None:
-                    kwargs["days"] = days
+                if effective_days is not None:
+                    kwargs["days"] = effective_days
 
                 # Feature branch optimization: if indexing a non-default branch,
                 # use the first branch in config as base_branch to only index
