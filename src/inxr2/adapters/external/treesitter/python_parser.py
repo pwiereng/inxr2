@@ -18,6 +18,37 @@ PYTHON_BUILTINS = _load("python.json", "builtins")
 PYTHON_TYPE_BUILTINS = _load("python.json", "type_builtins")
 
 
+def _is_write_target(node: Node) -> bool:
+    """Check if a node is in a write-target position.
+
+    Covers: simple assignment LHS, tuple unpacking, for-loop targets,
+    with-as targets, and del statements.
+    """
+    current = node
+    while current.parent is not None:
+        parent = current.parent
+        if parent.type == "assignment" and current == parent.children[0]:
+            return True
+        if parent.type == "augmented_assignment":
+            return False  # augmented assignment is a read+write, treat as usage
+        if parent.type in ("pattern_list", "tuple_pattern"):
+            current = parent
+            continue
+        if parent.type == "for_statement":
+            # Target is the node right after "for" keyword
+            children = parent.children
+            if len(children) >= 2 and current == children[1]:
+                return True
+            return False
+        if parent.type == "as_pattern_target":
+            # "with expr as self.x" — the alias target is a write
+            return True
+        if parent.type == "delete_statement":
+            return True
+        break
+    return False
+
+
 class PythonParser(BaseLanguageParser):
     """Parser for Python source code using Tree-sitter."""
 
@@ -415,6 +446,30 @@ class PythonParser(BaseLanguageParser):
                                     get_text(attr_node), "call", attr_node, scope
                                 )
                             )
+
+            # self.attribute references (instance variable usage)
+            if node.type == "attribute":
+                children = list(node.children)
+                if len(children) >= 3:
+                    obj_node = children[0]
+                    if obj_node.type == "identifier" and get_text(obj_node) == "self":
+                        attr_name = None
+                        attr_node = None
+                        for child in reversed(children):
+                            if child.type == "identifier" and get_text(child) != "self":
+                                attr_name = get_text(child)
+                                attr_node = child
+                                break
+                        if attr_name and attr_node:
+                            parent = node.parent
+                            is_call = parent is not None and parent.type == "call"
+                            is_write_target = _is_write_target(node)
+                            if not is_call and not is_write_target:
+                                add_reference(
+                                    self._make_reference(
+                                        attr_name, "usage", attr_node, scope
+                                    )
+                                )
 
             # Type annotations
             if node.type in ("type", "generic_type"):
