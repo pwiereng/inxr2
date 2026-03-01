@@ -752,7 +752,7 @@ class InMemoryFileSearchRepository(FileSearchPort):
                 continue
             if language is not None and file.language != language:
                 continue
-            if extensions is not None:
+            if extensions is not None and len(extensions) > 0:
                 real_exts = [e for e in extensions if e != "(none)"]
                 has_none = "(none)" in extensions
                 match = False

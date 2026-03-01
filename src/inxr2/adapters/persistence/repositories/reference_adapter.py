@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import ReferenceRepositoryPort
@@ -196,9 +196,20 @@ class PostgresReferenceRepository(
 
         # Apply extension filter via files table
         if extensions is not None and len(extensions) > 0:
+            real_exts = [e for e in extensions if e != "(none)"]
+            has_none = "(none)" in extensions
+            if real_exts and has_none:
+                ext_filter = or_(
+                    FileModel.extension.in_(real_exts),
+                    FileModel.extension.is_(None),
+                )
+            elif has_none:
+                ext_filter = FileModel.extension.is_(None)
+            else:
+                ext_filter = FileModel.extension.in_(real_exts)
             base_query = base_query.where(
                 ReferenceModel.source_file_id.in_(
-                    select(FileModel.id).where(FileModel.extension.in_(extensions))
+                    select(FileModel.id).where(ext_filter)
                 )
             )
 

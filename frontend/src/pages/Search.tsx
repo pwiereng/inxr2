@@ -70,6 +70,10 @@ const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => !NON_TEXT_TYPES.has(t.va
 
 const RESULTS_PER_PAGE = 20
 
+// Sentinel values for extension dropdown actions
+const EXT_HIDE_ALL = '__hide_all__'
+const EXT_SHOW_ALL = '__show_all__'
+
 export default function Search(): React.ReactElement {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -759,11 +763,11 @@ export default function Search(): React.ReactElement {
                     onChange={(e) => {
                       const value = e.target.value
                       const arr = typeof value === 'string' ? value.split(',') : value
-                      if (arr.includes('__hide_all__')) {
+                      if (arr.includes(EXT_HIDE_ALL)) {
                         handleExcludeExtensionChange([...availableExtensions])
                         return
                       }
-                      if (arr.includes('__show_all__')) {
+                      if (arr.includes(EXT_SHOW_ALL)) {
                         handleExcludeExtensionChange([])
                         return
                       }
