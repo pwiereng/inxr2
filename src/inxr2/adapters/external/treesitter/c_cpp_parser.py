@@ -980,6 +980,7 @@ class CppParser(BaseLanguageParser):
                 "preproc_ifdef",  # #ifdef X — handled above
                 "macro_type_specifier",  # MACRO(type) — handled above
                 "initializer_list",  # {X, Y} — _process_initializer_list_refs
+                "qualified_identifier",  # N::f — handled at qualified name level
             }
         )
 
@@ -1009,6 +1010,18 @@ class CppParser(BaseLanguageParser):
                 and parent.child_by_field_name("function") == node
             ):
                 return
+
+            # template_function name in call position — already handled as
+            # "call" by process_call_reference (e.g. foo<int>())
+            if p_type == "template_function":
+                grandparent = parent.parent
+                if (
+                    grandparent
+                    and grandparent.type == "call_expression"
+                    and grandparent.child_by_field_name("function") == parent
+                    and parent.child_by_field_name("name") == node
+                ):
+                    return
 
             # init_declarator declarator position — variable definition
             if (

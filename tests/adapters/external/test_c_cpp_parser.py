@@ -2047,3 +2047,52 @@ enum Color { RED, GREEN, BLUE };
         )
         usage_refs = [r for r in refs if r["text"] == "RED" and r["type"] == "usage"]
         assert len(usage_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_qualified_definition_not_usage_ref(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Out-of-class definitions like N::f should NOT generate usage refs."""
+        code = """
+namespace N {
+    void f();
+}
+void N::f() {}
+
+class MyClass {
+public:
+    void doWork();
+};
+void MyClass::doWork() {}
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="cpp", file_path="test.cpp"
+        )
+        # "f" and "doWork" should not get spurious usage refs from qualified_identifier
+        f_usage = [r for r in refs if r["text"] == "f" and r["type"] == "usage"]
+        assert len(f_usage) == 0
+        dowork_usage = [
+            r for r in refs if r["text"] == "doWork" and r["type"] == "usage"
+        ]
+        assert len(dowork_usage) == 0
+
+    @pytest.mark.asyncio
+    async def test_template_call_no_duplicate_ref(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Template function calls should not generate duplicate usage refs."""
+        code = """
+template<typename T>
+T make();
+void test() {
+    make<int>();
+}
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="cpp", file_path="test.cpp"
+        )
+        make_refs = [r for r in refs if r["text"] == "make"]
+        call_refs = [r for r in make_refs if r["type"] == "call"]
+        usage_refs = [r for r in make_refs if r["type"] == "usage"]
+        assert len(call_refs) == 1
+        assert len(usage_refs) == 0
