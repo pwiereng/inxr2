@@ -2,11 +2,60 @@
 
 from datetime import datetime
 
-from inxr2.domain.entities import Commit, Symbol
+import pytest
+
+from inxr2.domain.entities import Commit, Repository, Symbol
 from inxr2.domain.value_objects import (
     CommitHash,
     SymbolKind,
 )
+
+
+class TestRepository:
+    """Tests for Repository entity name validation."""
+
+    def _make_repo(self, name: str) -> Repository:
+        return Repository(name=name, url="https://example.com/repo.git")
+
+    def test_valid_simple_name(self) -> None:
+        repo = self._make_repo("my-repo")
+        assert repo.name == "my-repo"
+
+    def test_valid_name_with_dot(self) -> None:
+        repo = self._make_repo("nexd.io")
+        assert repo.name == "nexd.io"
+
+    def test_valid_name_with_multiple_dots(self) -> None:
+        repo = self._make_repo("vue.js.org")
+        assert repo.name == "vue.js.org"
+
+    def test_invalid_name_starts_with_dot(self) -> None:
+        with pytest.raises(ValueError, match="start/end with a dot"):
+            self._make_repo(".hidden")
+
+    def test_invalid_name_ends_with_dot(self) -> None:
+        with pytest.raises(ValueError, match="start/end with a dot"):
+            self._make_repo("repo.")
+
+    def test_invalid_name_single_dot(self) -> None:
+        with pytest.raises(ValueError, match="start/end with a dot"):
+            self._make_repo(".")
+
+    def test_invalid_name_double_dot(self) -> None:
+        with pytest.raises(ValueError, match="start/end with a dot"):
+            self._make_repo("..")
+
+    def test_invalid_name_with_spaces(self) -> None:
+        with pytest.raises(ValueError, match="must contain only"):
+            self._make_repo("my repo")
+
+    def test_invalid_name_with_slash(self) -> None:
+        with pytest.raises(ValueError, match="must contain only"):
+            self._make_repo("my/repo")
+
+    def test_empty_name(self) -> None:
+        with pytest.raises(ValueError, match="cannot be empty"):
+            self._make_repo("")
 
 
 class TestCommit:
