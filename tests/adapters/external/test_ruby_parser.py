@@ -391,6 +391,49 @@ end
         assert "Other" in usage_texts
         assert "Helper" in usage_texts
 
+    @pytest.mark.asyncio
+    async def test_scoped_superclass_not_duplicate_usage(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that scoped superclass constants are not emitted as usage refs."""
+        code = """class Child < Outer::Base
+end
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="ruby", file_path="child.rb"
+        )
+
+        inheritance_refs = [r for r in references if r["type"] == "inheritance"]
+        assert len(inheritance_refs) == 1
+        assert inheritance_refs[0]["text"] == "Outer::Base"
+
+        # Outer and Base should NOT appear as separate usage refs
+        # since they're part of the superclass declaration
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_texts = [r["text"] for r in usage_refs]
+        assert "Outer" not in usage_texts
+        assert "Base" not in usage_texts
+
+    @pytest.mark.asyncio
+    async def test_singleton_method_variable_receiver_scope(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that scope is correct inside def obj.method_name."""
+        code = """class MyClass
+  obj = Object.new
+  def obj.custom_method
+    helper_call()
+  end
+end
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="ruby", file_path="custom.rb"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        helper_ref = next(r for r in call_refs if r["text"] == "helper_call")
+        assert helper_ref["scope"] == "MyClass.custom_method"
+
 
 class TestRubyImports:
     """Tests for Ruby require/require_relative parsing."""

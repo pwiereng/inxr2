@@ -44,15 +44,19 @@ class RubyParser(BaseLanguageParser):
             return name in RUBY_STD_LIB_MODULES
 
         def is_in_declaration_context(node: Node) -> bool:
-            """Check if a constant is part of a class/module declaration name.
+            """Check if a constant is part of a class/module/superclass declaration name.
 
             Walks up through scope_resolution parents to see if the chain
-            ultimately belongs to a class or module declaration.
+            ultimately belongs to a class, module, or superclass declaration.
             """
             current = node.parent
             while current and current.type == "scope_resolution":
                 current = current.parent
-            return current is not None and current.type in ("class", "module")
+            return current is not None and current.type in (
+                "class",
+                "module",
+                "superclass",
+            )
 
         def process_module(node: Node, scope: str | None) -> None:
             """Process a module definition."""
@@ -313,11 +317,27 @@ class RubyParser(BaseLanguageParser):
                         child_scope = f"{scope}::{name}" if scope else name
                         break
             elif node.type == "method" or node.type == "singleton_method":
-                for child in node.children:
-                    if child.type == "identifier":
-                        method_name = get_text(child)
-                        child_scope = f"{scope}.{method_name}" if scope else method_name
-                        break
+                # For singleton methods, find identifier after '.' to handle
+                # `def obj.foo` where `obj` is also an identifier node.
+                scope_name_node: Node | None = None
+                if node.type == "singleton_method":
+                    children = node.children
+                    for i, child in enumerate(children):
+                        if child.type == ".":
+                            if (
+                                i + 1 < len(children)
+                                and children[i + 1].type == "identifier"
+                            ):
+                                scope_name_node = children[i + 1]
+                            break
+                if scope_name_node is None:
+                    for child in node.children:
+                        if child.type == "identifier":
+                            scope_name_node = child
+                            break
+                if scope_name_node is not None:
+                    method_name = get_text(scope_name_node)
+                    child_scope = f"{scope}.{method_name}" if scope else method_name
 
             for child in node.children:
                 extract_references(child, child_scope)
