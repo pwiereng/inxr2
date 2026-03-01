@@ -1,6 +1,6 @@
 """PostgreSQL file search repository adapter."""
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import FileSearchPort
@@ -65,7 +65,19 @@ class PostgresFileSearchRepository(FileSearchPort):
             query_stmt = query_stmt.where(FileModel.language == language)
 
         if extensions is not None and len(extensions) > 0:
-            query_stmt = query_stmt.where(FileModel.extension.in_(extensions))
+            real_exts = [e for e in extensions if e != "(none)"]
+            has_none = "(none)" in extensions
+            if real_exts and has_none:
+                query_stmt = query_stmt.where(
+                    or_(
+                        FileModel.extension.in_(real_exts),
+                        FileModel.extension.is_(None),
+                    )
+                )
+            elif has_none:
+                query_stmt = query_stmt.where(FileModel.extension.is_(None))
+            else:
+                query_stmt = query_stmt.where(FileModel.extension.in_(real_exts))
 
         # Deduplicate / scope filtering when no commit_id
         if commit_id is None:
@@ -95,8 +107,12 @@ class PostgresFileSearchRepository(FileSearchPort):
         branch: str | None = None,
         scope: str | None = None,
     ) -> list[str]:
-        """Get distinct file extensions across indexed files."""
-        query_stmt = select(FileModel.extension).where(FileModel.extension.isnot(None))
+        """Get distinct file extensions across indexed files.
+
+        Returns a sorted list of extensions. If extensionless files exist,
+        the sentinel value "(none)" is prepended to the list.
+        """
+        query_stmt = select(FileModel.extension)
 
         if repository_id is not None:
             query_stmt = query_stmt.where(FileModel.repository_id == repository_id)
@@ -132,4 +148,15 @@ class PostgresFileSearchRepository(FileSearchPort):
         query_stmt = query_stmt.distinct().order_by(FileModel.extension)
 
         result = await self.session.execute(query_stmt)
-        return [row[0] for row in result.all() if row[0] is not None]
+        has_none = False
+        extensions: list[str] = []
+        for row in result.all():
+            if row[0] is None:
+                has_none = True
+            else:
+                extensions.append(row[0])
+
+        if has_none:
+            extensions.insert(0, "(none)")
+
+        return extensions

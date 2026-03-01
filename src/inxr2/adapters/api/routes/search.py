@@ -32,12 +32,16 @@ _EXTENSION_RE = re.compile(r"^\.[a-zA-Z0-9_-]{1,19}$")
 def _validate_extensions(extensions: list[str] | None) -> list[str] | None:
     """Validate and normalize extensions to lowercase.
 
+    Allows the sentinel value "(none)" for extensionless files.
     Raises HTTPException 422 for invalid values.
     """
     if extensions is None:
         return None
     normalized = []
     for ext in extensions:
+        if ext == "(none)":
+            normalized.append(ext)
+            continue
         lower_ext = ext.lower()
         if not _EXTENSION_RE.match(lower_ext):
             raise HTTPException(
