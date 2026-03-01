@@ -1359,3 +1359,20 @@ class MyClass:
         )
         usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "cache"]
         assert len(usage_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_self_with_as_target_not_usage(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that 'with expr as self.x' is not a usage reference."""
+        code = """
+class MyClass:
+    def run(self):
+        with open("f") as self.handle:
+            pass
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "handle"]
+        assert len(usage_refs) == 0

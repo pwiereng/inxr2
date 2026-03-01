@@ -40,11 +40,9 @@ def _is_write_target(node: Node) -> bool:
             if len(children) >= 2 and current == children[1]:
                 return True
             return False
-        if parent.type == "as_pattern":
-            # "with expr as self.x" — the alias is a write target
-            if len(parent.children) >= 3 and current == parent.children[2]:
-                return True
-            return False
+        if parent.type == "as_pattern_target":
+            # "with expr as self.x" — the alias target is a write
+            return True
         if parent.type == "delete_statement":
             return True
         break
