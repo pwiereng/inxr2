@@ -174,14 +174,16 @@ class PythonParser(BaseLanguageParser):
             if obj_node.type != "identifier" or get_text(obj_node) != "self":
                 return
 
-            # Get the attribute name (last identifier)
+            # Get the attribute name (last identifier) and its node
             attr_name = None
+            attr_name_node = None
             for child in reversed(attr_children):
                 if child.type == "identifier" and get_text(child) != "self":
                     attr_name = get_text(child)
+                    attr_name_node = child
                     break
 
-            if not attr_name:
+            if not attr_name or not attr_name_node:
                 return
 
             # Only record if it's in __init__ or starts with _ (common patterns)
@@ -190,7 +192,7 @@ class PythonParser(BaseLanguageParser):
 
             symbols.append(
                 self._make_symbol(
-                    attr_name, "instance_variable", first_child, class_name
+                    attr_name, "instance_variable", attr_name_node, class_name
                 )
             )
 

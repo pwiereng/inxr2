@@ -1378,6 +1378,104 @@ class MyClass:
         assert len(usage_refs) == 0
 
 
+class TestInstanceVariableColumnPositions:
+    """Tests for instance variable symbol column positions (issue #169).
+
+    Verifies that start_column points to the attribute name (e.g., _bar),
+    not to 'self' in self._bar assignments.
+    """
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_instance_variable_start_column_points_to_attr_name(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that instance variable start_column points to attr name, not self."""
+        code = """class Foo:
+    def __init__(self):
+        self._bar = 42
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        ivar = [
+            s
+            for s in symbols
+            if s["name"] == "_bar" and s["kind"] == "instance_variable"
+        ]
+        assert len(ivar) == 1
+        # "        self._bar = 42"
+        #  01234567890123
+        # self starts at col 8, _bar starts at col 13
+        assert ivar[0]["start_column"] == 13
+
+    @pytest.mark.asyncio
+    async def test_instance_variable_end_column_matches_attr_name(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that instance variable end_column covers only the attr name."""
+        code = """class Foo:
+    def __init__(self):
+        self._bar = 42
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        ivar = [
+            s
+            for s in symbols
+            if s["name"] == "_bar" and s["kind"] == "instance_variable"
+        ]
+        assert len(ivar) == 1
+        # _bar ends at col 17 (13 + len("_bar"))
+        assert ivar[0]["end_column"] == 17
+
+    @pytest.mark.asyncio
+    async def test_usage_reference_column_points_to_attr_name(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that self.x usage reference column points to attr name."""
+        code = """class Foo:
+    def __init__(self):
+        self._bar = 42
+    def method(self):
+        return self._bar
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        usage_refs = [r for r in refs if r["text"] == "_bar" and r["type"] == "usage"]
+        assert len(usage_refs) == 1
+        # "        return self._bar"
+        #  0123456789012345678
+        # self starts at col 15, _bar starts at col 20
+        assert usage_refs[0]["source_column"] == 20
+
+    @pytest.mark.asyncio
+    async def test_multiple_instance_variables_not_duplicated(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that each instance variable appears exactly once."""
+        code = """class Foo:
+    def __init__(self):
+        self._x = 1
+        self._y = 2
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        ivars = [s for s in symbols if s["kind"] == "instance_variable"]
+        names = [s["name"] for s in ivars]
+        assert "_x" in names
+        assert "_y" in names
+        assert names.count("_x") == 1
+        assert names.count("_y") == 1
+
+
 class TestTypeScriptInheritanceReferences:
     """Tests for extends/implements inheritance reference extraction (issue #161)."""
 
