@@ -508,6 +508,7 @@ class TypeScriptParser(BaseLanguageParser):
                     "new_expression",
                     "extends_clause",
                     "implements_clause",
+                    "class_heritage",
                 ):
                     prop = node.child_by_field_name("property")
                     if prop:

@@ -1543,23 +1543,7 @@ class Child extends ns.Parent {}
 
     @pytest.mark.asyncio
     async def test_generic_implements(self, parser_service: TreeSitterService) -> None:
-        """Test that `implements IFoo<Bar>` creates an inheritance reference to IFoo."""
-        code = """
-class Impl implements IFoo<Bar> {}
-"""
-        _, references = await parser_service.parse_file(
-            content=code, language="typescript", file_path="test.ts"
-        )
-
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
-        assert "IFoo" in inherit_names
-
-    @pytest.mark.asyncio
-    async def test_generic_implements_no_duplicate_type_annotation(
-        self, parser_service: TreeSitterService
-    ) -> None:
-        """Test that `implements IFoo<Bar>` doesn't also emit IFoo as type_annotation."""
+        """Test `implements IFoo<Bar>`: IFoo is inheritance, not type_annotation; Bar is type_annotation."""
         code = """
 class Impl implements IFoo<Bar> {}
 """
