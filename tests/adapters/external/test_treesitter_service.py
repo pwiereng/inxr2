@@ -1376,3 +1376,256 @@ class MyClass:
         )
         usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "handle"]
         assert len(usage_refs) == 0
+
+
+class TestTypeScriptInheritanceReferences:
+    """Tests for extends/implements inheritance reference extraction (issue #161)."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_class_extends(self, parser_service: TreeSitterService) -> None:
+        """Test that `class Child extends Parent` creates an inheritance reference."""
+        code = """
+class Parent {
+    greet() {}
+}
+
+class Child extends Parent {
+    sayHi() {}
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "Parent" in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_class_implements(self, parser_service: TreeSitterService) -> None:
+        """Test that `class Impl implements IFoo` creates an inheritance reference."""
+        code = """
+interface IFoo {
+    doStuff(): void;
+}
+
+class Impl implements IFoo {
+    doStuff() {}
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "IFoo" in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_class_extends_and_implements_multiple(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test multi-heritage: extends Base implements IFoo, IBar."""
+        code = """
+class Multi extends Base implements IFoo, IBar {
+    doStuff() {}
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "Base" in inherit_names
+        assert "IFoo" in inherit_names
+        assert "IBar" in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_class_extends_builtin_excluded(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that extending builtins like Error doesn't create a reference."""
+        code = """
+class CustomError extends Error {
+    constructor(message: string) {
+        super(message);
+    }
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "Error" not in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_class_extends_scope(self, parser_service: TreeSitterService) -> None:
+        """Test that inheritance reference has correct scope (the child class name)."""
+        code = """
+class Child extends Parent {}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        parent_ref = next(r for r in inherit_refs if r["text"] == "Parent")
+        assert parent_ref["scope"] == "Child"
+
+    @pytest.mark.asyncio
+    async def test_javascript_class_extends(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that JS class extends creates inheritance reference."""
+        code = """
+class Child extends Parent {
+    constructor() {
+        super();
+    }
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "Parent" in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_inheritance_not_duplicated_as_type_annotation(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that extends/implements refs are not also emitted as type_annotation."""
+        code = """
+class Child extends Parent implements IFoo {}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        # Should have inheritance refs
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        assert len(inherit_refs) >= 2
+
+        # Parent should NOT also appear as type_annotation
+        type_refs = [r for r in references if r["type"] == "type_annotation"]
+        type_names = [r["text"] for r in type_refs]
+        assert "Parent" not in type_names
+
+
+class TestTypeScriptMemberAccessReferences:
+    """Tests for property read (obj.field) reference extraction (issue #161)."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_property_read(self, parser_service: TreeSitterService) -> None:
+        """Test that `obj.field` creates a usage reference to 'field'."""
+        code = """
+function test() {
+    const x = obj.field;
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "field" in usage_names
+
+    @pytest.mark.asyncio
+    async def test_method_call_not_duplicated(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `obj.method()` is 'call', NOT also 'usage'."""
+        code = """
+function test() {
+    obj.method();
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_names = [r["text"] for r in call_refs]
+        assert "method" in call_names
+
+        # Should NOT also have a usage reference for the same method
+        usage_refs = [
+            r for r in references if r["type"] == "usage" and r["text"] == "method"
+        ]
+        assert len(usage_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_new_expression_not_duplicated(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `new module.Foo()` is 'instantiation', NOT also 'usage'."""
+        code = """
+function test() {
+    const f = new some.Foo();
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inst_refs = [r for r in references if r["type"] == "instantiation"]
+        inst_names = [r["text"] for r in inst_refs]
+        assert "Foo" in inst_names
+
+        usage_refs = [
+            r for r in references if r["type"] == "usage" and r["text"] == "Foo"
+        ]
+        assert len(usage_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_chained_property_access(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `a.b.c` creates usage references for accessed properties."""
+        code = """
+function test() {
+    const x = a.b.c;
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "b" in usage_names
+        assert "c" in usage_names
+
+    @pytest.mark.asyncio
+    async def test_javascript_property_read(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that JS property access creates usage references."""
+        code = """
+function test() {
+    const x = config.value;
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "value" in usage_names
