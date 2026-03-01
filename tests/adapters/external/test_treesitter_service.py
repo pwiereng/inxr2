@@ -1574,7 +1574,7 @@ function test() {
     async def test_new_expression_not_duplicated(
         self, parser_service: TreeSitterService
     ) -> None:
-        """Test that `new module.Foo()` is 'instantiation', NOT also 'usage'."""
+        """Test that `new some.Foo()` is 'instantiation', NOT also 'usage'."""
         code = """
 function test() {
     const f = new some.Foo();

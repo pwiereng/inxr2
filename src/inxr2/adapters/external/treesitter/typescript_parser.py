@@ -316,11 +316,9 @@ class TypeScriptParser(BaseLanguageParser):
 
             symbols.append(self._make_symbol(name, "class", node))
 
-            # Extract inheritance references (extends/implements)
+            # Process class body (inheritance refs extracted in extract_references)
             for child in node.children:
-                if child.type == "class_heritage":
-                    _extract_heritage_references(child, name)
-                elif child.type == "class_body":
+                if child.type == "class_body":
                     for member in child.children:
                         if member.type == "method_definition":
                             process_method(member, name)
@@ -492,10 +490,9 @@ class TypeScriptParser(BaseLanguageParser):
                     prop = node.child_by_field_name("property")
                     if prop:
                         prop_name = get_text(prop)
-                        if prop_name not in TS_BUILTINS:
-                            add_reference(
-                                self._make_reference(prop_name, "usage", prop, scope)
-                            )
+                        add_reference(
+                            self._make_reference(prop_name, "usage", prop, scope)
+                        )
 
             # Type references (skip those inside implements_clause — handled as inheritance)
             if node.type == "type_identifier":
@@ -508,6 +505,10 @@ class TypeScriptParser(BaseLanguageParser):
                                 type_name, "type_annotation", node, scope
                             )
                         )
+
+            # Class heritage (extends/implements) — handled here so nested classes work
+            if node.type == "class_heritage" and scope is not None:
+                _extract_heritage_references(node, scope)
 
             # Recurse
             for child in node.children:
