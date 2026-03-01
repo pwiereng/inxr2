@@ -187,7 +187,29 @@ CREATE INDEX idx_files_content_hash ON files(content_hash);
 
 ---
 
-### 5. symbols
+### 5. commit_files (Junction Table)
+
+Maps commits to the files they contain. A file can appear in multiple commits (reused via content hash), and a commit contains many files.
+
+```sql
+CREATE TABLE commit_files (
+    commit_id           BIGINT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
+    file_id             BIGINT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+
+    PRIMARY KEY (commit_id, file_id)
+);
+
+CREATE INDEX ix_commit_files_file_id ON commit_files(file_id);
+```
+
+**Design Notes:**
+- Decouples the commit-file relationship from the files table's `commit_id` column
+- Enables efficient queries like "which files are in this commit?" and "which commits include this file?"
+- Used by the latest-file-version dedup logic for branch-aware queries
+
+---
+
+### 6. symbols
 
 Stores extracted code symbols (functions, classes, variables, etc.) at specific file versions.
 
@@ -295,7 +317,7 @@ TypeScript:
 
 ---
 
-### 6. references
+### 7. references
 
 Stores symbol references (usages) - links from one location to a symbol definition.
 
@@ -359,7 +381,7 @@ CREATE INDEX idx_references_source_line ON references(source_file_id, source_lin
 
 ---
 
-### 7. index_status
+### 8. index_status
 
 Tracks indexing progress and status for each repository/branch combination.
 
@@ -416,7 +438,7 @@ CREATE INDEX idx_index_status_status ON index_status(indexing_status);
 
 ---
 
-### 8. text_contents
+### 9. text_contents
 
 Stores searchable text extracted from code comments, docstrings, commit messages, and non-code files (markdown, YAML, etc.) for full-text search.
 
@@ -478,6 +500,8 @@ CREATE INDEX idx_text_contents_language ON text_contents(language);
 repositories (1) ──────< (N) commits
     │                        │
     │                        ├──< branch_commits (junction)
+    │                        │
+    │                        ├──< commit_files (junction) ──> files
     │                        │
     │                        ├──< text_contents
     │                        │
