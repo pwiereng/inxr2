@@ -384,22 +384,29 @@ class RubyParser(BaseLanguageParser):
                             self._make_reference(func_name, "call", first, scope)
                         )
 
+        def _extract_string_import(string_node: Node, scope: str | None) -> None:
+            """Extract import reference from a string node."""
+            for sc in string_node.children:
+                if sc.type == "string_content":
+                    import_path = get_text(sc)
+                    add_reference(
+                        self._make_reference(import_path, "import", sc, scope)
+                    )
+                    break
+
         def process_require_reference(node: Node, scope: str | None) -> None:
             """Extract import reference from require/require_relative."""
+            # Try argument_list first (parenthesized or grammar-wrapped args)
             for child in node.children:
                 if child.type == "argument_list":
                     for arg in child.children:
                         if arg.type == "string":
-                            # Get the string_content child
-                            for sc in arg.children:
-                                if sc.type == "string_content":
-                                    import_path = get_text(sc)
-                                    add_reference(
-                                        self._make_reference(
-                                            import_path, "import", sc, scope
-                                        )
-                                    )
-                                    break
+                            _extract_string_import(arg, scope)
+                    return
+            # Fallback: string as direct child (some grammar versions)
+            for child in node.children:
+                if child.type == "string":
+                    _extract_string_import(child, scope)
 
         # --- Main processing ---
 
