@@ -224,6 +224,11 @@ class ProcessFileUseCase:
         # Detect language using full LanguageDetector (60+ extensions, fixes #35)
         language = LanguageDetector.detect(request.file_path)
 
+        # Shebang fallback for extensionless scripts (e.g. #!/bin/bash)
+        if language is None and content:
+            first_line = content.split("\n", 1)[0]
+            language = LanguageDetector.detect_from_shebang(first_line)
+
         # Extract file extension (e.g., ".py", ".tsx")
         extension = Path(request.file_path).suffix.lower() or None
 

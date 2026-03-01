@@ -96,7 +96,76 @@ class TestLanguageDetector:
         assert LanguageDetector.detect("app.rb") == "ruby"
         assert LanguageDetector.detect("tasks.rake") == "ruby"
 
+    def test_detect_sh_extension_is_bash(self) -> None:
+        """Test that .sh and .bash files are detected as bash."""
+        assert LanguageDetector.detect("script.sh") == "bash"
+        assert LanguageDetector.detect("deploy.bash") == "bash"
+
     def test_detect_case_insensitive(self) -> None:
         """Test detection is case-insensitive for extensions."""
         assert LanguageDetector.detect("Script.PY") == "python"
         assert LanguageDetector.detect("FILE.RS") == "rust"
+
+
+class TestDetectFromShebang:
+    """Tests for shebang-based language detection."""
+
+    def test_bin_bash(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/bash") == "bash"
+
+    def test_usr_bin_bash(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/bash") == "bash"
+
+    def test_usr_bin_env_bash(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env bash") == "bash"
+
+    def test_bin_sh(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/sh") == "bash"
+
+    def test_usr_bin_env_sh(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env sh") == "bash"
+
+    def test_usr_local_bin_bash(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/local/bin/bash") == "bash"
+
+    def test_unknown_interpreter(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/python3") is None
+
+    def test_empty_string(self) -> None:
+        assert LanguageDetector.detect_from_shebang("") is None
+
+    def test_non_shebang_line(self) -> None:
+        assert LanguageDetector.detect_from_shebang("echo hello") is None
+
+    def test_shebang_with_trailing_content(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/bash -e") == "bash"
+
+    def test_env_with_s_flag(self) -> None:
+        assert (
+            LanguageDetector.detect_from_shebang("#!/usr/bin/env -S bash -e") == "bash"
+        )
+
+    def test_bin_env_bash(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/env bash") == "bash"
+
+    def test_bin_env_s_flag(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/env -S bash") == "bash"
+
+    def test_case_insensitive_shebang(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env BASH") == "bash"
+
+    def test_env_with_path_token(self) -> None:
+        assert (
+            LanguageDetector.detect_from_shebang("#!/usr/bin/env /bin/bash") == "bash"
+        )
+
+    def test_usr_local_bin_env(self) -> None:
+        assert (
+            LanguageDetector.detect_from_shebang("#!/usr/local/bin/env bash") == "bash"
+        )
+
+    def test_crlf_shebang(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/bash\r") == "bash"
+
+    def test_crlf_env_shebang(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env bash\r") == "bash"

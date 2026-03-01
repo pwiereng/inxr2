@@ -13,6 +13,7 @@ from tree_sitter import Language, Parser
 from inxr2.application.ports.services import ParserServicePort
 
 from .base import BaseLanguageParser
+from .bash_parser import BashParser
 from .c_cpp_parser import CppParser
 from .csharp_parser import CSharpParser
 from .go_parser import GoParser
@@ -44,6 +45,7 @@ class TreeSitterService(ParserServicePort):
         "go": [".go"],
         "cpp": [".cpp", ".cc", ".cxx", ".c++", ".hpp", ".hh", ".hxx", ".h++", ".h"],
         "ruby": [".rb", ".rake"],
+        "bash": [".sh", ".bash"],
     }
 
     def __init__(self) -> None:
@@ -147,6 +149,13 @@ class TreeSitterService(ParserServicePort):
         except ImportError as e:
             logger.warning(f"Tree-sitter grammar for ruby not available: {e}")
 
+        try:
+            import tree_sitter_bash as tsbash
+
+            _init_language("bash", tsbash.language, BashParser)
+        except ImportError as e:
+            logger.warning(f"Tree-sitter grammar for bash not available: {e}")
+
         loaded = list(self._parsers.keys())
         if loaded:
             logger.debug(
@@ -195,6 +204,8 @@ class TreeSitterService(ParserServicePort):
             return self._parsers.get("go")
         elif language == "ruby":
             return self._parsers.get("ruby")
+        elif language == "bash":
+            return self._parsers.get("bash")
         elif language == "cpp":
             return self._parsers.get("cpp")
 
