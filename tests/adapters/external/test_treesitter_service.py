@@ -1521,6 +1521,55 @@ class Child extends Parent implements IFoo {}
         type_names = [r["text"] for r in type_refs]
         assert "Parent" not in type_names
 
+    @pytest.mark.asyncio
+    async def test_namespaced_extends(self, parser_service: TreeSitterService) -> None:
+        """Test that `extends ns.Parent` creates an inheritance reference to Parent."""
+        code = """
+class Child extends ns.Parent {}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "Parent" in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_generic_implements(self, parser_service: TreeSitterService) -> None:
+        """Test that `implements IFoo<Bar>` creates an inheritance reference to IFoo."""
+        code = """
+class Impl implements IFoo<Bar> {}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "IFoo" in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_generic_implements_no_duplicate_type_annotation(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `implements IFoo<Bar>` doesn't also emit IFoo as type_annotation."""
+        code = """
+class Impl implements IFoo<Bar> {}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "IFoo" in inherit_names
+
+        # IFoo should NOT also appear as type_annotation
+        type_refs = [r for r in references if r["type"] == "type_annotation"]
+        type_names = [r["text"] for r in type_refs]
+        assert "IFoo" not in type_names
+
 
 class TestTypeScriptMemberAccessReferences:
     """Tests for property read (obj.field) reference extraction (issue #161)."""

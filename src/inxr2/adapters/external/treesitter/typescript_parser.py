@@ -251,6 +251,40 @@ class TypeScriptParser(BaseLanguageParser):
                                     )
                                 )
 
+        def _add_heritage_ref(node: Node, class_name: str) -> None:
+            """Add an inheritance reference for a heritage type node.
+
+            Handles identifier, type_identifier, member_expression (ns.Parent),
+            and generic_type (IFoo<Bar>) by extracting the primary type name.
+            """
+            if node.type in ("identifier", "type_identifier"):
+                name = get_text(node)
+                if name not in TS_BUILTINS and name not in TS_TYPE_BUILTINS:
+                    add_reference(
+                        self._make_reference(name, "inheritance", node, class_name)
+                    )
+            elif node.type == "member_expression":
+                # ns.Parent — use the property (rightmost identifier)
+                prop = node.child_by_field_name("property")
+                if prop:
+                    name = get_text(prop)
+                    if name not in TS_BUILTINS and name not in TS_TYPE_BUILTINS:
+                        add_reference(
+                            self._make_reference(name, "inheritance", prop, class_name)
+                        )
+            elif node.type == "generic_type":
+                # IFoo<Bar> — extract the base type identifier
+                for sub in node.children:
+                    if sub.type in ("identifier", "type_identifier"):
+                        name = get_text(sub)
+                        if name not in TS_BUILTINS and name not in TS_TYPE_BUILTINS:
+                            add_reference(
+                                self._make_reference(
+                                    name, "inheritance", sub, class_name
+                                )
+                            )
+                        break
+
         def _extract_heritage_references(heritage_node: Node, class_name: str) -> None:
             """Extract inheritance references from class_heritage node.
 
@@ -258,55 +292,12 @@ class TypeScriptParser(BaseLanguageParser):
             and JavaScript (identifier children directly under class_heritage).
             """
             for child in heritage_node.children:
-                if child.type == "extends_clause":
-                    # TS: extends_clause contains identifier for parent class
-                    for ext_child in child.children:
-                        if ext_child.type in ("identifier", "type_identifier"):
-                            base_name = get_text(ext_child)
-                            if (
-                                base_name not in TS_BUILTINS
-                                and base_name not in TS_TYPE_BUILTINS
-                            ):
-                                add_reference(
-                                    self._make_reference(
-                                        base_name,
-                                        "inheritance",
-                                        ext_child,
-                                        class_name,
-                                    )
-                                )
-                elif child.type == "implements_clause":
-                    # TS: implements_clause contains type_identifiers
-                    for impl_child in child.children:
-                        if impl_child.type in ("identifier", "type_identifier"):
-                            iface_name = get_text(impl_child)
-                            if (
-                                iface_name not in TS_BUILTINS
-                                and iface_name not in TS_TYPE_BUILTINS
-                            ):
-                                add_reference(
-                                    self._make_reference(
-                                        iface_name,
-                                        "inheritance",
-                                        impl_child,
-                                        class_name,
-                                    )
-                                )
-                elif child.type in ("identifier", "type_identifier"):
-                    # JS: identifiers directly under class_heritage (no clause wrapper)
-                    base_name = get_text(child)
-                    if (
-                        base_name not in TS_BUILTINS
-                        and base_name not in TS_TYPE_BUILTINS
-                    ):
-                        add_reference(
-                            self._make_reference(
-                                base_name,
-                                "inheritance",
-                                child,
-                                class_name,
-                            )
-                        )
+                if child.type in ("extends_clause", "implements_clause"):
+                    for sub in child.children:
+                        _add_heritage_ref(sub, class_name)
+                else:
+                    # JS: identifiers/member_expression directly under class_heritage
+                    _add_heritage_ref(child, class_name)
 
         def process_class(node: Node) -> None:
             """Process a class declaration."""
@@ -394,6 +385,17 @@ class TypeScriptParser(BaseLanguageParser):
                     elif re.match(r"^[A-Z][A-Z0-9_]*$", var_name):
                         # UPPER_CASE constant
                         symbols.append(self._make_symbol(var_name, "constant", child))
+
+        def _is_inside_class_heritage(node: Node) -> bool:
+            """Check if a node is inside a class_heritage subtree."""
+            current = node.parent
+            while current is not None:
+                if current.type == "class_heritage":
+                    return True
+                if current.type == "class_declaration":
+                    return False
+                current = current.parent
+            return False
 
         def extract_references(node: Node, scope: str | None = None) -> None:
             """Extract references from the AST."""
@@ -494,10 +496,9 @@ class TypeScriptParser(BaseLanguageParser):
                             self._make_reference(prop_name, "usage", prop, scope)
                         )
 
-            # Type references (skip those inside implements_clause — handled as inheritance)
+            # Type references (skip those inside class_heritage — handled as inheritance)
             if node.type == "type_identifier":
-                parent = node.parent
-                if parent is None or parent.type != "implements_clause":
+                if not _is_inside_class_heritage(node):
                     type_name = get_text(node)
                     if type_name not in TS_TYPE_BUILTINS:
                         add_reference(
