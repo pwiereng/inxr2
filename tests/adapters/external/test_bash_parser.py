@@ -191,6 +191,79 @@ ANOTHER=42
         variables = [s for s in symbols if s["kind"] == "variable"]
         assert any(s["name"] == "EXPORTED" for s in variables)
 
+    @pytest.mark.asyncio
+    async def test_multi_variable_export(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that export A=1 B=2 captures both variables."""
+        code = "export A=1 B=2\n"
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="bash", file_path="test.sh"
+        )
+        names = {s["name"] for s in symbols if s["kind"] == "variable"}
+        assert "A" in names
+        assert "B" in names
+
+    @pytest.mark.asyncio
+    async def test_multi_variable_readonly(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that readonly X=1 Y=2 captures both as constants."""
+        code = "readonly X=1 Y=2\n"
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="bash", file_path="test.sh"
+        )
+        consts = {s["name"] for s in symbols if s["kind"] == "constant"}
+        assert "X" in consts
+        assert "Y" in consts
+
+    @pytest.mark.asyncio
+    async def test_bare_export(self, parser_service: TreeSitterService) -> None:
+        """Test that bare export FOO (no assignment) produces a variable symbol."""
+        code = "export FOO\n"
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="bash", file_path="test.sh"
+        )
+        names = {s["name"] for s in symbols if s["kind"] == "variable"}
+        assert "FOO" in names
+
+    @pytest.mark.asyncio
+    async def test_bare_readonly(self, parser_service: TreeSitterService) -> None:
+        """Test that bare readonly BAR produces a constant symbol."""
+        code = "readonly BAR\n"
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="bash", file_path="test.sh"
+        )
+        consts = {s["name"] for s in symbols if s["kind"] == "constant"}
+        assert "BAR" in consts
+
+    @pytest.mark.asyncio
+    async def test_declare_combined_flags_rx(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that declare -rx produces a constant (combined flag with r)."""
+        code = "declare -rx COMBO=1\n"
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="bash", file_path="test.sh"
+        )
+        consts = {s["name"] for s in symbols if s["kind"] == "constant"}
+        assert "COMBO" in consts
+
+    @pytest.mark.asyncio
+    async def test_local_readonly_is_constant(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that local -r inside a function produces a constant."""
+        code = """function init() {
+    local -r CONST_VAL=42
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="bash", file_path="test.sh"
+        )
+        consts = [s for s in symbols if s["kind"] == "constant"]
+        assert any(s["name"] == "CONST_VAL" for s in consts)
+
 
 class TestBashReferences:
     """Tests for Bash reference extraction."""

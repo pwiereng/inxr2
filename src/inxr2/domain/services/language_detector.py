@@ -3,7 +3,13 @@
 import re
 from pathlib import Path
 
-_SHEBANG_RE = re.compile(r"^#!\s*(?:/usr/bin/env\s+|/(?:usr/)?(?:local/)?bin/)(\S+)")
+# Matches two shebang forms:
+#   1. Direct path: #!/bin/bash, #!/usr/bin/bash, #!/usr/local/bin/bash
+#   2. env-based:   #!/usr/bin/env bash, #!/bin/env -S bash -e
+# For env shebangs, flags (words starting with -) are skipped to find
+# the interpreter name.
+_SHEBANG_DIRECT_RE = re.compile(r"^#!\s*/(?:usr/)?(?:local/)?bin/(\S+)")
+_SHEBANG_ENV_RE = re.compile(r"^#!\s*(?:/usr)?/bin/env\s+(.*)")
 
 _SHEBANG_LANGUAGE_MAP: dict[str, str] = {
     "bash": "bash",
@@ -137,16 +143,33 @@ class LanguageDetector:
     def detect_from_shebang(cls, first_line: str) -> str | None:
         """Detect language from a shebang line (e.g. ``#!/bin/bash``).
 
+        Handles direct paths (``#!/bin/bash``) and env-based shebangs
+        including ``env -S`` flags (``#!/usr/bin/env -S bash -e``).
+
         Args:
             first_line: The first line of the file content.
 
         Returns:
             Language name (lowercase) or None if unrecognised.
         """
-        match = _SHEBANG_RE.match(first_line)
-        if match:
-            interpreter = match.group(1)
+        # Try env-based shebang first (more specific match)
+        env_match = _SHEBANG_ENV_RE.match(first_line)
+        if env_match:
+            # Skip flags (words starting with -) to find the interpreter
+            for token in env_match.group(1).split():
+                if not token.startswith("-"):
+                    return _SHEBANG_LANGUAGE_MAP.get(token)
+            return None
+
+        # Try direct path shebang
+        direct_match = _SHEBANG_DIRECT_RE.match(first_line)
+        if direct_match:
+            interpreter = direct_match.group(1)
+            # The regex may capture "env" for /bin/env — skip it
+            if interpreter == "env":
+                return None
             return _SHEBANG_LANGUAGE_MAP.get(interpreter)
+
         return None
 
     @classmethod

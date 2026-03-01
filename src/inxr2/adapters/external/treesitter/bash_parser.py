@@ -76,6 +76,12 @@ class BashParser(BaseLanguageParser):
                     )
                     return
 
+        def _resolve_decl_kind(keyword: str | None, has_readonly_flag: bool) -> str:
+            """Determine symbol kind for a declaration."""
+            if keyword == "readonly" or has_readonly_flag:
+                return "constant"
+            return "variable"
+
         def process_declaration(node: Node, scope: str | None) -> None:
             """Process a declaration_command (export, readonly, local, declare)."""
             keyword = None
@@ -85,20 +91,22 @@ class BashParser(BaseLanguageParser):
                 if child.type in ("export", "readonly", "local", "declare"):
                     keyword = child.type
                 elif child.type == "word":
-                    # Check for declare flags like -r, -x
                     word_text = get_text(child)
-                    if word_text == "-r":
+                    # Check for flags containing -r (readonly), e.g. -r, -rx, -ar
+                    if word_text.startswith("-") and "r" in word_text[1:]:
                         has_readonly_flag = True
+                elif child.type == "variable_name":
+                    # Bare declaration (e.g. "export FOO", "readonly BAR")
+                    kind = _resolve_decl_kind(keyword, has_readonly_flag)
+                    var_name = get_text(child)
+                    symbols.append(self._make_symbol(var_name, kind, child, scope))
                 elif child.type == "variable_assignment":
+                    kind = _resolve_decl_kind(keyword, has_readonly_flag)
                     for vc in child.children:
                         if vc.type == "variable_name":
                             var_name = get_text(vc)
-                            if keyword == "readonly" or has_readonly_flag:
-                                kind = "constant"
-                            else:
-                                kind = "variable"
                             symbols.append(self._make_symbol(var_name, kind, vc, scope))
-                            return
+                            break
 
         # ---- Reference extraction ----
 
@@ -274,27 +282,19 @@ def _walk_for_locals(
 
     for child in node.children:
         if child.type == "declaration_command":
-            keyword = None
             has_readonly_flag = False
             for dc in child.children:
                 if dc.type in ("local", "declare"):
-                    keyword = dc.type
+                    pass  # recognised keyword, no action needed
                 elif dc.type == "word":
                     word_text = parser._get_text(dc, content)
-                    if word_text == "-r":
+                    if word_text.startswith("-") and "r" in word_text[1:]:
                         has_readonly_flag = True
                 elif dc.type == "variable_assignment":
+                    kind = "constant" if has_readonly_flag else "variable"
                     for vc in dc.children:
                         if vc.type == "variable_name":
                             var_name = parser._get_text(vc, content)
-                            if keyword == "local" or (
-                                keyword == "declare" and not has_readonly_flag
-                            ):
-                                kind = "variable"
-                            elif has_readonly_flag:
-                                kind = "constant"
-                            else:
-                                kind = "variable"
                             symbols.append(
                                 parser._make_symbol(var_name, kind, vc, func_name)
                             )

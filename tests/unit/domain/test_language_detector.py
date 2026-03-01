@@ -134,3 +134,14 @@ class TestDetectFromShebang:
 
     def test_shebang_with_trailing_content(self) -> None:
         assert LanguageDetector.detect_from_shebang("#!/bin/bash -e") == "bash"
+
+    def test_env_with_s_flag(self) -> None:
+        assert (
+            LanguageDetector.detect_from_shebang("#!/usr/bin/env -S bash -e") == "bash"
+        )
+
+    def test_bin_env_bash(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/env bash") == "bash"
+
+    def test_bin_env_s_flag(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/env -S bash") == "bash"
