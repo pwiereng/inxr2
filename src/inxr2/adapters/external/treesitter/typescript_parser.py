@@ -251,7 +251,7 @@ class TypeScriptParser(BaseLanguageParser):
                                     )
                                 )
 
-        def _add_heritage_ref(node: Node, class_name: str) -> None:
+        def _add_heritage_ref(node: Node, class_name: str | None) -> None:
             """Add an inheritance reference for a heritage type node.
 
             Handles identifier, type_identifier, member_expression (ns.Parent),
@@ -285,7 +285,9 @@ class TypeScriptParser(BaseLanguageParser):
                             )
                         break
 
-        def _extract_heritage_references(heritage_node: Node, class_name: str) -> None:
+        def _extract_heritage_references(
+            heritage_node: Node, class_name: str | None
+        ) -> None:
             """Extract inheritance references from class_heritage node.
 
             Handles both TypeScript (extends_clause/implements_clause children)
@@ -529,7 +531,7 @@ class TypeScriptParser(BaseLanguageParser):
                         )
 
             # Class heritage (extends/implements) — handled here so nested classes work
-            if node.type == "class_heritage" and scope is not None:
+            if node.type == "class_heritage":
                 _extract_heritage_references(node, scope)
 
             # Recurse

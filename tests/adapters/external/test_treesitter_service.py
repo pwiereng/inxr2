@@ -1562,6 +1562,40 @@ class Impl implements IFoo<Bar> {}
         # But the type argument Bar should still be captured as a type_annotation
         assert "Bar" in type_names
 
+    @pytest.mark.asyncio
+    async def test_anonymous_class_extends(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `export default class extends Base` creates an inheritance reference."""
+        code = """
+export default class extends Base {
+    doStuff() {}
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "Base" in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_class_expression_extends(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `const X = class extends Base {}` creates an inheritance reference."""
+        code = """
+const X = class extends Base {};
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "Base" in inherit_names
+
 
 class TestTypeScriptMemberAccessReferences:
     """Tests for property read (obj.field) reference extraction (issue #161)."""
