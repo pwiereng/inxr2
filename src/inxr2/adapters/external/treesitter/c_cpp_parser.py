@@ -825,6 +825,12 @@ class CppParser(BaseLanguageParser):
             if node.type == "initializer_list":
                 _process_initializer_list_refs(node, scope)
 
+            # General identifier handler — catches enum values, constants,
+            # and variables used in value contexts not handled above
+            # (function args, assignments, comparisons, return values, etc.)
+            if node.type == "identifier":
+                _process_general_identifier_ref(node, scope)
+
             # Recurse into children
             for child in node.children:
                 child_scope = scope
@@ -952,6 +958,102 @@ class CppParser(BaseLanguageParser):
                         add_reference(
                             self._make_reference(ident_name, "usage", child, scope)
                         )
+
+        # Parents where the identifier is always a definition
+        _DEFINITION_PARENTS = frozenset(
+            {
+                "enumerator",  # enum { VALUE }
+                "function_declarator",  # void func()
+                "parameter_declaration",  # void f(int param)
+                "preproc_def",  # #define MACRO
+                "preproc_function_def",  # #define MACRO(x)
+                "preproc_params",  # #define MACRO(param)
+                "pointer_declarator",  # int *ptr
+                "reference_declarator",  # int &ref (C++)
+            }
+        )
+
+        # Parents where identifiers are already handled by specific handlers
+        _HANDLED_PARENTS = frozenset(
+            {
+                "field_expression",  # obj.field — _process_field_expression_refs
+                "preproc_ifdef",  # #ifdef X — handled above
+                "macro_type_specifier",  # MACRO(type) — handled above
+                "initializer_list",  # {X, Y} — _process_initializer_list_refs
+                "qualified_identifier",  # N::f — handled at qualified name level
+            }
+        )
+
+        def _process_general_identifier_ref(node: Node, scope: str | None) -> None:
+            """Create usage reference for identifiers in value contexts.
+
+            Skips identifiers that are definitions or already handled
+            by specific reference handlers.
+            """
+            parent = node.parent
+            if parent is None:
+                return
+
+            p_type = parent.type
+
+            # Skip definitions
+            if p_type in _DEFINITION_PARENTS:
+                return
+
+            # Skip already-handled contexts
+            if p_type in _HANDLED_PARENTS:
+                return
+
+            # call_expression function position — already handled as "call"
+            if (
+                p_type == "call_expression"
+                and parent.child_by_field_name("function") == node
+            ):
+                return
+
+            # template_function name in call position — already handled as
+            # "call" by process_call_reference (e.g. foo<int>())
+            if p_type == "template_function":
+                grandparent = parent.parent
+                if (
+                    grandparent
+                    and grandparent.type == "call_expression"
+                    and grandparent.child_by_field_name("function") == parent
+                    and parent.child_by_field_name("name") == node
+                ):
+                    return
+
+            # init_declarator declarator position — variable definition
+            if (
+                p_type == "init_declarator"
+                and parent.child_by_field_name("declarator") == node
+            ):
+                return
+
+            # declaration declarator position — e.g. "struct S s;"
+            if (
+                p_type == "declaration"
+                and parent.child_by_field_name("declarator") == node
+            ):
+                return
+
+            # array_declarator declarator position — e.g. "int arr[N]"
+            # (but NOT the size position — that's a usage)
+            if (
+                p_type == "array_declarator"
+                and parent.child_by_field_name("declarator") == node
+            ):
+                return
+
+            # sizeof(X) — already handled by _process_sizeof_refs
+            if p_type == "parenthesized_expression":
+                grandparent = parent.parent
+                if grandparent and grandparent.type == "sizeof_expression":
+                    return
+
+            ident_name = get_text(node)
+            if not is_builtin_or_primitive(ident_name) and ident_name != "NULL":
+                add_reference(self._make_reference(ident_name, "usage", node, scope))
 
         # ── Main processing ─────────────────────────────────────────
 
