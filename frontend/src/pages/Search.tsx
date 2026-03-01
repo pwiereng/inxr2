@@ -791,12 +791,12 @@ export default function Search(): React.ReactElement {
                       )
                     }
                   >
-                    <MenuItem value="__hide_all__">
+                    <MenuItem value={EXT_HIDE_ALL}>
                       <Typography variant="body2" sx={{ fontWeight: 500, fontStyle: 'italic' }}>
                         Hide all extensions
                       </Typography>
                     </MenuItem>
-                    <MenuItem value="__show_all__">
+                    <MenuItem value={EXT_SHOW_ALL}>
                       <Typography variant="body2" sx={{ fontWeight: 500, fontStyle: 'italic' }}>
                         Show all extensions
                       </Typography>

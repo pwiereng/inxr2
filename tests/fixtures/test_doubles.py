@@ -742,6 +742,13 @@ class InMemoryFileSearchRepository(FileSearchPort):
                 fid for cid, fid in self._file_repo._commit_files if cid == commit_id
             }
 
+        # Pre-compute extension filter components outside the loop
+        real_exts: list[str] | None = None
+        has_none = False
+        if extensions is not None and len(extensions) > 0:
+            real_exts = [e for e in extensions if e != "(none)"]
+            has_none = "(none)" in extensions
+
         results = []
         for file in self._file_repo._files.values():
             if query_lower not in file.path.lower():
@@ -752,9 +759,7 @@ class InMemoryFileSearchRepository(FileSearchPort):
                 continue
             if language is not None and file.language != language:
                 continue
-            if extensions is not None and len(extensions) > 0:
-                real_exts = [e for e in extensions if e != "(none)"]
-                has_none = "(none)" in extensions
+            if real_exts is not None or has_none:
                 match = False
                 if real_exts and file.extension in real_exts:
                     match = True
