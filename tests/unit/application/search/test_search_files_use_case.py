@@ -497,3 +497,199 @@ class TestSearchFilesExtensionFilter:
         extensions = await search_repo.get_distinct_extensions()
 
         assert extensions == []
+
+
+class TestExtensionlessFileFilter:
+    """Tests for extensionless file support via (none) sentinel."""
+
+    @pytest.fixture
+    def repository_repo(self) -> InMemoryRepositoryRepository:
+        repo = InMemoryRepositoryRepository()
+        repo.add(
+            Repository(
+                id=1,
+                name="test-repo",
+                url="/repos/test-repo",
+                default_branch="main",
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    async def commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        c = await repo.save(
+            Commit(
+                id=None,
+                repository_id=1,
+                commit_hash=CommitHash("none111"),
+                author_date=datetime(2024, 1, 1, tzinfo=UTC),
+                commit_date=datetime(2024, 1, 1, tzinfo=UTC),
+            )
+        )
+        assert c.id is not None
+        await repo.link_commit_to_branch(1, c.id, "main")
+        return repo
+
+    @pytest.fixture
+    async def file_repo(
+        self,
+        commit_repo: InMemoryCommitRepository,
+        repository_repo: InMemoryRepositoryRepository,
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        repo._repository_repo = repository_repo  # type: ignore[attr-defined]
+        f1 = await repo.save(
+            File(
+                repository_id=1,
+                path="src/utils.py",
+                content_hash="h1",
+                size_bytes=100,
+                language="python",
+                extension=".py",
+            )
+        )
+        f2 = await repo.save(
+            File(
+                repository_id=1,
+                path="Dockerfile",
+                content_hash="h2",
+                size_bytes=200,
+                language=None,
+                extension=None,
+            )
+        )
+        f3 = await repo.save(
+            File(
+                repository_id=1,
+                path="Makefile",
+                content_hash="h3",
+                size_bytes=150,
+                language=None,
+                extension=None,
+            )
+        )
+        assert f1.id is not None and f2.id is not None and f3.id is not None
+        commit_id = list(commit_repo._commits.values())[0].id
+        assert commit_id is not None
+        await repo.link_file_to_commit(f1.id, commit_id=commit_id)
+        await repo.link_file_to_commit(f2.id, commit_id=commit_id)
+        await repo.link_file_to_commit(f3.id, commit_id=commit_id)
+        return repo
+
+    @pytest.fixture
+    def search_repo(
+        self, file_repo: InMemoryFileRepository
+    ) -> InMemoryFileSearchRepository:
+        return InMemoryFileSearchRepository(file_repo)
+
+    @pytest.fixture
+    def use_case(
+        self,
+        file_repo: InMemoryFileRepository,
+        repository_repo: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> SearchFilesUseCase:
+        file_search_repo = InMemoryFileSearchRepository(file_repo)
+        return SearchFilesUseCase(
+            file_search_repo=file_search_repo,
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_distinct_extensions_includes_none_sentinel(
+        self, search_repo: InMemoryFileSearchRepository
+    ) -> None:
+        """get_distinct_extensions includes (none) when extensionless files exist."""
+        extensions = await search_repo.get_distinct_extensions(repository_id=1)
+        assert "(none)" in extensions
+        assert extensions[0] == "(none)"
+        assert ".py" in extensions
+
+    @pytest.mark.asyncio
+    async def test_get_distinct_extensions_no_sentinel_without_extensionless(
+        self,
+    ) -> None:
+        """get_distinct_extensions omits (none) when all files have extensions."""
+        file_repo = InMemoryFileRepository()
+        await file_repo.save(
+            File(
+                repository_id=1,
+                path="src/main.py",
+                content_hash="h1",
+                size_bytes=100,
+                language="python",
+                extension=".py",
+            )
+        )
+        search_repo = InMemoryFileSearchRepository(file_repo)
+        extensions = await search_repo.get_distinct_extensions()
+        assert "(none)" not in extensions
+        assert extensions == [".py"]
+
+    @pytest.mark.asyncio
+    async def test_search_by_name_with_none_sentinel(
+        self, search_repo: InMemoryFileSearchRepository
+    ) -> None:
+        """Search with (none) extension returns only extensionless files."""
+        results = await search_repo.search_by_name(query="file", extensions=["(none)"])
+        paths = {f.path for f in results}
+        assert paths == {"Dockerfile", "Makefile"}
+
+    @pytest.mark.asyncio
+    async def test_search_by_name_with_mixed_extensions(
+        self, search_repo: InMemoryFileSearchRepository
+    ) -> None:
+        """Search with (none) and real extensions returns both."""
+        results = await search_repo.search_by_name(
+            query="", extensions=[".py", "(none)"]
+        )
+        paths = {f.path for f in results}
+        assert "src/utils.py" in paths
+        assert "Dockerfile" in paths
+        assert "Makefile" in paths
+
+    @pytest.mark.asyncio
+    async def test_search_files_use_case_with_none_sentinel(
+        self, use_case: SearchFilesUseCase
+    ) -> None:
+        """Use case passes (none) sentinel through to search."""
+        request = SearchFilesRequest(query="file", extensions=["(none)"])
+        response = await use_case.execute(request)
+        paths = {f.path for f in response.files}
+        assert paths == {"Dockerfile", "Makefile"}
+
+
+class TestValidateExtensions:
+    """Tests for _validate_extensions in search API routes."""
+
+    def test_allows_none_sentinel(self) -> None:
+        """(none) sentinel passes validation."""
+        from inxr2.adapters.api.routes.search import _validate_extensions
+
+        result = _validate_extensions(["(none)"])
+        assert result == ["(none)"]
+
+    def test_allows_none_with_real_extensions(self) -> None:
+        """(none) alongside real extensions passes validation."""
+        from inxr2.adapters.api.routes.search import _validate_extensions
+
+        result = _validate_extensions(["(none)", ".py", ".TS"])
+        assert result == ["(none)", ".py", ".ts"]
+
+    def test_rejects_invalid_extension(self) -> None:
+        """Invalid extensions raise HTTPException 422."""
+        from fastapi import HTTPException
+
+        from inxr2.adapters.api.routes.search import _validate_extensions
+
+        with pytest.raises(HTTPException) as exc_info:
+            _validate_extensions(["invalid"])
+        assert exc_info.value.status_code == 422
+
+    def test_none_input_returns_none(self) -> None:
+        """None input returns None."""
+        from inxr2.adapters.api.routes.search import _validate_extensions
+
+        assert _validate_extensions(None) is None

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from sqlalchemy import column, exists, func, select, text
+from sqlalchemy import column, exists, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
@@ -130,11 +130,20 @@ class PostgresTextSearch(TextSearchPort):
 
         # Apply extension filters via files table
         if query.extensions:
+            real_exts = [e for e in query.extensions if e != "(none)"]
+            has_none = "(none)" in query.extensions
+            if real_exts and has_none:
+                ext_filter = or_(
+                    FileModel.extension.in_(real_exts),
+                    FileModel.extension.is_(None),
+                )
+            elif has_none:
+                ext_filter = FileModel.extension.is_(None)
+            else:
+                ext_filter = FileModel.extension.in_(real_exts)
             base_query = base_query.where(
                 TextContentModel.source_file_id.in_(
-                    select(FileModel.id).where(
-                        FileModel.extension.in_(query.extensions)
-                    )
+                    select(FileModel.id).where(ext_filter)
                 )
             )
 

@@ -742,6 +742,13 @@ class InMemoryFileSearchRepository(FileSearchPort):
                 fid for cid, fid in self._file_repo._commit_files if cid == commit_id
             }
 
+        # Pre-compute extension filter components outside the loop
+        real_exts: list[str] | None = None
+        has_none = False
+        if extensions is not None and len(extensions) > 0:
+            real_exts = [e for e in extensions if e != "(none)"]
+            has_none = "(none)" in extensions
+
         results = []
         for file in self._file_repo._files.values():
             if query_lower not in file.path.lower():
@@ -752,8 +759,14 @@ class InMemoryFileSearchRepository(FileSearchPort):
                 continue
             if language is not None and file.language != language:
                 continue
-            if extensions is not None and file.extension not in extensions:
-                continue
+            if real_exts is not None or has_none:
+                match = False
+                if real_exts and file.extension in real_exts:
+                    match = True
+                if has_none and file.extension is None:
+                    match = True
+                if not match:
+                    continue
             results.append(file)
 
         # Dedup/scope filtering when no commit_id
@@ -793,8 +806,13 @@ class InMemoryFileSearchRepository(FileSearchPort):
         branch: str | None = None,
         scope: str | None = None,
     ) -> list[str]:
-        """Get distinct file extensions across indexed files."""
+        """Get distinct file extensions across indexed files.
+
+        Returns a sorted list of extensions. If extensionless files exist,
+        the sentinel value "(none)" is prepended to the list.
+        """
         exts: set[str] = set()
+        has_none = False
 
         if repository_id is None and scope == "latest":
             head_file_ids = self._file_repo._compute_head_file_ids()
@@ -813,8 +831,13 @@ class InMemoryFileSearchRepository(FileSearchPort):
         for f in candidate_files:
             if f.extension is not None:
                 exts.add(f.extension)
+            else:
+                has_none = True
 
-        return sorted(exts)
+        result = sorted(exts)
+        if has_none:
+            result.insert(0, "(none)")
+        return result
 
 
 class InMemoryFileVersionRepository(FileVersionPort):

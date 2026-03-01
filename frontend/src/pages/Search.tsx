@@ -23,6 +23,7 @@ import {
   FormGroup,
   ToggleButton,
   Tooltip,
+  Divider,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
@@ -68,6 +69,10 @@ const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => !NON_TEXT_TYPES.has(t.va
 )
 
 const RESULTS_PER_PAGE = 20
+
+// Sentinel values for extension dropdown actions
+const EXT_HIDE_ALL = '__hide_all__'
+const EXT_SHOW_ALL = '__show_all__'
 
 export default function Search(): React.ReactElement {
   const navigate = useNavigate()
@@ -757,9 +762,16 @@ export default function Search(): React.ReactElement {
                     MenuProps={MENU_PROPS}
                     onChange={(e) => {
                       const value = e.target.value
-                      handleExcludeExtensionChange(
-                        typeof value === 'string' ? value.split(',') : value
-                      )
+                      const arr = typeof value === 'string' ? value.split(',') : value
+                      if (arr.includes(EXT_HIDE_ALL)) {
+                        handleExcludeExtensionChange([...availableExtensions])
+                        return
+                      }
+                      if (arr.includes(EXT_SHOW_ALL)) {
+                        handleExcludeExtensionChange([])
+                        return
+                      }
+                      handleExcludeExtensionChange(arr)
                     }}
                     renderValue={(selected) =>
                       selected.length === 0 ? (
@@ -769,7 +781,7 @@ export default function Search(): React.ReactElement {
                           {selected.map((ext) => (
                             <Chip
                               key={ext}
-                              label={ext}
+                              label={ext === '(none)' ? '(no extension)' : ext}
                               size="small"
                               color="default"
                               sx={{ textDecoration: 'line-through' }}
@@ -779,6 +791,17 @@ export default function Search(): React.ReactElement {
                       )
                     }
                   >
+                    <MenuItem value={EXT_HIDE_ALL}>
+                      <Typography variant="body2" sx={{ fontWeight: 500, fontStyle: 'italic' }}>
+                        Hide all extensions
+                      </Typography>
+                    </MenuItem>
+                    <MenuItem value={EXT_SHOW_ALL}>
+                      <Typography variant="body2" sx={{ fontWeight: 500, fontStyle: 'italic' }}>
+                        Show all extensions
+                      </Typography>
+                    </MenuItem>
+                    <Divider />
                     {availableExtensions.map((ext) => (
                       <MenuItem key={ext} value={ext}>
                         <Checkbox checked={excludedExtensions.includes(ext)} size="small" />
@@ -790,9 +813,10 @@ export default function Search(): React.ReactElement {
                             color: excludedExtensions.includes(ext)
                               ? 'text.disabled'
                               : 'text.primary',
+                            fontStyle: ext === '(none)' ? 'italic' : 'normal',
                           }}
                         >
-                          {ext}
+                          {ext === '(none)' ? '(no extension)' : ext}
                         </Typography>
                       </MenuItem>
                     ))}

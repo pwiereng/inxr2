@@ -1,6 +1,6 @@
 """PostgreSQL symbol repository adapter."""
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import SymbolRepositoryPort
@@ -76,10 +76,19 @@ class PostgresSymbolRepository(
             )
 
         if extensions is not None and len(extensions) > 0:
-            query = query.where(
-                SymbolModel.file_id.in_(
-                    select(FileModel.id).where(FileModel.extension.in_(extensions))
+            real_exts = [e for e in extensions if e != "(none)"]
+            has_none = "(none)" in extensions
+            if real_exts and has_none:
+                ext_filter = or_(
+                    FileModel.extension.in_(real_exts),
+                    FileModel.extension.is_(None),
                 )
+            elif has_none:
+                ext_filter = FileModel.extension.is_(None)
+            else:
+                ext_filter = FileModel.extension.in_(real_exts)
+            query = query.where(
+                SymbolModel.file_id.in_(select(FileModel.id).where(ext_filter))
             )
 
         query = query.order_by(SymbolModel.name).limit(limit)
