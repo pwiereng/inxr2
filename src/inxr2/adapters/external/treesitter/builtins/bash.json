@@ -1,0 +1,24 @@
+{
+  "builtins": [
+    "echo", "printf", "read", "readarray", "mapfile",
+    "cd", "pwd", "pushd", "popd", "dirs",
+    "test", "[", "[[",
+    "exit", "return", "break", "continue",
+    "true", "false",
+    "set", "unset", "shopt",
+    "shift", "eval", "exec",
+    "trap", "wait", "kill", "jobs", "bg", "fg", "disown",
+    "export", "readonly", "local", "declare", "typeset",
+    "let", "expr",
+    "alias", "unalias",
+    "type", "hash", "command", "builtin", "enable",
+    "getopts",
+    "umask", "ulimit", "times",
+    "bind", "complete", "compgen", "compopt",
+    "caller", "help",
+    "logout",
+    "suspend",
+    "coproc",
+    "select"
+  ]
+}

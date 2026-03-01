@@ -1,6 +1,14 @@
 """Language detection service."""
 
+import re
 from pathlib import Path
+
+_SHEBANG_RE = re.compile(r"^#!\s*(?:/usr/bin/env\s+|/(?:usr/)?(?:local/)?bin/)(\S+)")
+
+_SHEBANG_LANGUAGE_MAP: dict[str, str] = {
+    "bash": "bash",
+    "sh": "bash",
+}
 
 
 class LanguageDetector:
@@ -66,7 +74,7 @@ class LanguageDetector:
         ".m": "objective-c",
         ".mm": "objective-cpp",
         # Shell
-        ".sh": "shell",
+        ".sh": "bash",
         ".bash": "bash",
         ".zsh": "zsh",
         ".fish": "fish",
@@ -123,6 +131,22 @@ class LanguageDetector:
         if extension in cls.EXTENSION_MAP:
             return cls.EXTENSION_MAP[extension]
 
+        return None
+
+    @classmethod
+    def detect_from_shebang(cls, first_line: str) -> str | None:
+        """Detect language from a shebang line (e.g. ``#!/bin/bash``).
+
+        Args:
+            first_line: The first line of the file content.
+
+        Returns:
+            Language name (lowercase) or None if unrecognised.
+        """
+        match = _SHEBANG_RE.match(first_line)
+        if match:
+            interpreter = match.group(1)
+            return _SHEBANG_LANGUAGE_MAP.get(interpreter)
         return None
 
     @classmethod

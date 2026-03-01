@@ -100,3 +100,37 @@ class TestLanguageDetector:
         """Test detection is case-insensitive for extensions."""
         assert LanguageDetector.detect("Script.PY") == "python"
         assert LanguageDetector.detect("FILE.RS") == "rust"
+
+
+class TestDetectFromShebang:
+    """Tests for shebang-based language detection."""
+
+    def test_bin_bash(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/bash") == "bash"
+
+    def test_usr_bin_bash(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/bash") == "bash"
+
+    def test_usr_bin_env_bash(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env bash") == "bash"
+
+    def test_bin_sh(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/sh") == "bash"
+
+    def test_usr_bin_env_sh(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env sh") == "bash"
+
+    def test_usr_local_bin_bash(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/local/bin/bash") == "bash"
+
+    def test_unknown_interpreter(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/python3") is None
+
+    def test_empty_string(self) -> None:
+        assert LanguageDetector.detect_from_shebang("") is None
+
+    def test_non_shebang_line(self) -> None:
+        assert LanguageDetector.detect_from_shebang("echo hello") is None
+
+    def test_shebang_with_trailing_content(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/bash -e") == "bash"
