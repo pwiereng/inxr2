@@ -57,54 +57,103 @@ class TreeSitterService(ParserServicePort):
         if self._initialized:
             return
 
+        # Initialize each language independently so one missing grammar
+        # doesn't prevent all other parsers from loading.
+        def _init_language(
+            name: str,
+            grammar_loader: Any,
+            parser_factory: Any,
+            *,
+            aliases: list[str] | None = None,
+        ) -> None:
+            try:
+                lang = Language(grammar_loader())
+                self._parsers[name] = Parser(lang)
+                self._language_parsers[name] = parser_factory()
+                for alias in aliases or []:
+                    self._parsers[alias] = Parser(lang)
+                    self._language_parsers[alias] = parser_factory()
+            except ImportError as e:
+                logger.warning(f"Tree-sitter grammar for {name} not available: {e}")
+
         try:
-            import tree_sitter_c_sharp as tscsharp
-            import tree_sitter_cpp as tscpp
-            import tree_sitter_go as tsgo
-            import tree_sitter_java as tsjava
-            import tree_sitter_javascript as tsjavascript
             import tree_sitter_python as tspython
-            import tree_sitter_ruby as tsruby
+
+            _init_language("python", tspython.language, PythonParser)
+        except ImportError as e:
+            logger.warning(f"Tree-sitter grammar for python not available: {e}")
+
+        try:
             import tree_sitter_typescript as tstypescript
 
-            # Create language objects
-            py_language = Language(tspython.language())
-            ts_language = Language(tstypescript.language_typescript())
-            tsx_language = Language(tstypescript.language_tsx())
-            js_language = Language(tsjavascript.language())
-            java_language = Language(tsjava.language())
-            csharp_language = Language(tscsharp.language())
-            go_language = Language(tsgo.language())
-            ruby_language = Language(tsruby.language())
-            cpp_language = Language(tscpp.language())
-
-            # Create parsers for each language
-            self._parsers["python"] = Parser(py_language)
-            self._parsers["typescript"] = Parser(ts_language)
-            self._parsers["tsx"] = Parser(tsx_language)
-            self._parsers["javascript"] = Parser(js_language)
-            self._parsers["c"] = Parser(cpp_language)
-            self._parsers["java"] = Parser(java_language)
-            self._parsers["csharp"] = Parser(csharp_language)
-            self._parsers["go"] = Parser(go_language)
-            self._parsers["ruby"] = Parser(ruby_language)
-            self._parsers["cpp"] = Parser(cpp_language)
-
-            # Create language-specific extraction parsers
-            self._language_parsers["python"] = PythonParser()
-            self._language_parsers["typescript"] = TypeScriptParser("typescript")
-            self._language_parsers["javascript"] = TypeScriptParser("javascript")
-            self._language_parsers["c"] = CppParser("c")
-            self._language_parsers["java"] = JavaParser()
-            self._language_parsers["csharp"] = CSharpParser()
-            self._language_parsers["go"] = GoParser()
-            self._language_parsers["ruby"] = RubyParser()
-            self._language_parsers["cpp"] = CppParser()
-
-            logger.debug("Tree-sitter parsers initialized successfully")
-
+            _init_language(
+                "typescript",
+                tstypescript.language_typescript,
+                lambda: TypeScriptParser("typescript"),
+            )
+            # TSX uses the same TypeScript grammar
+            tsx_lang = Language(tstypescript.language_tsx())
+            self._parsers["tsx"] = Parser(tsx_lang)
+            self._language_parsers["tsx"] = TypeScriptParser("typescript")
         except ImportError as e:
-            logger.warning(f"Tree-sitter grammars not available: {e}")
+            logger.warning(f"Tree-sitter grammar for typescript not available: {e}")
+
+        try:
+            import tree_sitter_javascript as tsjavascript
+
+            _init_language(
+                "javascript",
+                tsjavascript.language,
+                lambda: TypeScriptParser("javascript"),
+            )
+        except ImportError as e:
+            logger.warning(f"Tree-sitter grammar for javascript not available: {e}")
+
+        try:
+            import tree_sitter_cpp as tscpp
+
+            # C and C++ both use the C++ grammar (unified parser)
+            _init_language("cpp", tscpp.language, CppParser, aliases=["c"])
+            # Override C alias with c-mode parser
+            self._language_parsers["c"] = CppParser("c")
+        except ImportError as e:
+            logger.warning(f"Tree-sitter grammar for cpp not available: {e}")
+
+        try:
+            import tree_sitter_java as tsjava
+
+            _init_language("java", tsjava.language, JavaParser)
+        except ImportError as e:
+            logger.warning(f"Tree-sitter grammar for java not available: {e}")
+
+        try:
+            import tree_sitter_c_sharp as tscsharp
+
+            _init_language("csharp", tscsharp.language, CSharpParser)
+        except ImportError as e:
+            logger.warning(f"Tree-sitter grammar for csharp not available: {e}")
+
+        try:
+            import tree_sitter_go as tsgo
+
+            _init_language("go", tsgo.language, GoParser)
+        except ImportError as e:
+            logger.warning(f"Tree-sitter grammar for go not available: {e}")
+
+        try:
+            import tree_sitter_ruby as tsruby
+
+            _init_language("ruby", tsruby.language, RubyParser)
+        except ImportError as e:
+            logger.warning(f"Tree-sitter grammar for ruby not available: {e}")
+
+        loaded = list(self._parsers.keys())
+        if loaded:
+            logger.debug(
+                f"Tree-sitter parsers initialized: {', '.join(sorted(loaded))}"
+            )
+        else:
+            logger.warning("No tree-sitter grammars available")
 
         self._initialized = True
 
