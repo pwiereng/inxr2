@@ -15,6 +15,7 @@ from .csharp_parser import CSharpParser
 from .go_parser import GoParser
 from .java_parser import JavaParser
 from .python_parser import PythonParser
+from .ruby_parser import RubyParser
 from .service import TreeSitterService
 from .typescript_parser import TypeScriptParser
 
@@ -26,5 +27,6 @@ __all__ = [
     "GoParser",
     "JavaParser",
     "PythonParser",
+    "RubyParser",
     "TypeScriptParser",
 ]
