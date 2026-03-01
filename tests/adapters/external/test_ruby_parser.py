@@ -10,9 +10,11 @@ class TestRubySupport:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     def test_supports_ruby(self, parser_service: TreeSitterService) -> None:
+        """Test that Ruby is supported case-insensitively."""
         assert parser_service.supports_language("ruby")
         assert parser_service.supports_language("Ruby")
         assert parser_service.supports_language("RUBY")
@@ -23,10 +25,12 @@ class TestRubyClasses:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_parse_simple_class(self, parser_service: TreeSitterService) -> None:
+        """Test parsing a simple class definition."""
         code = """class MyClass
 end
 """
@@ -42,6 +46,7 @@ end
     async def test_parse_class_with_inheritance(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing a class with superclass inheritance."""
         code = """class Child < Parent
 end
 """
@@ -63,10 +68,12 @@ class TestRubyModules:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_parse_simple_module(self, parser_service: TreeSitterService) -> None:
+        """Test parsing a simple module definition."""
         code = """module MyModule
 end
 """
@@ -82,6 +89,7 @@ end
     async def test_parse_scope_resolution_module(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing a module with scope resolution operator."""
         code = """module Outer::Inner
 end
 """
@@ -99,12 +107,14 @@ class TestRubyMethods:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_parse_method_in_class(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing a method inside a class."""
         code = """class MyClass
   def my_method
   end
@@ -123,6 +133,7 @@ end
     async def test_parse_method_with_params(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing a method with parameters."""
         code = """class Calculator
   def add(a, b)
     a + b
@@ -142,6 +153,7 @@ end
     async def test_parse_multiple_methods(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing multiple methods in a class."""
         code = """class Dog
   def bark
   end
@@ -167,12 +179,14 @@ class TestRubySingletonMethods:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_parse_singleton_method(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing a singleton method (def self.method)."""
         code = """class Factory
   def self.create(name)
     new(name)
@@ -192,6 +206,7 @@ end
     async def test_parse_multiple_singleton_methods(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing multiple singleton methods."""
         code = """class Config
   def self.load(path)
   end
@@ -234,12 +249,14 @@ class TestRubyConstants:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_parse_constant_in_class(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing constants inside a class."""
         code = """class Settings
   MAX_RETRIES = 3
   DEFAULT_TIMEOUT = 30
@@ -260,6 +277,7 @@ end
     async def test_parse_constant_in_module(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing a constant inside a module."""
         code = """module Constants
   VERSION = "1.0.0"
 end
@@ -279,12 +297,14 @@ class TestRubyReferences:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_parse_method_call_references(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test extracting method call references."""
         code = """class Worker
   def process
     helper_method()
@@ -305,6 +325,7 @@ end
     async def test_builtin_calls_filtered(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test that builtin method calls are filtered from references."""
         code = """class Printer
   def show
     puts "hello"
@@ -329,6 +350,7 @@ end
     async def test_parse_dotted_method_call(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test extracting dotted method call references."""
         code = """class Worker
   def process(obj)
     obj.transform
@@ -349,6 +371,7 @@ end
     async def test_parse_instance_variable_references(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test extracting instance variable references."""
         code = """class Person
   def initialize(name)
     @name = name
@@ -371,6 +394,7 @@ end
     async def test_parse_scope_resolution_call(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test extracting references from scope resolution calls."""
         code = """class Worker
   def process
     Other::Helper.call(data)
@@ -440,10 +464,12 @@ class TestRubyImports:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_parse_require(self, parser_service: TreeSitterService) -> None:
+        """Test parsing require statements."""
         code = """require 'json'
 require 'net/http'
 """
@@ -460,6 +486,7 @@ require 'net/http'
     async def test_parse_require_relative(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing require_relative statements."""
         code = """require_relative 'helper'
 require_relative 'lib/utils'
 """
@@ -478,10 +505,12 @@ class TestRubyIncludeExtend:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_parse_include(self, parser_service: TreeSitterService) -> None:
+        """Test extracting include references."""
         code = """class MyList
   include Loggable
 
@@ -499,6 +528,7 @@ end
 
     @pytest.mark.asyncio
     async def test_parse_extend(self, parser_service: TreeSitterService) -> None:
+        """Test extracting extend references."""
         code = """class Config
   extend Serializable
 end
@@ -517,12 +547,14 @@ class TestRubyNestedScoping:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_nested_class_in_module(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing a class nested inside a module."""
         code = """module MyModule
   class MyClass
     def my_method
@@ -553,6 +585,7 @@ end
     async def test_nested_class_in_class(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing a class nested inside another class."""
         code = """class Outer
   class Inner
     def inner_method
@@ -582,12 +615,14 @@ class TestRubyComments:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_extract_single_line_comment(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test extracting a single-line comment."""
         code = """# This is a comment
 class MyClass
 end
@@ -604,6 +639,7 @@ end
     async def test_extract_multiple_comments(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test extracting multiple comments."""
         code = """# First comment
 # Second comment
 class MyClass
@@ -625,6 +661,7 @@ end
     async def test_empty_comment_skipped(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test that empty comments are skipped."""
         code = """#
 class MyClass
 end
@@ -641,12 +678,14 @@ class TestRubyComplexStructures:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_parse_full_ruby_file(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test parsing a complete Ruby file with mixed constructs."""
         code = """require 'json'
 require_relative 'helper'
 
@@ -720,6 +759,7 @@ end
     async def test_method_symbol_line_points_to_name(
         self, parser_service: TreeSitterService
     ) -> None:
+        """Test that method symbol location points to the name token."""
         code = """class MyClass
   def my_method
   end
@@ -739,10 +779,12 @@ class TestRubyEdgeCases:
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
         return TreeSitterService()
 
     @pytest.mark.asyncio
     async def test_malformed_ruby_code(self, parser_service: TreeSitterService) -> None:
+        """Test that malformed Ruby code does not crash the parser."""
         code = """class Broken
   def incomplete(
   end
@@ -758,6 +800,7 @@ end
 
     @pytest.mark.asyncio
     async def test_empty_ruby_file(self, parser_service: TreeSitterService) -> None:
+        """Test parsing an empty Ruby file."""
         code = ""
         symbols, references = await parser_service.parse_file(
             content=code, language="ruby", file_path="empty.rb"
@@ -769,6 +812,7 @@ end
 
     @pytest.mark.asyncio
     async def test_rake_file_extension(self, parser_service: TreeSitterService) -> None:
+        """Test parsing a .rake file."""
         code = """task :build do
   puts "Building..."
 end
@@ -782,6 +826,7 @@ end
 
     @pytest.mark.asyncio
     async def test_top_level_method(self, parser_service: TreeSitterService) -> None:
+        """Test parsing a top-level method with no enclosing class or module."""
         code = """def top_level_helper
   42
 end
