@@ -1569,6 +1569,8 @@ class Impl implements IFoo<Bar> {}
         type_refs = [r for r in references if r["type"] == "type_annotation"]
         type_names = [r["text"] for r in type_refs]
         assert "IFoo" not in type_names
+        # But the type argument Bar should still be captured as a type_annotation
+        assert "Bar" in type_names
 
 
 class TestTypeScriptMemberAccessReferences:

@@ -386,15 +386,33 @@ class TypeScriptParser(BaseLanguageParser):
                         # UPPER_CASE constant
                         symbols.append(self._make_symbol(var_name, "constant", child))
 
-        def _is_inside_class_heritage(node: Node) -> bool:
-            """Check if a node is inside a class_heritage subtree."""
-            current = node.parent
-            while current is not None:
-                if current.type == "class_heritage":
-                    return True
-                if current.type == "class_declaration":
-                    return False
-                current = current.parent
+        def _is_heritage_base_type(node: Node) -> bool:
+            """Check if a type_identifier is a heritage base type (not a type argument).
+
+            Returns True for the primary type in extends/implements clauses:
+              - `implements IFoo` → IFoo is a heritage base (parent is implements_clause)
+              - `implements IFoo<Bar>` → IFoo is a heritage base (parent is generic_type
+                whose parent is implements_clause), but Bar is NOT (it's a type argument)
+              - `extends Parent` → Parent is heritage base (parent is extends_clause)
+            """
+            parent = node.parent
+            if parent is None:
+                return False
+            # Direct child of extends_clause or implements_clause
+            if parent.type in ("extends_clause", "implements_clause"):
+                return True
+            # Base type of a generic_type that is a direct child of a heritage clause
+            if parent.type == "generic_type":
+                grandparent = parent.parent
+                if grandparent is not None and grandparent.type in (
+                    "extends_clause",
+                    "implements_clause",
+                ):
+                    # Only the first type_identifier in generic_type is the base
+                    for child in parent.children:
+                        if child.type in ("identifier", "type_identifier"):
+                            return child.id == node.id
+                        break
             return False
 
         def extract_references(node: Node, scope: str | None = None) -> None:
@@ -496,9 +514,9 @@ class TypeScriptParser(BaseLanguageParser):
                             self._make_reference(prop_name, "usage", prop, scope)
                         )
 
-            # Type references (skip those inside class_heritage — handled as inheritance)
+            # Type references (skip heritage base types — handled as inheritance)
             if node.type == "type_identifier":
-                if not _is_inside_class_heritage(node):
+                if not _is_heritage_base_type(node):
                     type_name = get_text(node)
                     if type_name not in TS_TYPE_BUILTINS:
                         add_reference(
