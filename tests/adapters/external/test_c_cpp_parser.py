@@ -1861,3 +1861,189 @@ void print_point(const Point *p);
         func_symbols = [s for s in symbols if s["name"] == "MyFunction"]
         assert len(func_symbols) == 1
         assert func_symbols[0]["start_line"] == 1
+
+
+# ── Identifier usage references ────────────────────────────────
+
+
+class TestIdentifierUsageReferences:
+    """Tests for general identifier usage references (enum values, constants,
+    variables used in expressions, function arguments, etc.)."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_enum_value_as_function_argument(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+typedef enum { TIMER_ONESHOT, TIMER_PERIODIC } TimerType;
+void Create_Timer(int x, TimerType type, int ms);
+void test() {
+    Create_Timer(0, TIMER_ONESHOT, 100);
+}
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+        usage_refs = [
+            r for r in refs if r["text"] == "TIMER_ONESHOT" and r["type"] == "usage"
+        ]
+        assert len(usage_refs) >= 1
+
+    @pytest.mark.asyncio
+    async def test_enum_value_in_assignment(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+typedef enum { VALUE_A, VALUE_B } MyEnum;
+void test() {
+    MyEnum x = VALUE_A;
+}
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+        usage_refs = [
+            r for r in refs if r["text"] == "VALUE_A" and r["type"] == "usage"
+        ]
+        assert len(usage_refs) >= 1
+
+    @pytest.mark.asyncio
+    async def test_enum_value_in_comparison(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+typedef enum { STATE_INIT, STATE_RUNNING } State;
+void test(State s) {
+    if (s == STATE_INIT) {}
+}
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+        usage_refs = [
+            r for r in refs if r["text"] == "STATE_INIT" and r["type"] == "usage"
+        ]
+        assert len(usage_refs) >= 1
+
+    @pytest.mark.asyncio
+    async def test_constant_as_function_argument(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+#define MAX_SIZE 100
+void alloc(int size);
+void test() {
+    alloc(MAX_SIZE);
+}
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+        usage_refs = [
+            r for r in refs if r["text"] == "MAX_SIZE" and r["type"] == "usage"
+        ]
+        assert len(usage_refs) >= 1
+
+    @pytest.mark.asyncio
+    async def test_variable_definition_not_duplicated(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Variable names in declarations should NOT create usage refs."""
+        code = """
+int myGlobal = 42;
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+        usage_refs = [
+            r for r in refs if r["text"] == "myGlobal" and r["type"] == "usage"
+        ]
+        assert len(usage_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_enum_value_in_return_statement(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+typedef enum { OK, ERR } Status;
+Status get_status() {
+    return OK;
+}
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+        usage_refs = [r for r in refs if r["text"] == "OK" and r["type"] == "usage"]
+        assert len(usage_refs) >= 1
+
+    @pytest.mark.asyncio
+    async def test_identifier_in_array_size(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Array size expressions should generate usage refs."""
+        code = """
+#define ARRAY_SIZE 10
+int arr[ARRAY_SIZE];
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+        usage_refs = [
+            r for r in refs if r["text"] == "ARRAY_SIZE" and r["type"] == "usage"
+        ]
+        assert len(usage_refs) >= 1
+
+    @pytest.mark.asyncio
+    async def test_identifier_in_case_statement(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+#define MY_CONST 1
+void test(int x) {
+    switch(x) {
+    case MY_CONST:
+        break;
+    }
+}
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+        usage_refs = [
+            r for r in refs if r["text"] == "MY_CONST" and r["type"] == "usage"
+        ]
+        assert len(usage_refs) >= 1
+
+    @pytest.mark.asyncio
+    async def test_function_param_not_usage_ref(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Parameter names should NOT generate usage refs."""
+        code = """
+void foo(int myParam) {}
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+        usage_refs = [
+            r for r in refs if r["text"] == "myParam" and r["type"] == "usage"
+        ]
+        assert len(usage_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_enum_definition_not_usage_ref(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Enum value definitions should NOT generate usage refs."""
+        code = """
+enum Color { RED, GREEN, BLUE };
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="c", file_path="test.c"
+        )
+        usage_refs = [r for r in refs if r["text"] == "RED" and r["type"] == "usage"]
+        assert len(usage_refs) == 0
