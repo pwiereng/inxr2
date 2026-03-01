@@ -97,7 +97,7 @@ class TestLanguageDetector:
         assert LanguageDetector.detect("tasks.rake") == "ruby"
 
     def test_detect_sh_extension_is_bash(self) -> None:
-        """Test that .sh files are detected as bash (not shell)."""
+        """Test that .sh and .bash files are detected as bash."""
         assert LanguageDetector.detect("script.sh") == "bash"
         assert LanguageDetector.detect("deploy.bash") == "bash"
 

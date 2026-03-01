@@ -307,10 +307,15 @@ ANOTHER=42
         assert "b" in local_names
 
     @pytest.mark.asyncio
-    async def test_export_inside_function_not_scoped(
+    async def test_export_inside_function_skipped_by_locals(
         self, parser_service: TreeSitterService
     ) -> None:
-        """Test that export inside a function is not scoped to the function."""
+        """Test that export inside a function is not extracted as a local symbol.
+
+        In bash, export/readonly inside a function affect global scope, so
+        _walk_for_locals intentionally skips them. They are not reached by the
+        top-level declaration pass either (which only iterates root children).
+        """
         code = """function init() {
     export GLOBAL_VAR="hello"
     local local_var="world"
@@ -324,9 +329,11 @@ ANOTHER=42
         assert len(local_syms) == 1
         assert local_syms[0].get("scope") == "init"
 
-        # GLOBAL_VAR should NOT be scoped to init (export is global)
-        global_syms = [s for s in symbols if s["name"] == "GLOBAL_VAR"]
-        assert len(global_syms) == 0 or global_syms[0].get("scope") is None
+        # GLOBAL_VAR should not appear as a function-scoped symbol
+        global_syms = [
+            s for s in symbols if s["name"] == "GLOBAL_VAR" and s.get("scope") == "init"
+        ]
+        assert len(global_syms) == 0
 
     @pytest.mark.asyncio
     async def test_expr_generates_call_reference(
