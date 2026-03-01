@@ -19,6 +19,7 @@ from .csharp_parser import CSharpParser
 from .go_parser import GoParser
 from .java_parser import JavaParser
 from .python_parser import PythonParser
+from .ruby_parser import RubyParser
 from .typescript_parser import TypeScriptParser
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class TreeSitterService(ParserServicePort):
         "csharp": [".cs"],
         "go": [".go"],
         "cpp": [".cpp", ".cc", ".cxx", ".c++", ".hpp", ".hh", ".hxx", ".h++", ".h"],
+        "ruby": [".rb", ".rake"],
     }
 
     def __init__(self) -> None:
@@ -64,6 +66,7 @@ class TreeSitterService(ParserServicePort):
             import tree_sitter_java as tsjava
             import tree_sitter_javascript as tsjavascript
             import tree_sitter_python as tspython
+            import tree_sitter_ruby as tsruby
             import tree_sitter_typescript as tstypescript
 
             # Create language objects
@@ -75,6 +78,7 @@ class TreeSitterService(ParserServicePort):
             java_language = Language(tsjava.language())
             csharp_language = Language(tscsharp.language())
             go_language = Language(tsgo.language())
+            ruby_language = Language(tsruby.language())
             cpp_language = Language(tscpp.language())
 
             # Create parsers for each language
@@ -86,6 +90,7 @@ class TreeSitterService(ParserServicePort):
             self._parsers["java"] = Parser(java_language)
             self._parsers["csharp"] = Parser(csharp_language)
             self._parsers["go"] = Parser(go_language)
+            self._parsers["ruby"] = Parser(ruby_language)
             self._parsers["cpp"] = Parser(cpp_language)
 
             # Create language-specific extraction parsers
@@ -96,6 +101,7 @@ class TreeSitterService(ParserServicePort):
             self._language_parsers["java"] = JavaParser()
             self._language_parsers["csharp"] = CSharpParser()
             self._language_parsers["go"] = GoParser()
+            self._language_parsers["ruby"] = RubyParser()
             self._language_parsers["cpp"] = CppParser()
 
             logger.debug("Tree-sitter parsers initialized successfully")
@@ -141,6 +147,8 @@ class TreeSitterService(ParserServicePort):
             return self._parsers.get("csharp")
         elif language == "go":
             return self._parsers.get("go")
+        elif language == "ruby":
+            return self._parsers.get("ruby")
         elif language == "cpp":
             return self._parsers.get("cpp")
 

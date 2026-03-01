@@ -1,0 +1,43 @@
+{
+  "builtins": [
+    "puts", "print", "p", "pp", "printf", "putc",
+    "require", "require_relative", "load", "autoload",
+    "attr_reader", "attr_writer", "attr_accessor",
+    "raise", "fail", "throw", "catch",
+    "yield", "return", "break", "next", "redo", "retry",
+    "super", "self", "nil", "true", "false",
+    "block_given?", "caller", "lambda", "proc",
+    "loop", "sleep", "exit", "abort", "at_exit",
+    "rand", "srand", "gets", "readline", "readlines",
+    "open", "spawn", "exec", "system", "fork",
+    "defined?", "frozen?",
+    "include", "extend", "prepend",
+    "public", "private", "protected",
+    "module_function", "alias", "alias_method",
+    "freeze", "dup", "clone", "tap", "then", "yield_self",
+    "respond_to?", "send", "method", "is_a?", "kind_of?", "instance_of?",
+    "class", "object_id", "hash", "inspect", "to_s", "to_i", "to_f", "to_a", "to_h",
+    "nil?", "equal?", "eql?"
+  ],
+  "primitive_types": [
+    "Integer", "Float", "String", "Symbol", "Array", "Hash",
+    "NilClass", "TrueClass", "FalseClass",
+    "Range", "Regexp", "Proc", "Method", "UnboundMethod",
+    "Numeric", "Complex", "Rational", "Bignum", "Fixnum",
+    "IO", "File", "Dir", "Time", "Date", "DateTime",
+    "Thread", "Mutex", "Fiber",
+    "Struct", "OpenStruct",
+    "Exception", "StandardError", "RuntimeError", "TypeError",
+    "ArgumentError", "NameError", "NoMethodError",
+    "Encoding", "Enumerator", "Random"
+  ],
+  "standard_library_modules": [
+    "Kernel", "Enumerable", "Comparable", "Singleton",
+    "Math", "Process", "Signal", "GC", "ObjectSpace",
+    "Marshal", "FileUtils", "Pathname", "StringIO",
+    "Set", "JSON", "YAML", "CSV", "ERB",
+    "Net", "URI", "CGI", "WEBrick",
+    "Logger", "Monitor", "Observable", "Forwardable",
+    "Benchmark", "FileTest", "Etc"
+  ]
+}
