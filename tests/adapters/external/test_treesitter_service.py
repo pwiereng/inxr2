@@ -1159,3 +1159,154 @@ class TestPythonNestedFunctions:
         build_key = next(s for s in func_symbols if s["name"] == "build_key")
         assert build_key["scope"] == "Service.__init__"
         assert build_key["qualified_name"] == "Service.__init__.build_key"
+
+
+class TestSelfAttributeReferences:
+    """Tests for self.x usage references (issue #162).
+
+    Verifies that reading self.x in methods generates usage references
+    back to the instance variable symbol.
+    """
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_self_read_generates_usage_reference(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that self.x read in a method creates a usage reference."""
+        code = """
+class MyClass:
+    def __init__(self):
+        self.name = "test"
+
+    def get_name(self):
+        return self.name
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "name"]
+        assert len(usage_refs) == 1
+
+    @pytest.mark.asyncio
+    async def test_self_assignment_not_duplicated_as_usage(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that self.x = value does NOT create a usage reference."""
+        code = """
+class MyClass:
+    def __init__(self):
+        self.name = "test"
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "name"]
+        assert len(usage_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_self_method_call_not_duplicated(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that self.method() is 'call', not also 'usage'."""
+        code = """
+class MyClass:
+    def validate(self):
+        pass
+
+    def process(self):
+        self.validate()
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        call_refs = [r for r in refs if r["type"] == "call" and r["text"] == "validate"]
+        usage_refs = [
+            r for r in refs if r["type"] == "usage" and r["text"] == "validate"
+        ]
+        assert len(call_refs) == 1
+        assert len(usage_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_self_augmented_assignment_creates_usage(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that self.count += 1 creates a usage reference (read + write)."""
+        code = """
+class Counter:
+    def __init__(self):
+        self.count = 0
+
+    def increment(self):
+        self.count += 1
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "count"]
+        assert len(usage_refs) == 1
+
+    @pytest.mark.asyncio
+    async def test_self_read_in_expression(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that self.x used in expressions creates usage references."""
+        code = """
+class MyClass:
+    def __init__(self):
+        self.value = 10
+
+    def compute(self):
+        result = self.value * 2
+        return result
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "value"]
+        assert len(usage_refs) == 1
+
+    @pytest.mark.asyncio
+    async def test_self_read_as_argument(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that self.x passed as argument creates usage reference."""
+        code = """
+class MyClass:
+    def __init__(self):
+        self.name = "test"
+
+    def display(self):
+        do_something(self.name)
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "name"]
+        assert len(usage_refs) == 1
+
+    @pytest.mark.asyncio
+    async def test_multiple_self_reads_in_method(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that multiple self.x reads each create a usage reference."""
+        code = """
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def distance(self):
+        return (self.x ** 2 + self.y ** 2) ** 0.5
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        x_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "x"]
+        y_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "y"]
+        assert len(x_usages) == 1
+        assert len(y_usages) == 1

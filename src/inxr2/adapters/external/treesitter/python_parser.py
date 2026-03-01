@@ -416,6 +416,34 @@ class PythonParser(BaseLanguageParser):
                                 )
                             )
 
+            # self.attribute references (instance variable usage)
+            if node.type == "attribute":
+                children = list(node.children)
+                if len(children) >= 3:
+                    obj_node = children[0]
+                    if obj_node.type == "identifier" and get_text(obj_node) == "self":
+                        attr_name = None
+                        attr_node = None
+                        for child in reversed(children):
+                            if child.type == "identifier" and get_text(child) != "self":
+                                attr_name = get_text(child)
+                                attr_node = child
+                                break
+                        if attr_name and attr_node:
+                            parent = node.parent
+                            is_call = parent is not None and parent.type == "call"
+                            is_assignment_target = (
+                                parent is not None
+                                and parent.type == "assignment"
+                                and node == parent.children[0]
+                            )
+                            if not is_call and not is_assignment_target:
+                                add_reference(
+                                    self._make_reference(
+                                        attr_name, "usage", attr_node, scope
+                                    )
+                                )
+
             # Type annotations
             if node.type in ("type", "generic_type"):
                 type_id = node.child_by_field_name("identifier")
