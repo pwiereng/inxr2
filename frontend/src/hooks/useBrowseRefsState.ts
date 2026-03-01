@@ -283,8 +283,9 @@ export function useBrowseRefsState({
         // Navigate to the symbol's location AND open refs panel
         const params = new URLSearchParams()
         params.set('line', symbol.start_line.toString())
-        // Note: Don't preserve selectedCommit - symbol search returns symbols from
-        // the latest indexed commit, so we should view the latest version.
+        // Preserve branch and commit - symbol search is scoped to both
+        if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
+        if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
         // Exit diff mode when navigating to a symbol (don't preserve diff, tp, rp, ap params)
         // Preserve drawer state
         if (!urlState.drawerOpen) params.set('drawer', '0')

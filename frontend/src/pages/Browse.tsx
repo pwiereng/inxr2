@@ -392,7 +392,12 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
         )}
 
         {/* Symbol Search */}
-        <SymbolSearch repositoryId={repository?.id} onSymbolSelect={actions.navigateToSymbol} />
+        <SymbolSearch
+          repositoryId={repository?.id}
+          branch={selectedBranch ?? undefined}
+          commit={urlState.selectedCommit ?? undefined}
+          onSymbolSelect={actions.navigateToSymbol}
+        />
       </Toolbar>
 
       {/* Main Content with Flexbox Layout */}

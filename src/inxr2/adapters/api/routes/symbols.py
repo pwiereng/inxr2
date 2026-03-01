@@ -99,6 +99,10 @@ async def search_symbols(
         default="latest",
         description="Search scope when no repository is specified",
     ),
+    commit: str | None = Query(
+        default=None,
+        description="Commit hash for time travel (requires repository_id)",
+    ),
     limit: int = Query(default=50, ge=1, le=200, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ) -> SymbolListResponse:
@@ -107,6 +111,11 @@ async def search_symbols(
 
     Returns paginated list of symbols matching the query.
     """
+    if commit and not repository_id:
+        raise HTTPException(
+            status_code=400,
+            detail="repository_id is required when commit is specified",
+        )
     extensions = _validate_extensions(extensions)
     try:
         result = await use_case.execute(
@@ -122,6 +131,7 @@ async def search_symbols(
                 scope=scope,
                 mode=mode,
                 case_sensitive=case_sensitive,
+                commit_hash=commit,
             )
         )
     except ValueError as e:

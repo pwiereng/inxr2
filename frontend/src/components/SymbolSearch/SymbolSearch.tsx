@@ -18,6 +18,8 @@ import { searchSymbols, type Symbol } from '@/lib/api'
 
 interface SymbolSearchProps {
   repositoryId?: number
+  branch?: string
+  commit?: string
   onSymbolSelect?: (symbol: Symbol) => void
   placeholder?: string
   value?: string
@@ -70,6 +72,8 @@ function getKindColor(
 
 export function SymbolSearch({
   repositoryId,
+  branch,
+  commit,
   onSymbolSelect,
   placeholder = 'Search symbols...',
   value,
@@ -103,6 +107,8 @@ export function SymbolSearch({
         const result = await searchSymbols({
           q: query,
           repository_id: repositoryId,
+          branch,
+          commit,
           limit: 20,
         })
         setOptions(result.items)
@@ -113,7 +119,7 @@ export function SymbolSearch({
         setLoading(false)
       }
     },
-    [repositoryId]
+    [repositoryId, branch, commit]
   )
 
   // Debounce effect

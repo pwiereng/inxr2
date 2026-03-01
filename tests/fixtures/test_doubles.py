@@ -169,26 +169,45 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         scope: str | None = None,
         mode: str | None = None,
         case_sensitive: bool = True,
+        commit_id: int | None = None,
     ) -> list[Symbol]:
         """Search symbols by name with optional filters.
 
+        When commit_id is set, filters to symbols from files at that commit.
         When repository_id is set and file_repo is available, filters to
         only symbols from the latest version of each file (matching Postgres).
         When scope is "latest" and repository_id is None, filters to symbols
         from files at HEAD of each repo's default branch.
 
         Note: ``branch`` only takes effect when ``repository_id`` is
-        provided, since branch-scoped dedup requires a repository context.
+        provided and ``commit_id`` is not, since branch-scoped dedup
+        requires a repository context.
         """
+        # Commit-scoped: filter to files at specific commit
+        commit_file_ids: set[int] | None = None
+        if commit_id is not None and self._file_repo is not None:
+            commit_file_ids = {
+                fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+            }
+
         # Global scope: filter to HEAD file IDs across all repos
         head_file_ids: set[int] | None = None
-        if repository_id is None and scope == "latest" and self._file_repo is not None:
+        if (
+            commit_id is None
+            and repository_id is None
+            and scope == "latest"
+            and self._file_repo is not None
+        ):
             head_file_ids = self._file_repo._compute_head_file_ids()
 
         # Compute latest file IDs for filtering (matches Postgres behavior).
         # When branch is set, dedup is scoped to that branch.
         latest_file_ids: set[int] | None = None
-        if repository_id is not None and self._file_repo is not None:
+        if (
+            commit_id is None
+            and repository_id is not None
+            and self._file_repo is not None
+        ):
             latest_file_ids = self._file_repo._compute_latest_file_ids(
                 repository_id, branch=branch
             )
@@ -228,6 +247,8 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
             if repository_id is not None and symbol.repository_id != repository_id:
                 continue
             if kind is not None and symbol.kind.value != kind:
+                continue
+            if commit_file_ids is not None and symbol.file_id not in commit_file_ids:
                 continue
             if head_file_ids is not None and symbol.file_id not in head_file_ids:
                 continue
