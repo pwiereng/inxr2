@@ -36,7 +36,7 @@ All QA `curl` commands target `http://localhost:9222`. All git/API commands run 
 
 # Phase 1: Indexing Regression
 
-Reset the database and re-index all repos from `config.yaml` (last 30 days).
+Reset the database and re-index all repos from `config.yaml` (last 10 days).
 Verifies: git integration, tree-sitter parsing, symbol extraction, reference resolution.
 
 ## IX-01: Reset Database and Index All Repos
@@ -86,7 +86,7 @@ docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/s
 
 ## IX-04: Verify Multi-Language Symbol Extraction
 
-For each language (Python, TypeScript, JavaScript, C, Java, C#), pick a repo that uses it,
+For each language (Python, TypeScript, JavaScript, C, C++, Java, C#, Go, Ruby), pick a repo that uses it,
 find a real symbol name from git, and verify it appears in the API.
 
 **Steps (per language):**
@@ -609,7 +609,7 @@ curl "http://localhost:9222/text?selector=h1,h2,h3"
 
 | ID | Test | Validates |
 |----|------|-----------|
-| IX-01 | Reset DB and index all repos (30 days) | Full indexing pipeline |
+| IX-01 | Reset DB and index all repos (10 days) | Full indexing pipeline |
 | IX-02 | Verify indexing status | All repos indexed with data |
 | IX-03 | Verify API serves indexed data | API returns all repos from config |
 | IX-04 | Verify multi-language symbol extraction | Each parser produces correct symbols |

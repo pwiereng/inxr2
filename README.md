@@ -12,7 +12,7 @@ INXR2 is similar to LXR (Linux Cross Reference) but built specifically for git-b
 - **Cross-Repository Browsing**: Navigate seamlessly across multiple team repositories
 - **Shareable Permalinks**: Every line and symbol has a permanent, shareable URL
 - **Self-Contained**: Runs in a single Docker container for easy local and cloud deployment
-- **Multi-Language**: Support for Python, TypeScript/JavaScript, Java, and C
+- **Multi-Language**: Support for Python, TypeScript/JavaScript, C, C++, Java, C#, Go, and Ruby
 
 ## Features
 
@@ -31,8 +31,11 @@ INXR2 is similar to LXR (Linux Cross Reference) but built specifically for git-b
 **With Semantic Indexing:**
 - Python
 - TypeScript/JavaScript
+- C / C++
 - Java
-- C
+- C#
+- Go
+- Ruby
 
 **All Other Languages:**
 - Displayed with syntax highlighting
@@ -224,7 +227,7 @@ ruff check .               # Python
 cd frontend && npm run lint    # TypeScript
 
 # Type check
-mypy .                     # Python
+mypy src/ tests/           # Python
 cd frontend && npm run type-check  # TypeScript
 
 # Install pre-commit hooks
@@ -553,7 +556,7 @@ INXR2 has completed all core phases (1.1–1.11) including multi-branch support,
 ### Completed Features
 - Project setup, React frontend, and development infrastructure
 - Database foundation with PostgreSQL and environment configuration
-- File indexing with Tree-sitter AST parsing (Python, TypeScript, JavaScript, Java, C)
+- File indexing with Tree-sitter AST parsing (Python, TypeScript, JavaScript, C, C++, Java, C#, Go, Ruby)
 - Cross-reference code browser UI with symbol search
 - Configuration system (YAML-based multi-repository support)
 - Time travel and temporal navigation (browse code at any indexed commit)

@@ -1,6 +1,6 @@
 # Project Index: INXR2
 
-Generated: 2026-02-14
+Generated: 2026-03-01
 
 ## Overview
 
@@ -40,19 +40,19 @@ src/inxr2/
       git_service.py       # GitPython wrapper (implements GitServicePort)
       local_filesystem.py  # File I/O (implements FileSystemPort)
       plaintext_parser.py  # Regex-based fallback parser
-      treesitter/          # AST parsers: python, typescript, c, java, csharp
+      treesitter/          # AST parsers: python, typescript, c/cpp, java, csharp, go, ruby
     config/          # YAML config loader (Pydantic models)
   infrastructure/    # Layer 4: Framework setup
     fastapi/app.py   # create_app() factory, CORS, router registration
     database/        # AsyncSession factory, connection pooling, Alembic migrations
-    config/          # Pydantic Settings, DI container (dependency_injection.py not used)
-    dependencies.py  # Central DI: all FastAPI Depends providers (424 lines)
+    config/          # Pydantic Settings
+    dependencies.py  # Central DI: all FastAPI Depends providers (488 lines)
 
 frontend/src/
   App.tsx            # Router: /, /browse/:repo/*, /search, /history, /repositories
   pages/             # Browse (main), Search, History, Repositories, Files
   hooks/
-    useBrowseState.ts  # 1200-line state hook: URL sync, data fetching, actions
+    useBrowseState.ts  # 240-line state hook: URL sync, data fetching, actions
   components/
     CodeViewer/      # Prism.js syntax highlighting, clickable symbols/refs
     DiffCodeViewer/  # Side-by-side diff with synced scroll
@@ -62,12 +62,12 @@ frontend/src/
     CodeHeader/      # Nav bar: repo/branch/commit selectors + tabs
     VersionSelector/ # Time-travel commit picker
     BranchSelector/  # Branch switcher
-  lib/api.ts         # API client (464 lines): all endpoint functions, typed responses
+  lib/api.ts         # API client (579 lines): all endpoint functions, typed responses
   contexts/          # AppContext: theme + API client injection
 
-tests/               # 86 Python files + 15 TypeScript test files
+tests/               # 71 Python test files + 27 TypeScript test files
   fixtures/
-    test_doubles.py  # 13 in-memory fakes (~2500 lines), behavioral parity with Postgres
+    test_doubles.py  # 13 in-memory fakes (~2700 lines), behavioral parity with Postgres
   contract/          # 24 parametrized tests: fake vs Postgres parity verification
   unit/              # Domain entities, use cases (19 files), adapters
   adapters/          # Postgres integration (savepoint isolation), CLI (truncation), Git, Tree-sitter
@@ -101,11 +101,12 @@ tests/               # 86 Python files + 15 TypeScript test files
 
 ## Database (PostgreSQL 15)
 
-6 core tables: `repositories`, `commits`, `files`, `symbols`, `references`, `index_status`
-Plus: `branch_commits` (M:N), `text_contents` (full-text search via tsvector + GIN)
+Core tables: `repositories`, `commits`, `files`, `symbols`, `references`, `index_status`
+Junction tables: `branch_commits` (M:N), `commit_files` (M:N, content-addressable)
+Full-text search: `text_contents` (tsvector + GIN)
 
-All temporal: files/symbols/refs tied to specific commits for time-travel.
-Delta indexing: only changed files re-indexed per commit.
+Content-addressable: files/symbols/refs linked to file versions (not directly to commits).
+Commit context via `commit_files` junction table. Delta indexing: unchanged files reused across commits.
 
 ## Key Dependencies
 
@@ -115,7 +116,7 @@ Delta indexing: only changed files re-indexed per commit.
 | sqlalchemy 2.0 + asyncpg | Async PostgreSQL ORM |
 | alembic | Database migrations |
 | gitpython | Git operations |
-| tree-sitter + 6 language grammars | AST parsing (Python, TS, JS, C, Java, C#) |
+| tree-sitter + 9 language grammars | AST parsing (Python, TS, JS, C, C++, Java, C#, Go, Ruby) |
 | click + rich | CLI with progress bars |
 | pydantic | Config validation |
 | react 18 + mui | Frontend UI |
@@ -125,7 +126,7 @@ Delta indexing: only changed files re-indexed per commit.
 
 ## Configuration
 
-- `config.yaml` - Repository definitions (8 repos), indexing settings, server settings
+- `config.yaml` - Repository definitions (11 repos), indexing settings, server settings
 - `pyproject.toml` - Python deps, tool config (black, isort, ruff, mypy, pytest)
 - `.env.dev` - Dev database credentials (committed)
 - `.env.prod` - Prod secrets (NOT committed)

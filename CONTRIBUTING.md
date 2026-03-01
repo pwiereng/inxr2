@@ -43,12 +43,12 @@ This document outlines the coding standards, development practices, and guidelin
 4. **Clean Rebuild Workflow**
    ```bash
    # When things are broken or after major changes
-   ./scripts/clean-rebuild.sh
+   docker compose -f docker-compose.dev.yml down -v
+   docker compose -f docker-compose.dev.yml up -d --build
 
    # This will:
    # - Remove all Docker containers, volumes, and images
    # - Rebuild everything from scratch
-   # - Optionally run all automated tests
    ```
 
 ### Package Quality Requirements
@@ -125,14 +125,14 @@ This document outlines the coding standards, development practices, and guidelin
 docker exec inxr2-dev bash -c "cd /workspace && black ."
 docker exec inxr2-dev bash -c "cd /workspace && isort ."
 docker exec inxr2-dev bash -c "cd /workspace && ruff check ."
-docker exec inxr2-dev bash -c "cd /workspace && mypy src/inxr2"
+docker exec inxr2-dev bash -c "cd /workspace && mypy src/ tests/"
 
 # IMPORTANT: Always run `mypy` inside the development container. Do NOT run
 # type checks against your host environment — the project is configured and
 # validated against the container's Python environment. Example:
 #
 # ```bash
-# docker exec inxr2-dev bash -c "cd /workspace && mypy src/inxr2"
+# docker exec inxr2-dev bash -c "cd /workspace && mypy src/ tests/"
 # ```
 
 # TypeScript (run in container)

@@ -27,7 +27,7 @@ This is the easiest way to get started:
 
 3. **You're ready!** The container includes:
    - Python 3.11 with all dev tools
-   - Node.js 18 with npm
+   - Node.js 20 with npm
    - PostgreSQL database (embedded inside the dev container)
    - All dependencies auto-installed on startup
    - VS Code extensions configured
@@ -173,7 +173,7 @@ ruff check . --fix  # Auto-fix issues
 
 # Type check
 # Run type checking inside the dev container to ensure consistent environment
-docker exec inxr2-dev bash -c "cd /workspace && mypy src/inxr2"
+docker exec inxr2-dev bash -c "cd /workspace && mypy src/ tests/"
 
 # Test
 pytest                              # All tests
@@ -447,7 +447,7 @@ black --version
 npm install
 
 # Verify setup
-node --version   # Should be 18+
+node --version   # Should be 20+
 npm test -- --version
 tsc --version
 ```

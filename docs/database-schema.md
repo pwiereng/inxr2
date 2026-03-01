@@ -1,7 +1,7 @@
 # INXR2 Database Schema Design
 
-**Version:** 3.0
-**Date:** 2026-02-09
+**Version:** 4.0
+**Date:** 2026-03-01
 **Status:** Implemented
 
 ## Overview
@@ -147,43 +147,42 @@ This junction table replaces the previous `branch` column on commits. Benefits:
 
 ### 4. files
 
-Stores metadata about files at specific commits (temporal snapshot).
+Stores file versions using content-addressable storage. A file row represents a unique (repo, path, content) combination. Commit association is via the `commit_files` junction table.
 
 ```sql
 CREATE TABLE files (
     id                  BIGSERIAL PRIMARY KEY,
     repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
-    commit_id           BIGINT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
     path                TEXT NOT NULL,              -- Relative path from repo root
     content_hash        CHAR(40) NOT NULL,          -- SHA-1 of file content (git blob hash)
     size_bytes          INTEGER NOT NULL,
     language            VARCHAR(50),                -- Detected language (python, typescript, etc.)
+    extension           VARCHAR(20),                -- File extension (e.g., ".py", ".ts")
     encoding            VARCHAR(50) DEFAULT 'utf-8',
     is_binary           BOOLEAN DEFAULT FALSE,
     line_count          INTEGER,
     indexed_at          TIMESTAMP NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT files_unique_repo_commit_path UNIQUE(repository_id, commit_id, path)
+    CONSTRAINT uq_files_repo_path_hash UNIQUE(repository_id, path, content_hash)
 );
 
-CREATE INDEX idx_files_repo_commit ON files(repository_id, commit_id);
-CREATE INDEX idx_files_repo_path ON files(repository_id, path);
+CREATE INDEX ix_files_repo_content_hash ON files(repository_id, content_hash);
 CREATE INDEX idx_files_language ON files(language);
-CREATE INDEX idx_files_content_hash ON files(content_hash);
 ```
 
 **Fields:**
 - `path`: File path relative to repository root (e.g., "src/main.py")
 - `content_hash`: Git blob SHA-1 (enables deduplication - same content = same hash)
+- `extension`: File extension for quick filtering
 - `language`: Detected programming language (python, java, typescript, etc.)
 - `is_binary`: Skip binary files for parsing
 - `line_count`: For UI display and statistics
 
 **Design Notes:**
-- Each file entry represents a snapshot at a specific commit
-- Same file at different commits = different rows
-- `content_hash` allows detecting when files haven't changed between commits
-- Unique constraint on (repository_id, commit_id, path) ensures one entry per file per commit
+- Content-addressable: unique on (repository_id, path, content_hash)
+- If a file's content doesn't change between commits, it reuses the same row (no duplicate)
+- Commit context provided via `commit_files` junction table
+- Symbols and references are linked to file versions (not directly to commits)
 
 ---
 
@@ -211,14 +210,13 @@ CREATE INDEX ix_commit_files_file_id ON commit_files(file_id);
 
 ### 6. symbols
 
-Stores extracted code symbols (functions, classes, variables, etc.) at specific file versions.
+Stores extracted code symbols (functions, classes, variables, etc.) linked to file versions.
 
 ```sql
 CREATE TABLE symbols (
     id                  BIGSERIAL PRIMARY KEY,
     file_id             BIGINT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
-    commit_id           BIGINT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
 
     -- Symbol identification
     name                VARCHAR(500) NOT NULL,      -- Symbol name
@@ -238,24 +236,17 @@ CREATE TABLE symbols (
     -- Language-specific metadata
     signature           TEXT,                       -- Function signature, type annotations
     docstring           TEXT,                       -- Documentation string
-    metadata            JSONB,                      -- Language-specific attributes
-
-    -- Search optimization
-    name_tsvector       tsvector,                   -- Full-text search vector
+    extra_metadata      JSONB,                      -- Language-specific attributes
 
     indexed_at          TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_symbols_file ON symbols(file_id);
-CREATE INDEX idx_symbols_repo_commit ON symbols(repository_id, commit_id);
+CREATE INDEX idx_symbols_repo_name_file ON symbols(repository_id, name, file_id);
 CREATE INDEX idx_symbols_name ON symbols(name);
 CREATE INDEX idx_symbols_qualified_name ON symbols(qualified_name);
 CREATE INDEX idx_symbols_kind ON symbols(kind);
-CREATE INDEX idx_symbols_repo_name_kind ON symbols(repository_id, name, kind);
 CREATE INDEX idx_symbols_parent ON symbols(parent_symbol_id);
-
--- Full-text search index (PostgreSQL only)
-CREATE INDEX idx_symbols_name_fts ON symbols USING GIN(name_tsvector);
 ```
 
 **Fields:**
@@ -322,10 +313,9 @@ TypeScript:
 Stores symbol references (usages) - links from one location to a symbol definition.
 
 ```sql
-CREATE TABLE references (
+CREATE TABLE "references" (
     id                      BIGSERIAL PRIMARY KEY,
     repository_id           INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
-    commit_id               BIGINT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
 
     -- Source location (where the reference occurs)
     source_file_id          BIGINT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
@@ -339,25 +329,25 @@ CREATE TABLE references (
     target_repository_id    INTEGER REFERENCES repositories(id) ON DELETE SET NULL,  -- For cross-repo refs
 
     -- Reference metadata
-    reference_type          VARCHAR(50) NOT NULL,   -- call, import, inheritance, assignment, etc.
+    reference_type          VARCHAR(50) NOT NULL,   -- call, import, inheritance, type_annotation, usage, etc.
     is_definition           BOOLEAN DEFAULT FALSE,  -- True if this is the definition site
     is_write                BOOLEAN DEFAULT FALSE,  -- True if reference modifies the symbol
 
     -- Resolution metadata
     resolution_confidence   FLOAT DEFAULT 1.0,      -- Confidence in symbol resolution (0.0-1.0)
-    metadata                JSONB,                  -- Language-specific reference info
+    extra_metadata          JSONB,                  -- Language-specific reference info
 
     indexed_at              TIMESTAMP NOT NULL DEFAULT NOW(),
 
     CONSTRAINT references_confidence_check CHECK (resolution_confidence >= 0.0 AND resolution_confidence <= 1.0)
 );
 
-CREATE INDEX idx_references_source_file ON references(source_file_id);
-CREATE INDEX idx_references_target_symbol ON references(target_symbol_id);
-CREATE INDEX idx_references_repo_commit ON references(repository_id, commit_id);
-CREATE INDEX idx_references_type ON references(reference_type);
-CREATE INDEX idx_references_text ON references(reference_text);
-CREATE INDEX idx_references_source_line ON references(source_file_id, source_line);
+CREATE INDEX idx_references_source_file ON "references"(source_file_id);
+CREATE INDEX idx_references_target_symbol ON "references"(target_symbol_id);
+CREATE INDEX idx_references_repo_unresolved ON "references"(repository_id) WHERE target_symbol_id IS NULL;
+CREATE INDEX idx_references_type ON "references"(reference_type);
+CREATE INDEX idx_references_text ON "references"(reference_text);
+CREATE INDEX idx_references_source_line ON "references"(source_file_id, source_line);
 ```
 
 **Fields:**
@@ -446,7 +436,7 @@ Stores searchable text extracted from code comments, docstrings, commit messages
 CREATE TABLE text_contents (
     id                  BIGSERIAL PRIMARY KEY,
     repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
-    commit_id           BIGINT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
+    commit_id           BIGINT REFERENCES commits(id) ON DELETE CASCADE,  -- nullable (not used in content-addressable model)
 
     -- Source information
     source_type         VARCHAR(50) NOT NULL,       -- comment, docstring, commit_message, non_code_file
@@ -501,22 +491,20 @@ repositories (1) ──────< (N) commits
     │                        │
     │                        ├──< branch_commits (junction)
     │                        │
-    │                        ├──< commit_files (junction) ──> files
-    │                        │
-    │                        ├──< text_contents
-    │                        │
-    └────────────────< files ┘
-                        │
-                        ├──< text_contents (source_file)
-                        │
-                    symbols
-                      │  │
-                      │  └───< references (self-ref for parent)
-                      │
-                  references
-                      │
-                      └──> symbols (target)
-                      └──> repositories (cross-repo)
+    │                        └──< commit_files (junction) ──> files
+    │                                                           │
+    └───────────────────────────────────────────────────< files ┘
+                                                           │
+                                                           ├──< symbols
+                                                           │       │
+                                                           │       └──< references (parent_symbol)
+                                                           │
+                                                           ├──< references (source_file)
+                                                           │       │
+                                                           │       └──> symbols (target)
+                                                           │       └──> repositories (cross-repo)
+                                                           │
+                                                           └──< text_contents (source_file)
 
 index_status (N) ────> (1) repositories
 ```
@@ -544,20 +532,21 @@ ORDER BY start_line, start_column;
 
 ### 3. Find all references to a symbol
 ```sql
-SELECT r.*, f.path, c.commit_hash
-FROM references r
+SELECT r.*, f.path
+FROM "references" r
 JOIN files f ON r.source_file_id = f.id
-JOIN commits c ON r.commit_id = c.id
 WHERE r.target_symbol_id = ?;
 ```
 **Index:** `idx_references_target_symbol`
 
 ### 4. Get file at specific commit
 ```sql
-SELECT * FROM files
-WHERE repository_id = ? AND commit_id = ? AND path = ?;
+SELECT f.* FROM files f
+JOIN commit_files cf ON cf.file_id = f.id
+JOIN commits c ON cf.commit_id = c.id
+WHERE f.repository_id = ? AND c.commit_hash = ? AND f.path = ?;
 ```
-**Index:** `files_unique_repo_commit_path` (unique constraint serves as index)
+**Index:** `uq_files_repo_path_hash`, `ix_commit_files_file_id`
 
 ### 5. List commits for a branch
 ```sql
@@ -599,10 +588,10 @@ For a medium-sized repository (100k LOC):
 
 For 10 repositories: ~10 GB database size
 
-**Observed data (2026-02-09):**
-Indexing 7 repos across 14 branches produced:
-- inxr2 main (196 commits, 322 files): 36K symbols, 177K references, 64K resolved (36%)
-- Java master (1,000 commits, 1,559 files): 26K symbols, 186K references, 104K resolved (56%)
+**Observed data (2026-03-01):**
+Indexing 11 repos across 17 branches (10 days) produced:
+- inxr2 main: 40K symbols, 123K references, 67K resolved (55%)
+- Java master: 26K symbols, 186K references, 104K resolved (56%)
 - Content-hash reuse across branches: 96-100% for feature branches sharing history with main
 
 ---
@@ -612,11 +601,16 @@ Indexing 7 repos across 14 branches produced:
 | Migration | Description |
 |-----------|-------------|
 | `edc605da5d0a` | Initial schema: repositories, commits, files, symbols, references, index_status |
-| `add_time_travel_001` | Add oldest_indexed_commit to index_status for time-travel range |
-| `normalize_branch_001` | Add branch_commits junction table, remove branch column from commits |
-| `remove_redundant_commit_001` | Remove redundant columns from commits (author, message, etc.) |
-| `bc889896e6d7` | Add unique constraint and cleanup orphaned schema artifacts |
-| `add_text_contents_001` | Add text_contents table for full-text search |
+| `add_time_travel_fields` | Add oldest_indexed_commit to index_status for time-travel range |
+| `normalize_branch_commits` | Add branch_commits junction table, remove branch column from commits |
+| `remove_redundant_commit_columns` | Remove redundant columns from commits (author, message, etc.) |
+| `bc889896e6d7` | Add unique constraint on index_status, drop name_tsvector from symbols |
+| `add_text_contents_table` | Add text_contents table for full-text search |
+| `content_addressable_file_versions` | Content-addressable file versions: add commit_files junction, remove commit_id from files/symbols/references, make text_contents.commit_id nullable |
+| `add_extension_column` | Add extension column to files table |
+| `add_file_repo_content_hash_index` | Add (repository_id, content_hash) index on files |
+| `add_resolution_performance_indexes` | Add indexes for reference resolution performance |
+| `8c8caa7883cc` | Add indexes to foreign key columns |
 
 ---
 
@@ -658,3 +652,4 @@ The schema uses PostgreSQL-native features for optimal performance:
 | 1.0 | 2026-01-04 | Claude + User | Initial schema design |
 | 2.0 | 2026-01-26 | Claude + User | Normalized branches, removed redundant commit columns, added time-travel support |
 | 3.0 | 2026-02-09 | Claude + User | Added text_contents table, expanded symbol kinds (C/Java), updated migration history, added observed data volumes |
+| 4.0 | 2026-03-01 | Claude + User | Content-addressable file versions: removed commit_id from files/symbols/references, added commit_files junction table, added extension column, updated indexes, added 5 new migrations |

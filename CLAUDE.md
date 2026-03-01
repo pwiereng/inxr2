@@ -670,7 +670,7 @@ Recent achievements:
 **Phase 1.8: Tree-sitter Integration** - ✅ COMPLETED (2026-01-14)
 
 Recent achievements:
-- Tree-sitter AST parsing for Python, TypeScript, and JavaScript
+- Tree-sitter AST parsing (initially Python, TypeScript, JavaScript; later expanded to 9 languages)
 - Replaced regex-based extraction with proper AST traversal
 - New symbol types: properties, staticmethods, classmethods, interface properties, enums
 - Proper scope tracking for nested symbols (class → method relationships)
@@ -702,9 +702,16 @@ Recent achievements:
 - File history filtered by branch
 - Live branch listing from git repository
 
-**Next Phase:** 1.12 Remote Repository Support - Clone and index repositories from URLs
+**Post-Phase Work (2026-02 to present):**
+- Content-addressable file versioning (commit_files junction table)
+- Full-text search (text_contents table, keyword/phrase/regex)
+- Git blame integration
+- Light/dark theme support
+- C, C++, Java, C#, Go, Ruby parser support (9 languages total)
+- Resilient per-language parser initialization
+- Performance indexing optimizations
 
-See `docs/archived/2026-01-24-IMPLEMENTATION_PLAN.md` for complete roadmap.
+See `docs/archived/2026-01-24-IMPLEMENTATION_PLAN.md` for original roadmap.
 
 ## Special Considerations
 
