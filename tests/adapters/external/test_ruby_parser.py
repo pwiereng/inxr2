@@ -209,6 +209,25 @@ end
         assert "load" in static_names
         assert "default" in static_names
 
+    @pytest.mark.asyncio
+    async def test_parse_singleton_method_with_variable_receiver(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test singleton method where receiver is a local variable, not self."""
+        code = """class MyClass
+  obj = Object.new
+  def obj.custom_method
+  end
+end
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="ruby", file_path="custom.rb"
+        )
+
+        static_symbols = [s for s in symbols if s["kind"] == "staticmethod"]
+        assert len(static_symbols) == 1
+        assert static_symbols[0]["name"] == "custom_method"
+
 
 class TestRubyConstants:
     """Tests for Ruby constant parsing."""
@@ -412,7 +431,7 @@ require_relative 'lib/utils'
 
 
 class TestRubyIncludeExtend:
-    """Tests for Ruby include/extend/prepend references."""
+    """Tests for Ruby include/extend references."""
 
     @pytest.fixture
     def parser_service(self) -> TreeSitterService:

@@ -43,14 +43,6 @@ class RubyParser(BaseLanguageParser):
         def is_std_lib_module(name: str) -> bool:
             return name in RUBY_STD_LIB_MODULES
 
-        def get_scope_name(node: Node) -> str:
-            """Get the name from a module/class name node (constant or scope_resolution)."""
-            if node.type == "constant":
-                return get_text(node)
-            elif node.type == "scope_resolution":
-                return get_text(node).replace("::", "::")
-            return get_text(node)
-
         def is_in_declaration_context(node: Node) -> bool:
             """Check if a constant is part of a class/module declaration name.
 
@@ -185,15 +177,29 @@ class RubyParser(BaseLanguageParser):
             )
 
         def process_singleton_method(node: Node, scope: str | None) -> None:
-            """Process a singleton method (def self.method_name)."""
+            """Process a singleton method (def receiver.method_name)."""
             method_name = None
             name_node = None
 
+            # Find the identifier after the '.' token — that's the method name.
+            # This handles `def self.foo`, `def MyClass.foo`, and `def obj.foo`.
+            dot_seen = False
             for child in node.children:
-                if child.type == "identifier":
+                if child.type == ".":
+                    dot_seen = True
+                    continue
+                if dot_seen and child.type == "identifier":
                     method_name = get_text(child)
                     name_node = child
                     break
+
+            # Fallback: first identifier child (for unexpected AST shapes)
+            if not method_name:
+                for child in node.children:
+                    if child.type == "identifier":
+                        method_name = get_text(child)
+                        name_node = child
+                        break
 
             if not method_name:
                 return
@@ -237,13 +243,9 @@ class RubyParser(BaseLanguageParser):
             """Extract references from the AST recursively."""
             if node.type == "call":
                 process_call_reference(node, scope)
-                # Still recurse into call children for nested references
+                # Recurse into all non-identifier children for nested references
                 for child in node.children:
-                    if child.type not in ("identifier", "argument_list"):
-                        extract_references(child, scope)
-                # Recurse into argument_list for nested calls
-                for child in node.children:
-                    if child.type == "argument_list":
+                    if child.type != "identifier":
                         extract_references(child, scope)
                 return
 
@@ -332,11 +334,8 @@ class RubyParser(BaseLanguageParser):
             if has_dot:
                 # receiver.method(...) or ScopeRes.method(...)
                 method_node = None
-                receiver_node = None
                 for i, child in enumerate(children):
                     if child.type == ".":
-                        if i > 0:
-                            receiver_node = children[i - 1]
                         if (
                             i + 1 < len(children)
                             and children[i + 1].type == "identifier"
