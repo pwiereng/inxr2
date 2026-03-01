@@ -230,7 +230,11 @@ class RubyParser(BaseLanguageParser):
                 )
 
         def process_body(node: Node, scope: str | None) -> None:
-            """Process the body of a module/class."""
+            """Process the body of a module/class.
+
+            Note: Only handles direct children. Symbols defined inside
+            control-flow blocks (if/unless/case/begin) are not extracted.
+            """
             for child in node.children:
                 if child.type == "module":
                     process_module(child, scope)
