@@ -501,17 +501,29 @@ class TypeScriptParser(BaseLanguageParser):
                                 )
                             )
 
-            # Member access (property reads like obj.field)
+            # Member access (reads and writes) — skip call/new/heritage
             if node.type == "member_expression":
                 parent = node.parent
-                # Member access (reads and writes) — skip call/new/heritage
-                if parent is None or parent.type not in (
+                skip = parent is not None and parent.type in (
                     "call_expression",
                     "new_expression",
-                    "extends_clause",
-                    "implements_clause",
-                    "class_heritage",
-                ):
+                )
+                if not skip:
+                    # Walk ancestors to skip nested member_expressions
+                    # inside heritage clauses (e.g. extends ns.sub.Parent)
+                    ancestor = parent
+                    while ancestor is not None:
+                        if ancestor.type in (
+                            "extends_clause",
+                            "implements_clause",
+                            "class_heritage",
+                        ):
+                            skip = True
+                            break
+                        if ancestor.type != "member_expression":
+                            break
+                        ancestor = ancestor.parent
+                if not skip:
                     prop = node.child_by_field_name("property")
                     if prop:
                         prop_name = get_text(prop)

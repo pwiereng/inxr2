@@ -1542,6 +1542,28 @@ class Child extends ns.Parent {}
         assert len(usage_refs) == 0
 
     @pytest.mark.asyncio
+    async def test_deeply_namespaced_extends_no_usage(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `extends ns.sub.Parent` does not emit usage refs for nested parts."""
+        code = """
+class Child extends ns.sub.Parent {}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "Parent" in inherit_names
+
+        # Neither sub nor Parent should appear as usage references
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "sub" not in usage_names
+        assert "Parent" not in usage_names
+
+    @pytest.mark.asyncio
     async def test_generic_implements(self, parser_service: TreeSitterService) -> None:
         """Test `implements IFoo<Bar>`: IFoo is inheritance, not type_annotation; Bar is type_annotation."""
         code = """
