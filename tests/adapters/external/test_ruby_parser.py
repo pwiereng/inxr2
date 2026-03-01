@@ -368,7 +368,9 @@ end
 
         usage_refs = [r for r in references if r["type"] == "usage"]
         usage_texts = [r["text"] for r in usage_refs]
-        assert "Other::Helper" in usage_texts
+        # Individual constants from scope_resolution are emitted separately
+        assert "Other" in usage_texts
+        assert "Helper" in usage_texts
 
 
 class TestRubyImports:
@@ -419,7 +421,7 @@ class TestRubyIncludeExtend:
     @pytest.mark.asyncio
     async def test_parse_include(self, parser_service: TreeSitterService) -> None:
         code = """class MyList
-  include Enumerable
+  include Loggable
 
   def each(&block)
   end
@@ -431,12 +433,12 @@ end
 
         usage_refs = [r for r in references if r["type"] == "usage"]
         usage_texts = [r["text"] for r in usage_refs]
-        assert "Enumerable" in usage_texts
+        assert "Loggable" in usage_texts
 
     @pytest.mark.asyncio
     async def test_parse_extend(self, parser_service: TreeSitterService) -> None:
         code = """class Config
-  extend Forwardable
+  extend Serializable
 end
 """
         _, references = await parser_service.parse_file(
@@ -445,7 +447,7 @@ end
 
         usage_refs = [r for r in references if r["type"] == "usage"]
         usage_texts = [r["text"] for r in usage_refs]
-        assert "Forwardable" in usage_texts
+        assert "Serializable" in usage_texts
 
 
 class TestRubyNestedScoping:

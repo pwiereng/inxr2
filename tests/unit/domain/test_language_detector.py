@@ -83,6 +83,19 @@ class TestLanguageDetector:
         assert LanguageDetector.is_text_file("README.md") is True
         assert LanguageDetector.is_text_file("config.json") is True
 
+    def test_detect_rakefile(self) -> None:
+        """Test detecting Rakefile as Ruby by filename."""
+        assert LanguageDetector.detect("Rakefile") == "ruby"
+
+    def test_detect_gemfile(self) -> None:
+        """Test detecting Gemfile as Ruby by filename."""
+        assert LanguageDetector.detect("Gemfile") == "ruby"
+
+    def test_detect_ruby_extensions(self) -> None:
+        """Test detecting Ruby files by extension."""
+        assert LanguageDetector.detect("app.rb") == "ruby"
+        assert LanguageDetector.detect("tasks.rake") == "ruby"
+
     def test_detect_case_insensitive(self) -> None:
         """Test detection is case-insensitive for extensions."""
         assert LanguageDetector.detect("Script.PY") == "python"

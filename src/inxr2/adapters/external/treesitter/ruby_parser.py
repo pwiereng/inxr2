@@ -51,6 +51,17 @@ class RubyParser(BaseLanguageParser):
                 return get_text(node).replace("::", "::")
             return get_text(node)
 
+        def is_in_declaration_context(node: Node) -> bool:
+            """Check if a constant is part of a class/module declaration name.
+
+            Walks up through scope_resolution parents to see if the chain
+            ultimately belongs to a class or module declaration.
+            """
+            current = node.parent
+            while current and current.type == "scope_resolution":
+                current = current.parent
+            return current is not None and current.type in ("class", "module")
+
         def process_module(node: Node, scope: str | None) -> None:
             """Process a module definition."""
             module_name = None
@@ -236,38 +247,21 @@ class RubyParser(BaseLanguageParser):
                         extract_references(child, scope)
                 return
 
-            if node.type == "scope_resolution":
-                process_scope_resolution_reference(node, scope)
-
             if node.type == "instance_variable":
                 ivar_name = get_text(node)
                 add_reference(self._make_reference(ivar_name, "usage", node, scope))
 
             if node.type == "constant":
-                # Standalone constant references (not part of class/module/assignment decl)
                 parent = node.parent
-                if parent and parent.type not in (
-                    "class",
-                    "module",
-                    "scope_resolution",
-                    "superclass",
-                ):
-                    # Skip if it's the LHS of an assignment (constant definition)
-                    if parent.type == "assignment":
-                        # Only skip if this is the first child (LHS)
-                        if parent.children and parent.children[0] is node:
-                            pass
-                        else:
-                            const_name = get_text(node)
-                            if not is_primitive_type(
-                                const_name
-                            ) and not is_std_lib_module(const_name):
-                                add_reference(
-                                    self._make_reference(
-                                        const_name, "usage", node, scope
-                                    )
-                                )
-                    else:
+                # Skip class/module declaration names
+                if parent and parent.type in ("class", "module"):
+                    pass
+                # Skip superclass constants (handled by process_superclass)
+                elif parent and parent.type == "superclass":
+                    pass
+                # Constants inside scope_resolution: allow unless it's a declaration
+                elif parent and parent.type == "scope_resolution":
+                    if not is_in_declaration_context(node):
                         const_name = get_text(node)
                         if not is_primitive_type(const_name) and not is_std_lib_module(
                             const_name
@@ -275,6 +269,24 @@ class RubyParser(BaseLanguageParser):
                             add_reference(
                                 self._make_reference(const_name, "usage", node, scope)
                             )
+                # Skip LHS of assignment (constant definition)
+                elif parent and parent.type == "assignment":
+                    if not (parent.children and parent.children[0] is node):
+                        const_name = get_text(node)
+                        if not is_primitive_type(const_name) and not is_std_lib_module(
+                            const_name
+                        ):
+                            add_reference(
+                                self._make_reference(const_name, "usage", node, scope)
+                            )
+                else:
+                    const_name = get_text(node)
+                    if not is_primitive_type(const_name) and not is_std_lib_module(
+                        const_name
+                    ):
+                        add_reference(
+                            self._make_reference(const_name, "usage", node, scope)
+                        )
 
             # Update scope for class/module/method bodies
             child_scope = scope
@@ -340,13 +352,6 @@ class RubyParser(BaseLanguageParser):
                                 method_name, "call", method_node, scope
                             )
                         )
-
-                # If receiver is a scope_resolution, add reference for it
-                if receiver_node and receiver_node.type == "scope_resolution":
-                    sr_text = get_text(receiver_node)
-                    add_reference(
-                        self._make_reference(sr_text, "usage", receiver_node, scope)
-                    )
             else:
                 # Direct call: identifier(args) or identifier args
                 first = children[0]
@@ -355,9 +360,6 @@ class RubyParser(BaseLanguageParser):
                     # Handle require/require_relative as imports
                     if func_name in ("require", "require_relative"):
                         process_require_reference(node, scope)
-                    # Handle include/extend/prepend as type usage
-                    elif func_name in ("include", "extend", "prepend"):
-                        process_include_reference(node, scope)
                     elif not is_builtin(func_name):
                         add_reference(
                             self._make_reference(func_name, "call", first, scope)
@@ -379,40 +381,6 @@ class RubyParser(BaseLanguageParser):
                                         )
                                     )
                                     break
-
-        def process_include_reference(node: Node, scope: str | None) -> None:
-            """Extract type usage reference from include/extend/prepend."""
-            for child in node.children:
-                if child.type == "argument_list":
-                    for arg in child.children:
-                        if arg.type == "constant":
-                            mod_name = get_text(arg)
-                            add_reference(
-                                self._make_reference(mod_name, "usage", arg, scope)
-                            )
-                        elif arg.type == "scope_resolution":
-                            mod_name = get_text(arg)
-                            add_reference(
-                                self._make_reference(mod_name, "usage", arg, scope)
-                            )
-
-        def process_scope_resolution_reference(node: Node, scope: str | None) -> None:
-            """Process a scope resolution (Module::Class) reference."""
-            parent = node.parent
-            # Skip if parent is a class/module declaration or another scope_resolution
-            if parent and parent.type in (
-                "class",
-                "module",
-                "scope_resolution",
-                "superclass",
-            ):
-                return
-            # Skip if it's the receiver of a call (handled in process_call_reference)
-            if parent and parent.type == "call":
-                return
-
-            sr_text = get_text(node)
-            add_reference(self._make_reference(sr_text, "usage", node, scope))
 
         # --- Main processing ---
 

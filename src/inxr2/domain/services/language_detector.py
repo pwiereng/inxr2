@@ -95,6 +95,8 @@ class LanguageDetector:
         "Dockerfile": "dockerfile",
         "Makefile": "makefile",
         "CMakeLists.txt": "cmake",
+        "Rakefile": "ruby",
+        "Gemfile": "ruby",
         ".gitignore": "gitignore",
         ".dockerignore": "dockerignore",
     }
