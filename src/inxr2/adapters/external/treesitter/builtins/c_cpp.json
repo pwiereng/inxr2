@@ -1,0 +1,41 @@
+{
+  "builtins": [
+    "printf", "fprintf", "sprintf", "snprintf",
+    "scanf", "fscanf", "sscanf",
+    "puts", "fputs", "gets", "fgets",
+    "putchar", "getchar",
+    "fopen", "fclose", "fread", "fwrite",
+    "fseek", "ftell", "rewind",
+    "fflush", "feof", "ferror", "clearerr", "perror",
+    "malloc", "calloc", "realloc", "free",
+    "memcpy", "memmove", "memset", "memcmp",
+    "strlen", "strcpy", "strncpy", "strcat", "strncat",
+    "strcmp", "strncmp", "strchr", "strrchr", "strstr", "strtok", "strdup",
+    "isalpha", "isdigit", "isalnum", "isspace", "isupper", "islower",
+    "toupper", "tolower",
+    "abs", "labs", "fabs", "ceil", "floor", "sqrt", "pow", "exp",
+    "log", "log10", "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+    "exit", "abort", "atexit",
+    "atoi", "atof", "atol", "strtol", "strtoul", "strtod",
+    "rand", "srand", "qsort", "bsearch",
+    "assert",
+    "sizeof", "alignof", "typeid", "decltype",
+    "static_cast", "dynamic_cast", "const_cast", "reinterpret_cast",
+    "new", "delete", "throw", "noexcept", "nullptr", "true", "false", "this",
+    "offsetof", "va_start", "va_end", "va_arg", "va_copy"
+  ],
+  "primitive_types": [
+    "void", "bool", "char", "short", "int", "long", "float", "double",
+    "signed", "unsigned",
+    "wchar_t", "char8_t", "char16_t", "char32_t",
+    "int8_t", "int16_t", "int32_t", "int64_t",
+    "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+    "size_t", "ssize_t", "ptrdiff_t", "intptr_t", "uintptr_t",
+    "_Bool", "FILE", "NULL", "true", "false",
+    "const", "static", "extern", "volatile", "register", "inline",
+    "restrict", "__attribute__", "auto"
+  ],
+  "standard_library_prefixes": [
+    "std", "boost", "absl", "fmt", "gsl"
+  ]
+}
