@@ -224,7 +224,7 @@ class BashParser(BaseLanguageParser):
             if child.type == "function_definition":
                 process_function(child)
                 # Also extract local declarations inside the function body
-                _extract_function_locals(child, symbols, content)
+                self._extract_function_locals(child, symbols, content)
             elif child.type == "variable_assignment":
                 process_variable_assignment(child, None)
             elif child.type == "declaration_command":
@@ -251,60 +251,61 @@ class BashParser(BaseLanguageParser):
                 }
         return None
 
+    def _extract_function_locals(
+        self,
+        func_node: Node,
+        symbols: list[dict[str, Any]],
+        content: str,
+    ) -> None:
+        """Walk a function body to extract local/declare variable declarations."""
+        func_name = None
+        for child in func_node.children:
+            if child.type == "word":
+                func_name = self._get_text(child, content)
+                break
 
-def _extract_function_locals(
-    func_node: Node,
-    symbols: list[dict[str, Any]],
-    content: str,
-) -> None:
-    """Walk a function body to extract local/declare variable declarations."""
-    parser = BashParser()
+        for child in func_node.children:
+            if child.type == "compound_statement":
+                self._walk_for_locals(child, func_name, symbols, content)
 
-    for child in func_node.children:
-        if child.type == "compound_statement":
-            _walk_for_locals(child, func_node, symbols, parser, content)
-
-
-def _walk_for_locals(
-    node: Node,
-    func_node: Node,
-    symbols: list[dict[str, Any]],
-    parser: BashParser,
-    content: str,
-) -> None:
-    """Recursively walk a function body for local/declare declarations."""
-    # Determine function name for scope
-    func_name = None
-    for child in func_node.children:
-        if child.type == "word":
-            func_name = parser._get_text(child, content)
-            break
-
-    for child in node.children:
-        if child.type == "declaration_command":
-            has_readonly_flag = False
-            for dc in child.children:
-                if dc.type in ("local", "declare"):
-                    pass  # recognised keyword, no action needed
-                elif dc.type == "word":
-                    word_text = parser._get_text(dc, content)
-                    if word_text.startswith("-") and "r" in word_text[1:]:
-                        has_readonly_flag = True
-                elif dc.type == "variable_assignment":
-                    kind = "constant" if has_readonly_flag else "variable"
-                    for vc in dc.children:
-                        if vc.type == "variable_name":
-                            var_name = parser._get_text(vc, content)
-                            symbols.append(
-                                parser._make_symbol(var_name, kind, vc, func_name)
-                            )
-                            break
-        # Recurse into nested blocks (if/for/while inside function)
-        elif child.type in (
-            "if_statement",
-            "for_statement",
-            "while_statement",
-            "case_statement",
-            "compound_statement",
-        ):
-            _walk_for_locals(child, func_node, symbols, parser, content)
+    def _walk_for_locals(
+        self,
+        node: Node,
+        func_name: str | None,
+        symbols: list[dict[str, Any]],
+        content: str,
+    ) -> None:
+        """Recursively walk a function body for local/declare declarations."""
+        for child in node.children:
+            if child.type == "declaration_command":
+                has_readonly_flag = False
+                for dc in child.children:
+                    if dc.type in ("local", "declare"):
+                        pass  # recognised keyword, no action needed
+                    elif dc.type == "word":
+                        word_text = self._get_text(dc, content)
+                        if word_text.startswith("-") and "r" in word_text[1:]:
+                            has_readonly_flag = True
+                    elif dc.type == "variable_name":
+                        # Bare declaration (e.g. "local foo", "declare bar")
+                        kind = "constant" if has_readonly_flag else "variable"
+                        var_name = self._get_text(dc, content)
+                        symbols.append(self._make_symbol(var_name, kind, dc, func_name))
+                    elif dc.type == "variable_assignment":
+                        kind = "constant" if has_readonly_flag else "variable"
+                        for vc in dc.children:
+                            if vc.type == "variable_name":
+                                var_name = self._get_text(vc, content)
+                                symbols.append(
+                                    self._make_symbol(var_name, kind, vc, func_name)
+                                )
+                                break
+            # Recurse into nested blocks (if/for/while inside function)
+            elif child.type in (
+                "if_statement",
+                "for_statement",
+                "while_statement",
+                "case_statement",
+                "compound_statement",
+            ):
+                self._walk_for_locals(child, func_name, symbols, content)

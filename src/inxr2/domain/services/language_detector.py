@@ -157,14 +157,19 @@ class LanguageDetector:
         if env_match:
             # Skip flags (words starting with -) to find the interpreter
             for token in env_match.group(1).split():
-                if not token.startswith("-"):
-                    return _SHEBANG_LANGUAGE_MAP.get(token)
+                if token.startswith("-"):
+                    continue
+                # Normalize: handle paths (/bin/bash) and casing (BASH)
+                interpreter = Path(token).name.lower()
+                if interpreter == "env":
+                    continue
+                return _SHEBANG_LANGUAGE_MAP.get(interpreter)
             return None
 
         # Try direct path shebang
         direct_match = _SHEBANG_DIRECT_RE.match(first_line)
         if direct_match:
-            interpreter = direct_match.group(1)
+            interpreter = Path(direct_match.group(1)).name.lower()
             # The regex may capture "env" for /bin/env — skip it
             if interpreter == "env":
                 return None

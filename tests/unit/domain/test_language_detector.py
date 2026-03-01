@@ -145,3 +145,11 @@ class TestDetectFromShebang:
 
     def test_bin_env_s_flag(self) -> None:
         assert LanguageDetector.detect_from_shebang("#!/bin/env -S bash") == "bash"
+
+    def test_case_insensitive_shebang(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env BASH") == "bash"
+
+    def test_env_with_path_token(self) -> None:
+        assert (
+            LanguageDetector.detect_from_shebang("#!/usr/bin/env /bin/bash") == "bash"
+        )

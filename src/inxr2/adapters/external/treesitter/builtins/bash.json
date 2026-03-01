@@ -9,7 +9,7 @@
     "shift", "eval", "exec",
     "trap", "wait", "kill", "jobs", "bg", "fg", "disown",
     "export", "readonly", "local", "declare", "typeset",
-    "let", "expr",
+    "let",
     "alias", "unalias",
     "type", "hash", "command", "builtin", "enable",
     "getopts",

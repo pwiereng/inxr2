@@ -264,6 +264,60 @@ ANOTHER=42
         consts = [s for s in symbols if s["kind"] == "constant"]
         assert any(s["name"] == "CONST_VAL" for s in consts)
 
+    @pytest.mark.asyncio
+    async def test_bare_local_in_function(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that bare local declarations (no assignment) produce symbols."""
+        code = """function init() {
+    local foo
+    local bar baz
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="bash", file_path="test.sh"
+        )
+        local_names = {
+            s["name"]
+            for s in symbols
+            if s["kind"] == "variable" and s.get("scope") == "init"
+        }
+        assert "foo" in local_names
+        assert "bar" in local_names
+        assert "baz" in local_names
+
+    @pytest.mark.asyncio
+    async def test_multi_local_with_assignment(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that local a=1 b=2 captures both variables."""
+        code = """function setup() {
+    local a=1 b=2
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="bash", file_path="test.sh"
+        )
+        local_names = {
+            s["name"]
+            for s in symbols
+            if s["kind"] == "variable" and s.get("scope") == "setup"
+        }
+        assert "a" in local_names
+        assert "b" in local_names
+
+    @pytest.mark.asyncio
+    async def test_expr_generates_call_reference(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that expr (not a bash builtin) generates a call reference."""
+        code = "expr 1 + 2\n"
+        _, refs = await parser_service.parse_file(
+            content=code, language="bash", file_path="test.sh"
+        )
+        calls = [r for r in refs if r["text"] == "expr" and r["type"] == "call"]
+        assert len(calls) == 1
+
 
 class TestBashReferences:
     """Tests for Bash reference extraction."""
