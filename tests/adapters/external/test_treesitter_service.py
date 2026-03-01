@@ -1310,3 +1310,52 @@ class Point:
         y_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "y"]
         assert len(x_usages) == 1
         assert len(y_usages) == 1
+
+    @pytest.mark.asyncio
+    async def test_self_tuple_unpacking_not_usage(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that self.x in tuple unpacking LHS is not a usage reference."""
+        code = """
+class MyClass:
+    def update(self):
+        self.x, self.y = get_coords()
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        x_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "x"]
+        y_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "y"]
+        assert len(x_usages) == 0
+        assert len(y_usages) == 0
+
+    @pytest.mark.asyncio
+    async def test_self_for_loop_target_not_usage(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that self.x as for-loop target is not a usage reference."""
+        code = """
+class MyClass:
+    def load(self):
+        for self.item in items:
+            pass
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "item"]
+        assert len(usage_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_self_del_not_usage(self, parser_service: TreeSitterService) -> None:
+        """Test that del self.x is not a usage reference."""
+        code = """
+class MyClass:
+    def cleanup(self):
+        del self.cache
+"""
+        _, refs = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "cache"]
+        assert len(usage_refs) == 0

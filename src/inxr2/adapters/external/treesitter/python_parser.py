@@ -18,6 +18,39 @@ PYTHON_BUILTINS = _load("python.json", "builtins")
 PYTHON_TYPE_BUILTINS = _load("python.json", "type_builtins")
 
 
+def _is_write_target(node: Node) -> bool:
+    """Check if a node is in a write-target position.
+
+    Covers: simple assignment LHS, tuple unpacking, for-loop targets,
+    with-as targets, and del statements.
+    """
+    current = node
+    while current.parent is not None:
+        parent = current.parent
+        if parent.type == "assignment" and current == parent.children[0]:
+            return True
+        if parent.type == "augmented_assignment":
+            return False  # augmented assignment is a read+write, treat as usage
+        if parent.type in ("pattern_list", "tuple_pattern"):
+            current = parent
+            continue
+        if parent.type == "for_statement":
+            # Target is the node right after "for" keyword
+            children = parent.children
+            if len(children) >= 2 and current == children[1]:
+                return True
+            return False
+        if parent.type == "as_pattern":
+            # "with expr as self.x" — the alias is a write target
+            if len(parent.children) >= 3 and current == parent.children[2]:
+                return True
+            return False
+        if parent.type == "delete_statement":
+            return True
+        break
+    return False
+
+
 class PythonParser(BaseLanguageParser):
     """Parser for Python source code using Tree-sitter."""
 
@@ -432,12 +465,8 @@ class PythonParser(BaseLanguageParser):
                         if attr_name and attr_node:
                             parent = node.parent
                             is_call = parent is not None and parent.type == "call"
-                            is_assignment_target = (
-                                parent is not None
-                                and parent.type == "assignment"
-                                and node == parent.children[0]
-                            )
-                            if not is_call and not is_assignment_target:
+                            is_write_target = _is_write_target(node)
+                            if not is_call and not is_write_target:
                                 add_reference(
                                     self._make_reference(
                                         attr_name, "usage", attr_node, scope
