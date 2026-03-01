@@ -275,14 +275,26 @@ class BashParser(BaseLanguageParser):
         symbols: list[dict[str, Any]],
         content: str,
     ) -> None:
-        """Recursively walk a function body for local/declare declarations."""
+        """Recursively walk a function body for local/declare declarations.
+
+        Only processes ``local`` and ``declare`` keywords. ``export`` and
+        ``readonly`` inside a function affect global scope in bash, so they
+        are handled by the top-level ``process_declaration`` pass instead.
+        """
         for child in node.children:
             if child.type == "declaration_command":
+                # Determine keyword — only process local/declare
+                keyword = None
+                for dc in child.children:
+                    if dc.type in ("local", "declare", "export", "readonly"):
+                        keyword = dc.type
+                        break
+                if keyword not in ("local", "declare"):
+                    continue
+
                 has_readonly_flag = False
                 for dc in child.children:
-                    if dc.type in ("local", "declare"):
-                        pass  # recognised keyword, no action needed
-                    elif dc.type == "word":
+                    if dc.type == "word":
                         word_text = self._get_text(dc, content)
                         if word_text.startswith("-") and "r" in word_text[1:]:
                             has_readonly_flag = True

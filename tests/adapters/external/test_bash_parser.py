@@ -307,6 +307,28 @@ ANOTHER=42
         assert "b" in local_names
 
     @pytest.mark.asyncio
+    async def test_export_inside_function_not_scoped(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that export inside a function is not scoped to the function."""
+        code = """function init() {
+    export GLOBAL_VAR="hello"
+    local local_var="world"
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="bash", file_path="test.sh"
+        )
+        # local_var should be scoped to init
+        local_syms = [s for s in symbols if s["name"] == "local_var"]
+        assert len(local_syms) == 1
+        assert local_syms[0].get("scope") == "init"
+
+        # GLOBAL_VAR should NOT be scoped to init (export is global)
+        global_syms = [s for s in symbols if s["name"] == "GLOBAL_VAR"]
+        assert len(global_syms) == 0 or global_syms[0].get("scope") is None
+
+    @pytest.mark.asyncio
     async def test_expr_generates_call_reference(
         self, parser_service: TreeSitterService
     ) -> None:

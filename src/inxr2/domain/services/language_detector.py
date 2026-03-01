@@ -152,6 +152,9 @@ class LanguageDetector:
         Returns:
             Language name (lowercase) or None if unrecognised.
         """
+        # Strip trailing \r for CRLF line endings
+        first_line = first_line.rstrip("\r")
+
         # Try env-based shebang first (more specific match)
         env_match = _SHEBANG_ENV_RE.match(first_line)
         if env_match:

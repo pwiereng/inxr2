@@ -163,3 +163,9 @@ class TestDetectFromShebang:
         assert (
             LanguageDetector.detect_from_shebang("#!/usr/local/bin/env bash") == "bash"
         )
+
+    def test_crlf_shebang(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/bin/bash\r") == "bash"
+
+    def test_crlf_env_shebang(self) -> None:
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env bash\r") == "bash"
