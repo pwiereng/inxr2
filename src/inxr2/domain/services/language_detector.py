@@ -9,7 +9,7 @@ from pathlib import Path
 # For env shebangs, flags (words starting with -) are skipped to find
 # the interpreter name.
 _SHEBANG_DIRECT_RE = re.compile(r"^#!\s*/(?:usr/)?(?:local/)?bin/(\S+)")
-_SHEBANG_ENV_RE = re.compile(r"^#!\s*(?:/usr)?/bin/env\s+(.*)")
+_SHEBANG_ENV_RE = re.compile(r"^#!\s*/(?:usr/)?(?:local/)?bin/env\s+(.*)")
 
 _SHEBANG_LANGUAGE_MAP: dict[str, str] = {
     "bash": "bash",

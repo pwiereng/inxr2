@@ -96,6 +96,11 @@ class TestLanguageDetector:
         assert LanguageDetector.detect("app.rb") == "ruby"
         assert LanguageDetector.detect("tasks.rake") == "ruby"
 
+    def test_detect_sh_extension_is_bash(self) -> None:
+        """Test that .sh files are detected as bash (not shell)."""
+        assert LanguageDetector.detect("script.sh") == "bash"
+        assert LanguageDetector.detect("deploy.bash") == "bash"
+
     def test_detect_case_insensitive(self) -> None:
         """Test detection is case-insensitive for extensions."""
         assert LanguageDetector.detect("Script.PY") == "python"
@@ -152,4 +157,9 @@ class TestDetectFromShebang:
     def test_env_with_path_token(self) -> None:
         assert (
             LanguageDetector.detect_from_shebang("#!/usr/bin/env /bin/bash") == "bash"
+        )
+
+    def test_usr_local_bin_env(self) -> None:
+        assert (
+            LanguageDetector.detect_from_shebang("#!/usr/local/bin/env bash") == "bash"
         )

@@ -15,4 +15,6 @@ SUPPORTED_LANGUAGES_WITH_PARSERS = (
     "java",
     "csharp",
     "go",
+    "ruby",
+    "bash",
 )
