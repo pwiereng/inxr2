@@ -504,7 +504,7 @@ class TypeScriptParser(BaseLanguageParser):
             # Member access (property reads like obj.field)
             if node.type == "member_expression":
                 parent = node.parent
-                # Skip if already handled as call or new expression
+                # Member access (reads and writes) — skip call/new/heritage
                 if parent is None or parent.type not in (
                     "call_expression",
                     "new_expression",
