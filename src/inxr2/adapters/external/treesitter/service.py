@@ -13,8 +13,7 @@ from tree_sitter import Language, Parser
 from inxr2.application.ports.services import ParserServicePort
 
 from .base import BaseLanguageParser
-from .c_parser import CParser
-from .cpp_parser import CppParser
+from .c_cpp_parser import CppParser
 from .csharp_parser import CSharpParser
 from .go_parser import GoParser
 from .java_parser import JavaParser
@@ -57,7 +56,6 @@ class TreeSitterService(ParserServicePort):
             return
 
         try:
-            import tree_sitter_c as tsc
             import tree_sitter_c_sharp as tscsharp
             import tree_sitter_cpp as tscpp
             import tree_sitter_go as tsgo
@@ -71,7 +69,6 @@ class TreeSitterService(ParserServicePort):
             ts_language = Language(tstypescript.language_typescript())
             tsx_language = Language(tstypescript.language_tsx())
             js_language = Language(tsjavascript.language())
-            c_language = Language(tsc.language())
             java_language = Language(tsjava.language())
             csharp_language = Language(tscsharp.language())
             go_language = Language(tsgo.language())
@@ -82,7 +79,7 @@ class TreeSitterService(ParserServicePort):
             self._parsers["typescript"] = Parser(ts_language)
             self._parsers["tsx"] = Parser(tsx_language)
             self._parsers["javascript"] = Parser(js_language)
-            self._parsers["c"] = Parser(c_language)
+            self._parsers["c"] = Parser(cpp_language)
             self._parsers["java"] = Parser(java_language)
             self._parsers["csharp"] = Parser(csharp_language)
             self._parsers["go"] = Parser(go_language)
@@ -92,7 +89,7 @@ class TreeSitterService(ParserServicePort):
             self._language_parsers["python"] = PythonParser()
             self._language_parsers["typescript"] = TypeScriptParser("typescript")
             self._language_parsers["javascript"] = TypeScriptParser("javascript")
-            self._language_parsers["c"] = CParser()
+            self._language_parsers["c"] = CppParser("c")
             self._language_parsers["java"] = JavaParser()
             self._language_parsers["csharp"] = CSharpParser()
             self._language_parsers["go"] = GoParser()
