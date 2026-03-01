@@ -1535,6 +1535,12 @@ class Child extends ns.Parent {}
         inherit_names = [r["text"] for r in inherit_refs]
         assert "Parent" in inherit_names
 
+        # Parent should NOT also appear as a usage reference
+        usage_refs = [
+            r for r in references if r["type"] == "usage" and r["text"] == "Parent"
+        ]
+        assert len(usage_refs) == 0
+
     @pytest.mark.asyncio
     async def test_generic_implements(self, parser_service: TreeSitterService) -> None:
         """Test that `implements IFoo<Bar>` creates an inheritance reference to IFoo."""

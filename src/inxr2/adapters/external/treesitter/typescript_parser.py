@@ -506,6 +506,8 @@ class TypeScriptParser(BaseLanguageParser):
                 if parent is None or parent.type not in (
                     "call_expression",
                     "new_expression",
+                    "extends_clause",
+                    "implements_clause",
                 ):
                     prop = node.child_by_field_name("property")
                     if prop:
