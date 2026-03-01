@@ -38,11 +38,20 @@ class Repository:
             raise ValueError("Repository name cannot be empty")
         if not self.url:
             raise ValueError("Repository URL cannot be empty")
-        # Name validation: alphanumeric, underscores, hyphens only
+        # Name validation: alphanumeric, underscores, hyphens, and dots
         import re
 
-        if not re.match(r"^[a-zA-Z0-9_-]+$", self.name):
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", self.name):
             raise ValueError(
                 f"Invalid repository name '{self.name}': "
-                "must contain only letters, numbers, underscores, and hyphens"
+                "must contain only letters, numbers, underscores, hyphens, and dots"
+            )
+        if (
+            self.name in (".", "..")
+            or self.name.startswith(".")
+            or self.name.endswith(".")
+        ):
+            raise ValueError(
+                f"Invalid repository name '{self.name}': "
+                "cannot be '.', '..', or start/end with a dot"
             )
