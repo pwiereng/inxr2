@@ -104,13 +104,22 @@ export function SymbolSearch({
 
       setLoading(true)
       try {
-        const result = await searchSymbols({
+        const searchParams: Parameters<typeof searchSymbols>[0] = {
           q: query,
-          repository_id: repositoryId,
-          branch,
-          commit,
           limit: 20,
-        })
+        }
+
+        if (repositoryId !== undefined) {
+          searchParams.repository_id = repositoryId
+          if (branch) {
+            searchParams.branch = branch
+          }
+          if (commit) {
+            searchParams.commit = commit
+          }
+        }
+
+        const result = await searchSymbols(searchParams)
         setOptions(result.items)
       } catch (error) {
         console.error('Search failed:', error)

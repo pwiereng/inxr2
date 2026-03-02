@@ -125,6 +125,26 @@ describe('SymbolSearch', () => {
       )
     })
 
+    it('should not pass branch or commit when repositoryId is undefined', async () => {
+      const { searchSymbols } = await import('@/lib/api')
+      vi.mocked(searchSymbols).mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 })
+
+      render(<SymbolSearch branch="feature-branch" commit="abc123" />)
+
+      const input = screen.getByRole('combobox')
+      fireEvent.change(input, { target: { value: 'sync' } })
+
+      await waitFor(
+        () => {
+          expect(searchSymbols).toHaveBeenCalledWith({
+            q: 'sync',
+            limit: 20,
+          })
+        },
+        { timeout: 500 }
+      )
+    })
+
     it('should not pass branch or commit when not provided', async () => {
       const { searchSymbols } = await import('@/lib/api')
       vi.mocked(searchSymbols).mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 })
