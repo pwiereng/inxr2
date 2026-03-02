@@ -146,18 +146,24 @@ describe('Search', () => {
   })
 
   it('should display API error message', async () => {
-    mockSearchText.mockRejectedValue(new Error('API error'))
+    // Suppress expected console.error from the component's error handler
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      mockSearchText.mockRejectedValue(new Error('API error'))
 
-    // Render with query param to trigger search
-    window.history.pushState({}, '', '?query=test')
-    render(<Search />)
+      // Render with query param to trigger search
+      window.history.pushState({}, '', '?query=test')
+      render(<Search />)
 
-    await waitFor(
-      () => {
-        expect(screen.getByText(/API error/i)).toBeInTheDocument()
-      },
-      { timeout: 1000 }
-    )
+      await waitFor(
+        () => {
+          expect(screen.getByText(/API error/i)).toBeInTheDocument()
+        },
+        { timeout: 1000 }
+      )
+    } finally {
+      consoleSpy.mockRestore()
+    }
   })
 
   it('should navigate to history when clicking a commit_message result', async () => {
@@ -174,7 +180,7 @@ describe('Search', () => {
           source_line: null,
           source_end_line: null,
           language: null,
-          commit_hash: 'abc123def456',
+          commit_hash: 'abc123',
           branch: 'main',
           headline: null,
           rank: 1.0,
@@ -201,7 +207,7 @@ describe('Search', () => {
     // Should navigate to history, not browse
     await waitFor(() => {
       expect(window.location.pathname).toBe('/history')
-      expect(window.location.search).toContain('commit=abc123def456')
+      expect(window.location.search).toContain('commit=abc123')
       expect(window.location.search).toContain('repo=test-repo')
     })
   })
@@ -220,7 +226,7 @@ describe('Search', () => {
           source_line: 10,
           source_end_line: null,
           language: 'python',
-          commit_hash: 'abc123def456',
+          commit_hash: 'abc123',
           branch: 'main',
           headline: null,
           rank: 1.0,

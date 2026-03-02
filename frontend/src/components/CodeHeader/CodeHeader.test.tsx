@@ -608,7 +608,7 @@ describe('CodeHeader', () => {
         total: 3,
       })
 
-      render(<CodeHeader {...defaultProps} branch="feature" />)
+      render(<CodeHeader {...defaultProps} branch="feature-branch" />)
 
       await waitFor(() => {
         expect(screen.getByText('branch1')).toBeInTheDocument()
