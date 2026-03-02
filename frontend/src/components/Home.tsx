@@ -16,11 +16,13 @@ import {
   InputAdornment,
   IconButton,
 } from '@mui/material'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import FolderIcon from '@mui/icons-material/Folder'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import SearchIcon from '@mui/icons-material/Search'
+import TimerIcon from '@mui/icons-material/Timer'
 import ViewListIcon from '@mui/icons-material/ViewList'
 import ViewModuleIcon from '@mui/icons-material/ViewModule'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { useApp } from '@/contexts/AppContext'
 import {
   getRepositories,
@@ -28,6 +30,7 @@ import {
   type Repository,
   type RepositoryStats,
 } from '@/lib/api'
+import { formatDateTimeUTC, formatDuration } from '@/lib/dateUtils'
 import logoLight from '@/assets/logo-light.svg'
 import logoDark from '@/assets/logo-dark-v4.svg'
 
@@ -330,6 +333,22 @@ export function Home(): React.ReactElement {
                                   {formatDate(stats.commit_date_latest)}
                                 </Typography>
                               )}
+                              {stats.last_indexed_at != null && (
+                                <Chip
+                                  icon={<AccessTimeIcon />}
+                                  label={formatDateTimeUTC(stats.last_indexed_at)}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              )}
+                              {stats.last_indexing_duration_seconds != null && (
+                                <Chip
+                                  icon={<TimerIcon />}
+                                  label={`${formatDuration(stats.last_indexing_duration_seconds)}${stats.last_resolving_duration_seconds != null ? ` (resolve: ${formatDuration(stats.last_resolving_duration_seconds)})` : ''}`}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              )}
                             </Box>
                           )}
                         </CardContent>
@@ -444,6 +463,22 @@ export function Home(): React.ReactElement {
                               color="info"
                             />
                           ))}
+                        {stats.last_indexed_at != null && (
+                          <Chip
+                            icon={<AccessTimeIcon />}
+                            label={formatDateTimeUTC(stats.last_indexed_at)}
+                            size="small"
+                            variant="outlined"
+                          />
+                        )}
+                        {stats.last_indexing_duration_seconds != null && (
+                          <Chip
+                            icon={<TimerIcon />}
+                            label={`${formatDuration(stats.last_indexing_duration_seconds)}${stats.last_resolving_duration_seconds != null ? ` (resolve: ${formatDuration(stats.last_resolving_duration_seconds)})` : ''}`}
+                            size="small"
+                            variant="outlined"
+                          />
+                        )}
                       </Box>
                     )}
                   </Box>

@@ -2153,3 +2153,30 @@ class TestDaysRangeExpansionReindex:
         )
         response2 = await orchestrator.index_repository(request2)
         assert response2.indexing_method == "auto-reset"
+
+    @pytest.mark.asyncio
+    async def test_index_repository_persists_duration_to_index_status(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        index_status_repo: InMemoryIndexStatusRepository,
+    ) -> None:
+        """Indexing should persist indexing and resolving durations to IndexStatus."""
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+        )
+
+        response = await orchestrator.index_repository(request)
+
+        # Verify durations are in the response
+        assert response.indexing_seconds > 0
+        assert response.resolving_seconds >= 0
+
+        # Verify durations were persisted to IndexStatus
+        all_statuses = list(index_status_repo._statuses.values())
+        assert len(all_statuses) > 0
+        status = all_statuses[0]
+        assert status.last_indexing_duration_seconds is not None
+        assert status.last_indexing_duration_seconds > 0
+        assert status.last_resolving_duration_seconds is not None
+        assert status.last_resolving_duration_seconds >= 0

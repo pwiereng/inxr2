@@ -50,6 +50,8 @@ class RepositoryStats:
     commit_date_latest: datetime | None = None
     last_indexed_at: datetime | None = None
     last_indexed_commit: str | None = None
+    last_indexing_duration_seconds: float | None = None
+    last_resolving_duration_seconds: float | None = None
     git_head_commit: str | None = None
     is_stale: bool = False
 
@@ -60,6 +62,8 @@ class StalenessInfo:
 
     last_indexed_at: datetime | None = None
     last_indexed_commit: str | None = None
+    last_indexing_duration_seconds: float | None = None
+    last_resolving_duration_seconds: float | None = None
     git_head_commit: str | None = None
     is_stale: bool = False
 
@@ -195,6 +199,8 @@ class GetRepositoryStatsUseCase:
             commit_date_latest=date_range[1] if date_range else None,
             last_indexed_at=staleness.last_indexed_at,
             last_indexed_commit=staleness.last_indexed_commit,
+            last_indexing_duration_seconds=staleness.last_indexing_duration_seconds,
+            last_resolving_duration_seconds=staleness.last_resolving_duration_seconds,
             git_head_commit=staleness.git_head_commit,
             is_stale=staleness.is_stale,
         )
@@ -268,6 +274,8 @@ class GetRepositoryStatsUseCase:
         default_branch = repository.default_branch or "main"
         last_indexed_at: datetime | None = None
         last_indexed_commit: str | None = None
+        last_indexing_duration_seconds: float | None = None
+        last_resolving_duration_seconds: float | None = None
 
         # Get index status
         index_status = await self._index_status_repo.find_by_repository_and_branch(
@@ -276,6 +284,10 @@ class GetRepositoryStatsUseCase:
         if index_status is not None:
             last_indexed_at = index_status.last_indexed_at
             last_indexed_commit = index_status.last_indexed_commit
+            last_indexing_duration_seconds = index_status.last_indexing_duration_seconds
+            last_resolving_duration_seconds = (
+                index_status.last_resolving_duration_seconds
+            )
 
         # Get git HEAD (sync call)
         try:
@@ -291,6 +303,8 @@ class GetRepositoryStatsUseCase:
             return StalenessInfo(
                 last_indexed_at=last_indexed_at,
                 last_indexed_commit=last_indexed_commit,
+                last_indexing_duration_seconds=last_indexing_duration_seconds,
+                last_resolving_duration_seconds=last_resolving_duration_seconds,
             )
 
         # Compare: stale if index exists and HEAD differs
@@ -303,6 +317,8 @@ class GetRepositoryStatsUseCase:
         return StalenessInfo(
             last_indexed_at=last_indexed_at,
             last_indexed_commit=last_indexed_commit,
+            last_indexing_duration_seconds=last_indexing_duration_seconds,
+            last_resolving_duration_seconds=last_resolving_duration_seconds,
             git_head_commit=git_head_commit,
             is_stale=is_stale,
         )

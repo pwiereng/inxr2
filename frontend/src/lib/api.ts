@@ -142,6 +142,8 @@ export interface RepositoryStats {
   commit_date_latest: string | null
   last_indexed_at: string | null
   last_indexed_commit: string | null
+  last_indexing_duration_seconds: number | null
+  last_resolving_duration_seconds: number | null
   git_head_commit: string | null
   is_stale: boolean
 }

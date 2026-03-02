@@ -109,3 +109,16 @@ export function formatCommitDate(dateString: string, allDates: string[]): string
 
   return dateStr
 }
+
+/**
+ * Format a duration in seconds to a human-readable string.
+ * <60s: "Xs", >=60s: "Xm Ys"
+ */
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`
+  }
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.round(seconds % 60)
+  return `${minutes}m ${remainingSeconds}s`
+}

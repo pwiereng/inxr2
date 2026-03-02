@@ -45,6 +45,8 @@ class IndexStatus:
     total_files_indexed: int = 0
     total_symbols_indexed: int = 0
     total_references_indexed: int = 0
+    last_indexing_duration_seconds: float | None = None
+    last_resolving_duration_seconds: float | None = None
     error_message: str | None = None
     error_count: int = 0
     indexer_version: str | None = None
