@@ -2173,9 +2173,10 @@ class TestDaysRangeExpansionReindex:
         assert response.resolving_seconds >= 0
 
         # Verify durations were persisted to IndexStatus
-        all_statuses = list(index_status_repo._statuses.values())
-        assert len(all_statuses) > 0
-        status = all_statuses[0]
+        status = await index_status_repo.find_by_repository_and_branch(
+            response.repository_id, "main"
+        )
+        assert status is not None
         assert status.last_indexing_duration_seconds is not None
         assert status.last_indexing_duration_seconds > 0
         assert status.last_resolving_duration_seconds is not None
