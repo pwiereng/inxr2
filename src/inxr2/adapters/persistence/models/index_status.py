@@ -7,6 +7,7 @@ from sqlalchemy import (
     CHAR,
     JSON,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -58,6 +59,14 @@ class IndexStatusModel(Base, TimestampMixin):
     )
     total_references_indexed: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
+    )
+
+    # Timing
+    last_indexing_duration_seconds: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    last_resolving_duration_seconds: Mapped[float | None] = mapped_column(
+        Float, nullable=True
     )
 
     # Error tracking

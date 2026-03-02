@@ -15,34 +15,23 @@ import {
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CodeIcon from '@mui/icons-material/Code'
-import { formatDateYMD } from '@/lib/dateUtils'
-
-interface Repository {
-  id: number
-  name: string
-  url: string
-  description: string | null
-  created_at: string | null
-  updated_at: string | null
-}
+import TimerIcon from '@mui/icons-material/Timer'
+import { type RepositoryStats, getAllRepositoryStats } from '@/lib/api'
+import { formatDateTimeUTC, formatDuration } from '@/lib/dateUtils'
 
 export default function Repositories(): React.ReactElement {
-  const [repositories, setRepositories] = useState<Repository[]>([])
+  const [stats, setStats] = useState<RepositoryStats[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchRepositories()
+    fetchStats()
   }, [])
 
-  const fetchRepositories = async () => {
+  const fetchStats = async (): Promise<void> => {
     try {
-      const response = await fetch('http://localhost:8000/api/repositories')
-      if (!response.ok) {
-        throw new Error('Failed to fetch repositories')
-      }
-      const data = await response.json()
-      setRepositories(data)
+      const data = await getAllRepositoryStats()
+      setStats(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
@@ -79,7 +68,7 @@ export default function Repositories(): React.ReactElement {
         </Typography>
       </Box>
 
-      {repositories.length === 0 ? (
+      {stats.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="body1" gutterBottom>
             No repositories indexed yet.
@@ -90,12 +79,16 @@ export default function Repositories(): React.ReactElement {
         </Paper>
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {repositories.map((repo) => (
-            <Card key={repo.id} elevation={1}>
+          {stats.map((repo) => (
+            <Card key={repo.repository_id} elevation={1}>
               <CardActionArea component={Link} to={`/browse/${encodeURIComponent(repo.name)}`}>
                 <CardContent>
                   <Box
-                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
                   >
                     <Box sx={{ flex: 1 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -104,18 +97,20 @@ export default function Repositories(): React.ReactElement {
                           {repo.name}
                         </Typography>
                       </Box>
-                      {repo.description && (
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                          {repo.description}
-                        </Typography>
-                      )}
                       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                        <Chip size="small" label={repo.url} variant="outlined" />
-                        {repo.created_at && (
+                        {repo.last_indexed_at != null && (
                           <Chip
                             size="small"
                             icon={<AccessTimeIcon />}
-                            label={`Indexed ${formatDateYMD(repo.created_at)}`}
+                            label={`Last indexed: ${formatDateTimeUTC(repo.last_indexed_at)}`}
+                            variant="outlined"
+                          />
+                        )}
+                        {repo.last_indexing_duration_seconds != null && (
+                          <Chip
+                            size="small"
+                            icon={<TimerIcon />}
+                            label={`Duration: ${formatDuration(repo.last_indexing_duration_seconds)}${repo.last_resolving_duration_seconds != null ? ` (resolve: ${formatDuration(repo.last_resolving_duration_seconds)})` : ''}`}
                             variant="outlined"
                           />
                         )}

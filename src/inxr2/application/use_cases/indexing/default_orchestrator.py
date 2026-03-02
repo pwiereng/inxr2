@@ -323,6 +323,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             oldest_indexed_commit=oldest_commit_hash,
             days=request.days,
             existing_metadata=existing_meta,
+            indexing_seconds=indexing_seconds,
+            resolving_seconds=resolving_seconds,
         )
         db_stats.inserts += 1
 
@@ -477,6 +479,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         oldest_indexed_commit: str | None = None,
         days: int | None = None,
         existing_metadata: dict[str, Any] | None = None,
+        indexing_seconds: float | None = None,
+        resolving_seconds: float | None = None,
     ) -> None:
         """Update index status after indexing."""
         from datetime import UTC, datetime
@@ -504,6 +508,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             last_indexed_commit=last_indexed_commit,
             oldest_indexed_commit=oldest_indexed_commit,
             last_indexed_at=datetime.now(UTC).replace(tzinfo=None),
+            last_indexing_duration_seconds=indexing_seconds,
+            last_resolving_duration_seconds=resolving_seconds,
             indexer_version="0.1.0",
             metadata=metadata,
         )

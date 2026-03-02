@@ -257,3 +257,73 @@ class TestRepositoryStatsStaleness:
         assert result.is_stale is False
         assert result.last_indexed_commit is None
         assert result.git_head_commit is None
+
+    @pytest.mark.asyncio
+    async def test_duration_fields_from_index_status(
+        self,
+        repository_repo: InMemoryRepositoryRepository,
+        file_repo: InMemoryFileRepository,
+        file_version_repo: InMemoryFileVersionRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        commit_repo: InMemoryCommitRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        git_service: FakeGitService,
+    ) -> None:
+        """Stats should include indexing and resolving duration from index status."""
+        await index_status_repo.save(
+            IndexStatus(
+                repository_id=1,
+                branch="main",
+                indexing_status="completed",
+                last_indexed_commit="def456",
+                last_indexed_at=datetime(2024, 1, 2),
+                last_indexing_duration_seconds=45.3,
+                last_resolving_duration_seconds=12.7,
+            )
+        )
+
+        use_case = GetRepositoryStatsUseCase(
+            repository_repo=repository_repo,
+            file_repo=file_repo,
+            file_version_repo=file_version_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            commit_repo=commit_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+        )
+
+        result = await use_case.execute(GetRepositoryStatsRequest(repository_id=1))
+
+        assert result.last_indexing_duration_seconds == 45.3
+        assert result.last_resolving_duration_seconds == 12.7
+
+    @pytest.mark.asyncio
+    async def test_duration_fields_none_when_never_indexed(
+        self,
+        repository_repo: InMemoryRepositoryRepository,
+        file_repo: InMemoryFileRepository,
+        file_version_repo: InMemoryFileVersionRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        commit_repo: InMemoryCommitRepository,
+        index_status_repo: InMemoryIndexStatusRepository,
+        git_service: FakeGitService,
+    ) -> None:
+        """Duration fields should be None when repo has never been indexed."""
+        use_case = GetRepositoryStatsUseCase(
+            repository_repo=repository_repo,
+            file_repo=file_repo,
+            file_version_repo=file_version_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            commit_repo=commit_repo,
+            index_status_repo=index_status_repo,
+            git_service=git_service,
+        )
+
+        result = await use_case.execute(GetRepositoryStatsRequest(repository_id=1))
+
+        assert result.last_indexing_duration_seconds is None
+        assert result.last_resolving_duration_seconds is None

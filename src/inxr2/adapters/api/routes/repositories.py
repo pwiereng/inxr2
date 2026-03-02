@@ -86,6 +86,8 @@ class RepositoryStatsResponse(BaseModel):
     commit_date_latest: str | None = None
     last_indexed_at: str | None = None
     last_indexed_commit: str | None = None
+    last_indexing_duration_seconds: float | None = None
+    last_resolving_duration_seconds: float | None = None
     git_head_commit: str | None = None
     is_stale: bool = False
 
@@ -214,6 +216,8 @@ def _stats_to_response(
             stats.last_indexed_at.isoformat() if stats.last_indexed_at else None
         ),
         last_indexed_commit=stats.last_indexed_commit,
+        last_indexing_duration_seconds=stats.last_indexing_duration_seconds,
+        last_resolving_duration_seconds=stats.last_resolving_duration_seconds,
         git_head_commit=stats.git_head_commit,
         is_stale=stats.is_stale,
     )
