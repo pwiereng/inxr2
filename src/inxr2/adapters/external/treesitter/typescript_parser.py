@@ -380,13 +380,131 @@ class TypeScriptParser(BaseLanguageParser):
 
                     var_name = get_text(name_node)
 
-                    # Check if it's an arrow function
+                    # Check if it's an arrow function, class expression, etc.
                     value_node = child.child_by_field_name("value")
                     if value_node and value_node.type == "arrow_function":
                         symbols.append(self._make_symbol(var_name, "function", child))
+                    elif value_node and value_node.type == "class":
+                        # Class expression: const X = class { ... }
+                        _process_class_expression(value_node, var_name)
                     elif re.match(r"^[A-Z][A-Z0-9_]*$", var_name):
                         # UPPER_CASE constant
                         symbols.append(self._make_symbol(var_name, "constant", child))
+
+        def _process_class_expression(node: Node, name: str) -> None:
+            """Process a class expression node, creating a class symbol and its members.
+
+            Used for patterns like `const X = class { ... }` and
+            `module.exports = class Foo { ... }`.
+            """
+            symbols.append(self._make_symbol(name, "class", node))
+            for child in node.children:
+                if child.type == "class_body":
+                    for member in child.children:
+                        if member.type == "method_definition":
+                            process_method(member, name)
+                        elif member.type == "public_field_definition":
+                            process_field(member, name)
+
+        def _class_expression_binding_name(node: Node) -> str | None:
+            """Get the binding name for a class expression from its parent.
+
+            Returns the variable name for `const X = class { ... }` or the
+            export property for `exports.X = class { ... }`.
+            """
+            parent = node.parent
+            if not parent:
+                return None
+            if parent.type == "variable_declarator":
+                name_node = parent.child_by_field_name("name")
+                if name_node:
+                    return get_text(name_node)
+            elif parent.type == "assignment_expression":
+                left = parent.child_by_field_name("left")
+                if left:
+                    binding, is_prop = _get_export_binding_name(left)
+                    if is_prop:
+                        return binding
+            return None
+
+        def _get_export_binding_name(left: Node) -> tuple[str | None, bool]:
+            """Get the binding name from a CommonJS export LHS.
+
+            Returns (name, is_exports_prop):
+              - module.exports → (None, False) — name comes from RHS
+              - exports.Foo    → ("Foo", True) — name comes from LHS
+              - foo.bar        → (None, False) — not an export, caller should skip
+            """
+            if left.type != "member_expression":
+                return None, False
+            obj = left.child_by_field_name("object")
+            prop = left.child_by_field_name("property")
+            if not obj or not prop:
+                return None, False
+            obj_name = get_text(obj)
+            prop_name = get_text(prop)
+            if obj_name == "module" and prop_name == "exports":
+                return None, False
+            if obj_name == "exports":
+                return prop_name, True
+            # Not a recognized export pattern (e.g. foo.bar = ...)
+            return None, False
+
+        def _is_export_pattern(left: Node) -> bool:
+            """Check if LHS is module.exports or exports.<prop>."""
+            if left.type != "member_expression":
+                return False
+            obj = left.child_by_field_name("object")
+            prop = left.child_by_field_name("property")
+            if not obj or not prop:
+                return False
+            obj_name = get_text(obj)
+            prop_name = get_text(prop)
+            return (obj_name == "module" and prop_name == "exports") or (
+                obj_name == "exports"
+            )
+
+        def _process_assignment_expression(node: Node) -> None:
+            """Process assignment expressions for module.exports/exports patterns.
+
+            Handles:
+              - module.exports = class Foo { ... }
+              - exports.Foo = class Foo { ... }
+              - module.exports = function foo() { ... }
+
+            Ignores non-export assignments (e.g. foo.bar = class { ... }).
+            """
+            left = node.child_by_field_name("left")
+            right = node.child_by_field_name("right")
+            if not left or not right:
+                return
+
+            if not _is_export_pattern(left):
+                return
+
+            if right.type == "class":
+                # For exports.Foo = class Bar { ... }, prefer LHS name "Foo".
+                # For module.exports = class Bar { ... }, use RHS name "Bar".
+                binding_name, is_exports_prop = _get_export_binding_name(left)
+                if is_exports_prop:
+                    class_name = binding_name
+                else:
+                    class_name = get_name_from_node(right)
+                    if not class_name:
+                        class_name = binding_name
+                if class_name:
+                    _process_class_expression(right, class_name)
+            elif right.type == "function_expression":
+                # Mirror class-expression handling: prefer LHS for exports.<prop>.
+                binding_name, is_exports_prop = _get_export_binding_name(left)
+                if is_exports_prop:
+                    fn_name = binding_name
+                else:
+                    fn_name = get_name_from_node(right)
+                    if not fn_name:
+                        fn_name = binding_name
+                if fn_name:
+                    symbols.append(self._make_symbol(fn_name, "function", right))
 
         def _is_heritage_base_type(node: Node) -> bool:
             """Check if a type_identifier is a heritage base type (not a type argument).
@@ -549,8 +667,15 @@ class TypeScriptParser(BaseLanguageParser):
             # Recurse
             for child in node.children:
                 child_scope = scope
-                if node.type == "class_declaration":
-                    name = get_name_from_node(node)
+                if node.type in ("class_declaration", "class"):
+                    if node.type == "class_declaration":
+                        name = get_name_from_node(node)
+                    else:
+                        # Class expression — prefer the binding name so
+                        # scope matches the indexed symbol name.
+                        name = _class_expression_binding_name(node)
+                        if not name:
+                            name = get_name_from_node(node)
                     if name:
                         child_scope = name
                 extract_references(child, child_scope)
@@ -569,6 +694,11 @@ class TypeScriptParser(BaseLanguageParser):
                 process_function(node, is_exported)
             elif node.type == "lexical_declaration":
                 process_variable_declaration(node, is_exported)
+            elif node.type == "expression_statement":
+                # Handle module.exports = class ..., exports.X = class ..., etc.
+                for child in node.children:
+                    if child.type == "assignment_expression":
+                        _process_assignment_expression(child)
             elif node.type == "export_statement":
                 # Handle exported declarations
                 for child in node.children:

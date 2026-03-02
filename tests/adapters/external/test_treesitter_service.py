@@ -1717,6 +1717,222 @@ const X = class extends Base {};
         assert "Base" in inherit_names
 
 
+class TestClassExpressionSymbols:
+    """Tests for class expression symbol extraction (issue #190).
+
+    Class expressions like `module.exports = class Foo { ... }` and
+    `const X = class { ... }` should be indexed as class symbols with
+    their methods properly scoped.
+    """
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_module_exports_class_expression(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """module.exports = class Foo { ... } indexes Foo as a class with methods."""
+        code = """
+module.exports = class JiminnyApiClient {
+    constructor(args = {}) { }
+    fetchContent() { }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        assert len(class_symbols) == 1
+        assert class_symbols[0]["name"] == "JiminnyApiClient"
+
+        methods = [s for s in symbols if s["kind"] == "method"]
+        method_names = {s["name"] for s in methods}
+        assert "constructor" in method_names
+        assert "fetchContent" in method_names
+        # Methods should be scoped to the class
+        for m in methods:
+            assert m["scope"] == "JiminnyApiClient"
+
+    @pytest.mark.asyncio
+    async def test_const_class_expression(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """const X = class { ... } indexes X as a class with methods."""
+        code = """
+const MyClass = class {
+    method() { }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        assert len(class_symbols) == 1
+        assert class_symbols[0]["name"] == "MyClass"
+
+        methods = [s for s in symbols if s["kind"] == "method"]
+        assert len(methods) == 1
+        assert methods[0]["name"] == "method"
+        assert methods[0]["scope"] == "MyClass"
+
+    @pytest.mark.asyncio
+    async def test_exports_dot_class_expression(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """exports.Foo = class Foo { ... } indexes Foo as a class."""
+        code = """
+exports.MyClass = class MyClass {
+    bar() { }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        assert len(class_symbols) == 1
+        assert class_symbols[0]["name"] == "MyClass"
+
+        methods = [s for s in symbols if s["kind"] == "method"]
+        assert len(methods) == 1
+        assert methods[0]["name"] == "bar"
+        assert methods[0]["scope"] == "MyClass"
+
+    @pytest.mark.asyncio
+    async def test_exports_dot_class_expression_aliased(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """exports.Foo = class Bar { ... } uses LHS name Foo, not RHS name Bar."""
+        code = """
+exports.Foo = class Bar {
+    baz() { }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        assert len(class_symbols) == 1
+        assert class_symbols[0]["name"] == "Foo"
+
+        methods = [s for s in symbols if s["kind"] == "method"]
+        assert len(methods) == 1
+        assert methods[0]["scope"] == "Foo"
+
+    @pytest.mark.asyncio
+    async def test_non_export_assignment_ignored(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """foo.bar = class { ... } should not create a top-level class symbol."""
+        code = """
+foo.bar = class {
+    baz() { }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        assert len(class_symbols) == 0
+
+    @pytest.mark.asyncio
+    async def test_module_exports_function_expression(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """module.exports = function foo() {} indexes foo as a function."""
+        code = """
+module.exports = function createServer() { }
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        fn_symbols = [s for s in symbols if s["kind"] == "function"]
+        assert len(fn_symbols) == 1
+        assert fn_symbols[0]["name"] == "createServer"
+
+    @pytest.mark.asyncio
+    async def test_exports_dot_function_expression(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """exports.Foo = function Bar() {} uses LHS name Foo."""
+        code = """
+exports.create = function createImpl() { }
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        fn_symbols = [s for s in symbols if s["kind"] == "function"]
+        assert len(fn_symbols) == 1
+        assert fn_symbols[0]["name"] == "create"
+
+    @pytest.mark.asyncio
+    async def test_exports_dot_anonymous_function(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """exports.Foo = function() {} uses LHS name Foo."""
+        code = """
+exports.handler = function() { }
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        fn_symbols = [s for s in symbols if s["kind"] == "function"]
+        assert len(fn_symbols) == 1
+        assert fn_symbols[0]["name"] == "handler"
+
+    @pytest.mark.asyncio
+    async def test_class_expression_with_fields(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Class expression fields should be indexed with proper scope."""
+        code = """
+const Widget = class {
+    static count = 0;
+    render() { }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        assert len(class_symbols) == 1
+        assert class_symbols[0]["name"] == "Widget"
+
+        static_fields = [s for s in symbols if s["kind"] == "static_field"]
+        assert any(s["name"] == "count" for s in static_fields)
+        assert all(s["scope"] == "Widget" for s in static_fields)
+
+    @pytest.mark.asyncio
+    async def test_class_expression_inherits_scope_for_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Inheritance references from class expressions should have correct scope."""
+        code = """
+const Child = class extends Parent {
+    greet() {}
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        assert len(inherit_refs) == 1
+        assert inherit_refs[0]["text"] == "Parent"
+        assert inherit_refs[0].get("scope") == "Child"
+
+
 class TestTypeScriptMemberAccessReferences:
     """Tests for property read (obj.field) reference extraction (issue #161)."""
 
