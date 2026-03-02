@@ -38,23 +38,38 @@ class PostgresSymbolRepository(
         scope: str | None = None,
         mode: str | None = None,
         case_sensitive: bool = True,
+        commit_id: int | None = None,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
-        When repository_id is provided, deduplicates by filtering to
-        only the latest file version per (repository_id, path).
+        When commit_id is provided, filters to symbols from files at that
+        specific commit (via commit_files junction).
+        When repository_id is provided (without commit_id), deduplicates by
+        filtering to only the latest file version per (repository_id, path).
         When scope is "latest" and repository_id is None, filters to
         symbols from files at HEAD of each repo's default branch.
 
         Note: ``branch`` only takes effect when ``repository_id`` is
-        provided, since branch-scoped dedup requires a repository context.
+        provided and ``commit_id`` is not, since branch-scoped dedup
+        requires a repository context.
         """
         name_filter = build_text_match_filter(
             SymbolModel.name, name, mode=mode, case_sensitive=case_sensitive
         )
         query = select(SymbolModel).where(name_filter)
 
-        if repository_id is None and scope == "latest":
+        if commit_id is not None:
+            # Specific commit: filter via commit_files junction
+            if repository_id is not None:
+                query = query.where(SymbolModel.repository_id == repository_id)
+            query = query.where(
+                SymbolModel.file_id.in_(
+                    select(CommitFileModel.file_id).where(
+                        CommitFileModel.commit_id == commit_id
+                    )
+                )
+            )
+        elif repository_id is None and scope == "latest":
             # Global search: only symbols from HEAD of each repo's default branch
             head_fids = head_file_ids_subquery()
             query = query.where(SymbolModel.file_id.in_(select(head_fids.c.file_id)))

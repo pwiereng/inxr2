@@ -1068,6 +1068,33 @@ describe('useBrowseState', () => {
       // Should preserve drawer=0 in navigation
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('drawer=0'))
     })
+
+    it('should preserve branch parameter when navigating to symbol', async () => {
+      mockSearchParams = new URLSearchParams('branch=feature-branch')
+
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.navigateToSymbol(mockSymbol)
+      })
+
+      // Should preserve branch in navigation URL
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature-branch'))
+    })
+
+    it('should preserve commit parameter when navigating to symbol', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123&branch=feature-branch')
+
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.navigateToSymbol(mockSymbol)
+      })
+
+      // Should preserve both commit and branch in navigation URL
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature-branch'))
+    })
   })
 
   describe('branch URL state', () => {

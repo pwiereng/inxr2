@@ -18,6 +18,8 @@ import { searchSymbols, type Symbol } from '@/lib/api'
 
 interface SymbolSearchProps {
   repositoryId?: number
+  branch?: string
+  commit?: string
   onSymbolSelect?: (symbol: Symbol) => void
   placeholder?: string
   value?: string
@@ -70,6 +72,8 @@ function getKindColor(
 
 export function SymbolSearch({
   repositoryId,
+  branch,
+  commit,
   onSymbolSelect,
   placeholder = 'Search symbols...',
   value,
@@ -100,11 +104,22 @@ export function SymbolSearch({
 
       setLoading(true)
       try {
-        const result = await searchSymbols({
+        const searchParams: Parameters<typeof searchSymbols>[0] = {
           q: query,
-          repository_id: repositoryId,
           limit: 20,
-        })
+        }
+
+        if (repositoryId !== undefined) {
+          searchParams.repository_id = repositoryId
+          if (branch) {
+            searchParams.branch = branch
+          }
+          if (commit) {
+            searchParams.commit = commit
+          }
+        }
+
+        const result = await searchSymbols(searchParams)
         setOptions(result.items)
       } catch (error) {
         console.error('Search failed:', error)
@@ -113,7 +128,7 @@ export function SymbolSearch({
         setLoading(false)
       }
     },
-    [repositoryId]
+    [repositoryId, branch, commit]
   )
 
   // Debounce effect

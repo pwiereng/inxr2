@@ -570,3 +570,186 @@ class TestSearchSymbolsExtensionFilter:
         result = await use_case.execute(request)
 
         assert result.total == 3
+
+
+class TestSearchSymbolsCommitScoped:
+    """Tests for commit-scoped symbol search (time travel)."""
+
+    @pytest.fixture
+    def commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        # Two commits on the same branch
+        c1 = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("commit1aaa"),
+            author_date=datetime(2025, 1, 1, 12, 0, 0),
+            commit_date=datetime(2025, 1, 1, 12, 0, 0),
+        )
+        c2 = Commit(
+            id=2,
+            repository_id=1,
+            commit_hash=CommitHash("commit2bbb"),
+            author_date=datetime(2025, 1, 2, 12, 0, 0),
+            commit_date=datetime(2025, 1, 2, 12, 0, 0),
+        )
+        repo._commits[1] = c1
+        repo._commits[2] = c2
+        repo._branch_commits[(1, "main", 1)] = True
+        repo._branch_commits[(1, "main", 2)] = True
+        return repo
+
+    @pytest.fixture
+    def file_repo(
+        self, commit_repo: InMemoryCommitRepository
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        # File version at commit 1
+        repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/app.py",
+                content_hash="h1_old",
+                size_bytes=100,
+                language="python",
+            )
+        )
+        # File version at commit 2 (same path, different content)
+        repo.add(
+            File(
+                id=2,
+                repository_id=1,
+                path="src/app.py",
+                content_hash="h1_new",
+                size_bytes=150,
+                language="python",
+            )
+        )
+        # Link file versions to commits
+        repo._commit_files.add((1, 1))  # commit 1 -> file version 1
+        repo._commit_files.add((2, 2))  # commit 2 -> file version 2
+        return repo
+
+    @pytest.fixture
+    def symbol_repo(
+        self, file_repo: InMemoryFileRepository
+    ) -> InMemorySymbolRepository:
+        repo = InMemorySymbolRepository(file_repo=file_repo)
+        # Symbol in file version 1 (commit 1) — at line 10
+        repo.add(
+            Symbol(
+                id=1,
+                repository_id=1,
+                file_id=1,
+                name="sync",
+                qualified_name="sync",
+                kind=SymbolKind.FUNCTION,
+                start_line=10,
+                start_column=0,
+                end_line=20,
+                end_column=0,
+            )
+        )
+        # Symbol in file version 2 (commit 2) — moved to line 50
+        repo.add(
+            Symbol(
+                id=2,
+                repository_id=1,
+                file_id=2,
+                name="sync",
+                qualified_name="sync",
+                kind=SymbolKind.FUNCTION,
+                start_line=50,
+                start_column=0,
+                end_line=60,
+                end_column=0,
+            )
+        )
+        # Symbol only in commit 2
+        repo.add(
+            Symbol(
+                id=3,
+                repository_id=1,
+                file_id=2,
+                name="new_helper",
+                qualified_name="new_helper",
+                kind=SymbolKind.FUNCTION,
+                start_line=70,
+                start_column=0,
+                end_line=80,
+                end_column=0,
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    def use_case(
+        self,
+        symbol_repo: InMemorySymbolRepository,
+        file_repo: InMemoryFileRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> SearchSymbolsUseCase:
+        return SearchSymbolsUseCase(
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_commit_scoped_search_returns_symbols_at_commit(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """Partial search with commit_hash returns symbols from that commit only."""
+        request = SearchSymbolsRequest(
+            query="sync",
+            repository_id=1,
+            commit_hash="commit1aaa",
+        )
+        result = await use_case.execute(request)
+
+        assert result.total == 1
+        # Should find sync at line 10 (commit 1), not line 50 (commit 2)
+        assert result.symbols[0].symbol.start_line == 10
+
+    @pytest.mark.asyncio
+    async def test_commit_scoped_search_excludes_symbols_not_at_commit(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """Symbols added in later commits should not appear in earlier commit search."""
+        request = SearchSymbolsRequest(
+            query="new_helper",
+            repository_id=1,
+            commit_hash="commit1aaa",
+        )
+        result = await use_case.execute(request)
+
+        assert result.total == 0
+
+    @pytest.mark.asyncio
+    async def test_commit_scoped_search_latest_commit(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """Search at latest commit returns symbols from that commit."""
+        request = SearchSymbolsRequest(
+            query="sync",
+            repository_id=1,
+            commit_hash="commit2bbb",
+        )
+        result = await use_case.execute(request)
+
+        assert result.total == 1
+        # Should find sync at line 50 (commit 2)
+        assert result.symbols[0].symbol.start_line == 50
+
+    @pytest.mark.asyncio
+    async def test_commit_scoped_search_requires_repository_id(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """commit_hash without repository_id should raise ValueError."""
+        request = SearchSymbolsRequest(
+            query="sync",
+            commit_hash="commit1aaa",
+        )
+        with pytest.raises(ValueError, match="requires repository_id"):
+            await use_case.execute(request)

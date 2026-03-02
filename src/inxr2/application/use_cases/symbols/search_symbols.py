@@ -31,12 +31,11 @@ class SearchSymbolsRequest:
     Args:
         query: Search query for symbol name (empty string matches all)
         repository_id: Optional repository filter. Required when using
-            commit_hash with exact_match=True.
+            commit_hash.
         kind: Optional symbol kind filter (e.g., "function", "class")
-        commit_hash: Optional commit hash for time travel. Only applies when
-            exact_match=True. Raises ValueError if repository_id is not set
-            or if the commit hash cannot be resolved. Ignored for partial
-            searches (exact_match=False).
+        commit_hash: Optional commit hash for time travel. Requires
+            repository_id to be set. Raises ValueError if repository_id
+            is not set or if the commit hash cannot be resolved.
         exact_match: If True, match exact name instead of partial
         limit: Maximum results to return
         offset: Offset for pagination
@@ -122,16 +121,14 @@ class SearchSymbolsUseCase:
             SearchSymbolsResponse with enriched symbols
 
         Raises:
-            ValueError: If commit_hash is provided for exact_match but
-                repository_id is missing or commit cannot be resolved
+            ValueError: If commit_hash is provided but repository_id is
+                missing or commit cannot be resolved
         """
-        # Resolve commit_id if commit_hash provided (only relevant for exact-match searches)
+        # Resolve commit_id if commit_hash provided
         commit_id: int | None = None
-        if request.exact_match and request.commit_hash:
+        if request.commit_hash:
             if not request.repository_id or not self._commit_repo:
-                raise ValueError(
-                    "commit_hash requires repository_id to be set for exact-match search"
-                )
+                raise ValueError("commit_hash requires repository_id to be set")
             commit = await self._commit_repo.find_by_hash(
                 request.repository_id, request.commit_hash
             )
@@ -162,6 +159,7 @@ class SearchSymbolsUseCase:
                 scope=request.scope if request.repository_id is None else None,
                 mode=request.mode,
                 case_sensitive=request.case_sensitive,
+                commit_id=commit_id,
             )
 
         # Apply offset for pagination

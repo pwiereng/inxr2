@@ -36,6 +36,7 @@ class SymbolRepositoryPort(ABC):
         scope: str | None = None,
         mode: str | None = None,
         case_sensitive: bool = True,
+        commit_id: int | None = None,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
@@ -53,6 +54,8 @@ class SymbolRepositoryPort(ABC):
                 otherwise substring match (optional)
             case_sensitive: Case-sensitive matching (applies to all modes,
                 default True)
+            commit_id: Filter by specific commit via commit_files (optional).
+                When set, takes precedence over branch-based dedup.
         """
         pass
 

@@ -75,6 +75,106 @@ describe('SymbolSearch', () => {
     })
   })
 
+  describe('branch and commit filtering', () => {
+    it('should pass branch to searchSymbols API call', async () => {
+      const { searchSymbols } = await import('@/lib/api')
+      vi.mocked(searchSymbols).mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 })
+
+      render(<SymbolSearch repositoryId={1} branch="feature-branch" />)
+
+      const input = screen.getByRole('combobox')
+      fireEvent.change(input, { target: { value: 'sync' } })
+
+      await waitFor(
+        () => {
+          expect(searchSymbols).toHaveBeenCalledWith(
+            expect.objectContaining({
+              q: 'sync',
+              repository_id: 1,
+              branch: 'feature-branch',
+              limit: 20,
+            })
+          )
+        },
+        { timeout: 1000 }
+      )
+    })
+
+    it('should pass commit to searchSymbols API call', async () => {
+      const { searchSymbols } = await import('@/lib/api')
+      vi.mocked(searchSymbols).mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 })
+
+      render(<SymbolSearch repositoryId={1} branch="feature-branch" commit="abc123def456" />)
+
+      const input = screen.getByRole('combobox')
+      fireEvent.change(input, { target: { value: 'sync' } })
+
+      await waitFor(
+        () => {
+          expect(searchSymbols).toHaveBeenCalledWith(
+            expect.objectContaining({
+              q: 'sync',
+              repository_id: 1,
+              branch: 'feature-branch',
+              commit: 'abc123def456',
+              limit: 20,
+            })
+          )
+        },
+        { timeout: 1000 }
+      )
+    })
+
+    it('should not pass branch or commit when repositoryId is undefined', async () => {
+      const { searchSymbols } = await import('@/lib/api')
+      vi.mocked(searchSymbols).mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 })
+
+      render(<SymbolSearch branch="feature-branch" commit="abc123" />)
+
+      const input = screen.getByRole('combobox')
+      fireEvent.change(input, { target: { value: 'sync' } })
+
+      await waitFor(
+        () => {
+          expect(searchSymbols).toHaveBeenCalledWith({
+            q: 'sync',
+            limit: 20,
+          })
+        },
+        { timeout: 1000 }
+      )
+    })
+
+    it('should not pass branch or commit when not provided', async () => {
+      const { searchSymbols } = await import('@/lib/api')
+      vi.mocked(searchSymbols).mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 })
+
+      render(<SymbolSearch repositoryId={1} />)
+
+      const input = screen.getByRole('combobox')
+      fireEvent.change(input, { target: { value: 'sync' } })
+
+      await waitFor(
+        () => {
+          expect(searchSymbols).toHaveBeenCalledWith(
+            expect.objectContaining({
+              q: 'sync',
+              repository_id: 1,
+              limit: 20,
+            })
+          )
+          expect(searchSymbols).toHaveBeenCalledWith(
+            expect.not.objectContaining({ branch: expect.any(String) })
+          )
+          expect(searchSymbols).toHaveBeenCalledWith(
+            expect.not.objectContaining({ commit: expect.any(String) })
+          )
+        },
+        { timeout: 1000 }
+      )
+    })
+  })
+
   describe('symbol selection', () => {
     it('should call onSymbolSelect when a symbol is selected', async () => {
       const { searchSymbols } = await import('@/lib/api')
@@ -113,7 +213,7 @@ describe('SymbolSearch', () => {
         () => {
           expect(screen.getByText('TestSymbol')).toBeInTheDocument()
         },
-        { timeout: 500 }
+        { timeout: 1000 }
       )
 
       // Click on the option
@@ -163,7 +263,7 @@ describe('SymbolSearch', () => {
         () => {
           expect(screen.getByText('MySymbol')).toBeInTheDocument()
         },
-        { timeout: 500 }
+        { timeout: 1000 }
       )
 
       // Verify input has the typed value before selection

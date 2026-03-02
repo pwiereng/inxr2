@@ -275,6 +275,7 @@ export async function searchSymbols(params: {
   kind?: string
   repository_id?: number
   branch?: string
+  commit?: string
   language?: string
   extensions?: string[]
   mode?: string
@@ -288,6 +289,7 @@ export async function searchSymbols(params: {
   if (params.kind) searchParams.set('kind', params.kind)
   if (params.repository_id) searchParams.set('repository_id', params.repository_id.toString())
   if (params.branch) searchParams.set('branch', params.branch)
+  if (params.commit) searchParams.set('commit', params.commit)
   if (params.language) searchParams.set('language', params.language)
   if (params.extensions) {
     params.extensions.forEach((ext) => searchParams.append('extensions', ext))
