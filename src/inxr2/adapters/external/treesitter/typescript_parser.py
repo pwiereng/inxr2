@@ -380,13 +380,62 @@ class TypeScriptParser(BaseLanguageParser):
 
                     var_name = get_text(name_node)
 
-                    # Check if it's an arrow function
+                    # Check if it's an arrow function, class expression, etc.
                     value_node = child.child_by_field_name("value")
                     if value_node and value_node.type == "arrow_function":
                         symbols.append(self._make_symbol(var_name, "function", child))
+                    elif value_node and value_node.type == "class":
+                        # Class expression: const X = class { ... }
+                        _process_class_expression(value_node, var_name)
                     elif re.match(r"^[A-Z][A-Z0-9_]*$", var_name):
                         # UPPER_CASE constant
                         symbols.append(self._make_symbol(var_name, "constant", child))
+
+        def _process_class_expression(node: Node, name: str) -> None:
+            """Process a class expression node, creating a class symbol and its members.
+
+            Used for patterns like `const X = class { ... }` and
+            `module.exports = class Foo { ... }`.
+            """
+            symbols.append(self._make_symbol(name, "class", node))
+            for child in node.children:
+                if child.type == "class_body":
+                    for member in child.children:
+                        if member.type == "method_definition":
+                            process_method(member, name)
+                        elif member.type == "public_field_definition":
+                            process_field(member, name)
+
+        def _process_assignment_expression(node: Node) -> None:
+            """Process assignment expressions for module.exports/exports patterns.
+
+            Handles:
+              - module.exports = class Foo { ... }
+              - exports.Foo = class Foo { ... }
+              - module.exports = function foo() { ... }
+            """
+            left = node.child_by_field_name("left")
+            right = node.child_by_field_name("right")
+            if not left or not right:
+                return
+
+            if right.type == "class":
+                # Get class name from the class expression itself, or from
+                # the export property (exports.Foo = class { ... })
+                class_name = get_name_from_node(right)
+                if not class_name and left.type == "member_expression":
+                    prop = left.child_by_field_name("property")
+                    if prop:
+                        prop_name = get_text(prop)
+                        # Don't use "exports" as a class name
+                        if prop_name != "exports":
+                            class_name = prop_name
+                if class_name:
+                    _process_class_expression(right, class_name)
+            elif right.type == "function_expression":
+                fn_name = get_name_from_node(right)
+                if fn_name:
+                    symbols.append(self._make_symbol(fn_name, "function", right))
 
         def _is_heritage_base_type(node: Node) -> bool:
             """Check if a type_identifier is a heritage base type (not a type argument).
@@ -549,8 +598,25 @@ class TypeScriptParser(BaseLanguageParser):
             # Recurse
             for child in node.children:
                 child_scope = scope
-                if node.type == "class_declaration":
+                if node.type in ("class_declaration", "class"):
                     name = get_name_from_node(node)
+                    if not name and node.type == "class":
+                        # Anonymous class expression — get name from variable
+                        # declarator parent: const X = class { ... }
+                        parent = node.parent
+                        if parent and parent.type == "variable_declarator":
+                            name_node = parent.child_by_field_name("name")
+                            if name_node:
+                                name = get_text(name_node)
+                        elif parent and parent.type == "assignment_expression":
+                            # module.exports = class { ... } or exports.X = class { ... }
+                            left = parent.child_by_field_name("left")
+                            if left and left.type == "member_expression":
+                                prop = left.child_by_field_name("property")
+                                if prop:
+                                    prop_name = get_text(prop)
+                                    if prop_name != "exports":
+                                        name = prop_name
                     if name:
                         child_scope = name
                 extract_references(child, child_scope)
@@ -569,6 +635,11 @@ class TypeScriptParser(BaseLanguageParser):
                 process_function(node, is_exported)
             elif node.type == "lexical_declaration":
                 process_variable_declaration(node, is_exported)
+            elif node.type == "expression_statement":
+                # Handle module.exports = class ..., exports.X = class ..., etc.
+                for child in node.children:
+                    if child.type == "assignment_expression":
+                        _process_assignment_expression(child)
             elif node.type == "export_statement":
                 # Handle exported declarations
                 for child in node.children:
