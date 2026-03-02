@@ -336,7 +336,7 @@ export function Home(): React.ReactElement {
                               {stats.last_indexed_at != null && (
                                 <Chip
                                   icon={<AccessTimeIcon />}
-                                  label={formatDateTimeUTC(stats.last_indexed_at)}
+                                  label={`Last indexed: ${formatDateTimeUTC(stats.last_indexed_at)}`}
                                   size="small"
                                   variant="outlined"
                                 />
@@ -344,7 +344,7 @@ export function Home(): React.ReactElement {
                               {stats.last_indexing_duration_seconds != null && (
                                 <Chip
                                   icon={<TimerIcon />}
-                                  label={`${formatDuration(stats.last_indexing_duration_seconds)}${stats.last_resolving_duration_seconds != null ? ` (resolve: ${formatDuration(stats.last_resolving_duration_seconds)})` : ''}`}
+                                  label={`Duration: ${formatDuration(stats.last_indexing_duration_seconds)}${stats.last_resolving_duration_seconds != null ? ` (resolve: ${formatDuration(stats.last_resolving_duration_seconds)})` : ''}`}
                                   size="small"
                                   variant="outlined"
                                 />
@@ -466,7 +466,7 @@ export function Home(): React.ReactElement {
                         {stats.last_indexed_at != null && (
                           <Chip
                             icon={<AccessTimeIcon />}
-                            label={formatDateTimeUTC(stats.last_indexed_at)}
+                            label={`Last indexed: ${formatDateTimeUTC(stats.last_indexed_at)}`}
                             size="small"
                             variant="outlined"
                           />
@@ -474,7 +474,7 @@ export function Home(): React.ReactElement {
                         {stats.last_indexing_duration_seconds != null && (
                           <Chip
                             icon={<TimerIcon />}
-                            label={`${formatDuration(stats.last_indexing_duration_seconds)}${stats.last_resolving_duration_seconds != null ? ` (resolve: ${formatDuration(stats.last_resolving_duration_seconds)})` : ''}`}
+                            label={`Duration: ${formatDuration(stats.last_indexing_duration_seconds)}${stats.last_resolving_duration_seconds != null ? ` (resolve: ${formatDuration(stats.last_resolving_duration_seconds)})` : ''}`}
                             size="small"
                             variant="outlined"
                           />
