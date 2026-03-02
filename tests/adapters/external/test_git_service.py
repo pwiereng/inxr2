@@ -500,6 +500,91 @@ class TestGitServiceBranchCommits:
         assert len(commits) <= 5
 
 
+class TestGitServiceRemoteBranchCommits:
+    """Tests for list_branch_commits when branches only exist as remote refs.
+
+    Regression tests for issue #188: indexer fails to walk branch history
+    when only remote refs exist (e.g., read-only mounts without local branches).
+    """
+
+    @pytest.fixture
+    def git_service(self) -> GitService:
+        return GitService()
+
+    @pytest.fixture
+    def remote_only_repo(self, tmp_path: Path) -> Path:
+        """Create a repo where branches only exist as remote refs (origin/*).
+
+        Creates an upstream repo with main (2 commits) and feature-branch
+        (1 unique commit), then clones it and deletes all local branches.
+        """
+        # Create upstream repo with commits
+        upstream_path = tmp_path / "upstream"
+        upstream_path.mkdir()
+        upstream = Repo.init(upstream_path, initial_branch="main")
+        upstream.config_writer().set_value("user", "name", "Test User").release()
+        upstream.config_writer().set_value(
+            "user", "email", "test@example.com"
+        ).release()
+
+        # Two commits on main
+        readme = upstream_path / "README.md"
+        readme.write_text("# Test\n")
+        upstream.index.add(["README.md"])
+        upstream.index.commit("Initial commit")
+
+        main_py = upstream_path / "main.py"
+        main_py.write_text("def main(): pass\n")
+        upstream.index.add(["main.py"])
+        upstream.index.commit("Add main.py")
+
+        # Feature branch with one unique commit
+        upstream.create_head("feature-branch").checkout()
+        utils_py = upstream_path / "utils.py"
+        utils_py.write_text("def helper(): pass\n")
+        upstream.index.add(["utils.py"])
+        upstream.index.commit("Add utils.py on feature branch")
+
+        upstream.git.checkout("main")
+
+        # Clone and remove all local branches so only origin/* refs remain
+        clone_path = tmp_path / "clone"
+        clone = Repo.clone_from(str(upstream_path), str(clone_path))
+        clone.remotes.origin.fetch()
+        clone.git.checkout("--detach", "HEAD")
+        for branch in list(clone.branches):
+            clone.git.branch("-D", str(branch))
+
+        return clone_path
+
+    def test_list_branch_commits_both_remote_only(
+        self, git_service: GitService, remote_only_repo: Path
+    ) -> None:
+        """list_branch_commits returns correct commits when both branches
+        only exist as remote refs (origin/*)."""
+        commits = git_service.list_branch_commits(
+            remote_only_repo, "feature-branch", "main"
+        )
+        assert len(commits) == 1
+        assert "Add utils.py" in commits[0].message
+
+    def test_list_commits_remote_only(
+        self, git_service: GitService, remote_only_repo: Path
+    ) -> None:
+        """list_commits works when branch only exists as origin/*."""
+        commits = git_service.list_commits(remote_only_repo, "main", max_count=10)
+        assert len(commits) == 2
+        assert "Initial commit" in commits[0].message
+        assert "Add main.py" in commits[1].message
+
+    def test_list_branch_commits_main_vs_main_remote_only(
+        self, git_service: GitService, remote_only_repo: Path
+    ) -> None:
+        """list_branch_commits with same branch returns empty when remote-only."""
+        commits = git_service.list_branch_commits(remote_only_repo, "main", "main")
+        assert commits == []
+
+
 class TestGitServiceNarrowedExceptions:
     """Regression tests: verify exception translation from GitPython to domain types.
 

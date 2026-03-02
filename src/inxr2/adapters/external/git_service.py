@@ -570,23 +570,29 @@ class GitService(GitServicePort):
         """
         repo = self._get_repo(repo_path)
 
-        def resolve_branch(b: str) -> Any:
+        def resolve_branch_ref(b: str) -> str | None:
+            """Resolve branch name to a git ref string, trying local then remote."""
             try:
-                return repo.commit(b)
+                repo.commit(b)
+                return b
             except (GitCommandError, BadName):
+                remote = f"origin/{b}"
                 try:
-                    return repo.commit(f"origin/{b}")
+                    repo.commit(remote)
+                    return remote
                 except (GitCommandError, BadName):
                     return None
 
-        branch_commit = resolve_branch(branch)
-        base_commit = resolve_branch(base_branch)
+        branch_ref = resolve_branch_ref(branch)
+        base_ref = resolve_branch_ref(base_branch)
 
-        if branch_commit is None:
+        if branch_ref is None:
             return []
-        if base_commit is None:
+        if base_ref is None:
             # No base branch, return all commits on branch
             return self.list_commits(repo_path, branch, max_count, since_days)
+
+        branch_commit = repo.commit(branch_ref)
 
         # First, try simple case: commits on branch not in base
         merge_base = self.get_merge_base(repo_path, branch, base_branch)
@@ -595,10 +601,7 @@ class GitService(GitServicePort):
 
         # Check if branch has unmerged commits
         try:
-            branch_ref = branch if resolve_branch(branch) else f"origin/{branch}"
-            unmerged = list(
-                repo.iter_commits(f"{base_branch}..{branch_ref}", max_count=1)
-            )
+            unmerged = list(repo.iter_commits(f"{base_ref}..{branch_ref}", max_count=1))
             if unmerged:
                 # Branch has unmerged commits - return them
                 from datetime import UTC, datetime, timedelta
@@ -630,7 +633,7 @@ class GitService(GitServicePort):
         # Look for merge commits on base_branch that mention this branch
         try:
             # Search recent merge commits for one that merged this branch
-            for merge_candidate in repo.iter_commits(base_branch, max_count=200):
+            for merge_candidate in repo.iter_commits(base_ref, max_count=200):
                 if len(merge_candidate.parents) == 2:
                     # This is a merge commit - check if it merged our branch
                     # The second parent is typically the merged branch
