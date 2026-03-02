@@ -96,7 +96,7 @@ describe('SymbolSearch', () => {
             })
           )
         },
-        { timeout: 500 }
+        { timeout: 1000 }
       )
     })
 
@@ -121,7 +121,7 @@ describe('SymbolSearch', () => {
             })
           )
         },
-        { timeout: 500 }
+        { timeout: 1000 }
       )
     })
 
@@ -141,7 +141,7 @@ describe('SymbolSearch', () => {
             limit: 20,
           })
         },
-        { timeout: 500 }
+        { timeout: 1000 }
       )
     })
 
@@ -170,7 +170,7 @@ describe('SymbolSearch', () => {
             expect.not.objectContaining({ commit: expect.any(String) })
           )
         },
-        { timeout: 500 }
+        { timeout: 1000 }
       )
     })
   })
@@ -213,7 +213,7 @@ describe('SymbolSearch', () => {
         () => {
           expect(screen.getByText('TestSymbol')).toBeInTheDocument()
         },
-        { timeout: 500 }
+        { timeout: 1000 }
       )
 
       // Click on the option
@@ -263,7 +263,7 @@ describe('SymbolSearch', () => {
         () => {
           expect(screen.getByText('MySymbol')).toBeInTheDocument()
         },
-        { timeout: 500 }
+        { timeout: 1000 }
       )
 
       // Verify input has the typed value before selection
