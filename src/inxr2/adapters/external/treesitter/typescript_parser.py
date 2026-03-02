@@ -495,7 +495,14 @@ class TypeScriptParser(BaseLanguageParser):
                 if class_name:
                     _process_class_expression(right, class_name)
             elif right.type == "function_expression":
-                fn_name = get_name_from_node(right)
+                # Mirror class-expression handling: prefer LHS for exports.<prop>.
+                binding_name, is_exports_prop = _get_export_binding_name(left)
+                if is_exports_prop:
+                    fn_name = binding_name
+                else:
+                    fn_name = get_name_from_node(right)
+                    if not fn_name:
+                        fn_name = binding_name
                 if fn_name:
                     symbols.append(self._make_symbol(fn_name, "function", right))
 

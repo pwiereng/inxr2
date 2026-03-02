@@ -1859,6 +1859,38 @@ module.exports = function createServer() { }
         assert fn_symbols[0]["name"] == "createServer"
 
     @pytest.mark.asyncio
+    async def test_exports_dot_function_expression(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """exports.Foo = function Bar() {} uses LHS name Foo."""
+        code = """
+exports.create = function createImpl() { }
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        fn_symbols = [s for s in symbols if s["kind"] == "function"]
+        assert len(fn_symbols) == 1
+        assert fn_symbols[0]["name"] == "create"
+
+    @pytest.mark.asyncio
+    async def test_exports_dot_anonymous_function(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """exports.Foo = function() {} uses LHS name Foo."""
+        code = """
+exports.handler = function() { }
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        fn_symbols = [s for s in symbols if s["kind"] == "function"]
+        assert len(fn_symbols) == 1
+        assert fn_symbols[0]["name"] == "handler"
+
+    @pytest.mark.asyncio
     async def test_class_expression_with_fields(
         self, parser_service: TreeSitterService
     ) -> None:
