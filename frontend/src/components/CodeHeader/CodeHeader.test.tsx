@@ -565,63 +565,69 @@ describe('CodeHeader', () => {
 
   describe('branch-specific commit highlighting', () => {
     it('should show FORK badge on merge-base commit', async () => {
-      const api = await import('@/lib/api')
-      vi.mocked(api.getCommits).mockResolvedValue({
-        commits: [
-          {
-            hash: 'branch1hash',
-            short_hash: 'branch1',
-            message: 'Branch commit',
-            author_name: 'Test Author',
-            author_email: 'test@example.com',
-            commit_date: '2024-01-03T10:00:00Z',
-            is_indexed: true,
-            tags: [],
-            is_branch_specific: true,
-            is_merge_base: false,
-          },
-          {
-            hash: 'mergebasehash',
-            short_hash: 'mergeba',
-            message: 'Merge base commit',
-            author_name: 'Test Author',
-            author_email: 'test@example.com',
-            commit_date: '2024-01-02T10:00:00Z',
-            is_indexed: true,
-            tags: [],
-            is_branch_specific: false,
-            is_merge_base: true,
-          },
-          {
-            hash: 'sharedhash',
-            short_hash: 'shared1',
-            message: 'Shared commit',
-            author_name: 'Test Author',
-            author_email: 'test@example.com',
-            commit_date: '2024-01-01T10:00:00Z',
-            is_indexed: true,
-            tags: [],
-            is_branch_specific: false,
-            is_merge_base: false,
-          },
-        ],
-        total: 3,
-      })
+      // Suppress MUI out-of-range warning (branch="feature" doesn't match mock options)
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const api = await import('@/lib/api')
+        vi.mocked(api.getCommits).mockResolvedValue({
+          commits: [
+            {
+              hash: 'branch1hash',
+              short_hash: 'branch1',
+              message: 'Branch commit',
+              author_name: 'Test Author',
+              author_email: 'test@example.com',
+              commit_date: '2024-01-03T10:00:00Z',
+              is_indexed: true,
+              tags: [],
+              is_branch_specific: true,
+              is_merge_base: false,
+            },
+            {
+              hash: 'mergebasehash',
+              short_hash: 'mergeba',
+              message: 'Merge base commit',
+              author_name: 'Test Author',
+              author_email: 'test@example.com',
+              commit_date: '2024-01-02T10:00:00Z',
+              is_indexed: true,
+              tags: [],
+              is_branch_specific: false,
+              is_merge_base: true,
+            },
+            {
+              hash: 'sharedhash',
+              short_hash: 'shared1',
+              message: 'Shared commit',
+              author_name: 'Test Author',
+              author_email: 'test@example.com',
+              commit_date: '2024-01-01T10:00:00Z',
+              is_indexed: true,
+              tags: [],
+              is_branch_specific: false,
+              is_merge_base: false,
+            },
+          ],
+          total: 3,
+        })
 
-      render(<CodeHeader {...defaultProps} branch="feature" />)
+        render(<CodeHeader {...defaultProps} branch="feature" />)
 
-      await waitFor(() => {
-        expect(screen.getByText('branch1')).toBeInTheDocument()
-      })
+        await waitFor(() => {
+          expect(screen.getByText('branch1')).toBeInTheDocument()
+        })
 
-      // Open the commit selector dropdown
-      const comboboxes = screen.getAllByRole('combobox')
-      const commitSelect = comboboxes[2]!
-      fireEvent.mouseDown(commitSelect)
+        // Open the commit selector dropdown
+        const comboboxes = screen.getAllByRole('combobox')
+        const commitSelect = comboboxes[2]!
+        fireEvent.mouseDown(commitSelect)
 
-      await waitFor(() => {
-        expect(screen.getByText('FORK')).toBeInTheDocument()
-      })
+        await waitFor(() => {
+          expect(screen.getByText('FORK')).toBeInTheDocument()
+        })
+      } finally {
+        warnSpy.mockRestore()
+      }
     })
 
     it('should not show FORK badge on default branch', async () => {

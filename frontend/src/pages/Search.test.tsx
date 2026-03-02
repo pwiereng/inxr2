@@ -146,106 +146,124 @@ describe('Search', () => {
   })
 
   it('should display API error message', async () => {
-    mockSearchText.mockRejectedValue(new Error('API error'))
+    // Suppress expected console.error from the component's error handler
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      mockSearchText.mockRejectedValue(new Error('API error'))
 
-    // Render with query param to trigger search
-    window.history.pushState({}, '', '?query=test')
-    render(<Search />)
+      // Render with query param to trigger search
+      window.history.pushState({}, '', '?query=test')
+      render(<Search />)
 
-    await waitFor(
-      () => {
-        expect(screen.getByText(/API error/i)).toBeInTheDocument()
-      },
-      { timeout: 1000 }
-    )
+      await waitFor(
+        () => {
+          expect(screen.getByText(/API error/i)).toBeInTheDocument()
+        },
+        { timeout: 1000 }
+      )
+    } finally {
+      consoleSpy.mockRestore()
+    }
   })
 
   it('should navigate to history when clicking a commit_message result', async () => {
-    mockSearchText.mockResolvedValue({
-      results: [
-        {
-          id: 1,
-          source_type: 'commit_message',
-          content: 'fix: update get_file_symbols_by_path',
-          content_type: null,
-          repository_id: 1,
-          repository_name: 'test-repo',
-          file_path: null,
-          source_line: null,
-          source_end_line: null,
-          language: null,
-          commit_hash: 'abc123def456',
-          branch: 'main',
-          headline: null,
-          rank: 1.0,
-        },
-      ],
-      total: 1,
-      query: 'get_file_symbols_by_path',
-      mode: 'keyword',
-      limit: 20,
-      offset: 0,
-    })
+    // Suppress MUI out-of-range warning (mock commit hash doesn't match Select options)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mockSearchText.mockResolvedValue({
+        results: [
+          {
+            id: 1,
+            source_type: 'commit_message',
+            content: 'fix: update get_file_symbols_by_path',
+            content_type: null,
+            repository_id: 1,
+            repository_name: 'test-repo',
+            file_path: null,
+            source_line: null,
+            source_end_line: null,
+            language: null,
+            commit_hash: 'abc123def456',
+            branch: 'main',
+            headline: null,
+            rank: 1.0,
+          },
+        ],
+        total: 1,
+        query: 'get_file_symbols_by_path',
+        mode: 'keyword',
+        limit: 20,
+        offset: 0,
+      })
 
-    window.history.pushState({}, '', '?query=get_file_symbols_by_path')
-    render(<Search />)
+      window.history.pushState({}, '', '?query=get_file_symbols_by_path')
+      render(<Search />)
 
-    // Wait for results to appear
-    await waitFor(() => {
-      expect(screen.getByText(/Commit Message/i)).toBeInTheDocument()
-    })
+      // Wait for results to appear
+      await waitFor(() => {
+        expect(screen.getByText(/Commit Message/i)).toBeInTheDocument()
+      })
 
-    // Click the result (text may be split by <mark> highlighting)
-    fireEvent.click(getByTextContent(/fix: update get_file_symbols_by_path/i))
+      // Click the result (text may be split by <mark> highlighting)
+      fireEvent.click(getByTextContent(/fix: update get_file_symbols_by_path/i))
 
-    // Should navigate to history, not browse
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/history')
-      expect(window.location.search).toContain('commit=abc123def456')
-      expect(window.location.search).toContain('repo=test-repo')
-    })
+      // Should navigate to history, not browse
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/history')
+        expect(window.location.search).toContain('commit=abc123def456')
+        expect(window.location.search).toContain('repo=test-repo')
+      })
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('should navigate to browse when clicking a file-based result', async () => {
-    mockSearchText.mockResolvedValue({
-      results: [
-        {
-          id: 2,
-          source_type: 'comment',
-          content: '# helper function',
-          content_type: null,
-          repository_id: 1,
-          repository_name: 'test-repo',
-          file_path: 'src/utils.py',
-          source_line: 10,
-          source_end_line: null,
-          language: 'python',
-          commit_hash: 'abc123def456',
-          branch: 'main',
-          headline: null,
-          rank: 1.0,
-        },
-      ],
-      total: 1,
-      query: 'helper',
-      mode: 'keyword',
-      limit: 20,
-      offset: 0,
-    })
+    // Suppress MUI out-of-range warning (mock commit hash doesn't match Select options)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mockSearchText.mockResolvedValue({
+        results: [
+          {
+            id: 2,
+            source_type: 'comment',
+            content: '# helper function',
+            content_type: null,
+            repository_id: 1,
+            repository_name: 'test-repo',
+            file_path: 'src/utils.py',
+            source_line: 10,
+            source_end_line: null,
+            language: 'python',
+            commit_hash: 'abc123def456',
+            branch: 'main',
+            headline: null,
+            rank: 1.0,
+          },
+        ],
+        total: 1,
+        query: 'helper',
+        mode: 'keyword',
+        limit: 20,
+        offset: 0,
+      })
 
-    window.history.pushState({}, '', '?query=helper')
-    render(<Search />)
+      window.history.pushState({}, '', '?query=helper')
+      render(<Search />)
 
-    await waitFor(() => {
-      expect(getByTextContent(/# helper function/i)).toBeInTheDocument()
-    })
+      await waitFor(() => {
+        expect(getByTextContent(/# helper function/i)).toBeInTheDocument()
+      })
 
-    fireEvent.click(getByTextContent(/# helper function/i))
+      fireEvent.click(getByTextContent(/# helper function/i))
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/browse/test-repo/src/utils.py')
-      expect(window.location.search).toContain('line=10')
-    })
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/browse/test-repo/src/utils.py')
+        expect(window.location.search).toContain('line=10')
+      })
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('should not include commit=unknown when clicking file-derived result with null commit_hash', async () => {
