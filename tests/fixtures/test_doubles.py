@@ -185,6 +185,11 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         """
         # Commit-scoped: filter to files at specific commit
         commit_file_ids: set[int] | None = None
+        if commit_id is not None and self._file_repo is None:
+            raise RuntimeError(
+                "search_by_name cannot scope by commit without a file repository "
+                "(commit_id was provided but _file_repo is None in the test double)."
+            )
         if commit_id is not None and self._file_repo is not None:
             commit_file_ids = {
                 fid for cid, fid in self._file_repo._commit_files if cid == commit_id
