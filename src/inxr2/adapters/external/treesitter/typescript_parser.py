@@ -406,6 +406,64 @@ class TypeScriptParser(BaseLanguageParser):
                         elif member.type == "public_field_definition":
                             process_field(member, name)
 
+        def _class_expression_binding_name(node: Node) -> str | None:
+            """Get the binding name for a class expression from its parent.
+
+            Returns the variable name for `const X = class { ... }` or the
+            export property for `exports.X = class { ... }`.
+            """
+            parent = node.parent
+            if not parent:
+                return None
+            if parent.type == "variable_declarator":
+                name_node = parent.child_by_field_name("name")
+                if name_node:
+                    return get_text(name_node)
+            elif parent.type == "assignment_expression":
+                left = parent.child_by_field_name("left")
+                if left:
+                    binding, is_prop = _get_export_binding_name(left)
+                    if is_prop:
+                        return binding
+            return None
+
+        def _get_export_binding_name(left: Node) -> tuple[str | None, bool]:
+            """Get the binding name from a CommonJS export LHS.
+
+            Returns (name, is_exports_prop):
+              - module.exports → (None, False) — name comes from RHS
+              - exports.Foo    → ("Foo", True) — name comes from LHS
+              - foo.bar        → (None, False) — not an export, caller should skip
+            """
+            if left.type != "member_expression":
+                return None, False
+            obj = left.child_by_field_name("object")
+            prop = left.child_by_field_name("property")
+            if not obj or not prop:
+                return None, False
+            obj_name = get_text(obj)
+            prop_name = get_text(prop)
+            if obj_name == "module" and prop_name == "exports":
+                return None, False
+            if obj_name == "exports":
+                return prop_name, True
+            # Not a recognized export pattern (e.g. foo.bar = ...)
+            return None, False
+
+        def _is_export_pattern(left: Node) -> bool:
+            """Check if LHS is module.exports or exports.<prop>."""
+            if left.type != "member_expression":
+                return False
+            obj = left.child_by_field_name("object")
+            prop = left.child_by_field_name("property")
+            if not obj or not prop:
+                return False
+            obj_name = get_text(obj)
+            prop_name = get_text(prop)
+            return (obj_name == "module" and prop_name == "exports") or (
+                obj_name == "exports"
+            )
+
         def _process_assignment_expression(node: Node) -> None:
             """Process assignment expressions for module.exports/exports patterns.
 
@@ -413,23 +471,27 @@ class TypeScriptParser(BaseLanguageParser):
               - module.exports = class Foo { ... }
               - exports.Foo = class Foo { ... }
               - module.exports = function foo() { ... }
+
+            Ignores non-export assignments (e.g. foo.bar = class { ... }).
             """
             left = node.child_by_field_name("left")
             right = node.child_by_field_name("right")
             if not left or not right:
                 return
 
+            if not _is_export_pattern(left):
+                return
+
             if right.type == "class":
-                # Get class name from the class expression itself, or from
-                # the export property (exports.Foo = class { ... })
-                class_name = get_name_from_node(right)
-                if not class_name and left.type == "member_expression":
-                    prop = left.child_by_field_name("property")
-                    if prop:
-                        prop_name = get_text(prop)
-                        # Don't use "exports" as a class name
-                        if prop_name != "exports":
-                            class_name = prop_name
+                # For exports.Foo = class Bar { ... }, prefer LHS name "Foo".
+                # For module.exports = class Bar { ... }, use RHS name "Bar".
+                binding_name, is_exports_prop = _get_export_binding_name(left)
+                if is_exports_prop:
+                    class_name = binding_name
+                else:
+                    class_name = get_name_from_node(right)
+                    if not class_name:
+                        class_name = binding_name
                 if class_name:
                     _process_class_expression(right, class_name)
             elif right.type == "function_expression":
@@ -599,24 +661,14 @@ class TypeScriptParser(BaseLanguageParser):
             for child in node.children:
                 child_scope = scope
                 if node.type in ("class_declaration", "class"):
-                    name = get_name_from_node(node)
-                    if not name and node.type == "class":
-                        # Anonymous class expression — get name from variable
-                        # declarator parent: const X = class { ... }
-                        parent = node.parent
-                        if parent and parent.type == "variable_declarator":
-                            name_node = parent.child_by_field_name("name")
-                            if name_node:
-                                name = get_text(name_node)
-                        elif parent and parent.type == "assignment_expression":
-                            # module.exports = class { ... } or exports.X = class { ... }
-                            left = parent.child_by_field_name("left")
-                            if left and left.type == "member_expression":
-                                prop = left.child_by_field_name("property")
-                                if prop:
-                                    prop_name = get_text(prop)
-                                    if prop_name != "exports":
-                                        name = prop_name
+                    if node.type == "class_declaration":
+                        name = get_name_from_node(node)
+                    else:
+                        # Class expression — prefer the binding name so
+                        # scope matches the indexed symbol name.
+                        name = _class_expression_binding_name(node)
+                        if not name:
+                            name = get_name_from_node(node)
                     if name:
                         child_scope = name
                 extract_references(child, child_scope)

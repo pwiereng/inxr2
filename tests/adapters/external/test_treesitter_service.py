@@ -1804,6 +1804,45 @@ exports.MyClass = class MyClass {
         assert methods[0]["scope"] == "MyClass"
 
     @pytest.mark.asyncio
+    async def test_exports_dot_class_expression_aliased(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """exports.Foo = class Bar { ... } uses LHS name Foo, not RHS name Bar."""
+        code = """
+exports.Foo = class Bar {
+    baz() { }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        assert len(class_symbols) == 1
+        assert class_symbols[0]["name"] == "Foo"
+
+        methods = [s for s in symbols if s["kind"] == "method"]
+        assert len(methods) == 1
+        assert methods[0]["scope"] == "Foo"
+
+    @pytest.mark.asyncio
+    async def test_non_export_assignment_ignored(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """foo.bar = class { ... } should not create a top-level class symbol."""
+        code = """
+foo.bar = class {
+    baz() { }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        assert len(class_symbols) == 0
+
+    @pytest.mark.asyncio
     async def test_module_exports_function_expression(
         self, parser_service: TreeSitterService
     ) -> None:
