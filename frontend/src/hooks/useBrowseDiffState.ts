@@ -10,15 +10,12 @@ import {
   type FileSymbol,
   type FileReference,
   type FileVersion,
-  type Repository,
 } from '@/lib/api'
 import type { BrowseUrlState } from './useBrowseTypes'
 import { encodeFilePath } from './useBrowseUrlState'
 
 export interface UseBrowseDiffStateRefs {
   fileVersionsRef: MutableRefObject<FileVersion[]>
-  repositoryRef: MutableRefObject<Repository | null>
-  comparisonCommitRef: MutableRefObject<string | null>
 }
 
 export interface UseBrowseDiffStateParams {
@@ -230,9 +227,17 @@ export function useBrowseDiffState({
     if (currentDiff) params.set('commit', currentDiff)
     // Old commit → new diff (left panel)
     if (currentCommit) params.set('diff', currentCommit)
-    // Swap branches too if cross-branch
-    if (urlState.diffBranch) params.set('branch', urlState.diffBranch)
-    if (urlState.selectedBranch) params.set('diffBranch', urlState.selectedBranch)
+    // Swap branches too
+    const newBranch = urlState.diffBranch ?? urlState.selectedBranch
+    if (newBranch) params.set('branch', newBranch)
+    // Only set diffBranch when the original diff was cross-branch
+    if (
+      urlState.diffBranch &&
+      urlState.selectedBranch &&
+      urlState.selectedBranch !== urlState.diffBranch
+    ) {
+      params.set('diffBranch', urlState.selectedBranch)
+    }
     // Preserve other state
     if (!urlState.drawerOpen) params.set('drawer', '0')
     if (urlState.changedOnly) params.set('co', '1')

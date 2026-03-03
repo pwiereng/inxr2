@@ -133,10 +133,11 @@ export function useBrowseData({
     if (!urlState.repoName) return
 
     // Determine which branch to use for tree (left or right panel in diff mode)
+    // Layout: left=comparison (diffBranch), right=current (selectedBranch)
     const treeBranch = urlState.diffMode
       ? urlState.treePanel === 'left'
-        ? urlState.selectedBranch
-        : urlState.diffBranch
+        ? urlState.diffBranch || urlState.selectedBranch
+        : urlState.selectedBranch
       : urlState.selectedBranch
 
     const loadTree = async () => {

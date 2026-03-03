@@ -13,7 +13,7 @@
  */
 
 import { useRef, useMemo, useEffect } from 'react'
-import type { FileVersion, Repository } from '@/lib/api'
+import type { FileVersion } from '@/lib/api'
 import { useBrowseUrlState } from './useBrowseUrlState'
 import { useBrowseDiffState } from './useBrowseDiffState'
 import { useBrowseData } from './useBrowseData'
@@ -59,8 +59,6 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
   const resetRefsPanelRef = useRef<() => void>(() => {})
   const setErrorRef = useRef<(error: string | null) => void>(() => {})
   const fileVersionsRef = useRef<FileVersion[]>([])
-  const repositoryRef = useRef<Repository | null>(null)
-  const comparisonCommitRef = useRef<string | null>(null)
 
   // ========== 1. URL State ==========
   const urlResult = useBrowseUrlState(repoNameProp, { resetRefsPanelRef, setErrorRef })
@@ -69,7 +67,7 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
   const diffResult = useBrowseDiffState({
     urlState: urlResult.urlState,
     navigate: urlResult.navigate,
-    refs: { fileVersionsRef, repositoryRef, comparisonCommitRef },
+    refs: { fileVersionsRef },
   })
 
   // ========== 3. Data State ==========
@@ -180,8 +178,6 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
   resetRefsPanelRef.current = refsResult.resetRefsPanel
   setErrorRef.current = dataResult.setError
   fileVersionsRef.current = dataResult.fileVersions
-  repositoryRef.current = dataResult.repository
-  comparisonCommitRef.current = computedState.comparisonCommit
 
   // ========== Assemble return value ==========
 

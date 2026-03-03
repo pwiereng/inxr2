@@ -698,8 +698,8 @@ describe('useBrowseState', () => {
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
       expect(navigatedUrl).toContain('commit=def456')
       expect(navigatedUrl).toContain('diff=abc123')
-      // selectedBranch goes to diffBranch
-      expect(navigatedUrl).toContain('diffBranch=main')
+      // branch should remain set on the main panel
+      expect(navigatedUrl).toContain('branch=main')
     })
   })
 
