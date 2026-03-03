@@ -58,8 +58,9 @@ class FileVersion:
 class FileHistory:
     """File version history.
 
-    Contains all indexed versions of a file, ordered by commit date
-    (newest first).
+    Contains all indexed versions of a file, ordered by newest content
+    version first.  Each version's commit_date/message reflects the
+    oldest commit where that content first appeared.
     """
 
     path: str
@@ -149,7 +150,9 @@ class GetFileHistoryUseCase:
             )
 
         # 4. Build version list with hydrated commit info
-        versions = await self._build_versions(repository, files)
+        versions = await self._build_versions(
+            repository, files, repository_id, request.branch
+        )
 
         return FileHistory(
             path=request.file_path,
@@ -162,15 +165,20 @@ class GetFileHistoryUseCase:
         self,
         repository: Repository,
         files: list,
+        repository_id: int | None = None,
+        branch: str | None = None,
     ) -> list[FileVersion]:
         """Build version list with hydrated commit messages.
 
         Each file version is linked to commits via the commit_files junction.
-        We pick the latest commit for each version.
+        We pick the oldest commit for each version to show when the content
+        first appeared.
 
         Args:
             repository: Repository entity for git path
             files: List of file entities for versions
+            repository_id: Repository ID for branch-filtered commit lookup
+            branch: When provided, only consider commits on this branch
 
         Returns:
             List of FileVersion with hydrated commit info
@@ -180,7 +188,7 @@ class GetFileHistoryUseCase:
         # Bulk look up commit IDs for all file versions
         file_ids = [f.id for f in files if f.id is not None]
         commit_ids_map = await self._file_version_repo.get_commit_ids_for_files(
-            file_ids
+            file_ids, repository_id=repository_id, branch=branch
         )
 
         # Collect all unique commit IDs and bulk fetch
@@ -195,8 +203,8 @@ class GetFileHistoryUseCase:
             file_commit_ids = commit_ids_map.get(file.id, [])
             if not file_commit_ids:
                 continue
-            # Use the latest commit (first in the list, sorted desc)
-            commit_record = commit_map.get(file_commit_ids[0])
+            # Use the oldest commit (last in the list, sorted desc)
+            commit_record = commit_map.get(file_commit_ids[-1])
             if not commit_record:
                 continue
 

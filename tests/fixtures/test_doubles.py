@@ -904,7 +904,11 @@ class InMemoryFileVersionRepository(FileVersionPort):
     async def list_versions_by_path(
         self, repository_id: int, path: str, branch: str | None = None
     ) -> list[File]:
-        """List all versions of a file across commits."""
+        """List all versions of a file across commits.
+
+        Deduplicates by content_hash, keeping the version linked to the
+        oldest commit (mirrors Postgres adapter behavior).
+        """
         files = [
             f
             for f in self._file_repo._files.values()
@@ -926,6 +930,39 @@ class InMemoryFileVersionRepository(FileVersionPort):
                 if cid in branch_commit_ids
             }
             files = [f for f in files if f.id in branch_file_ids]
+
+        # When branch is provided, deduplicate rows from the branch join —
+        # one per distinct content_hash.  Sort newest-first (matching Postgres
+        # ORDER BY commit_date DESC) then keep last per hash so the returned
+        # File is the one linked to the oldest commit.
+        # When branch is None, Postgres orders by FileModel.id DESC and there
+        # are no duplicate rows to dedup, so skip this logic.
+        if branch is not None and self._file_repo._commit_repo is not None:
+
+            def _newest_commit_date(f: File) -> datetime:
+                """Get the newest commit date linked to this file."""
+                commit_ids = [
+                    cid for cid, fid in self._file_repo._commit_files if fid == f.id
+                ]
+                dates = []
+                for cid in commit_ids:
+                    commit = self._file_repo._commit_repo._commits.get(cid)  # type: ignore[union-attr]
+                    if commit:
+                        dates.append(commit.commit_date)
+                return max(dates) if dates else datetime.min
+
+            # Sort newest-first (matching Postgres DESC order)
+            files.sort(key=_newest_commit_date, reverse=True)
+
+            # Dedup: keep last per hash (oldest, since sorted newest-first)
+            last_seen: dict[str, File] = {}
+            seen_order: list[str] = []
+            for f in files:
+                h = f.content_hash or ""
+                if h not in last_seen:
+                    seen_order.append(h)
+                last_seen[h] = f
+            files = [last_seen[h] for h in seen_order]
 
         return files
 
@@ -1037,12 +1074,38 @@ class InMemoryFileVersionRepository(FileVersionPort):
         return changed
 
     async def get_commit_ids_for_files(
-        self, file_ids: list[int]
+        self,
+        file_ids: list[int],
+        repository_id: int | None = None,
+        branch: str | None = None,
     ) -> dict[int, list[int]]:
         """Get commit IDs linked to file versions via commit_files."""
+        if branch is not None and repository_id is None:
+            raise ValueError("repository_id is required when branch is provided")
+        # Build set of branch commit IDs for filtering
+        branch_commit_ids: set[int] | None = None
+        if (
+            branch is not None
+            and repository_id is not None
+            and self._file_repo._commit_repo is not None
+        ):
+            branch_commit_ids = set()
+            for (
+                repo_id,
+                b,
+                cid,
+            ), _ in self._file_repo._commit_repo._branch_commits.items():
+                if repo_id == repository_id and b == branch:
+                    branch_commit_ids.add(cid)
+
         result: dict[int, list[int]] = {}
         for fid in file_ids:
             commit_ids = [cid for cid, f in self._file_repo._commit_files if f == fid]
+
+            # Filter by branch if requested
+            if branch_commit_ids is not None:
+                commit_ids = [c for c in commit_ids if c in branch_commit_ids]
+
             if not commit_ids:
                 continue
 

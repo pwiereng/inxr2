@@ -476,3 +476,116 @@ class TestGetFileHistoryUseCase:
         # Find the version with the long message (commit 1)
         version = next(v for v in result.versions if v.commit_hash == "abc123def456")
         assert len(version.message) == 100
+
+
+class TestGetFileHistoryOldestCommitSelection:
+    """Regression tests: _build_versions should pick oldest commit per version."""
+
+    @pytest.mark.asyncio
+    async def test_picks_oldest_commit_when_file_spans_multiple_commits(
+        self, tmp_path: Path
+    ) -> None:
+        """When one file version is linked to multiple commits, use the oldest."""
+        repo_path = tmp_path / "test-repo"
+        repo_path.mkdir()
+
+        repository_repo = InMemoryRepositoryRepository()
+        repository_repo.add(
+            Repository(
+                id=1,
+                name="test-repo",
+                url=str(repo_path),
+                default_branch="main",
+            )
+        )
+
+        commit_repo = InMemoryCommitRepository()
+        # Oldest commit
+        commit_old = Commit(
+            id=10,
+            repository_id=1,
+            commit_hash=CommitHash("old_commit_hash_pad"),
+            author_date=datetime(2025, 1, 1, 12, 0, 0),
+            commit_date=datetime(2025, 1, 1, 12, 0, 0),
+        )
+        # Newer commit
+        commit_new = Commit(
+            id=20,
+            repository_id=1,
+            commit_hash=CommitHash("new_commit_hash_pad"),
+            author_date=datetime(2025, 2, 1, 12, 0, 0),
+            commit_date=datetime(2025, 2, 1, 12, 0, 0),
+        )
+        commit_repo._commits[10] = commit_old
+        commit_repo._commits[20] = commit_new
+        commit_repo._branch_commits[(1, "main", 10)] = True
+        commit_repo._branch_commits[(1, "main", 20)] = True
+
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        # One file version linked to both commits
+        file_repo.add(
+            File(
+                id=100,
+                repository_id=1,
+                path="src/unchanged.py",
+                content_hash="same_hash",
+                size_bytes=100,
+                language="Python",
+            )
+        )
+        file_repo._commit_files.add((10, 100))  # linked to old commit
+        file_repo._commit_files.add((20, 100))  # linked to new commit
+
+        git_service = StubGitCommitInfoService()
+        git_service.set_commit_info(
+            str(repo_path),
+            "old_commit_hash_pad",
+            CommitInfo(
+                hash="old_commit_hash_pad",
+                short_hash="old_com",
+                author_name="Test",
+                author_email="test@example.com",
+                author_date=datetime(2025, 1, 1),
+                committer_name="Test",
+                committer_email="test@example.com",
+                commit_date=datetime(2025, 1, 1),
+                message="First appearance",
+                parent_hashes=[],
+            ),
+        )
+        git_service.set_commit_info(
+            str(repo_path),
+            "new_commit_hash_pad",
+            CommitInfo(
+                hash="new_commit_hash_pad",
+                short_hash="new_com",
+                author_name="Test",
+                author_email="test@example.com",
+                author_date=datetime(2025, 2, 1),
+                committer_name="Test",
+                committer_email="test@example.com",
+                commit_date=datetime(2025, 2, 1),
+                message="No change here",
+                parent_hashes=[],
+            ),
+        )
+
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
+        use_case = GetFileHistoryUseCase(
+            repository_repo=repository_repo,
+            file_version_repo=file_version_repo,
+            commit_repo=commit_repo,
+            git_service=git_service,
+        )
+
+        request = GetFileHistoryRequest(
+            repository_name="test-repo",
+            file_path="src/unchanged.py",
+        )
+        result = await use_case.execute(request)
+
+        # Should return 1 version (deduped by content_hash)
+        assert len(result.versions) == 1
+        # Should pick the oldest commit
+        assert result.versions[0].commit_hash == "old_commit_hash_pad"
+        assert result.versions[0].message == "First appearance"
