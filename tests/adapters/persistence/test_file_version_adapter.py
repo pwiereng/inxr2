@@ -554,3 +554,156 @@ class TestPostgresFileVersionRepositoryLatestByBranch:
         assert len(feature_files) == 1
         assert main_files[0].path == "src/shared.py"
         assert feature_files[0].path == "src/shared.py"
+
+
+@pytest.mark.asyncio
+class TestFileVersionDedupKeepsOldest:
+    """Regression tests: dedup by content_hash should keep the oldest commit."""
+
+    async def test_same_hash_across_three_commits_returns_one_version(
+        self, db_session: AsyncSession
+    ) -> None:
+        """One file row linked to 3 commits → 1 deduped version at oldest commit."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+        version_adapter = PostgresFileVersionRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="dedup-oldest-repo")
+        )
+        assert repo.id is not None
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+
+        # 3 commits at different dates
+        c1 = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="1" * 40,
+                commit_date=now - timedelta(days=30),
+            )
+        )
+        assert c1.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, c1.id, "main")
+
+        c2 = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="2" * 40,
+                commit_date=now - timedelta(days=15),
+            )
+        )
+        assert c2.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, c2.id, "main")
+
+        c3 = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="3" * 40,
+                commit_date=now,
+            )
+        )
+        assert c3.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, c3.id, "main")
+
+        # One file row (same content_hash) linked to all 3 commits
+        f = await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                path="docs/schema.md",
+                content_hash="same" + "0" * 36,
+            )
+        )
+        assert f.id is not None
+        await file_adapter.link_file_to_commit(f.id, c1.id)
+        await file_adapter.link_file_to_commit(f.id, c2.id)
+        await file_adapter.link_file_to_commit(f.id, c3.id)
+
+        versions = await version_adapter.list_versions_by_path(
+            repo.id, "docs/schema.md", branch="main"
+        )
+
+        # Should deduplicate to 1 version
+        assert len(versions) == 1
+        assert versions[0].content_hash == "same" + "0" * 36
+
+    async def test_two_hashes_returns_two_versions_oldest_first_hash(
+        self, db_session: AsyncSession
+    ) -> None:
+        """2 commits with hash A, then 1 commit with hash B → 2 versions.
+        Hash A version should be linked to the oldest commit."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+        version_adapter = PostgresFileVersionRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="dedup-two-hash-repo")
+        )
+        assert repo.id is not None
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+
+        # 3 commits
+        c1 = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="a1" + "0" * 38,
+                commit_date=now - timedelta(days=30),
+            )
+        )
+        assert c1.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, c1.id, "main")
+
+        c2 = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="a2" + "0" * 38,
+                commit_date=now - timedelta(days=15),
+            )
+        )
+        assert c2.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, c2.id, "main")
+
+        c3 = await commit_adapter.save(
+            CommitFactory.create(
+                repository_id=repo.id,
+                commit_hash="a3" + "0" * 38,
+                commit_date=now,
+            )
+        )
+        assert c3.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, c3.id, "main")
+
+        # File with hash_a linked to c1 and c2 (unchanged across those)
+        fa = await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                path="docs/readme.md",
+                content_hash="hash_a" + "0" * 34,
+            )
+        )
+        assert fa.id is not None
+        await file_adapter.link_file_to_commit(fa.id, c1.id)
+        await file_adapter.link_file_to_commit(fa.id, c2.id)
+
+        # File with hash_b linked to c3 (content changed)
+        fb = await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id,
+                path="docs/readme.md",
+                content_hash="hash_b" + "0" * 34,
+            )
+        )
+        assert fb.id is not None
+        await file_adapter.link_file_to_commit(fb.id, c3.id)
+
+        versions = await version_adapter.list_versions_by_path(
+            repo.id, "docs/readme.md", branch="main"
+        )
+
+        # Should return 2 versions (newest content first)
+        assert len(versions) == 2
+        assert versions[0].content_hash == "hash_b" + "0" * 34  # newer content
+        assert versions[1].content_hash == "hash_a" + "0" * 34  # older content

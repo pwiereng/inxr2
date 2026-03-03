@@ -904,7 +904,11 @@ class InMemoryFileVersionRepository(FileVersionPort):
     async def list_versions_by_path(
         self, repository_id: int, path: str, branch: str | None = None
     ) -> list[File]:
-        """List all versions of a file across commits."""
+        """List all versions of a file across commits.
+
+        Deduplicates by content_hash, keeping the version linked to the
+        oldest commit (mirrors Postgres adapter behavior).
+        """
         files = [
             f
             for f in self._file_repo._files.values()
@@ -926,6 +930,36 @@ class InMemoryFileVersionRepository(FileVersionPort):
                 if cid in branch_commit_ids
             }
             files = [f for f in files if f.id in branch_file_ids]
+
+        # Deduplicate by content_hash — keep oldest (last in desc order).
+        # Since files here aren't inherently sorted by commit date, we need
+        # to find the oldest commit for each file and sort, then dedup.
+        if self._file_repo._commit_repo is not None:
+
+            def _oldest_commit_date(f: File) -> datetime:
+                """Get the oldest commit date linked to this file."""
+                commit_ids = [
+                    cid for cid, fid in self._file_repo._commit_files if fid == f.id
+                ]
+                dates = []
+                for cid in commit_ids:
+                    commit = self._file_repo._commit_repo._commits.get(cid)  # type: ignore[union-attr]
+                    if commit:
+                        dates.append(commit.commit_date)
+                return min(dates) if dates else datetime.max
+
+            # Sort newest-first (matching Postgres DESC order)
+            files.sort(key=_oldest_commit_date, reverse=True)
+
+        # Dedup: keep last per hash (oldest, since sorted newest-first)
+        last_seen: dict[str, File] = {}
+        seen_order: list[str] = []
+        for f in files:
+            h = f.content_hash or ""
+            if h not in last_seen:
+                seen_order.append(h)
+            last_seen[h] = f
+        files = [last_seen[h] for h in seen_order]
 
         return files
 

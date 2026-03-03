@@ -166,7 +166,8 @@ class GetFileHistoryUseCase:
         """Build version list with hydrated commit messages.
 
         Each file version is linked to commits via the commit_files junction.
-        We pick the latest commit for each version.
+        We pick the oldest commit for each version to show when the content
+        first appeared.
 
         Args:
             repository: Repository entity for git path
@@ -195,8 +196,8 @@ class GetFileHistoryUseCase:
             file_commit_ids = commit_ids_map.get(file.id, [])
             if not file_commit_ids:
                 continue
-            # Use the latest commit (first in the list, sorted desc)
-            commit_record = commit_map.get(file_commit_ids[0])
+            # Use the oldest commit (last in the list, sorted desc)
+            commit_record = commit_map.get(file_commit_ids[-1])
             if not commit_record:
                 continue
 

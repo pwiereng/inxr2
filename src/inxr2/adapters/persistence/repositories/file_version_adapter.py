@@ -86,13 +86,15 @@ class PostgresFileVersionRepository(FileVersionPort):
         result = await self.session.execute(query)
         models = result.scalars().all()
 
-        # Deduplicate by content_hash - keep first (newest)
-        seen_hashes: set[str] = set()
-        unique_models = []
+        # Deduplicate by content_hash - keep oldest commit per hash.
+        # Models are ordered newest-first, so last seen per hash is oldest.
+        last_seen: dict[str, FileModel] = {}
+        seen_order: list[str] = []
         for model in models:
-            if model.content_hash not in seen_hashes:
-                seen_hashes.add(model.content_hash)
-                unique_models.append(model)
+            if model.content_hash not in last_seen:
+                seen_order.append(model.content_hash)
+            last_seen[model.content_hash] = model
+        unique_models = [last_seen[h] for h in seen_order]
 
         return [self.mapper.to_domain(model) for model in unique_models]
 
