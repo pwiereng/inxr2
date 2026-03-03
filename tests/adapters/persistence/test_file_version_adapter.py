@@ -557,13 +557,13 @@ class TestPostgresFileVersionRepositoryLatestByBranch:
 
 
 @pytest.mark.asyncio
-class TestFileVersionDedupKeepsOldest:
-    """Regression tests: dedup by content_hash should keep the oldest commit."""
+class TestFileVersionDedupByContentHash:
+    """Regression tests: dedup by content_hash should return distinct content hashes."""
 
     async def test_same_hash_across_three_commits_returns_one_version(
         self, db_session: AsyncSession
     ) -> None:
-        """One file row linked to 3 commits → 1 deduped version at oldest commit."""
+        """One file row linked to 3 commits → 1 deduped version for that content hash."""
         repo_adapter = PostgresRepositoryAdapter(db_session)
         commit_adapter = PostgresCommitRepository(db_session)
         file_adapter = PostgresFileRepository(db_session)

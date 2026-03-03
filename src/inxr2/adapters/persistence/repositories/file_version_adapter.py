@@ -86,8 +86,8 @@ class PostgresFileVersionRepository(FileVersionPort):
         result = await self.session.execute(query)
         models = result.scalars().all()
 
-        # Deduplicate by content_hash - keep oldest commit per hash.
-        # Models are ordered newest-first, so last seen per hash is oldest.
+        # Deduplicate rows from the branch join — one per content_hash.
+        # Models are ordered newest-first; keep last per hash (oldest).
         last_seen: dict[str, FileModel] = {}
         seen_order: list[str] = []
         for model in models:

@@ -931,13 +931,14 @@ class InMemoryFileVersionRepository(FileVersionPort):
             }
             files = [f for f in files if f.id in branch_file_ids]
 
-        # Deduplicate by content_hash — keep oldest (last in desc order).
-        # Since files here aren't inherently sorted by commit date, we need
-        # to find the oldest commit for each file and sort, then dedup.
+        # Deduplicate rows produced by the branch join — one row per
+        # distinct content_hash.  Sort newest-first (matching Postgres
+        # ORDER BY commit_date DESC) then keep last per hash so the
+        # returned File is the one linked to the oldest commit.
         if self._file_repo._commit_repo is not None:
 
-            def _oldest_commit_date(f: File) -> datetime:
-                """Get the oldest commit date linked to this file."""
+            def _newest_commit_date(f: File) -> datetime:
+                """Get the newest commit date linked to this file."""
                 commit_ids = [
                     cid for cid, fid in self._file_repo._commit_files if fid == f.id
                 ]
@@ -946,10 +947,10 @@ class InMemoryFileVersionRepository(FileVersionPort):
                     commit = self._file_repo._commit_repo._commits.get(cid)  # type: ignore[union-attr]
                     if commit:
                         dates.append(commit.commit_date)
-                return min(dates) if dates else datetime.max
+                return max(dates) if dates else datetime.min
 
             # Sort newest-first (matching Postgres DESC order)
-            files.sort(key=_oldest_commit_date, reverse=True)
+            files.sort(key=_newest_commit_date, reverse=True)
 
         # Dedup: keep last per hash (oldest, since sorted newest-first)
         last_seen: dict[str, File] = {}
