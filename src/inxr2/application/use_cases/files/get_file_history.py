@@ -165,7 +165,7 @@ class GetFileHistoryUseCase:
         self,
         repository: Repository,
         files: list,
-        repository_id: int = 0,
+        repository_id: int | None = None,
         branch: str | None = None,
     ) -> list[FileVersion]:
         """Build version list with hydrated commit messages.

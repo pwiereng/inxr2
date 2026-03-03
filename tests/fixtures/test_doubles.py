@@ -1080,6 +1080,8 @@ class InMemoryFileVersionRepository(FileVersionPort):
         branch: str | None = None,
     ) -> dict[int, list[int]]:
         """Get commit IDs linked to file versions via commit_files."""
+        if branch is not None and repository_id is None:
+            raise ValueError("repository_id is required when branch is provided")
         # Build set of branch commit IDs for filtering
         branch_commit_ids: set[int] | None = None
         if (
