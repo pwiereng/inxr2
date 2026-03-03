@@ -16,7 +16,7 @@ export interface UseBrowseRefsStateParams {
   updateUrlParams: (updates: Record<string, string | null>, options?: { replace?: boolean }) => void
   navigate: NavigateFunction
   setRefPanel: (panel: 'left' | 'right') => void
-  rightCommit: string | null
+  comparisonCommit: string | null
 }
 
 export interface UseBrowseRefsStateResult {
@@ -43,7 +43,7 @@ export function useBrowseRefsState({
   updateUrlParams,
   navigate,
   setRefPanel,
-  rightCommit,
+  comparisonCommit,
 }: UseBrowseRefsStateParams): UseBrowseRefsStateResult {
   // ========== References state ==========
   const [selectedSymbol, setSelectedSymbol] = useState<Symbol | null>(null)
@@ -211,15 +211,13 @@ export function useBrowseRefsState({
       if (reference.source_file_path) {
         const params = new URLSearchParams()
         params.set('line', reference.source_line.toString())
-        // Use refPanel (which side the ReferencesPanel is showing) not activePanel
-        // (which code panel was last clicked) to determine commit and branch
-        const isRightPanel = urlState.diffMode && urlState.refPanel === 'right'
-        // In cross-branch diff mode, diffCommit may be null - fall back to rightCommit
-        const commitToUse = isRightPanel
-          ? urlState.diffCommit || rightCommit
+        // Visual layout: left = comparison (diff param), right = current (commit param)
+        // Use refPanel to determine which visual panel's commit/branch to navigate to
+        const isLeftPanel = urlState.diffMode && urlState.refPanel === 'left'
+        const commitToUse = isLeftPanel
+          ? urlState.diffCommit || comparisonCommit
           : urlState.selectedCommit
-        // Fall back to selectedBranch for same-branch diff mode where diffBranch is unset
-        const branchToUse = isRightPanel
+        const branchToUse = isLeftPanel
           ? (urlState.diffBranch ?? urlState.selectedBranch)
           : urlState.selectedBranch
         if (commitToUse) params.set('commit', commitToUse)
@@ -234,7 +232,7 @@ export function useBrowseRefsState({
         )
       }
     },
-    [navigate, urlState, rightCommit]
+    [navigate, urlState, comparisonCommit]
   )
 
   const handleDefinitionClick = useCallback(
@@ -242,15 +240,13 @@ export function useBrowseRefsState({
       if (sym.file_path) {
         const params = new URLSearchParams()
         params.set('line', sym.start_line.toString())
-        // Use refPanel (which side the ReferencesPanel is showing) not activePanel
-        // (which code panel was last clicked) to determine commit and branch
-        const isRightPanel = urlState.diffMode && urlState.refPanel === 'right'
-        // In cross-branch diff mode, diffCommit may be null - fall back to rightCommit
-        const commitToUse = isRightPanel
-          ? urlState.diffCommit || rightCommit
+        // Visual layout: left = comparison (diff param), right = current (commit param)
+        // Use refPanel to determine which visual panel's commit/branch to navigate to
+        const isLeftPanel = urlState.diffMode && urlState.refPanel === 'left'
+        const commitToUse = isLeftPanel
+          ? urlState.diffCommit || comparisonCommit
           : urlState.selectedCommit
-        // Fall back to selectedBranch for same-branch diff mode where diffBranch is unset
-        const branchToUse = isRightPanel
+        const branchToUse = isLeftPanel
           ? (urlState.diffBranch ?? urlState.selectedBranch)
           : urlState.selectedBranch
         if (commitToUse) params.set('commit', commitToUse)
@@ -265,7 +261,7 @@ export function useBrowseRefsState({
         )
       }
     },
-    [navigate, urlState, rightCommit]
+    [navigate, urlState, comparisonCommit]
   )
 
   const navigateToSymbol = useCallback(

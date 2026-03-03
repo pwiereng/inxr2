@@ -10,7 +10,7 @@ import {
 } from '@mui/material'
 import HistoryIcon from '@mui/icons-material/History'
 import EditIcon from '@mui/icons-material/Edit'
-import { getFileHistory, type FileVersion } from '@/lib/api'
+import { getCommits, getFileHistory, type CommitInfo } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
 import { MENU_PROPS } from '@/lib/menuProps'
 
@@ -20,6 +20,8 @@ interface VersionSelectorProps {
   selectedCommit: string | null
   onVersionChange: (commitHash: string | null) => void
   selectedBranch?: string | null
+  /** When true, show EditIcon on commits that modified the file */
+  showFileChanges?: boolean
   // Compact mode for inline use (e.g., diff right panel)
   compact?: boolean
 }
@@ -30,35 +32,61 @@ export function VersionSelector({
   selectedCommit,
   onVersionChange,
   selectedBranch,
+  showFileChanges = false,
   compact = false,
 }: VersionSelectorProps): React.ReactElement | null {
-  const [versions, setVersions] = useState<FileVersion[]>([])
+  const [commits, setCommits] = useState<CommitInfo[]>([])
+  const [fileChangeHashes, setFileChangeHashes] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true) // Start true to show loading until first fetch completes
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!repoName || !filePath) {
-      setVersions([])
+      setCommits([])
+      setFileChangeHashes(new Set())
       setLoading(false)
       return
     }
 
-    const loadVersions = async () => {
+    const loadData = async () => {
       setLoading(true)
       setError(null)
       try {
-        const response = await getFileHistory(repoName, filePath, selectedBranch || undefined)
-        setVersions(response.versions)
+        // Fetch all branch commits and (if needed) file history in parallel
+        const commitsPromise = getCommits(repoName, selectedBranch || undefined, 500)
+        const fileHistoryPromise = showFileChanges
+          ? getFileHistory(repoName, filePath, selectedBranch || undefined)
+          : null
+
+        const [commitsResponse, fileHistoryResponse] = await Promise.all([
+          commitsPromise,
+          fileHistoryPromise,
+        ])
+
+        // Sort by commit date descending (newest first) for display
+        const sorted = [...commitsResponse.commits].sort(
+          (a, b) => new Date(b.commit_date).getTime() - new Date(a.commit_date).getTime()
+        )
+        setCommits(sorted)
+
+        // Build set of file-changing commit hashes
+        if (fileHistoryResponse) {
+          const hashes = new Set(fileHistoryResponse.versions.map((v) => v.commit_hash))
+          setFileChangeHashes(hashes)
+        } else {
+          setFileChangeHashes(new Set())
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load versions')
-        setVersions([])
+        setCommits([])
+        setFileChangeHashes(new Set())
       } finally {
         setLoading(false)
       }
     }
 
-    loadVersions()
-  }, [repoName, filePath, selectedBranch])
+    loadData()
+  }, [repoName, filePath, selectedBranch, showFileChanges])
 
   if (loading) {
     return (
@@ -68,27 +96,22 @@ export function VersionSelector({
     )
   }
 
-  if (error || versions.length === 0) {
+  if (error || commits.length === 0) {
     return null
   }
 
-  // If only one version, show static display (no dropdown needed)
-  if (versions.length === 1) {
-    const singleVersion = versions[0]
+  // If only one commit, show static display (no dropdown needed)
+  if (commits.length === 1) {
+    const singleCommit = commits[0]
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
         <HistoryIcon fontSize="small" />
-        <Typography variant="caption">{singleVersion?.short_hash}</Typography>
+        <Typography variant="caption">{singleCommit?.short_hash}</Typography>
       </Box>
     )
   }
 
-  const latestHash = versions[0]?.commit_hash
-
-  // Check if selectedCommit exists in the versions list
-  const selectedExists = selectedCommit
-    ? versions.some((v) => v.commit_hash === selectedCommit)
-    : true
+  const latestHash = commits[0]?.hash
 
   // Always use the selected commit if provided - show what's actually being viewed
   const effectiveValue = selectedCommit || latestHash || ''
@@ -122,61 +145,26 @@ export function VersionSelector({
           }),
         }}
       >
-        {/* Show selected commit if it's not in the versions list (file unchanged at that commit) */}
-        {!selectedExists && selectedCommit && (
-          <MenuItem
-            key={selectedCommit}
-            value={selectedCommit}
-            sx={{
-              bgcolor: 'action.selected',
-              borderLeft: 3,
-              borderColor: 'primary.main',
-              '&.Mui-selected': {
-                bgcolor: 'action.selected',
-              },
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography
-                component="span"
-                sx={{
-                  fontFamily: 'monospace',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  color: 'primary.main',
-                }}
-              >
-                {selectedCommit.substring(0, 7)}
-              </Typography>
-              <Typography component="span" variant="caption" color="text.secondary">
-                (unchanged)
-              </Typography>
-            </Box>
-          </MenuItem>
-        )}
-        {versions.map((version, index) => {
-          // Check if content changed from previous version (next in array since sorted newest first)
-          const prevVersion = versions[index + 1]
-          const hasChange = !prevVersion || version.content_hash !== prevVersion.content_hash
-          // Check if this version is selected
+        {commits.map((commit) => {
+          const hasChange = showFileChanges && fileChangeHashes.has(commit.hash)
+          // Check if this commit is selected
           const isSelected =
-            version.commit_hash === selectedCommit ||
-            (!selectedCommit && version.commit_hash === latestHash)
+            commit.hash === selectedCommit || (!selectedCommit && commit.hash === latestHash)
 
           return (
             <MenuItem
-              key={version.commit_hash}
-              value={version.commit_hash}
+              key={commit.hash}
+              value={commit.hash}
               sx={{
                 bgcolor: isSelected ? 'action.selected' : 'transparent',
-                borderLeft: isSelected ? 3 : 0,
-                borderColor: 'primary.main',
+                borderLeft: commit.is_branch_specific ? 3 : isSelected ? 3 : 0,
+                borderColor: commit.is_branch_specific ? 'info.main' : 'primary.main',
                 '&.Mui-selected': {
                   bgcolor: 'action.selected',
                 },
               }}
             >
-              <Tooltip title={version.message} placement="left">
+              <Tooltip title={commit.message} placement="left">
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   {hasChange && <EditIcon sx={{ fontSize: '0.9rem', color: 'warning.main' }} />}
                   <Typography
@@ -188,13 +176,13 @@ export function VersionSelector({
                       color: isSelected ? 'primary.main' : 'text.primary',
                     }}
                   >
-                    {version.short_hash}
+                    {commit.short_hash}
                   </Typography>
                   <Typography component="span" variant="caption" color="text.secondary">
-                    {formatDateTimeUTC(version.commit_date)}
+                    {formatDateTimeUTC(commit.commit_date)}
                   </Typography>
-                  {/* Show HEAD badge for the latest commit */}
-                  {index === 0 && (
+                  {/* Show HEAD badge for the first indexed commit */}
+                  {commit.is_indexed && commits.find((c) => c.is_indexed)?.hash === commit.hash && (
                     <Typography
                       component="span"
                       variant="caption"
@@ -210,6 +198,25 @@ export function VersionSelector({
                       }}
                     >
                       HEAD
+                    </Typography>
+                  )}
+                  {/* Show FORK badge for merge-base commits */}
+                  {commit.is_merge_base && (
+                    <Typography
+                      component="span"
+                      variant="caption"
+                      sx={{
+                        ml: 0.5,
+                        px: 0.5,
+                        py: 0.125,
+                        bgcolor: 'secondary.main',
+                        color: 'secondary.contrastText',
+                        borderRadius: 0.5,
+                        fontSize: '0.65rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      FORK
                     </Typography>
                   )}
                 </Box>

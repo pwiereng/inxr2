@@ -39,6 +39,7 @@ export interface UseBrowseDataResult {
   fileVersions: FileVersion[]
   rawContent: RawFileContent | null
   latestBranchCommit: string | null | undefined
+  commitDateMap: Map<string, string>
   loading: boolean
   fileLoading: boolean
   error: string | null
@@ -63,6 +64,8 @@ export function useBrowseData({
 
   // Latest commit hash for the current branch (HEAD fallback for changedOnly)
   const [latestBranchCommit, setLatestBranchCommit] = useState<string | null | undefined>(undefined)
+  // Map of commit hash → commit date for temporal comparison (populated from getCommits)
+  const [commitDateMap, setCommitDateMap] = useState<Map<string, string>>(new Map())
 
   // ========== UI state (loading/error only) ==========
   const [loading, setLoading] = useState(true)
@@ -112,8 +115,17 @@ export function useBrowseData({
         // Find the newest indexed commit (commits are newest-first)
         const latest = res.commits.find((c) => c.is_indexed)
         setLatestBranchCommit(latest?.hash ?? null)
+        // Build hash→date map for temporal comparison
+        const dateMap = new Map<string, string>()
+        for (const c of res.commits) {
+          dateMap.set(c.hash, c.commit_date)
+        }
+        setCommitDateMap(dateMap)
       })
-      .catch(() => setLatestBranchCommit(null))
+      .catch(() => {
+        setLatestBranchCommit(null)
+        setCommitDateMap(new Map())
+      })
   }, [urlState.repoName, urlState.selectedBranch, repository?.default_branch])
 
   // Load tree
@@ -289,6 +301,7 @@ export function useBrowseData({
     fileVersions,
     rawContent,
     latestBranchCommit,
+    commitDateMap,
     loading,
     fileLoading,
     error,

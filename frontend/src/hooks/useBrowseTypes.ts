@@ -94,6 +94,7 @@ export interface BrowseActions {
   enterDiffMode: () => void
   exitDiffMode: () => void
   closePanel: (panel: 'left' | 'right') => void
+  swapDiffPanels: () => void
   setActivePanel: (panel: 'left' | 'right') => void
   setTreePanel: (panel: 'left' | 'right') => void
 
@@ -135,13 +136,19 @@ export interface BrowseActions {
 }
 
 export interface BrowseComputedState {
-  leftCommit: string | undefined
-  rightCommit: string | null
+  /** Commit for the LEFT visual panel (comparison, from `diff` URL param) */
+  comparisonCommit: string | null
+  /** Commit for the RIGHT visual panel (global reference, from `commit` URL param / top picker) */
+  globalReferenceCommit: string | undefined
   treeCommit: string | null | undefined
   refCommit: string | null | undefined
   currentCommitHash: string | undefined
   /** True if file was changed at the selected commit (appears in file versions) */
   fileChangedInCommit: boolean
+  /** True if the global reference (right panel) is chronologically newer than comparison (left panel) */
+  referenceIsNewer: boolean
+  /** True if we could determine the temporal order of comparison vs reference commits */
+  temporalOrderKnown: boolean
 }
 
 /**
@@ -156,11 +163,13 @@ export function computeTreeCommit(
   diffFileVersions: FileVersion[],
   latestBranchCommit: string | null | undefined
 ): string | null | undefined {
-  const leftCommit = urlState.selectedCommit || latestBranchCommit || fileVersions[0]?.commit_hash
-  const rightCommit = urlState.diffCommit || diffFileVersions[0]?.commit_hash || null
+  const comparisonCommit = urlState.diffCommit || diffFileVersions[0]?.commit_hash || null
+  const globalReferenceCommit =
+    urlState.selectedCommit || latestBranchCommit || fileVersions[0]?.commit_hash
+  // Visual layout: left panel = comparison (diff param), right panel = global reference (commit param)
   return urlState.diffMode
     ? urlState.treePanel === 'left'
-      ? leftCommit
-      : rightCommit
+      ? comparisonCommit
+      : globalReferenceCommit
     : urlState.selectedCommit || latestBranchCommit
 }
