@@ -222,6 +222,8 @@ class PostgresFileVersionRepository(FileVersionPort):
         branch: str | None = None,
     ) -> dict[int, list[int]]:
         """Get commit IDs linked to file versions via commit_files."""
+        if branch is not None and repository_id is None:
+            raise ValueError("repository_id is required when branch is provided")
         if not file_ids:
             return {}
 

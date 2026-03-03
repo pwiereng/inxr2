@@ -58,8 +58,9 @@ class FileVersion:
 class FileHistory:
     """File version history.
 
-    Contains all indexed versions of a file, ordered by commit date
-    (newest first).
+    Contains all indexed versions of a file, ordered by newest content
+    version first.  Each version's commit_date/message reflects the
+    oldest commit where that content first appeared.
     """
 
     path: str
