@@ -922,7 +922,11 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                   searchByName={searchByName}
                   selectedCommit={computedState.refCommit}
                   selectedBranch={
-                    diffMode ? (refPanel === 'left' ? diffBranch : selectedBranch) : selectedBranch
+                    diffMode
+                      ? refPanel === 'left'
+                        ? (diffBranch ?? selectedBranch)
+                        : selectedBranch
+                      : selectedBranch
                   }
                   onReferenceClick={actions.handleRefPanelClick}
                   onDefinitionClick={actions.handleDefinitionClick}

@@ -52,24 +52,28 @@ export function VersionSelector({
       setLoading(true)
       setError(null)
       try {
-        const commitsResponse = await getCommits(repoName, selectedBranch || undefined, 500)
-        // Backend returns newest-first; spread for immutability
-        setCommits([...commitsResponse.commits])
-
-        // Fetch file history separately so a 404 doesn't break the commit list
         if (showFileChanges) {
-          try {
-            const fileHistoryResponse = await getFileHistory(
-              repoName,
-              filePath,
-              selectedBranch || undefined
-            )
-            setFileChangeHashes(new Set(fileHistoryResponse.versions.map((v) => v.commit_hash)))
-          } catch {
-            // File may not exist on this branch — degrade gracefully (no EditIcons)
+          // Fetch commits and file history concurrently; file history failure
+          // degrades gracefully (no EditIcons) without hiding the commit list.
+          const [commitsResult, fileHistoryResult] = await Promise.allSettled([
+            getCommits(repoName, selectedBranch || undefined, 500),
+            getFileHistory(repoName, filePath, selectedBranch || undefined),
+          ])
+
+          if (commitsResult.status === 'fulfilled') {
+            setCommits([...commitsResult.value.commits])
+          } else {
+            throw commitsResult.reason
+          }
+
+          if (fileHistoryResult.status === 'fulfilled') {
+            setFileChangeHashes(new Set(fileHistoryResult.value.versions.map((v) => v.commit_hash)))
+          } else {
             setFileChangeHashes(new Set())
           }
         } else {
+          const commitsResponse = await getCommits(repoName, selectedBranch || undefined, 500)
+          setCommits([...commitsResponse.commits])
           setFileChangeHashes(new Set())
         }
       } catch (err) {
@@ -111,8 +115,9 @@ export function VersionSelector({
   // Precompute the first indexed commit hash for HEAD badge (avoids O(n²) in render loop)
   const headHash = commits.find((c) => c.is_indexed)?.hash
 
-  // Always use the selected commit if provided - show what's actually being viewed
-  const effectiveValue = selectedCommit || latestHash || ''
+  // Use selected commit if it exists in the list; otherwise fall back to latest
+  const hasSelectedCommit = !!selectedCommit && commits.some((c) => c.hash === selectedCommit)
+  const effectiveValue = (hasSelectedCommit ? selectedCommit : latestHash) || ''
 
   return (
     <FormControl size="small">
