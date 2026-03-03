@@ -1423,6 +1423,26 @@ describe('useBrowseState', () => {
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature-branch'))
     })
 
+    it('should not inject stale commit when only diffBranch is set on comparison side', async () => {
+      // diffBranch-only diff mode: URL has diffBranch but no diff (and no explicit commit)
+      // When viewing references for the left (comparison) panel, navigation should use
+      // only branch=diffBranch and must not inject a stale commit hash.
+      mockSearchParams = new URLSearchParams('diffBranch=feature-branch&refs=1')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.handleRefPanelClick({
+          source_file_path: 'src/other.py',
+          source_line: 42,
+        })
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).toContain('branch=feature-branch')
+      // Should not inject any commit hash when operating in diffBranch-only mode
+      expect(navigatedUrl).not.toContain('commit=')
+    })
+
     it('should preserve selectedBranch when refPanel is right (current panel)', async () => {
       // When viewing references for the right (current) panel on a specific branch
       mockSearchParams = new URLSearchParams('branch=develop&diffBranch=feature&rp=r&refs=1')

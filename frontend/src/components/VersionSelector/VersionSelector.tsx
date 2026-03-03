@@ -52,32 +52,28 @@ export function VersionSelector({
       setLoading(true)
       setError(null)
       try {
-        // Fetch all branch commits and (if needed) file history in parallel
-        const commitsPromise = getCommits(repoName, selectedBranch || undefined, 500)
-        const fileHistoryPromise = showFileChanges
-          ? getFileHistory(repoName, filePath, selectedBranch || undefined)
-          : null
+        const commitsResponse = await getCommits(repoName, selectedBranch || undefined, 500)
+        // Backend returns newest-first; spread for immutability
+        setCommits([...commitsResponse.commits])
 
-        const [commitsResponse, fileHistoryResponse] = await Promise.all([
-          commitsPromise,
-          fileHistoryPromise,
-        ])
-
-        // Sort by commit date descending (newest first) for display
-        const sorted = [...commitsResponse.commits].sort(
-          (a, b) => new Date(b.commit_date).getTime() - new Date(a.commit_date).getTime()
-        )
-        setCommits(sorted)
-
-        // Build set of file-changing commit hashes
-        if (fileHistoryResponse) {
-          const hashes = new Set(fileHistoryResponse.versions.map((v) => v.commit_hash))
-          setFileChangeHashes(hashes)
+        // Fetch file history separately so a 404 doesn't break the commit list
+        if (showFileChanges) {
+          try {
+            const fileHistoryResponse = await getFileHistory(
+              repoName,
+              filePath,
+              selectedBranch || undefined
+            )
+            setFileChangeHashes(new Set(fileHistoryResponse.versions.map((v) => v.commit_hash)))
+          } catch {
+            // File may not exist on this branch — degrade gracefully (no EditIcons)
+            setFileChangeHashes(new Set())
+          }
         } else {
           setFileChangeHashes(new Set())
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load versions')
+        setError(err instanceof Error ? err.message : 'Failed to load commits')
         setCommits([])
         setFileChangeHashes(new Set())
       } finally {
@@ -112,6 +108,8 @@ export function VersionSelector({
   }
 
   const latestHash = commits[0]?.hash
+  // Precompute the first indexed commit hash for HEAD badge (avoids O(n²) in render loop)
+  const headHash = commits.find((c) => c.is_indexed)?.hash
 
   // Always use the selected commit if provided - show what's actually being viewed
   const effectiveValue = selectedCommit || latestHash || ''
@@ -182,7 +180,7 @@ export function VersionSelector({
                     {formatDateTimeUTC(commit.commit_date)}
                   </Typography>
                   {/* Show HEAD badge for the first indexed commit */}
-                  {commit.is_indexed && commits.find((c) => c.is_indexed)?.hash === commit.hash && (
+                  {commit.hash === headHash && (
                     <Typography
                       component="span"
                       variant="caption"
