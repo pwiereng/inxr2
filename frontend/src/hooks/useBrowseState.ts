@@ -12,7 +12,7 @@
  * during render), so this is safe.
  */
 
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useEffect } from 'react'
 import type { FileVersion, Repository } from '@/lib/api'
 import { useBrowseUrlState } from './useBrowseUrlState'
 import { useBrowseDiffState } from './useBrowseDiffState'
@@ -122,6 +122,18 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
     diffResult.diffFileVersions,
     dataResult.latestBranchCommit,
   ])
+
+  // ========== 4b. Sync resolved HEAD commit to URL for proper permalinks ==========
+  const { selectedCommit } = urlResult.urlState
+  const { updateUrlParams } = urlResult
+  const { latestBranchCommit } = dataResult
+  useEffect(() => {
+    // When the URL has no commit param and we've resolved the branch HEAD,
+    // write it to the URL so the page is a proper permalink.
+    if (!selectedCommit && typeof latestBranchCommit === 'string') {
+      updateUrlParams({ commit: latestBranchCommit }, { replace: true })
+    }
+  }, [selectedCommit, latestBranchCommit, updateUrlParams])
 
   // ========== 5. Refs State ==========
   const refsResult = useBrowseRefsState({
