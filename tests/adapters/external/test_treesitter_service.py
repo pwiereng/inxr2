@@ -2040,3 +2040,423 @@ function test() {
         usage_refs = [r for r in references if r["type"] == "usage"]
         usage_names = [r["text"] for r in usage_refs]
         assert "value" in usage_names
+
+
+class TestBareIdentifierUsageReferences:
+    """Tests for bare identifier usage reference extraction (issue #197).
+
+    Verifies that standalone identifier usage (not already covered by calls,
+    member access, imports, types, or heritage) is extracted as references
+    with type=="usage".
+    """
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_constant_in_condition(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that a constant used in an if-condition is extracted."""
+        code = """
+const MAX_PAGES = 100;
+
+function paginate(count) {
+    if (count > MAX_PAGES) {
+        return MAX_PAGES;
+    }
+    return count;
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "MAX_PAGES" in usage_names
+
+    @pytest.mark.asyncio
+    async def test_variable_passed_as_argument(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that a variable passed as an argument is extracted."""
+        code = """
+const config = loadConfig();
+
+function init() {
+    setupApp(config);
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "config" in usage_names
+
+    @pytest.mark.asyncio
+    async def test_variable_in_return_statement(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that a variable in a return statement is extracted."""
+        code = """
+const defaultValue = 42;
+
+function getValue() {
+    return defaultValue;
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "defaultValue" in usage_names
+
+    @pytest.mark.asyncio
+    async def test_variable_in_assignment(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that a variable used on the RHS of an assignment is extracted."""
+        code = """
+const source = [1, 2, 3];
+
+function copy() {
+    const target = source;
+    return target;
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "source" in usage_names
+
+    @pytest.mark.asyncio
+    async def test_single_char_identifiers_excluded(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that single-character identifiers are NOT extracted as usage refs."""
+        code = """
+function test() {
+    const x = 1;
+    const y = x + 2;
+    return y;
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "x" not in usage_names
+        assert "y" not in usage_names
+
+    @pytest.mark.asyncio
+    async def test_builtin_identifiers_excluded(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that builtins like console, undefined are NOT extracted."""
+        code = """
+function test() {
+    if (value === undefined) {
+        console.log("missing");
+    }
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "undefined" not in usage_names
+        assert "console" not in usage_names
+
+    @pytest.mark.asyncio
+    async def test_no_duplicate_refs_for_calls(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that a function call target is NOT also extracted as bare usage."""
+        code = """
+function doWork() {}
+
+function main() {
+    doWork();
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        # doWork should appear as a "call" ref, NOT also as a "usage" ref
+        call_refs = [
+            r for r in references if r["text"] == "doWork" and r["type"] == "call"
+        ]
+        usage_refs = [
+            r for r in references if r["text"] == "doWork" and r["type"] == "usage"
+        ]
+        assert len(call_refs) >= 1
+        assert len(usage_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_identifier_in_array_literal(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that identifiers used in array literals are extracted."""
+        code = """
+const handler = () => {};
+const middleware = () => {};
+
+const pipeline = [handler, middleware];
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "handler" in usage_names
+        assert "middleware" in usage_names
+
+    @pytest.mark.asyncio
+    async def test_identifier_in_ternary(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that identifiers used in ternary expressions are extracted."""
+        code = """
+const DEBUG = true;
+const verbose = false;
+
+function getLevel() {
+    return DEBUG ? verbose : false;
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "DEBUG" in usage_names
+        assert "verbose" in usage_names
+
+
+class TestCommonJSRequireReferences:
+    """Tests for CommonJS require() destructured import extraction (issue #197).
+
+    Verifies that `const { A, B } = require('./module')` produces import
+    references for A and B.
+    """
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_destructured_require(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that destructured require bindings produce import references."""
+        code = """
+const { Router, Request, Response } = require('express');
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        import_refs = [r for r in references if r["type"] == "import"]
+        import_names = [r["text"] for r in import_refs]
+        assert "Router" in import_names
+        assert "Request" in import_names
+        assert "Response" in import_names
+
+    @pytest.mark.asyncio
+    async def test_destructured_require_has_from_module(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that require import refs include the from_module field."""
+        code = """
+const { readFile } = require('fs');
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        import_refs = [
+            r for r in references if r["type"] == "import" and r["text"] == "readFile"
+        ]
+        assert len(import_refs) == 1
+        assert import_refs[0].get("from_module") == "fs"
+
+    @pytest.mark.asyncio
+    async def test_simple_require_not_destructured(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `const x = require('y')` produces an import ref for x."""
+        code = """
+const express = require('express');
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        import_refs = [r for r in references if r["type"] == "import"]
+        import_names = [r["text"] for r in import_refs]
+        assert "express" in import_names
+
+    @pytest.mark.asyncio
+    async def test_require_in_typescript(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that require() works in TypeScript files too."""
+        code = """
+const { join, resolve } = require('path');
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        import_refs = [r for r in references if r["type"] == "import"]
+        import_names = [r["text"] for r in import_refs]
+        assert "join" in import_names
+        assert "resolve" in import_names
+
+
+class TestConstructorPropertyDefinitions:
+    """Tests for this.property assignments in constructors (issue #197).
+
+    Verifies that `this.x = value` inside a constructor produces a property
+    symbol definition scoped to the class.
+    """
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_constructor_property_extracted_as_symbol(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that this.prop = value in constructor creates a property symbol."""
+        code = """
+class Logger {
+    constructor(level) {
+        this.level = level;
+        this.messages = [];
+    }
+
+    log(msg) {
+        this.messages.push(msg);
+    }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        prop_symbols = [s for s in symbols if s["kind"] == "property"]
+        prop_names = [s["name"] for s in prop_symbols]
+        assert "level" in prop_names
+        assert "messages" in prop_names
+
+    @pytest.mark.asyncio
+    async def test_constructor_property_has_class_scope(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that constructor properties are scoped to their class."""
+        code = """
+class Service {
+    constructor(db, log) {
+        this.db = db;
+        this.log = log;
+    }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        prop_symbols = [s for s in symbols if s["kind"] == "property"]
+        for prop in prop_symbols:
+            assert prop["scope"] == "Service"
+
+    @pytest.mark.asyncio
+    async def test_constructor_property_not_duplicated_with_field(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that if a field is already declared, constructor assignment doesn't duplicate."""
+        code = """
+class Timer {
+    elapsed = 0;
+
+    constructor(start) {
+        this.start = start;
+    }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        # 'elapsed' is a field, 'start' is a constructor property
+        field_names = [s["name"] for s in symbols if s["kind"] == "field"]
+        prop_names = [s["name"] for s in symbols if s["kind"] == "property"]
+        assert "elapsed" in field_names
+        assert "start" in prop_names
+        # No duplicate 'elapsed' as property
+        assert "elapsed" not in prop_names
+
+    @pytest.mark.asyncio
+    async def test_non_constructor_this_assignment_ignored(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that this.x = ... in non-constructor methods does NOT create symbols."""
+        code = """
+class Counter {
+    constructor() {
+        this.count = 0;
+    }
+
+    reset() {
+        this.count = 0;
+    }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        prop_symbols = [s for s in symbols if s["kind"] == "property"]
+        prop_names = [s["name"] for s in prop_symbols]
+        # 'count' should appear once as property from constructor
+        assert prop_names.count("count") == 1
+
+    @pytest.mark.asyncio
+    async def test_constructor_property_javascript(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that constructor properties work in JavaScript too."""
+        code = """
+class EventEmitter {
+    constructor() {
+        this.listeners = {};
+        this.maxListeners = 10;
+    }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        prop_symbols = [s for s in symbols if s["kind"] == "property"]
+        prop_names = [s["name"] for s in prop_symbols]
+        assert "listeners" in prop_names
+        assert "maxListeners" in prop_names

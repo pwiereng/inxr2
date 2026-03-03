@@ -337,6 +337,10 @@ class TypeScriptParser(BaseLanguageParser):
 
             symbols.append(self._make_symbol(name, kind, node, class_name))
 
+            # Extract this.property assignments in constructors
+            if name == "constructor":
+                _extract_constructor_properties(node, class_name)
+
         def process_field(node: Node, class_name: str) -> None:
             """Process a class field definition."""
             name = get_name_from_node(node)
@@ -355,6 +359,57 @@ class TypeScriptParser(BaseLanguageParser):
                 kind = "field"
 
             symbols.append(self._make_symbol(name, kind, node, class_name))
+
+        def _extract_constructor_properties(method_node: Node, class_name: str) -> None:
+            """Extract this.x = ... assignments in a constructor as property symbols.
+
+            Collects names of fields already declared in the class body to avoid
+            duplicates, then walks the constructor body for assignment_expression
+            nodes where the LHS is `this.<prop>`.
+            """
+            # Collect existing field names from the class body to avoid duplicates
+            existing_fields: set[str] = set()
+            class_body = method_node.parent  # class_body
+            if class_body and class_body.type == "class_body":
+                for member in class_body.children:
+                    if member.type == "public_field_definition":
+                        field_name = get_name_from_node(member)
+                        if field_name:
+                            existing_fields.add(field_name)
+
+            seen_props: set[str] = set()
+
+            def _visit_for_this_assignments(n: Node) -> None:
+                if n.type == "assignment_expression":
+                    left = n.child_by_field_name("left")
+                    if left and left.type == "member_expression":
+                        obj = left.child_by_field_name("object")
+                        prop = left.child_by_field_name("property")
+                        if (
+                            obj
+                            and prop
+                            and obj.type == "this"
+                            and prop.type == "property_identifier"
+                        ):
+                            prop_name = get_text(prop)
+                            if (
+                                prop_name
+                                and prop_name not in existing_fields
+                                and prop_name not in seen_props
+                            ):
+                                seen_props.add(prop_name)
+                                symbols.append(
+                                    self._make_symbol(
+                                        prop_name, "property", prop, class_name
+                                    )
+                                )
+                for child in n.children:
+                    _visit_for_this_assignments(child)
+
+            # Find the statement_block (constructor body) and walk it
+            for child in method_node.children:
+                if child.type == "statement_block":
+                    _visit_for_this_assignments(child)
 
         def process_function(node: Node, is_exported: bool = False) -> None:
             """Process a function declaration."""
@@ -663,6 +718,151 @@ class TypeScriptParser(BaseLanguageParser):
             # Class heritage (extends/implements) — handled here so nested classes work
             if node.type == "class_heritage":
                 _extract_heritage_references(node, scope)
+
+            # CommonJS require() imports:
+            #   const { A, B } = require('module')
+            #   const x = require('module')
+            if node.type == "lexical_declaration":
+                for decl in node.children:
+                    if decl.type != "variable_declarator":
+                        continue
+                    name_node = decl.child_by_field_name("name")
+                    value_node = decl.child_by_field_name("value")
+                    if not value_node or value_node.type != "call_expression":
+                        continue
+                    func_node = value_node.child_by_field_name("function")
+                    if not func_node or get_text(func_node) != "require":
+                        continue
+                    # Extract module path from require('...')
+                    args = value_node.child_by_field_name("arguments")
+                    req_module: str | None = None
+                    if args:
+                        for arg in args.children:
+                            if arg.type == "string":
+                                req_module = get_text(arg).strip("'\"")
+                                break
+                    if name_node and name_node.type == "object_pattern":
+                        # Destructured: const { A, B } = require('module')
+                        for prop in name_node.children:
+                            if prop.type == "shorthand_property_identifier_pattern":
+                                binding_name = get_text(prop)
+                                if binding_name:
+                                    add_reference(
+                                        self._make_reference(
+                                            binding_name,
+                                            "import",
+                                            prop,
+                                            from_module=req_module,
+                                        )
+                                    )
+                            elif prop.type == "pair_pattern":
+                                # { A: localA } — use the key as the import name
+                                key = prop.child_by_field_name("key")
+                                if key:
+                                    key_name = get_text(key)
+                                    if key_name:
+                                        add_reference(
+                                            self._make_reference(
+                                                key_name,
+                                                "import",
+                                                key,
+                                                from_module=req_module,
+                                            )
+                                        )
+                    elif name_node and name_node.type == "identifier":
+                        # Simple: const x = require('module')
+                        binding_name = get_text(name_node)
+                        if binding_name:
+                            add_reference(
+                                self._make_reference(
+                                    binding_name,
+                                    "import",
+                                    name_node,
+                                    from_module=req_module,
+                                )
+                            )
+
+            # Bare identifier usage — identifiers not already covered by other
+            # patterns (call targets, member access, imports, declarations, etc.)
+            if node.type == "identifier":
+                ident_name = get_text(node)
+                # Filter out noise
+                if len(ident_name) > 1 and ident_name not in TS_BUILTINS:
+                    parent = node.parent
+                    # Skip identifiers that are already handled by other patterns:
+                    # - call_expression function target → handled as "call"
+                    # - new_expression constructor → handled as "instantiation"
+                    # - member_expression property → handled as "usage"
+                    # - import nodes → handled as "import"
+                    # - declarations (variable_declarator name, function name, etc.)
+                    # - class/interface/enum/type declarations
+                    # - formal_parameters / required_parameter / optional_parameter
+                    # - shorthand_property_identifier_pattern (destructuring)
+                    # - for..of / for..in variable bindings
+                    skip_ident = False
+                    if parent is not None:
+                        # Declaration contexts — the identifier IS being declared
+                        if parent.type in (
+                            "variable_declarator",
+                            "function_declaration",
+                            "class_declaration",
+                            "interface_declaration",
+                            "enum_declaration",
+                            "type_alias_declaration",
+                            "import_specifier",
+                            "import_clause",
+                            "required_parameter",
+                            "optional_parameter",
+                            "formal_parameters",
+                            "catch_clause",
+                            "for_in_statement",
+                        ):
+                            # In variable_declarator, only skip the name position
+                            if parent.type == "variable_declarator":
+                                name_child = parent.child_by_field_name("name")
+                                skip_ident = name_child is not None and (
+                                    name_child.id == node.id
+                                )
+                            else:
+                                skip_ident = True
+                        # Call target — already handled as "call"
+                        elif parent.type == "call_expression":
+                            func = parent.child_by_field_name("function")
+                            skip_ident = func is not None and func.id == node.id
+                        # new expression constructor — already handled
+                        elif parent.type == "new_expression":
+                            ctor = parent.child_by_field_name("constructor")
+                            skip_ident = ctor is not None and ctor.id == node.id
+                        # Member expression object — the object part (e.g.,
+                        # `config` in `config.value`) is a bare usage, but
+                        # the property part is handled by member_expression
+                        elif parent.type == "member_expression":
+                            prop = parent.child_by_field_name("property")
+                            skip_ident = prop is not None and prop.id == node.id
+                        # Property name in object literals
+                        elif parent.type in (
+                            "pair",
+                            "property_assignment",
+                            "shorthand_property_identifier",
+                        ):
+                            skip_ident = True
+                        # Method/field definitions (the name part)
+                        elif parent.type in (
+                            "method_definition",
+                            "public_field_definition",
+                        ):
+                            skip_ident = True
+                        # Label identifiers
+                        elif parent.type in (
+                            "labeled_statement",
+                            "break_statement",
+                            "continue_statement",
+                        ):
+                            skip_ident = True
+                    if not skip_ident:
+                        add_reference(
+                            self._make_reference(ident_name, "usage", node, scope)
+                        )
 
             # Recurse
             for child in node.children:
