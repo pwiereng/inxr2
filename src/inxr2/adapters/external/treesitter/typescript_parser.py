@@ -722,7 +722,7 @@ class TypeScriptParser(BaseLanguageParser):
             # CommonJS require() imports:
             #   const { A, B } = require('module')
             #   const x = require('module')
-            if node.type == "lexical_declaration":
+            if node.type in ("lexical_declaration", "variable_declaration"):
                 for decl in node.children:
                     if decl.type != "variable_declarator":
                         continue
@@ -756,16 +756,17 @@ class TypeScriptParser(BaseLanguageParser):
                                         )
                                     )
                             elif prop.type == "pair_pattern":
-                                # { A: localA } — use the key as the import name
-                                key = prop.child_by_field_name("key")
-                                if key:
-                                    key_name = get_text(key)
-                                    if key_name:
+                                # { A: localA } — use the local binding name
+                                # so later uses of localA resolve to the import
+                                value = prop.child_by_field_name("value")
+                                if value:
+                                    val_name = get_text(value)
+                                    if val_name:
                                         add_reference(
                                             self._make_reference(
-                                                key_name,
+                                                val_name,
                                                 "import",
-                                                key,
+                                                value,
                                                 from_module=req_module,
                                             )
                                         )
@@ -815,7 +816,6 @@ class TypeScriptParser(BaseLanguageParser):
                             "optional_parameter",
                             "formal_parameters",
                             "catch_clause",
-                            "for_in_statement",
                         ):
                             # In variable_declarator, only skip the name position
                             if parent.type == "variable_declarator":
@@ -839,19 +839,33 @@ class TypeScriptParser(BaseLanguageParser):
                         elif parent.type == "member_expression":
                             prop = parent.child_by_field_name("property")
                             skip_ident = prop is not None and prop.id == node.id
-                        # Property name in object literals
-                        elif parent.type in (
-                            "pair",
-                            "property_assignment",
-                            "shorthand_property_identifier",
-                        ):
-                            skip_ident = True
+                        # Property names in object literals — only skip key position
+                        elif parent.type == "pair":
+                            key_child = parent.child_by_field_name("key")
+                            skip_ident = (
+                                key_child is not None and key_child.id == node.id
+                            )
+                        elif parent.type == "property_assignment":
+                            name_child = parent.child_by_field_name("name")
+                            skip_ident = (
+                                name_child is not None and name_child.id == node.id
+                            )
                         # Method/field definitions (the name part)
                         elif parent.type in (
                             "method_definition",
                             "public_field_definition",
                         ):
                             skip_ident = True
+                        # Destructuring binding patterns
+                        elif parent.type in (
+                            "shorthand_property_identifier_pattern",
+                            "pair_pattern",
+                        ):
+                            skip_ident = True
+                        # for..of / for..in loop variable binding (left position only)
+                        elif parent.type in ("for_of_statement", "for_in_statement"):
+                            left = parent.child_by_field_name("left")
+                            skip_ident = left is not None and left.id == node.id
                         # Label identifiers
                         elif parent.type in (
                             "labeled_statement",

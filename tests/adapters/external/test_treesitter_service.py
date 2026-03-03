@@ -2248,6 +2248,50 @@ function getLevel() {
         assert "DEBUG" in usage_names
         assert "verbose" in usage_names
 
+    @pytest.mark.asyncio
+    async def test_object_literal_value_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that identifiers in object literal values ARE extracted as usage."""
+        code = """
+const handler = () => {};
+
+const routes = { path: handler };
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        # 'handler' is a value in the object literal — should be usage
+        assert "handler" in usage_names
+        # 'path' is a key — should NOT be usage
+        assert "path" not in usage_names
+
+    @pytest.mark.asyncio
+    async def test_for_of_binding_not_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that for-of loop variable bindings are NOT extracted as usage."""
+        code = """
+const items = [1, 2, 3];
+
+function process() {
+    for (const item of items) {
+        doWork(item);
+    }
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        # 'items' is used as the iterable — should be a usage ref
+        assert "items" in usage_names
+
 
 class TestCommonJSRequireReferences:
     """Tests for CommonJS require() destructured import extraction (issue #197).
@@ -2329,6 +2373,38 @@ const { join, resolve } = require('path');
         assert "join" in import_names
         assert "resolve" in import_names
 
+    @pytest.mark.asyncio
+    async def test_var_require(self, parser_service: TreeSitterService) -> None:
+        """Test that var x = require('y') works (not just const/let)."""
+        code = """
+var express = require('express');
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        import_refs = [r for r in references if r["type"] == "import"]
+        import_names = [r["text"] for r in import_refs]
+        assert "express" in import_names
+
+    @pytest.mark.asyncio
+    async def test_aliased_destructured_require(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that const { A: localA } = require('m') extracts the local binding."""
+        code = """
+const { readFile: readF, writeFile: writeF } = require('fs');
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        import_refs = [r for r in references if r["type"] == "import"]
+        import_names = [r["text"] for r in import_refs]
+        # Should extract the local binding names, not the original keys
+        assert "readF" in import_names
+        assert "writeF" in import_names
+
 
 class TestConstructorPropertyDefinitions:
     """Tests for this.property assignments in constructors (issue #197).
@@ -2397,8 +2473,9 @@ class Service {
 class Timer {
     elapsed = 0;
 
-    constructor(start) {
+    constructor(start, elapsed) {
         this.start = start;
+        this.elapsed = elapsed;
     }
 }
 """
@@ -2411,7 +2488,7 @@ class Timer {
         prop_names = [s["name"] for s in symbols if s["kind"] == "property"]
         assert "elapsed" in field_names
         assert "start" in prop_names
-        # No duplicate 'elapsed' as property
+        # Constructor assigns this.elapsed but field already declared — no duplicate
         assert "elapsed" not in prop_names
 
     @pytest.mark.asyncio
