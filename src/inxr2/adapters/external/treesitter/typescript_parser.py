@@ -404,6 +404,15 @@ class TypeScriptParser(BaseLanguageParser):
                                     )
                                 )
                 for child in n.children:
+                    # Don't recurse into nested scopes where `this` is rebound
+                    if child.type in (
+                        "function_expression",
+                        "function_declaration",
+                        "class",
+                        "class_declaration",
+                        "method_definition",
+                    ):
+                        continue
                     _visit_for_this_assignments(child)
 
             # Find the statement_block (constructor body) and walk it
@@ -817,7 +826,8 @@ class TypeScriptParser(BaseLanguageParser):
                             "formal_parameters",
                             "catch_clause",
                         ):
-                            # In variable_declarator, only skip the name position
+                            # In variable_declarator, skip identifiers in
+                            # the name subtree (including destructuring patterns)
                             if parent.type == "variable_declarator":
                                 name_child = parent.child_by_field_name("name")
                                 skip_ident = name_child is not None and (
@@ -825,6 +835,27 @@ class TypeScriptParser(BaseLanguageParser):
                                 )
                             else:
                                 skip_ident = True
+                        # Destructuring binding patterns inside variable_declarator
+                        # name subtree (e.g., const { a, b } = obj or const [x] = arr)
+                        elif parent.type in (
+                            "object_pattern",
+                            "array_pattern",
+                        ):
+                            # Walk ancestors to check if inside a binding context
+                            ancestor = parent
+                            while ancestor is not None:
+                                if ancestor.type == "variable_declarator":
+                                    name_child = ancestor.child_by_field_name("name")
+                                    if name_child is not None:
+                                        skip_ident = True
+                                    break
+                                if ancestor.type in (
+                                    "required_parameter",
+                                    "optional_parameter",
+                                ):
+                                    skip_ident = True
+                                    break
+                                ancestor = ancestor.parent
                         # Call target — already handled as "call"
                         elif parent.type == "call_expression":
                             func = parent.child_by_field_name("function")

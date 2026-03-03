@@ -2291,6 +2291,33 @@ function process() {
         usage_names = [r["text"] for r in usage_refs]
         # 'items' is used as the iterable — should be a usage ref
         assert "items" in usage_names
+        # 'item' should only appear once as usage (from the call argument),
+        # not from the binding site
+        item_usage_refs = [r for r in usage_refs if r["text"] == "item"]
+        assert len(item_usage_refs) == 1
+
+    @pytest.mark.asyncio
+    async def test_destructuring_bindings_not_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that destructured binding names are NOT extracted as usage refs."""
+        code = """
+const data = { name: "test", count: 42 };
+const { name, count } = data;
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        # 'data' on the RHS is a usage ref
+        assert "data" in usage_names
+        # 'name' and 'count' in the destructuring pattern are bindings, not usage
+        name_usage = [r for r in usage_refs if r["text"] == "name"]
+        count_usage = [r for r in usage_refs if r["text"] == "count"]
+        assert len(name_usage) == 0
+        assert len(count_usage) == 0
 
 
 class TestCommonJSRequireReferences:
@@ -2537,3 +2564,30 @@ class EventEmitter {
         prop_names = [s["name"] for s in prop_symbols]
         assert "listeners" in prop_names
         assert "maxListeners" in prop_names
+
+    @pytest.mark.asyncio
+    async def test_nested_function_this_not_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that this.x in a nested function inside constructor is NOT extracted."""
+        code = """
+class Wrapper {
+    constructor(name) {
+        this.name = name;
+        this.greet = function() {
+            this.greeting = "hello";
+        };
+    }
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        prop_symbols = [s for s in symbols if s["kind"] == "property"]
+        prop_names = [s["name"] for s in prop_symbols]
+        # 'name' and 'greet' are direct constructor assignments
+        assert "name" in prop_names
+        assert "greet" in prop_names
+        # 'greeting' is inside a nested function — this is rebound, should NOT be extracted
+        assert "greeting" not in prop_names
