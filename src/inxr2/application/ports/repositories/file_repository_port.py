@@ -322,7 +322,10 @@ class FileVersionPort(ABC):
 
     @abstractmethod
     async def get_commit_ids_for_files(
-        self, file_ids: list[int]
+        self,
+        file_ids: list[int],
+        repository_id: int | None = None,
+        branch: str | None = None,
     ) -> dict[int, list[int]]:
         """Get commit IDs linked to file versions via commit_files junction.
 
@@ -331,6 +334,8 @@ class FileVersionPort(ABC):
 
         Args:
             file_ids: List of file version IDs to look up
+            repository_id: Required when branch is provided
+            branch: When provided, only return commit IDs on this branch
 
         Returns:
             Dict mapping file_id to list of commit_ids.

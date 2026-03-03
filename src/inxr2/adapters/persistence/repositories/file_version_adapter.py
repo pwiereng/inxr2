@@ -216,7 +216,10 @@ class PostgresFileVersionRepository(FileVersionPort):
         return changed
 
     async def get_commit_ids_for_files(
-        self, file_ids: list[int]
+        self,
+        file_ids: list[int],
+        repository_id: int | None = None,
+        branch: str | None = None,
     ) -> dict[int, list[int]]:
         """Get commit IDs linked to file versions via commit_files."""
         if not file_ids:
@@ -226,12 +229,23 @@ class PostgresFileVersionRepository(FileVersionPort):
             select(CommitFileModel.file_id, CommitFileModel.commit_id)
             .join(CommitModel, CommitModel.id == CommitFileModel.commit_id)
             .where(CommitFileModel.file_id.in_(file_ids))
-            .order_by(
-                CommitFileModel.file_id,
-                CommitModel.commit_date.desc(),
-                CommitModel.id.desc(),
-            )
         )
+
+        if branch is not None and repository_id is not None:
+            query = query.join(
+                BranchCommitModel,
+                BranchCommitModel.commit_id == CommitModel.id,
+            ).where(
+                BranchCommitModel.branch == branch,
+                BranchCommitModel.repository_id == repository_id,
+            )
+
+        query = query.order_by(
+            CommitFileModel.file_id,
+            CommitModel.commit_date.desc(),
+            CommitModel.id.desc(),
+        )
+
         result = await self.session.execute(query)
         rows = result.all()
 
