@@ -1,6 +1,6 @@
 # INXR2 - Cross-Reference Code Browser
 
-A modern cross-reference code browser designed for teams working with git repositories. INXR2 enables developers to browse, search, and understand code across multiple repositories with powerful temporal navigation capabilities.
+This is a modern cross-reference code browser designed for teams working with git repositories. INXR2 enables developers to browse, search, and understand code across multiple repositories with powerful temporal navigation capabilities.
 
 ## Overview
 
