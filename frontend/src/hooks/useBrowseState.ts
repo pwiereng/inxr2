@@ -13,7 +13,7 @@
  */
 
 import { useRef, useMemo, useEffect } from 'react'
-import type { FileVersion, Repository } from '@/lib/api'
+import type { FileVersion } from '@/lib/api'
 import { useBrowseUrlState } from './useBrowseUrlState'
 import { useBrowseDiffState } from './useBrowseDiffState'
 import { useBrowseData } from './useBrowseData'
@@ -59,8 +59,6 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
   const resetRefsPanelRef = useRef<() => void>(() => {})
   const setErrorRef = useRef<(error: string | null) => void>(() => {})
   const fileVersionsRef = useRef<FileVersion[]>([])
-  const repositoryRef = useRef<Repository | null>(null)
-  const rightCommitRef = useRef<string | null>(null)
 
   // ========== 1. URL State ==========
   const urlResult = useBrowseUrlState(repoNameProp, { resetRefsPanelRef, setErrorRef })
@@ -69,7 +67,7 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
   const diffResult = useBrowseDiffState({
     urlState: urlResult.urlState,
     navigate: urlResult.navigate,
-    refs: { fileVersionsRef, repositoryRef, rightCommitRef },
+    refs: { fileVersionsRef },
   })
 
   // ========== 3. Data State ==========
@@ -82,22 +80,25 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
 
   // ========== 4. Computed State ==========
   const computedState = useMemo<BrowseComputedState>(() => {
-    const leftCommit =
+    // comparisonCommit = LEFT visual panel (from `diff` URL param)
+    const comparisonCommit =
+      urlResult.urlState.diffCommit || diffResult.diffFileVersions[0]?.commit_hash || null
+    // globalReferenceCommit = RIGHT visual panel (from `commit` URL param / top picker)
+    const globalReferenceCommit =
       urlResult.urlState.selectedCommit ||
       dataResult.latestBranchCommit ||
       dataResult.fileVersions[0]?.commit_hash
-    const rightCommit =
-      urlResult.urlState.diffCommit || diffResult.diffFileVersions[0]?.commit_hash || null
     const treeCommit = computeTreeCommit(
       urlResult.urlState,
       dataResult.fileVersions,
       diffResult.diffFileVersions,
       dataResult.latestBranchCommit
     )
+    // Visual layout: left panel = comparison, right panel = global reference
     const refCommit = urlResult.urlState.diffMode
       ? urlResult.urlState.refPanel === 'left'
-        ? leftCommit
-        : rightCommit
+        ? comparisonCommit
+        : globalReferenceCommit
       : urlResult.urlState.selectedCommit
     const currentCommitHash =
       urlResult.urlState.selectedCommit || dataResult.fileVersions[0]?.commit_hash
@@ -108,19 +109,47 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
         ? dataResult.fileVersions.some((v) => v.commit_hash === urlResult.urlState.selectedCommit)
         : true
 
+    // Determine temporal ordering of comparison vs reference commits by comparing dates.
+    // Look up each commit hash in file versions first, then fall back to
+    // commitDateMap (from getCommits) for commits that didn't modify the file.
+    let referenceIsNewer = false
+    let temporalOrderKnown = false
+    if (globalReferenceCommit && comparisonCommit) {
+      const referenceDate =
+        dataResult.fileVersions.find((v) => v.commit_hash === globalReferenceCommit)?.commit_date ??
+        dataResult.commitDateMap.get(globalReferenceCommit)
+      const comparisonDate =
+        diffResult.diffFileVersions.find((v) => v.commit_hash === comparisonCommit)?.commit_date ??
+        dataResult.fileVersions.find((v) => v.commit_hash === comparisonCommit)?.commit_date ??
+        dataResult.commitDateMap.get(comparisonCommit)
+      if (referenceDate && comparisonDate) {
+        const refDate = new Date(referenceDate)
+        const compDate = new Date(comparisonDate)
+        if (refDate > compDate) {
+          referenceIsNewer = true
+          temporalOrderKnown = true
+        } else if (refDate < compDate) {
+          temporalOrderKnown = true
+        }
+      }
+    }
+
     return {
-      leftCommit,
-      rightCommit,
+      comparisonCommit,
+      globalReferenceCommit,
       treeCommit,
       refCommit,
       currentCommitHash,
       fileChangedInCommit,
+      referenceIsNewer,
+      temporalOrderKnown,
     }
   }, [
     urlResult.urlState,
     dataResult.fileVersions,
     diffResult.diffFileVersions,
     dataResult.latestBranchCommit,
+    dataResult.commitDateMap,
   ])
 
   // ========== 4b. Sync resolved HEAD commit to URL for proper permalinks ==========
@@ -142,15 +171,13 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
     updateUrlParams: urlResult.updateUrlParams,
     navigate: urlResult.navigate,
     setRefPanel: urlResult.setRefPanel,
-    rightCommit: computedState.rightCommit,
+    comparisonCommit: computedState.comparisonCommit,
   })
 
   // ========== 6. Update refs with actual values ==========
   resetRefsPanelRef.current = refsResult.resetRefsPanel
   setErrorRef.current = dataResult.setError
   fileVersionsRef.current = dataResult.fileVersions
-  repositoryRef.current = dataResult.repository
-  rightCommitRef.current = computedState.rightCommit
 
   // ========== Assemble return value ==========
 
@@ -202,6 +229,7 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
     enterDiffMode: diffResult.enterDiffMode,
     exitDiffMode: diffResult.exitDiffMode,
     closePanel: diffResult.closePanel,
+    swapDiffPanels: diffResult.swapDiffPanels,
     setActivePanel: urlResult.setActivePanel,
     setTreePanel: urlResult.setTreePanel,
 

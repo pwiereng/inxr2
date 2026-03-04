@@ -459,7 +459,7 @@ describe('useBrowseState', () => {
       },
     ]
 
-    it('should enter diff mode by navigating with diff param', async () => {
+    it('should enter diff mode with diff set to current commit (both panels same)', async () => {
       mockGetFileHistory.mockResolvedValue({
         versions: mockVersions,
         path: 'src/main.py',
@@ -478,11 +478,11 @@ describe('useBrowseState', () => {
         result.current.actions.enterDiffMode()
       })
 
-      // Should navigate with diff param set to the next version
-      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('diff=def456'))
+      // Should navigate with diff param set to current commit (same version on both panels)
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('diff=abc123'))
     })
 
-    it('should enter cross-branch diff mode when only one version exists', async () => {
+    it('should enter diff mode with single version (diff set to that version)', async () => {
       mockGetFileHistory.mockResolvedValue({
         versions: [mockVersions[0]!],
         path: 'src/main.py',
@@ -501,11 +501,9 @@ describe('useBrowseState', () => {
         result.current.actions.enterDiffMode()
       })
 
-      // Should navigate with diffBranch for cross-branch comparison
-      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('diffBranch='))
-      // Should NOT have a diff param (since no other version)
+      // Should navigate with diff param set to current commit
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
-      expect(navigatedUrl).not.toMatch(/[?&]diff=/)
+      expect(navigatedUrl).toContain('diff=abc123')
     })
 
     it('should preserve drawer state but clear search context when entering diff mode', async () => {
@@ -561,9 +559,9 @@ describe('useBrowseState', () => {
       expect(navigatedUrl).not.toContain('diff=')
     })
 
-    it('should switch to right panel version when closing left panel', async () => {
-      // In diff mode with left=abc123 (main) and right=def456 (feature branch)
-      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&diffBranch=feature')
+    it('should exit diff mode when closing left (comparison) panel', async () => {
+      // Layout: left=comparison (diff param), right=current (commit param)
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=main')
       mockGetFileHistory.mockResolvedValue({
         versions: mockVersions,
         path: 'src/main.py',
@@ -581,44 +579,18 @@ describe('useBrowseState', () => {
         result.current.actions.closePanel('left')
       })
 
-      // Should navigate to the right panel's version and branch
+      // Should exit diff mode, keeping current version
       expect(mockNavigate).toHaveBeenCalled()
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
-      expect(navigatedUrl).toContain('commit=def456')
-      expect(navigatedUrl).toContain('branch=feature')
+      expect(navigatedUrl).toContain('commit=abc123')
+      expect(navigatedUrl).toContain('branch=main')
       // Should not have diff params
       expect(navigatedUrl).not.toContain('diff=')
-      expect(navigatedUrl).not.toContain('diffBranch=')
     })
 
-    it('should preserve selectedBranch when closing left panel in same-branch diff mode', async () => {
-      // Same-branch diff mode: diff param set, no diffBranch
-      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=feature')
-      mockGetFileHistory.mockResolvedValue({
-        versions: mockVersions,
-        path: 'src/main.py',
-        repository_name: 'test-repo',
-        total: 3,
-      })
-
-      const { result } = await renderBrowseStateHook()
-
-      await vi.waitFor(() => {
-        expect(result.current.dataState.fileVersions.length).toBe(3)
-      })
-
-      act(() => {
-        result.current.actions.closePanel('left')
-      })
-
-      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
-      // Should fall back to selectedBranch since diffBranch is absent
-      expect(navigatedUrl).toContain('branch=feature')
-    })
-
-    it('should switch to left panel version when closing right panel', async () => {
-      // In diff mode with left=abc123 (main) and right=def456 (feature branch)
-      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=main')
+    it('should switch to comparison version when closing right (current) panel', async () => {
+      // Layout: left=comparison (diff=def456, diffBranch=feature), right=current (commit=abc123)
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&diffBranch=feature')
       mockGetFileHistory.mockResolvedValue({
         versions: mockVersions,
         path: 'src/main.py',
@@ -636,13 +608,98 @@ describe('useBrowseState', () => {
         result.current.actions.closePanel('right')
       })
 
-      // Should keep the left panel's version (exit diff mode)
+      // Should navigate to the comparison's version and branch
       expect(mockNavigate).toHaveBeenCalled()
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
-      expect(navigatedUrl).toContain('commit=abc123')
-      expect(navigatedUrl).toContain('branch=main')
+      expect(navigatedUrl).toContain('commit=def456')
+      expect(navigatedUrl).toContain('branch=feature')
       // Should not have diff params
       expect(navigatedUrl).not.toContain('diff=')
+      expect(navigatedUrl).not.toContain('diffBranch=')
+    })
+
+    it('should use selectedBranch when closing right panel in same-branch diff mode', async () => {
+      // Same-branch diff mode: no diffBranch, falls back to selectedBranch
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=feature')
+      mockGetFileHistory.mockResolvedValue({
+        versions: mockVersions,
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 3,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(3)
+      })
+
+      act(() => {
+        result.current.actions.closePanel('right')
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).toContain('commit=def456')
+      // Should fall back to selectedBranch since diffBranch is absent
+      expect(navigatedUrl).toContain('branch=feature')
+    })
+
+    it('should swap commit and diff params when swapping panels', async () => {
+      mockSearchParams = new URLSearchParams(
+        'commit=abc123&diff=def456&branch=main&diffBranch=feature'
+      )
+      mockGetFileHistory.mockResolvedValue({
+        versions: mockVersions,
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 3,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(3)
+      })
+
+      act(() => {
+        result.current.actions.swapDiffPanels()
+      })
+
+      expect(mockNavigate).toHaveBeenCalled()
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      // Old diff becomes new commit, old commit becomes new diff
+      expect(navigatedUrl).toContain('commit=def456')
+      expect(navigatedUrl).toContain('diff=abc123')
+      // Branches swap too
+      expect(navigatedUrl).toContain('branch=feature')
+      expect(navigatedUrl).toContain('diffBranch=main')
+    })
+
+    it('should swap panels in same-branch diff mode (no diffBranch)', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=main')
+      mockGetFileHistory.mockResolvedValue({
+        versions: mockVersions,
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 3,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(3)
+      })
+
+      act(() => {
+        result.current.actions.swapDiffPanels()
+      })
+
+      expect(mockNavigate).toHaveBeenCalled()
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).toContain('commit=def456')
+      expect(navigatedUrl).toContain('diff=abc123')
+      // branch should remain set on the main panel
+      expect(navigatedUrl).toContain('branch=main')
     })
   })
 
@@ -1293,8 +1350,8 @@ describe('useBrowseState', () => {
   })
 
   describe('handleRefPanelClick in diff mode', () => {
-    it('should use diffCommit when refPanel is right', async () => {
-      // In diff mode with refs panel showing the right (diff) side
+    it('should use selectedCommit when refPanel is right (current/reference panel)', async () => {
+      // In diff mode with refs panel showing the right (current) side
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&rp=r&refs=1')
       const { result } = await renderBrowseStateHook()
 
@@ -1305,13 +1362,13 @@ describe('useBrowseState', () => {
         })
       })
 
-      // Should navigate with diffCommit (def456), not selectedCommit
-      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=def456'))
+      // Right panel = current version → should navigate with selectedCommit (abc123)
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('line=42'))
     })
 
-    it('should use selectedCommit when refPanel is left', async () => {
-      // In diff mode with refs panel showing the left (selected) side
+    it('should use diffCommit when refPanel is left (comparison panel)', async () => {
+      // In diff mode with refs panel showing the left (comparison) side
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&refs=1')
       const { result } = await renderBrowseStateHook()
 
@@ -1322,14 +1379,14 @@ describe('useBrowseState', () => {
         })
       })
 
-      // Should navigate with selectedCommit (abc123), not diffCommit
-      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
+      // Left panel = comparison → should navigate with diffCommit (def456)
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=def456'))
     })
 
     it('should use refPanel not activePanel to determine commit', async () => {
       // Bug regression test: activePanel is right (user last clicked right panel),
-      // but refPanel is left (references are for left panel's code).
-      // Should use left side's commit.
+      // but refPanel is left (references are for left/comparison panel's code).
+      // Should use comparison side's commit.
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&ap=r&refs=1')
       const { result } = await renderBrowseStateHook()
 
@@ -1344,15 +1401,15 @@ describe('useBrowseState', () => {
         })
       })
 
-      // Should use selectedCommit (abc123) because refPanel is 'left',
+      // Should use diffCommit (def456) because refPanel is 'left' (comparison),
       // even though activePanel is 'right'
-      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=def456'))
     })
 
-    it('should preserve diffBranch when refPanel is right', async () => {
-      // Bug regression test: when viewing references for the right (diff) panel
+    it('should preserve diffBranch when refPanel is left (comparison panel)', async () => {
+      // When viewing references for the left (comparison) panel
       // which is on a different branch, clicking should navigate to that branch
-      mockSearchParams = new URLSearchParams('commit=abc123&diffBranch=feature-branch&rp=r&refs=1')
+      mockSearchParams = new URLSearchParams('commit=abc123&diffBranch=feature-branch&refs=1')
       const { result } = await renderBrowseStateHook()
 
       act(() => {
@@ -1362,30 +1419,15 @@ describe('useBrowseState', () => {
         })
       })
 
-      // Should navigate with diffBranch preserved
+      // Left panel = comparison → should navigate with diffBranch preserved
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature-branch'))
     })
 
-    it('should preserve selectedBranch when refPanel is left', async () => {
-      // When viewing references for the left panel on a specific branch
-      mockSearchParams = new URLSearchParams('branch=develop&diffBranch=feature&rp=l&refs=1')
-      const { result } = await renderBrowseStateHook()
-
-      act(() => {
-        result.current.actions.handleRefPanelClick({
-          source_file_path: 'src/other.py',
-          source_line: 42,
-        })
-      })
-
-      // Should navigate with selectedBranch (develop), not diffBranch
-      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=develop'))
-      expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('branch=feature'))
-    })
-
-    it('should fall back to selectedBranch when refPanel is right in same-branch diff mode', async () => {
-      // Same-branch diff mode: diff param set, no diffBranch, refPanel on right
-      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=feature&rp=r&refs=1')
+    it('should not inject stale commit when only diffBranch is set on comparison side', async () => {
+      // diffBranch-only diff mode: URL has diffBranch but no diff (and no explicit commit)
+      // When viewing references for the left (comparison) panel, navigation should use
+      // only branch=diffBranch and must not inject a stale commit hash.
+      mockSearchParams = new URLSearchParams('diffBranch=feature-branch&refs=1')
       const { result } = await renderBrowseStateHook()
 
       act(() => {
@@ -1396,7 +1438,42 @@ describe('useBrowseState', () => {
       })
 
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
-      // Should fall back to selectedBranch since diffBranch is absent
+      expect(navigatedUrl).toContain('branch=feature-branch')
+      // Should not inject any commit hash when operating in diffBranch-only mode
+      expect(navigatedUrl).not.toContain('commit=')
+    })
+
+    it('should preserve selectedBranch when refPanel is right (current panel)', async () => {
+      // When viewing references for the right (current) panel on a specific branch
+      mockSearchParams = new URLSearchParams('branch=develop&diffBranch=feature&rp=r&refs=1')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.handleRefPanelClick({
+          source_file_path: 'src/other.py',
+          source_line: 42,
+        })
+      })
+
+      // Right panel = current → should navigate with selectedBranch (develop), not diffBranch
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=develop'))
+      expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('branch=feature'))
+    })
+
+    it('should fall back to selectedBranch when refPanel is left in same-branch diff mode', async () => {
+      // Same-branch diff mode: diff param set, no diffBranch, refPanel on left
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=feature&refs=1')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.handleRefPanelClick({
+          source_file_path: 'src/other.py',
+          source_line: 42,
+        })
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      // Left panel = comparison → should fall back to selectedBranch since diffBranch is absent
       expect(navigatedUrl).toContain('branch=feature')
     })
   })
@@ -1419,8 +1496,8 @@ describe('useBrowseState', () => {
       docstring: null,
     }
 
-    it('should use diffCommit when refPanel is right', async () => {
-      // In diff mode with refs panel showing the right (diff) side
+    it('should use selectedCommit when refPanel is right (current/reference panel)', async () => {
+      // In diff mode with refs panel showing the right (current) side
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&rp=r&refs=1')
       const { result } = await renderBrowseStateHook()
 
@@ -1428,14 +1505,14 @@ describe('useBrowseState', () => {
         result.current.actions.handleDefinitionClick(mockSymbol)
       })
 
-      // Should navigate with diffCommit (def456), not selectedCommit
-      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=def456'))
+      // Right panel = current version → should navigate with selectedCommit (abc123)
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('line=10'))
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('src/target.py'))
     })
 
-    it('should use selectedCommit when refPanel is left', async () => {
-      // In diff mode with refs panel showing the left (selected) side
+    it('should use diffCommit when refPanel is left (comparison panel)', async () => {
+      // In diff mode with refs panel showing the left (comparison) side
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&refs=1')
       const { result } = await renderBrowseStateHook()
 
@@ -1443,14 +1520,14 @@ describe('useBrowseState', () => {
         result.current.actions.handleDefinitionClick(mockSymbol)
       })
 
-      // Should navigate with selectedCommit (abc123), not diffCommit
-      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
+      // Left panel = comparison → should navigate with diffCommit (def456)
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=def456'))
     })
 
     it('should use refPanel not activePanel to determine commit', async () => {
       // Bug regression test: activePanel is right (user last clicked right panel),
-      // but refPanel is left (references are for left panel's code).
-      // Should use left side's commit.
+      // but refPanel is left (references are for left/comparison panel's code).
+      // Should use comparison side's commit.
       mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&ap=r&refs=1')
       const { result } = await renderBrowseStateHook()
 
@@ -1462,9 +1539,9 @@ describe('useBrowseState', () => {
         result.current.actions.handleDefinitionClick(mockSymbol)
       })
 
-      // Should use selectedCommit (abc123) because refPanel is 'left',
+      // Should use diffCommit (def456) because refPanel is 'left' (comparison),
       // even though activePanel is 'right'
-      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=abc123'))
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('commit=def456'))
     })
 
     it('should not navigate if symbol has no file_path', async () => {
@@ -1478,37 +1555,37 @@ describe('useBrowseState', () => {
       expect(mockNavigate).not.toHaveBeenCalled()
     })
 
-    it('should preserve diffBranch when refPanel is right', async () => {
-      // Bug regression test: when viewing definition for the right (diff) panel
+    it('should preserve diffBranch when refPanel is left (comparison panel)', async () => {
+      // When viewing definition for the left (comparison) panel
       // which is on a different branch, clicking should navigate to that branch
-      mockSearchParams = new URLSearchParams('commit=abc123&diffBranch=feature-branch&rp=r&refs=1')
+      mockSearchParams = new URLSearchParams('commit=abc123&diffBranch=feature-branch&refs=1')
       const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.handleDefinitionClick(mockSymbol)
       })
 
-      // Should navigate with diffBranch preserved
+      // Left panel = comparison → should navigate with diffBranch preserved
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=feature-branch'))
     })
 
-    it('should preserve selectedBranch when refPanel is left', async () => {
-      // When viewing definition for the left panel on a specific branch
-      mockSearchParams = new URLSearchParams('branch=develop&diffBranch=feature&rp=l&refs=1')
+    it('should preserve selectedBranch when refPanel is right (current panel)', async () => {
+      // When viewing definition for the right (current) panel on a specific branch
+      mockSearchParams = new URLSearchParams('branch=develop&diffBranch=feature&rp=r&refs=1')
       const { result } = await renderBrowseStateHook()
 
       act(() => {
         result.current.actions.handleDefinitionClick(mockSymbol)
       })
 
-      // Should navigate with selectedBranch (develop), not diffBranch
+      // Right panel = current → should navigate with selectedBranch (develop), not diffBranch
       expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('branch=develop'))
       expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('branch=feature'))
     })
 
-    it('should fall back to selectedBranch when refPanel is right in same-branch diff mode', async () => {
-      // Same-branch diff mode: diff param set, no diffBranch, refPanel on right
-      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=feature&rp=r&refs=1')
+    it('should fall back to selectedBranch when refPanel is left in same-branch diff mode', async () => {
+      // Same-branch diff mode: diff param set, no diffBranch, refPanel on left
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&branch=feature&refs=1')
       const { result } = await renderBrowseStateHook()
 
       act(() => {
@@ -1516,7 +1593,7 @@ describe('useBrowseState', () => {
       })
 
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
-      // Should fall back to selectedBranch since diffBranch is absent
+      // Left panel = comparison → should fall back to selectedBranch since diffBranch is absent
       expect(navigatedUrl).toContain('branch=feature')
     })
   })
@@ -1817,7 +1894,8 @@ describe('useBrowseState', () => {
 
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
       expect(navigatedUrl).toContain('co=1')
-      expect(navigatedUrl).toContain('diff=def456')
+      // enterDiffMode now sets diff to current commit (both panels same initially)
+      expect(navigatedUrl).toContain('diff=abc123')
     })
 
     it('should preserve co=1 when exiting diff mode', async () => {
@@ -2138,9 +2216,9 @@ describe('useBrowseState', () => {
     })
   })
 
-  describe('leftCommit uses latestBranchCommit fallback', () => {
-    it('should use latestBranchCommit for leftCommit when no selectedCommit', async () => {
-      // Regression: leftCommit fell through to fileVersions[0].commit_hash,
+  describe('globalReferenceCommit uses latestBranchCommit fallback', () => {
+    it('should use latestBranchCommit for globalReferenceCommit when no selectedCommit', async () => {
+      // Regression: globalReferenceCommit fell through to fileVersions[0].commit_hash,
       // which could differ from the branch HEAD shown in the header.
       mockSearchParams = new URLSearchParams('branch=feature')
 
@@ -2184,16 +2262,16 @@ describe('useBrowseState', () => {
 
       // Wait for latestBranchCommit to resolve
       await vi.waitFor(() => {
-        expect(result.current.computedState.leftCommit).toBe('branch-head-abc')
+        expect(result.current.computedState.globalReferenceCommit).toBe('branch-head-abc')
       })
 
-      // leftCommit should be the branch HEAD, NOT the file version
-      expect(result.current.computedState.leftCommit).not.toBe('file-version-xyz')
+      // globalReferenceCommit should be the branch HEAD, NOT the file version
+      expect(result.current.computedState.globalReferenceCommit).not.toBe('file-version-xyz')
     })
 
-    it('should use latestBranchCommit for treeCommit in diff mode when treePanel is left', async () => {
-      // In diff mode with treePanel=left, treeCommit = leftCommit.
-      // leftCommit should use latestBranchCommit (branch HEAD), not fileVersions[0].
+    it('should use diff commit for treeCommit in diff mode when treePanel is left', async () => {
+      // Visual layout: left panel = comparison (diff param), right panel = current (commit param)
+      // In diff mode with treePanel=left (default), treeCommit should use the diff commit (left visual panel)
       mockSearchParams = new URLSearchParams('diff=other-commit&branch=feature&co=1')
 
       mockGetCommits.mockResolvedValue({
@@ -2234,14 +2312,14 @@ describe('useBrowseState', () => {
 
       // Wait for latestBranchCommit to resolve
       await vi.waitFor(() => {
-        expect(result.current.computedState.leftCommit).toBe('branch-head-abc')
+        expect(result.current.computedState.globalReferenceCommit).toBe('branch-head-abc')
       })
 
-      // In diff mode with treePanel=left (default), treeCommit should equal leftCommit
-      expect(result.current.computedState.treeCommit).toBe('branch-head-abc')
+      // treePanel=left → left visual panel → comparison (diff commit = 'other-commit')
+      expect(result.current.computedState.treeCommit).toBe('other-commit')
     })
 
-    it('should still use selectedCommit for leftCommit when explicitly set', async () => {
+    it('should still use selectedCommit for globalReferenceCommit when explicitly set', async () => {
       // When a specific commit is selected, it should take priority over latestBranchCommit
       mockSearchParams = new URLSearchParams('commit=explicit-commit&branch=feature')
 
@@ -2269,8 +2347,8 @@ describe('useBrowseState', () => {
         expect(result.current.dataState.repository).not.toBeNull()
       })
 
-      // leftCommit should be the explicitly selected commit
-      expect(result.current.computedState.leftCommit).toBe('explicit-commit')
+      // globalReferenceCommit should be the explicitly selected commit
+      expect(result.current.computedState.globalReferenceCommit).toBe('explicit-commit')
     })
 
     it('should fall back to fileVersions when latestBranchCommit is also null', async () => {
@@ -2302,7 +2380,152 @@ describe('useBrowseState', () => {
       })
 
       // With no selectedCommit and no latestBranchCommit, falls back to fileVersions[0]
-      expect(result.current.computedState.leftCommit).toBe('file-version-xyz')
+      expect(result.current.computedState.globalReferenceCommit).toBe('file-version-xyz')
+    })
+  })
+
+  describe('referenceIsNewer computed state (issue #196)', () => {
+    it('should set referenceIsNewer=true when reference commit is chronologically newer', async () => {
+      // Simulate diff mode where the reference (selectedCommit, right panel) is newer than comparison (diffCommit, left panel)
+      mockSearchParams = new URLSearchParams('commit=newer-abc&diff=older-xyz')
+
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 2,
+            commit_hash: 'newer-abc',
+            short_hash: 'newer',
+            commit_date: '2024-02-01T00:00:00Z',
+            message: 'Newer commit',
+            content_hash: 'hash2',
+          },
+          {
+            commit_id: 1,
+            commit_hash: 'older-xyz',
+            short_hash: 'older',
+            commit_date: '2024-01-01T00:00:00Z',
+            message: 'Older commit',
+            content_hash: 'hash1',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 2,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.computedState.globalReferenceCommit).toBe('newer-abc')
+      })
+
+      expect(result.current.computedState.referenceIsNewer).toBe(true)
+      expect(result.current.computedState.temporalOrderKnown).toBe(true)
+    })
+
+    it('should set referenceIsNewer=false when reference commit is chronologically older', async () => {
+      // Normal case: reference (right panel) is older than comparison (left panel)
+      mockSearchParams = new URLSearchParams('commit=older-abc&diff=newer-xyz')
+
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 2,
+            commit_hash: 'newer-xyz',
+            short_hash: 'newer',
+            commit_date: '2024-02-01T00:00:00Z',
+            message: 'Newer commit',
+            content_hash: 'hash2',
+          },
+          {
+            commit_id: 1,
+            commit_hash: 'older-abc',
+            short_hash: 'older',
+            commit_date: '2024-01-01T00:00:00Z',
+            message: 'Older commit',
+            content_hash: 'hash1',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 2,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.computedState.globalReferenceCommit).toBe('older-abc')
+      })
+
+      expect(result.current.computedState.referenceIsNewer).toBe(false)
+      expect(result.current.computedState.temporalOrderKnown).toBe(true)
+    })
+
+    it('should set referenceIsNewer=false when not in diff mode', async () => {
+      // No diff mode — comparisonCommit is null, so referenceIsNewer should be false
+      mockSearchParams = new URLSearchParams('commit=some-commit')
+
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 1,
+            commit_hash: 'some-commit',
+            short_hash: 'some-c',
+            commit_date: '2024-01-01T00:00:00Z',
+            message: 'Some commit',
+            content_hash: 'hash1',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 1,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.computedState.globalReferenceCommit).toBe('some-commit')
+      })
+
+      expect(result.current.computedState.referenceIsNewer).toBe(false)
+      expect(result.current.computedState.temporalOrderKnown).toBe(false)
+    })
+
+    it('should set referenceIsNewer=false when commits have the same date', async () => {
+      mockSearchParams = new URLSearchParams('commit=commit-a&diff=commit-b')
+
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 1,
+            commit_hash: 'commit-a',
+            short_hash: 'cmta',
+            commit_date: '2024-01-01T00:00:00Z',
+            message: 'Commit A',
+            content_hash: 'hash1',
+          },
+          {
+            commit_id: 2,
+            commit_hash: 'commit-b',
+            short_hash: 'cmtb',
+            commit_date: '2024-01-01T00:00:00Z',
+            message: 'Commit B',
+            content_hash: 'hash2',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 2,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.computedState.globalReferenceCommit).toBe('commit-a')
+      })
+
+      expect(result.current.computedState.referenceIsNewer).toBe(false)
+      expect(result.current.computedState.temporalOrderKnown).toBe(false)
     })
   })
 

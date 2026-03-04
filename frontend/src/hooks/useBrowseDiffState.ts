@@ -10,15 +10,12 @@ import {
   type FileSymbol,
   type FileReference,
   type FileVersion,
-  type Repository,
 } from '@/lib/api'
 import type { BrowseUrlState } from './useBrowseTypes'
 import { encodeFilePath } from './useBrowseUrlState'
 
 export interface UseBrowseDiffStateRefs {
   fileVersionsRef: MutableRefObject<FileVersion[]>
-  repositoryRef: MutableRefObject<Repository | null>
-  rightCommitRef: MutableRefObject<string | null>
 }
 
 export interface UseBrowseDiffStateParams {
@@ -36,6 +33,7 @@ export interface UseBrowseDiffStateResult {
   enterDiffMode: () => void
   exitDiffMode: () => void
   closePanel: (panel: 'left' | 'right') => void
+  swapDiffPanels: () => void
 }
 
 export function useBrowseDiffState({
@@ -137,17 +135,10 @@ export function useBrowseDiffState({
     if (!urlState.filePath) return
 
     const fileVersions = refs.fileVersionsRef.current
-    const repository = refs.repositoryRef.current
 
-    const currentIndex = fileVersions.findIndex(
-      (v) => v.commit_hash === (urlState.selectedCommit || fileVersions[0]?.commit_hash)
-    )
-    let diffTarget: string | null = null
-    if (currentIndex >= 0 && currentIndex < fileVersions.length - 1) {
-      diffTarget = fileVersions[currentIndex + 1]?.commit_hash || null
-    } else if (fileVersions.length > 1) {
-      diffTarget = fileVersions[1]?.commit_hash || null
-    }
+    // Set diff to current commit — both panels show same version initially.
+    // User picks a different version on the left panel to start comparing.
+    const currentCommit = urlState.selectedCommit || fileVersions[0]?.commit_hash
 
     const params = new URLSearchParams()
     if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
@@ -160,19 +151,14 @@ export function useBrowseDiffState({
     // Preserve changedOnly state
     if (urlState.changedOnly) params.set('co', '1')
 
-    if (diffTarget) {
-      // Compare against a different version on the same branch
-      params.set('diff', diffTarget)
-    } else {
-      // No other versions available - enter cross-branch comparison mode
-      // Set diffBranch to current branch so user can change it
-      params.set('diffBranch', urlState.selectedBranch || repository?.default_branch || 'main')
+    if (currentCommit) {
+      params.set('diff', currentCommit)
     }
 
     navigate(
       `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
     )
-  }, [navigate, urlState, refs.fileVersionsRef, refs.repositoryRef])
+  }, [navigate, urlState, refs.fileVersionsRef])
 
   const exitDiffMode = useCallback(() => {
     if (!urlState.filePath) return
@@ -201,32 +187,65 @@ export function useBrowseDiffState({
     (panel: 'left' | 'right') => {
       if (!urlState.filePath) return
 
-      // When closing left panel, switch to the right panel's version/branch
+      // Layout: left=comparison (diff param), right=current (commit param synced with top picker)
+
       if (panel === 'left') {
-        const params = new URLSearchParams()
-        if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
-        // Use the effective right commit (could be from diffCommit or diffFileVersions)
-        const rightCommit = refs.rightCommitRef.current
-        if (rightCommit) params.set('commit', rightCommit)
-        // Preserve drawer state only - closing panel clears search context
-        if (!urlState.drawerOpen) params.set('drawer', '0')
-        // Don't preserve refs, searchQuery - closing panel is a context change
-        // When closing left panel, the diff side becomes the main view - prefer diffBranch,
-        // but fall back to selectedBranch for same-branch diff mode
-        const rightBranch = urlState.diffBranch ?? urlState.selectedBranch
-        if (rightBranch) params.set('branch', rightBranch)
-        // Preserve changedOnly state
-        if (urlState.changedOnly) params.set('co', '1')
-        navigate(
-          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
-        )
+        // Closing comparison (left) panel — just exit diff mode, keep current version
+        exitDiffMode()
         return
       }
-      // Closing right panel - keep the left panel's version/branch
-      exitDiffMode()
+
+      // Closing current (right) panel — switch to comparison's version/branch
+      const params = new URLSearchParams()
+      if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
+      // The comparison commit (currently on left) becomes the new current version
+      if (urlState.diffCommit) params.set('commit', urlState.diffCommit)
+      // Preserve drawer state only - closing panel clears search context
+      if (!urlState.drawerOpen) params.set('drawer', '0')
+      // Use the comparison's branch (diffBranch, or fall back to selectedBranch)
+      const newBranch = urlState.diffBranch ?? urlState.selectedBranch
+      if (newBranch) params.set('branch', newBranch)
+      // Preserve changedOnly state
+      if (urlState.changedOnly) params.set('co', '1')
+      navigate(
+        `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
+      )
     },
-    [navigate, urlState, exitDiffMode, refs.rightCommitRef]
+    [navigate, urlState, exitDiffMode]
   )
+
+  const swapDiffPanels = useCallback(() => {
+    if (!urlState.filePath) return
+    const fileVersions = refs.fileVersionsRef.current
+
+    const currentCommit = urlState.selectedCommit || fileVersions[0]?.commit_hash
+    const currentDiff = urlState.diffCommit
+
+    const params = new URLSearchParams()
+    if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
+    // Old diff → new commit (right panel)
+    if (currentDiff) params.set('commit', currentDiff)
+    // Old commit → new diff (left panel)
+    if (currentCommit) params.set('diff', currentCommit)
+    // Swap branches too
+    const newBranch = urlState.diffBranch ?? urlState.selectedBranch
+    if (newBranch) params.set('branch', newBranch)
+    // Only set diffBranch when the original diff was cross-branch
+    if (
+      urlState.diffBranch &&
+      urlState.selectedBranch &&
+      urlState.selectedBranch !== urlState.diffBranch
+    ) {
+      params.set('diffBranch', urlState.selectedBranch)
+    }
+    // Preserve other state
+    if (!urlState.drawerOpen) params.set('drawer', '0')
+    if (urlState.changedOnly) params.set('co', '1')
+
+    navigate(
+      `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
+    )
+  }, [navigate, urlState, refs.fileVersionsRef])
 
   return {
     diffContent,
@@ -237,5 +256,6 @@ export function useBrowseDiffState({
     enterDiffMode,
     exitDiffMode,
     closePanel,
+    swapDiffPanels,
   }
 }
