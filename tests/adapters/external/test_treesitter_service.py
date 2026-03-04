@@ -2642,7 +2642,7 @@ export { baz }
         usage_refs = [
             r for r in references if r["type"] == "usage" and r["text"] == "baz"
         ]
-        assert len(usage_refs) >= 1
+        assert len(usage_refs) == 1
 
         # Should NOT have from_module
         for ref in usage_refs:
@@ -2682,7 +2682,7 @@ export default myFunction
         usage_refs = [
             r for r in references if r["type"] == "usage" and r["text"] == "myFunction"
         ]
-        assert len(usage_refs) >= 1
+        assert len(usage_refs) == 1
 
     @pytest.mark.asyncio
     async def test_barrel_reexport(self, parser_service: TreeSitterService) -> None:
