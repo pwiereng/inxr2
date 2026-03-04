@@ -697,7 +697,7 @@ class TypeScriptParser(BaseLanguageParser):
                         c.type in ("export_clause", "namespace_export")
                         for c in node.children
                     )
-                    if not has_clause and source_node:
+                    if not has_clause:
                         add_reference(
                             self._make_reference(
                                 export_from,
