@@ -676,18 +676,17 @@ class TypeScriptParser(BaseLanguageParser):
                                         )
                     elif child.type == "namespace_export":
                         # export * as ns from './module'
-                        ns_name = get_name_from_node(child)
-                        if ns_name and export_from:
-                            ns_node = None
-                            for sub in child.children:
-                                if sub.type == "identifier":
-                                    ns_node = sub
-                                    break
+                        ns_node = None
+                        for sub in child.children:
+                            if sub.type == "identifier":
+                                ns_node = sub
+                                break
+                        if ns_node and export_from:
                             add_reference(
                                 self._make_reference(
-                                    ns_name,
+                                    get_text(ns_node),
                                     "import",
-                                    ns_node or child,
+                                    ns_node,
                                     from_module=export_from,
                                 )
                             )
