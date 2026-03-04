@@ -2591,3 +2591,234 @@ class Wrapper {
         assert "greet" in prop_names
         # 'greeting' is inside a nested function — this is rebound, should NOT be extracted
         assert "greeting" not in prop_names
+
+
+class TestExportAndShorthandReferences:
+    """Tests for ES6 export patterns and shorthand property references (#202)."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    # --- Group A: Export patterns ---
+
+    @pytest.mark.asyncio
+    async def test_named_reexport_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Named re-exports should create import references with from_module."""
+        code = """
+export { foo, bar } from './module'
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        import_refs = [r for r in references if r["type"] == "import"]
+        import_names = [r["text"] for r in import_refs]
+        assert "foo" in import_names
+        assert "bar" in import_names
+
+        # Each should have from_module set
+        for ref in import_refs:
+            if ref["text"] in ("foo", "bar"):
+                assert ref.get("from_module") == "./module"
+
+    @pytest.mark.asyncio
+    async def test_local_named_export_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Local named exports should create usage references (no from_module)."""
+        code = """
+const baz = 42;
+export { baz }
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        # baz should appear as a usage reference from the export
+        usage_refs = [
+            r for r in references if r["type"] == "usage" and r["text"] == "baz"
+        ]
+        assert len(usage_refs) >= 1
+
+        # Should NOT have from_module
+        for ref in usage_refs:
+            assert ref.get("from_module") is None
+
+    @pytest.mark.asyncio
+    async def test_named_reexport_with_alias(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Re-export with alias should reference the original name."""
+        code = """
+export { foo as bar } from './module'
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        import_refs = [r for r in references if r["type"] == "import"]
+        import_names = [r["text"] for r in import_refs]
+        # The reference should be to the original name 'foo', not the alias 'bar'
+        assert "foo" in import_names
+        assert "bar" not in import_names
+
+    @pytest.mark.asyncio
+    async def test_default_export_identifier_reference(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """export default identifier should create a usage reference."""
+        code = """
+function myFunction() {}
+export default myFunction
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        usage_refs = [
+            r for r in references if r["type"] == "usage" and r["text"] == "myFunction"
+        ]
+        assert len(usage_refs) >= 1
+
+    @pytest.mark.asyncio
+    async def test_barrel_reexport(self, parser_service: TreeSitterService) -> None:
+        """Barrel re-export should create an import reference to the module path."""
+        code = """
+export * from './utils'
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        import_refs = [r for r in references if r["type"] == "import"]
+        module_refs = [r for r in import_refs if r["text"] == "./utils"]
+        assert len(module_refs) == 1
+        assert module_refs[0].get("from_module") == "./utils"
+
+    @pytest.mark.asyncio
+    async def test_namespace_reexport(self, parser_service: TreeSitterService) -> None:
+        """Namespace re-export should create an import reference for the alias."""
+        code = """
+export * as ns from './helpers'
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        import_refs = [r for r in references if r["type"] == "import"]
+        ns_refs = [r for r in import_refs if r["text"] == "ns"]
+        assert len(ns_refs) == 1
+        assert ns_refs[0].get("from_module") == "./helpers"
+
+    @pytest.mark.asyncio
+    async def test_reexport_no_duplicate_usage_refs(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Re-export identifiers should NOT also appear as usage references."""
+        code = """
+export { foo, bar } from './module'
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        # foo/bar should only be "import" type, not also "usage"
+        usage_refs = [
+            r
+            for r in references
+            if r["type"] == "usage" and r["text"] in ("foo", "bar")
+        ]
+        assert len(usage_refs) == 0
+
+    # --- Group B: Shorthand properties and CommonJS patterns ---
+
+    @pytest.mark.asyncio
+    async def test_shorthand_property_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Shorthand properties in object literals should be usage references."""
+        code = """
+const sync = () => {};
+const connect = () => {};
+module.exports = { sync, connect }
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "sync" in usage_names
+        assert "connect" in usage_names
+
+    @pytest.mark.asyncio
+    async def test_shorthand_property_in_plain_object(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Shorthand properties in regular objects should also be captured."""
+        code = """
+const foo = 1;
+const bar = 2;
+const obj = { foo, bar, baz: 3 }
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "foo" in usage_names
+        assert "bar" in usage_names
+
+    @pytest.mark.asyncio
+    async def test_commonjs_rhs_reference(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """CommonJS export RHS values should be usage references."""
+        code = """
+function handler() {}
+exports.foo = handler
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "handler" in usage_names
+
+    @pytest.mark.asyncio
+    async def test_module_exports_single_fn(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """module.exports = singleFn should create a usage reference."""
+        code = """
+function singleFn() {}
+module.exports = singleFn
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "singleFn" in usage_names
+
+    @pytest.mark.asyncio
+    async def test_spread_in_exports(self, parser_service: TreeSitterService) -> None:
+        """Spread elements in export objects should create usage references."""
+        code = """
+const defaults = {};
+module.exports = { ...defaults, override: true }
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_names = [r["text"] for r in usage_refs]
+        assert "defaults" in usage_names
