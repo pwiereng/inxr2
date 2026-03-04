@@ -702,7 +702,7 @@ class TypeScriptParser(BaseLanguageParser):
                             self._make_reference(
                                 export_from,
                                 "import",
-                                source_node,
+                                node,
                                 from_module=export_from,
                             )
                         )
