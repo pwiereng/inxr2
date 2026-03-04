@@ -86,7 +86,7 @@ docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/s
 
 ## IX-04: Verify Multi-Language Symbol Extraction
 
-For each language (Python, TypeScript, JavaScript, C, C++, Java, C#, Go, Ruby), pick a repo that uses it,
+For each language (Python, TypeScript, JavaScript, C, C++, Java, C#, Go, Ruby, Bash), pick a repo that uses it,
 find a real symbol name from git, and verify it appears in the API.
 
 **Steps (per language):**
@@ -99,9 +99,57 @@ docker exec inxr2-dev bash -c "grep -E 'class |def |function |interface |struct 
 docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=<discovered_name>&repository_name=<repo>&limit=3' | python3 -m json.tool"
 ```
 
+**Languages to cover:** Python (`*.py`), TypeScript (`*.ts`/`*.tsx`), JavaScript (`*.js`/`*.jsx`),
+C (`*.c`/`*.h`), C++ (`*.cpp`/`*.hpp`), Java (`*.java`), C# (`*.cs`), Go (`*.go`), Ruby (`*.rb`),
+Bash (`*.sh`).
+
 **Pass criteria:**
 - For each language, at least one symbol is found via the API
 - Symbol kind matches what was found in the source (e.g., `grep 'class Foo'` → API returns symbol with kind=class)
+
+---
+
+## IX-04a: Verify Reference Extraction (Bare Identifiers, CommonJS, Constructor Properties)
+
+Verify that reference extraction captures bare identifiers, CommonJS `require()` calls, and
+constructor `this.property` assignments.
+
+**Steps:**
+```bash
+# DISCOVER: Find a JS/TS file with require() or import statements
+docker exec inxr2-dev bash -c "grep -rl 'require(' /repos/test-repos/<repo>/ --include='*.js' --include='*.ts' | head -1"
+# DISCOVER: Extract a require target
+docker exec inxr2-dev bash -c "grep -oP \"require\('\K[^']+\" /repos/test-repos/<repo>/<file> | head -3"
+# VERIFY: Check references via API
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/references?repository_name=<repo>&file_path=<file>&limit=20' | python3 -m json.tool"
+```
+
+**Pass criteria:**
+- References include `import` type entries with `from_module` set for `require()` calls
+- References include `usage` type entries for bare identifiers used in the file
+
+---
+
+## IX-04b: Verify ES6 Export/Re-export References
+
+Verify that named exports, re-exports, default export of identifier, and barrel exports
+produce the correct references.
+
+**Steps:**
+```bash
+# DISCOVER: Find a file with export statements
+docker exec inxr2-dev bash -c "grep -rl 'export {' /repos/test-repos/<repo>/ --include='*.ts' --include='*.js' | head -1"
+# DISCOVER: Extract export names
+docker exec inxr2-dev bash -c "grep 'export' /repos/test-repos/<repo>/<file> | head -5"
+# VERIFY: Check references via API for that file
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/references?repository_name=<repo>&file_path=<file>&limit=30' | python3 -m json.tool"
+```
+
+**Pass criteria:**
+- Named re-exports (`export { foo } from './module'`) appear as `import` references with `from_module`
+- Local named exports (`export { foo }`) appear as `usage` references
+- Default export of identifier (`export default myFunc`) appears as `usage` reference
+- Barrel re-exports (`export * from './module'`) appear as `import` references
 
 ---
 
@@ -205,6 +253,30 @@ curl "http://localhost:9222/text?selector=main"
 **Pass criteria:**
 - Page text includes numeric statistics (file counts, symbol counts) that match API stats
 - At least one language tag visible per repo
+
+---
+
+## RT-02a: Repository Card Shows Indexing Stats
+
+**Steps:**
+```bash
+# DISCOVER: Get indexing stats from API
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/stats' | python3 -c '
+import sys, json
+stats = json.load(sys.stdin)
+for s in stats:
+    print(f\"{s[\"name\"]}: files={s.get(\"file_count\",0)}, symbols={s.get(\"symbol_count\",0)}, refs={s.get(\"reference_count\",0)}, langs={s.get(\"languages\",[])}\")
+'"
+# NAVIGATE + VERIFY: Check that repo cards show per-repo stats
+curl "http://localhost:9222/navigate?url=http://localhost:5173/"
+curl "http://localhost:9222/wait?selector=a[href^='/browse/']&timeout=5000"
+curl "http://localhost:9222/text?selector=main"
+```
+
+**Pass criteria:**
+- Each repo card displays file count, symbol count, and reference count
+- Displayed counts match API stats values
+- Language tags on each card match the languages from API stats
 
 ---
 
@@ -387,6 +459,69 @@ curl "http://localhost:9222/url"
 
 ---
 
+## RT-12a: Diff Colors Follow Temporal Order
+
+Verify that diff colors are always correct regardless of which commit is selected on which side:
+additions (newer) are green, deletions (older) are red/pink, not inverted.
+
+**Steps:**
+```bash
+# DISCOVER: Find a file with at least 2 versions (different content_hash)
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/<repo>/<file>/history?branch=<branch>' | python3 -c '
+import sys, json
+versions = json.load(sys.stdin)
+print(f\"Versions: {len(versions)}\")
+for v in versions[:3]:
+    print(f\"  commit={v[\"commit_hash\"][:8]} date={v.get(\"commit_date\",\"?\")}\")
+'"
+# NAVIGATE: Enter diff mode with an older commit on the right
+# (select a newer commit on left, older on right — the "inverted" case)
+curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/<repo>/<file>?branch=<branch>&diff=<older_commit>"
+curl "http://localhost:9222/wait?selector=table&timeout=5000"
+# VERIFY: Check diff background colors
+curl "http://localhost:9222/eval?script=document.querySelector('[style*=\"background\"]')?.style.backgroundColor"
+# Take screenshot for visual verification
+curl "http://localhost:9222/screenshot/save?path=/tmp/rt-12a-diff-colors.png"
+```
+
+**Pass criteria:**
+- Lines present only in the newer version have green/addition background
+- Lines present only in the older version have red/pink/deletion background
+- Colors are correct regardless of which side (left/right) each commit appears on
+- URL shows temporal labels (e.g., "older"/"newer" or "FORK" badge) if applicable
+
+---
+
+## RT-12b: Diff Version Selectors Show All Indexed Commits
+
+Verify that diff mode version selectors show all commits where the file's content changed,
+going back to the earliest indexed commit.
+
+**Steps:**
+```bash
+# DISCOVER: Get file history from API
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/<repo>/<file>/history?branch=<branch>' | python3 -c '
+import sys, json
+versions = json.load(sys.stdin)
+print(f\"Total versions: {len(versions)}\")
+if versions:
+    print(f\"Oldest: {versions[-1][\"commit_hash\"][:8]} {versions[-1].get(\"commit_date\",\"?\")}\")
+    print(f\"Newest: {versions[0][\"commit_hash\"][:8]} {versions[0].get(\"commit_date\",\"?\")}\")
+'"
+# NAVIGATE: Enter diff mode
+curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/<repo>/<file>?branch=<branch>&diff=true"
+curl "http://localhost:9222/wait?selector=table&timeout=5000"
+# VERIFY: Check version selector options
+curl "http://localhost:9222/elements?selector=select option,div[role='listbox'] li&limit=30"
+```
+
+**Pass criteria:**
+- Version selectors include commits spanning the full range (from oldest to newest indexed)
+- The oldest commit in the version selector matches the oldest version from the API
+- Number of selectable versions matches the number of distinct file versions from the API
+
+---
+
 ## RT-13: Search Returns Results That Exist in Git
 
 **Steps:**
@@ -459,6 +594,27 @@ curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=10"
 
 **Pass criteria:**
 - File results include the discovered filename
+
+---
+
+## RT-16a: Search — Extensionless File Filtering
+
+Verify that file search can find extensionless files (e.g., `Makefile`, `Dockerfile`,
+`Jenkinsfile`) and that extension-based filtering works correctly for them.
+
+**Steps:**
+```bash
+# DISCOVER: Find extensionless files in the repo
+docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-files | grep -v '\.' | head -5"
+# Search for an extensionless file
+curl "http://localhost:9222/navigate?url=http://localhost:5173/search?mode=file&query=<extensionless_file>"
+curl "http://localhost:9222/wait?selector=.MuiListItemButton-root&timeout=5000"
+curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=10"
+```
+
+**Pass criteria:**
+- Extensionless files (Makefile, Dockerfile, etc.) appear in file search results
+- Clicking an extensionless file result navigates to the correct file in the code viewer
 
 ---
 
@@ -582,6 +738,36 @@ curl "http://localhost:9222/eval?script=getComputedStyle(document.body).backgrou
 
 ---
 
+## RT-22a: Diff Colors Render Correctly in Both Themes
+
+Verify that diff addition/deletion colors are visible and distinguishable in both light and dark themes.
+
+**Steps:**
+```bash
+# Navigate to a file in diff mode (use a file with known changes)
+curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/<repo>/<file>?branch=<branch>&diff=<older_commit>"
+curl "http://localhost:9222/wait?selector=table&timeout=5000"
+# Screenshot in current theme
+curl "http://localhost:9222/screenshot/save?path=/tmp/rt-22a-diff-theme1.png"
+# Get diff cell background colors
+curl "http://localhost:9222/eval?script=JSON.stringify([...document.querySelectorAll('td[style]')].slice(0,4).map(e=>e.style.backgroundColor))"
+# Toggle theme
+curl "http://localhost:9222/click?selector=[aria-label*='Switch to']"
+# Screenshot in other theme
+curl "http://localhost:9222/screenshot/save?path=/tmp/rt-22a-diff-theme2.png"
+# Get diff cell background colors in other theme
+curl "http://localhost:9222/eval?script=JSON.stringify([...document.querySelectorAll('td[style]')].slice(0,4).map(e=>e.style.backgroundColor))"
+# Toggle back
+curl "http://localhost:9222/click?selector=[aria-label*='Switch to']"
+```
+
+**Pass criteria:**
+- Diff addition/deletion colors are visible in both themes
+- Colors are different between light and dark themes (adapted to theme)
+- Addition (green) and deletion (red/pink) colors are distinguishable in both themes
+
+---
+
 ## RT-23: Markdown Rendering Matches File Content
 
 **Steps:**
@@ -605,22 +791,25 @@ curl "http://localhost:9222/text?selector=h1,h2,h3"
 
 ## Summary
 
-### Phase 1: Indexing (5 tests)
+### Phase 1: Indexing (7 tests)
 
 | ID | Test | Validates |
 |----|------|-----------|
 | IX-01 | Reset DB and index all repos (10 days) | Full indexing pipeline |
 | IX-02 | Verify indexing status | All repos indexed with data |
 | IX-03 | Verify API serves indexed data | API returns all repos from config |
-| IX-04 | Verify multi-language symbol extraction | Each parser produces correct symbols |
+| IX-04 | Verify multi-language symbol extraction (10 langs) | Each parser produces correct symbols |
+| IX-04a | Verify reference extraction (bare ids, require, this) | Reference extraction pipeline |
+| IX-04b | Verify ES6 export/re-export references | Export/re-export reference patterns |
 | IX-05 | Compare indexing performance vs history | No timing/count regressions |
 
-### Phase 2: QA Browser (23 tests)
+### Phase 2: QA Browser (29 tests)
 
 | ID | Test | Validates Against |
 |----|------|-------------------|
 | RT-01 | Home page shows repo cards | API repo count |
 | RT-02 | Repo card shows statistics | API stats |
+| RT-02a | Repo card shows indexing stats | API stats (files, symbols, refs, langs) |
 | RT-03 | Navigate to browse from home | Repo name in URL |
 | RT-04 | File tree matches git | `git ls-tree` |
 | RT-05 | Directory expansion shows children | `git ls-tree <dir>/` |
@@ -631,16 +820,20 @@ curl "http://localhost:9222/text?selector=h1,h2,h3"
 | RT-10 | "Search globally" link works | Symbol name from panel |
 | RT-11 | Blame matches git blame | `git blame --porcelain` |
 | RT-12 | Diff mode enter and exit | URL state |
+| RT-12a | Diff colors follow temporal order | Commit dates, background colors |
+| RT-12b | Diff version selectors show all commits | File history API |
 | RT-13 | Search returns real results | `git ls-files` |
 | RT-14 | Search result navigates correctly | Result file path |
 | RT-15 | Regex search works | `grep` pattern from git |
 | RT-16 | File search works | `git ls-files` |
+| RT-16a | Extensionless file search | `git ls-files` without extensions |
 | RT-17 | History matches git log | `git log --oneline` |
 | RT-18 | Commit click navigates to browse | `git log` hash |
 | RT-19 | Tab navigation preserves context | URL repo param |
 | RT-20 | Branch selector shows branches | `git branch` / config |
 | RT-21 | URL state preserved on reload | URL params |
 | RT-22 | Theme toggle | Background color change |
+| RT-22a | Diff colors in both themes | Theme-adapted diff colors |
 | RT-23 | Markdown rendering matches file | `grep '^#'` heading |
 
-**Total: 28 test cases** (5 indexing + 23 browser) — all verified against git/API, no hardcoded data.
+**Total: 36 test cases** (7 indexing + 29 browser) — all verified against git/API, no hardcoded data.
