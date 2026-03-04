@@ -635,6 +635,79 @@ class TypeScriptParser(BaseLanguageParser):
                                             )
                 return
 
+            # ES6 export statements: export { foo } from './mod', export { bar },
+            # export * from './mod', export * as ns from './mod'
+            if node.type == "export_statement":
+                # Determine from_module (re-export vs local export)
+                source_node = node.child_by_field_name("source")
+                export_from = (
+                    get_text(source_node).strip("'\"") if source_node else None
+                )
+
+                for child in node.children:
+                    if child.type == "export_clause":
+                        for spec in child.children:
+                            if spec.type == "export_specifier":
+                                name_node = spec.child_by_field_name("name")
+                                if not name_node:
+                                    for sub in spec.children:
+                                        if sub.type == "identifier":
+                                            name_node = sub
+                                            break
+                                if name_node:
+                                    spec_name = get_text(name_node)
+                                    if export_from:
+                                        add_reference(
+                                            self._make_reference(
+                                                spec_name,
+                                                "import",
+                                                name_node,
+                                                from_module=export_from,
+                                            )
+                                        )
+                                    else:
+                                        add_reference(
+                                            self._make_reference(
+                                                spec_name,
+                                                "usage",
+                                                name_node,
+                                                scope,
+                                            )
+                                        )
+                    elif child.type == "namespace_export":
+                        # export * as ns from './module'
+                        ns_node = None
+                        for sub in child.children:
+                            if sub.type == "identifier":
+                                ns_node = sub
+                                break
+                        if ns_node and export_from:
+                            add_reference(
+                                self._make_reference(
+                                    get_text(ns_node),
+                                    "import",
+                                    ns_node,
+                                    from_module=export_from,
+                                )
+                            )
+
+                # Barrel re-export: export * from './module'
+                if export_from:
+                    has_clause = any(
+                        c.type in ("export_clause", "namespace_export")
+                        for c in node.children
+                    )
+                    if not has_clause:
+                        add_reference(
+                            self._make_reference(
+                                export_from,
+                                "import",
+                                node,
+                                from_module=export_from,
+                            )
+                        )
+                # Don't return — let recursion handle export default, etc.
+
             # Function calls
             if node.type == "call_expression":
                 func_node = node.child_by_field_name("function")
@@ -792,6 +865,16 @@ class TypeScriptParser(BaseLanguageParser):
                                 )
                             )
 
+            # Shorthand property identifiers in object literals: { foo, bar }
+            # These are a distinct node type from "identifier", so the bare
+            # identifier fallback below does not capture them.
+            if node.type == "shorthand_property_identifier":
+                ident_name = get_text(node)
+                if len(ident_name) > 1 and ident_name not in TS_BUILTINS:
+                    add_reference(
+                        self._make_reference(ident_name, "usage", node, scope)
+                    )
+
             # Bare identifier usage — identifiers not already covered by other
             # patterns (call targets, member access, imports, declarations, etc.)
             if node.type == "identifier":
@@ -902,6 +985,12 @@ class TypeScriptParser(BaseLanguageParser):
                             "labeled_statement",
                             "break_statement",
                             "continue_statement",
+                        ):
+                            skip_ident = True
+                        # Export specifier / namespace export — handled explicitly
+                        elif parent.type in (
+                            "export_specifier",
+                            "namespace_export",
                         ):
                             skip_ident = True
                     if not skip_ident:
