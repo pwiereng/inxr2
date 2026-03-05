@@ -2,6 +2,8 @@
 
 import re
 
+_REPO_NAME_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
+
 
 def validate_repo_name(name: str) -> None:
     """Validate a repository name against domain rules.
@@ -15,7 +17,7 @@ def validate_repo_name(name: str) -> None:
     if not name or not name.strip():
         raise ValueError("Repository name cannot be empty")
 
-    if not re.match(r"^[a-zA-Z0-9_.-]+$", name):
+    if not _REPO_NAME_RE.match(name):
         raise ValueError(
             f"Invalid repository name '{name}': "
             "must contain only letters, numbers, underscores, hyphens, and dots"
@@ -23,6 +25,5 @@ def validate_repo_name(name: str) -> None:
 
     if name.startswith(".") or name.endswith("."):
         raise ValueError(
-            f"Invalid repository name '{name}': "
-            "cannot be '.', '..', or start/end with a dot"
+            f"Invalid repository name '{name}': " "cannot start or end with a dot"
         )

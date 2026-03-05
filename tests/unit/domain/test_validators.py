@@ -40,19 +40,19 @@ class TestValidateRepoName:
             validate_repo_name("my repo")
 
     def test_single_dot_raises(self) -> None:
-        with pytest.raises(ValueError, match="cannot be '\\.'"):
+        with pytest.raises(ValueError, match="cannot start or end with a dot"):
             validate_repo_name(".")
 
     def test_double_dot_raises(self) -> None:
-        with pytest.raises(ValueError, match="cannot be '\\.'"):
+        with pytest.raises(ValueError, match="cannot start or end with a dot"):
             validate_repo_name("..")
 
     def test_name_starting_with_dot_raises(self) -> None:
-        with pytest.raises(ValueError, match="start/end with a dot"):
+        with pytest.raises(ValueError, match="cannot start or end with a dot"):
             validate_repo_name(".hidden")
 
     def test_name_ending_with_dot_raises(self) -> None:
-        with pytest.raises(ValueError, match="start/end with a dot"):
+        with pytest.raises(ValueError, match="cannot start or end with a dot"):
             validate_repo_name("repo.")
 
     @pytest.mark.parametrize("char", ["@", "#", "$", "%", "^", "&", "*", "(", ")"])
