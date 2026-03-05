@@ -6,7 +6,6 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
-from ....adapters.persistence.repositories.query_utils import NONE_SENTINEL
 from ....application.use_cases.search import SearchFilesRequest, SearchTextRequest
 from ....domain.exceptions import CommitNotFound, RepositoryNotFound
 from ....domain.value_objects import QueryMode, TextSearchSourceType
@@ -40,7 +39,7 @@ def _validate_extensions(extensions: list[str] | None) -> list[str] | None:
         return None
     normalized = []
     for ext in extensions:
-        if ext == NONE_SENTINEL:
+        if ext == "(none)":
             normalized.append(ext)
             continue
         lower_ext = ext.lower()
