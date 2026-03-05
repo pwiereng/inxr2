@@ -137,6 +137,20 @@ async def test_repo_with_multiple_branches() -> None:
 
 
 @pytest.mark.asyncio
+async def test_partial_injection_raises_value_error() -> None:
+    """Providing only one of the two repos should raise ValueError."""
+    console, _ = _make_console()
+    repo_repo = InMemoryRepositoryRepository()
+
+    with pytest.raises(ValueError, match="Both repository_repo and index_status_repo"):
+        await _show_overall_status_async(console, repository_repo=repo_repo)
+
+    idx_repo = InMemoryIndexStatusRepository()
+    with pytest.raises(ValueError, match="Both repository_repo and index_status_repo"):
+        await _show_overall_status_async(console, index_status_repo=idx_repo)
+
+
+@pytest.mark.asyncio
 async def test_failed_status_shows_failed() -> None:
     """A repo with failed indexing shows 'Failed' status."""
     console, buf = _make_console()
