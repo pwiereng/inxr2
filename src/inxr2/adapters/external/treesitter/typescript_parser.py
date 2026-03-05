@@ -454,6 +454,9 @@ class TypeScriptParser(BaseLanguageParser):
                     elif re.match(r"^[A-Z][A-Z0-9_]*$", var_name):
                         # UPPER_CASE constant
                         symbols.append(self._make_symbol(var_name, "constant", child))
+                    else:
+                        # Regular variable declaration
+                        symbols.append(self._make_symbol(var_name, "variable", child))
 
         def _process_class_expression(node: Node, name: str) -> None:
             """Process a class expression node, creating a class symbol and its members.
@@ -1026,7 +1029,7 @@ class TypeScriptParser(BaseLanguageParser):
                 process_class(node)
             elif node.type == "function_declaration":
                 process_function(node, is_exported)
-            elif node.type == "lexical_declaration":
+            elif node.type in ("lexical_declaration", "variable_declaration"):
                 process_variable_declaration(node, is_exported)
             elif node.type == "expression_statement":
                 # Handle module.exports = class ..., exports.X = class ..., etc.

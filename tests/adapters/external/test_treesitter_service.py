@@ -2822,3 +2822,126 @@ module.exports = { ...defaults, override: true }
         usage_refs = [r for r in references if r["type"] == "usage"]
         usage_names = [r["text"] for r in usage_refs]
         assert "defaults" in usage_names
+
+
+class TestVariableDeclarations:
+    """Tests for variable declaration symbol extraction in JS/TS."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_const_variable_typescript(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Regular const declarations should produce variable symbols."""
+        code = """
+const count = 0;
+const name = "hello";
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        var_symbols = [s for s in symbols if s["kind"] == "variable"]
+        var_names = [s["name"] for s in var_symbols]
+        assert "count" in var_names
+        assert "name" in var_names
+
+    @pytest.mark.asyncio
+    async def test_let_variable_typescript(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """let declarations should produce variable symbols."""
+        code = """
+let counter = 10;
+let message = "world";
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        var_symbols = [s for s in symbols if s["kind"] == "variable"]
+        var_names = [s["name"] for s in var_symbols]
+        assert "counter" in var_names
+        assert "message" in var_names
+
+    @pytest.mark.asyncio
+    async def test_var_declaration_javascript(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """var declarations should produce variable symbols."""
+        code = """
+var total = 42;
+var label = "test";
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        var_symbols = [s for s in symbols if s["kind"] == "variable"]
+        var_names = [s["name"] for s in var_symbols]
+        assert "total" in var_names
+        assert "label" in var_names
+
+    @pytest.mark.asyncio
+    async def test_arrow_function_still_function_kind(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Arrow functions should still be function kind, not variable."""
+        code = """
+const add = (a: number, b: number) => a + b;
+const count = 0;
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        add_sym = [s for s in symbols if s["name"] == "add"]
+        assert len(add_sym) == 1
+        assert add_sym[0]["kind"] == "function"
+
+        count_sym = [s for s in symbols if s["name"] == "count"]
+        assert len(count_sym) == 1
+        assert count_sym[0]["kind"] == "variable"
+
+    @pytest.mark.asyncio
+    async def test_upper_case_still_constant_kind(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """UPPER_CASE names should still be constant kind, not variable."""
+        code = """
+const MAX_RETRIES = 5;
+const count = 0;
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        max_sym = [s for s in symbols if s["name"] == "MAX_RETRIES"]
+        assert len(max_sym) == 1
+        assert max_sym[0]["kind"] == "constant"
+
+        count_sym = [s for s in symbols if s["name"] == "count"]
+        assert len(count_sym) == 1
+        assert count_sym[0]["kind"] == "variable"
+
+    @pytest.mark.asyncio
+    async def test_exported_variable_declaration(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Exported variable declarations should produce variable symbols."""
+        code = """
+export const baseUrl = "http://localhost";
+export let timeout = 3000;
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        var_symbols = [s for s in symbols if s["kind"] == "variable"]
+        var_names = [s["name"] for s in var_symbols]
+        assert "baseUrl" in var_names
+        assert "timeout" in var_names
