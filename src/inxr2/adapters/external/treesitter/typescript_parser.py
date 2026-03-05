@@ -428,6 +428,29 @@ class TypeScriptParser(BaseLanguageParser):
 
             symbols.append(self._make_symbol(name, "function", node))
 
+        def _extract_destructured_names(pattern_node: Node) -> list[Node]:
+            """Extract individual name nodes from a destructuring pattern.
+
+            Returns nodes whose text represents the local binding name.
+            These may be ``identifier`` or ``shorthand_property_identifier_pattern``
+            nodes depending on the pattern shape.
+            """
+            identifiers: list[Node] = []
+            for child in pattern_node.children:
+                if child.type == "shorthand_property_identifier_pattern":
+                    identifiers.append(child)
+                elif child.type == "pair_pattern":
+                    value = child.child_by_field_name("value")
+                    if value and value.type == "identifier":
+                        identifiers.append(value)
+                    elif value and value.type in ("object_pattern", "array_pattern"):
+                        identifiers.extend(_extract_destructured_names(value))
+                elif child.type == "identifier":
+                    identifiers.append(child)
+                elif child.type in ("object_pattern", "array_pattern"):
+                    identifiers.extend(_extract_destructured_names(child))
+            return identifiers
+
         def process_variable_declaration(node: Node, is_exported: bool = False) -> None:
             """Process variable declarations (const, let, var)."""
             for child in node.children:
@@ -442,11 +465,29 @@ class TypeScriptParser(BaseLanguageParser):
                     if not name_node:
                         continue
 
+                    # Handle destructuring patterns
+                    if name_node.type in ("object_pattern", "array_pattern"):
+                        for ident in _extract_destructured_names(name_node):
+                            var_name = get_text(ident)
+                            if re.match(r"^[A-Z][A-Z0-9_]*$", var_name):
+                                symbols.append(
+                                    self._make_symbol(var_name, "constant", ident)
+                                )
+                            else:
+                                symbols.append(
+                                    self._make_symbol(var_name, "variable", ident)
+                                )
+                        continue
+
                     var_name = get_text(name_node)
 
                     # Check if it's an arrow function, class expression, etc.
                     value_node = child.child_by_field_name("value")
-                    if value_node and value_node.type == "arrow_function":
+                    if value_node and value_node.type in (
+                        "arrow_function",
+                        "function_expression",
+                        "generator_function",
+                    ):
                         symbols.append(self._make_symbol(var_name, "function", child))
                     elif value_node and value_node.type == "class":
                         # Class expression: const X = class { ... }
@@ -454,6 +495,9 @@ class TypeScriptParser(BaseLanguageParser):
                     elif re.match(r"^[A-Z][A-Z0-9_]*$", var_name):
                         # UPPER_CASE constant
                         symbols.append(self._make_symbol(var_name, "constant", child))
+                    else:
+                        # Regular variable declaration
+                        symbols.append(self._make_symbol(var_name, "variable", child))
 
         def _process_class_expression(node: Node, name: str) -> None:
             """Process a class expression node, creating a class symbol and its members.
@@ -1026,7 +1070,7 @@ class TypeScriptParser(BaseLanguageParser):
                 process_class(node)
             elif node.type == "function_declaration":
                 process_function(node, is_exported)
-            elif node.type == "lexical_declaration":
+            elif node.type in ("lexical_declaration", "variable_declaration"):
                 process_variable_declaration(node, is_exported)
             elif node.type == "expression_statement":
                 # Handle module.exports = class ..., exports.X = class ..., etc.
