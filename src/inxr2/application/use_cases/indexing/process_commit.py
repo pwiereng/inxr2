@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from inxr2.domain.entities import Commit, TextContent
+from inxr2.domain.services.file_filter import FileFilter
 from inxr2.domain.value_objects import CommitHash, TextSearchSourceType
 
 from ...ports.repositories import (
@@ -180,10 +181,25 @@ class ProcessCommitUseCase:
         # Shared blob->content_hash mapping
         blob_to_content_hash = request.blob_to_content_hash or {}
 
+        # Filter out vendor/minified files before processing
+        filtered_files = {
+            path: blob
+            for path, blob in files_with_hashes.items()
+            if not FileFilter.should_skip(path)
+        }
+        skipped_vendor_count = len(files_with_hashes) - len(filtered_files)
+        if skipped_vendor_count > 0:
+            logger.info(
+                "Skipped %d vendor/minified files in commit %s",
+                skipped_vendor_count,
+                request.commit_data.hash[:8],
+            )
+        result.files_skipped += skipped_vendor_count
+
         # Process each file and collect file IDs for bulk linking
         file_ids: list[int] = []
         files_seen = 0
-        for file_path_str, blob_hash in files_with_hashes.items():
+        for file_path_str, blob_hash in filtered_files.items():
             file_request = ProcessFileRequest(
                 repository_id=request.repository_id,
                 file_path=file_path_str,

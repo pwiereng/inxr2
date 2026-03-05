@@ -370,3 +370,59 @@ class TestProcessCommitUseCase:
         commit_msgs = [tc for tc in all_text if tc.source_type == "commit_message"]
         assert len(commit_msgs) == 1
         assert len(commit_msgs[0].content.encode("utf-8")) <= MAX_TSVECTOR_CONTENT_BYTES
+
+    @pytest.mark.asyncio
+    async def test_vendor_minified_files_skipped(
+        self,
+        use_case: ProcessCommitUseCase,
+        git_service: FakeGitService,
+        symbol_repo: InMemorySymbolRepository,
+    ) -> None:
+        """Vendor and minified files should be skipped during indexing."""
+        git_service.files_in_commit["abc123"] = [
+            "src/main.py",
+            "node_modules/express/index.js",
+            "vendor/jquery.js",
+            "dist/bundle.js",
+            "lib/jquery.min.js",
+        ]
+
+        request = ProcessCommitRequest(
+            repository_id=1,
+            commit_data=_make_commit(),
+            repo_path=Path("/repos/test-repo"),
+            branch="main",
+        )
+
+        result = await use_case.execute(request)
+
+        # Only src/main.py should be processed; the other 4 are vendor/minified
+        assert result.files_processed == 1
+        assert result.files_skipped == 4
+
+    @pytest.mark.asyncio
+    async def test_normal_files_not_skipped(
+        self,
+        use_case: ProcessCommitUseCase,
+        git_service: FakeGitService,
+    ) -> None:
+        """Normal source files should not be affected by vendor filtering."""
+        git_service.files_in_commit["abc123"] = [
+            "src/main.py",
+            "src/utils.ts",
+            "lib/helpers.js",
+        ]
+
+        request = ProcessCommitRequest(
+            repository_id=1,
+            commit_data=_make_commit(),
+            repo_path=Path("/repos/test-repo"),
+            branch="main",
+        )
+
+        result = await use_case.execute(request)
+
+        # All files should be processed (none skipped by vendor filter)
+        total = result.files_processed + result.files_skipped + result.files_failed
+        assert total == 3
+        assert result.files_skipped == 0
