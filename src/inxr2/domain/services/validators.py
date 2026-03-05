@@ -21,7 +21,7 @@ def validate_repo_name(name: str) -> None:
             "must contain only letters, numbers, underscores, hyphens, and dots"
         )
 
-    if name in (".", "..") or name.startswith(".") or name.endswith("."):
+    if name.startswith(".") or name.endswith("."):
         raise ValueError(
             f"Invalid repository name '{name}': "
             "cannot be '.', '..', or start/end with a dot"

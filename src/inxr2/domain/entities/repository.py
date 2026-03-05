@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from inxr2.domain.services.validators import validate_repo_name
+
 
 @dataclass(frozen=True)
 class Repository:
@@ -34,8 +36,6 @@ class Repository:
 
     def __post_init__(self) -> None:
         """Validate repository entity."""
-        from inxr2.domain.services.validators import validate_repo_name
-
         validate_repo_name(self.name)
         if not self.url:
             raise ValueError("Repository URL cannot be empty")
