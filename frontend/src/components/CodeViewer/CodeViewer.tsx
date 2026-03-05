@@ -356,7 +356,7 @@ export function CodeViewer({
                     // Only show blame info on first line of a consecutive block from the same commit
                     const prevBlame = blameMap.get(lineNum - 1)
                     const isNewBlock = !prevBlame || prevBlame.commit_hash !== blame.commit_hash
-                    const isClickable = onBlameCommitClick && blame.is_indexed
+                    const isClickable = !!onBlameCommitClick
                     return (
                       <Box
                         component="td"
