@@ -13,7 +13,7 @@ from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.reference import ReferenceModel
 from .base_repository import BaseSQLAlchemyRepository
-from .query_utils import build_text_match_filter
+from .query_utils import build_text_match_filter, split_extension_filter
 from .shared_queries import (
     LATEST_FILE_IDS_SQL,
     head_file_ids_subquery,
@@ -196,8 +196,7 @@ class PostgresReferenceRepository(
 
         # Apply extension filter via files table
         if extensions is not None and len(extensions) > 0:
-            real_exts = [e for e in extensions if e != "(none)"]
-            has_none = "(none)" in extensions
+            real_exts, has_none = split_extension_filter(extensions)
             if real_exts and has_none:
                 ext_filter = or_(
                     FileModel.extension.in_(real_exts),
