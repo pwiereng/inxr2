@@ -10,6 +10,7 @@ from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
+from .query_utils import NONE_SENTINEL, split_extension_filter
 from .shared_queries import head_file_ids_subquery, latest_file_ids_subquery
 
 
@@ -65,8 +66,7 @@ class PostgresFileSearchRepository(FileSearchPort):
             query_stmt = query_stmt.where(FileModel.language == language)
 
         if extensions is not None and len(extensions) > 0:
-            real_exts = [e for e in extensions if e != "(none)"]
-            has_none = "(none)" in extensions
+            real_exts, has_none = split_extension_filter(extensions)
             if real_exts and has_none:
                 query_stmt = query_stmt.where(
                     or_(
@@ -157,6 +157,6 @@ class PostgresFileSearchRepository(FileSearchPort):
                 extensions.append(row[0])
 
         if has_none:
-            extensions.insert(0, "(none)")
+            extensions.insert(0, NONE_SENTINEL)
 
         return extensions

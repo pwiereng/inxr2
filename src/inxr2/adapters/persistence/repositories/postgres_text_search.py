@@ -18,7 +18,7 @@ from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.repository import RepositoryModel
 from ..models.text_content import TextContentModel
-from .query_utils import build_text_match_filter
+from .query_utils import build_text_match_filter, split_extension_filter
 from .shared_queries import head_file_ids_subquery
 
 
@@ -130,8 +130,7 @@ class PostgresTextSearch(TextSearchPort):
 
         # Apply extension filters via files table
         if query.extensions:
-            real_exts = [e for e in query.extensions if e != "(none)"]
-            has_none = "(none)" in query.extensions
+            real_exts, has_none = split_extension_filter(query.extensions)
             if real_exts and has_none:
                 ext_filter = or_(
                     FileModel.extension.in_(real_exts),
