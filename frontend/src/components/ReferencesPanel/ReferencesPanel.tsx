@@ -299,8 +299,11 @@ export function ReferencesPanel({
               {allDefinitions.length > 0 ? (
                 allDefinitions.map((def) => {
                   const isSelected = symbol ? def.id === symbol.id : false
-                  // Extract short file name from path
-                  const fileName = def.file_path?.split('/').pop() || ''
+                  // Show full path when multiple definitions exist to disambiguate
+                  const displayPath =
+                    allDefinitions.length > 1
+                      ? def.file_path || ''
+                      : def.file_path?.split('/').pop() || ''
                   return (
                     <ListItemButton
                       key={def.id}
@@ -347,7 +350,7 @@ export function ReferencesPanel({
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {fileName}
+                            {displayPath}
                           </Typography>
                         }
                       />
