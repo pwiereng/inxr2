@@ -249,6 +249,54 @@ describe('ReferencesPanel', () => {
     })
   })
 
+  describe('definition file path display', () => {
+    it('should show filename only when there is a single definition', async () => {
+      mockGetSymbolReferences.mockResolvedValue({
+        items: [],
+        total: 0,
+        symbol_name: 'TestClass',
+      })
+
+      render(<ReferencesPanel symbol={mockSymbol} isDirectDefinition={true} />)
+
+      await waitFor(() => {
+        // Single definition: should show just the filename, not the full path
+        expect(screen.getByText('test.py')).toBeInTheDocument()
+        expect(screen.queryByText('src/test.py')).not.toBeInTheDocument()
+      })
+    })
+
+    it('should show full path when there are multiple definitions', async () => {
+      const secondSymbol: api.Symbol = {
+        ...mockSymbol,
+        id: 2,
+        file_id: 2,
+        file_path: 'lib/test.py',
+        start_line: 5,
+      }
+
+      mockGetSymbolReferences.mockResolvedValue({
+        items: [],
+        total: 0,
+        symbol_name: 'TestClass',
+      })
+      mockGetSymbolsByName.mockResolvedValue({
+        items: [mockSymbol, secondSymbol],
+        total: 2,
+        limit: 20,
+        offset: 0,
+      })
+
+      render(<ReferencesPanel symbol={mockSymbol} isDirectDefinition={false} />)
+
+      await waitFor(() => {
+        // Multiple definitions: should show full paths to disambiguate
+        expect(screen.getByText('src/test.py')).toBeInTheDocument()
+        expect(screen.getByText('lib/test.py')).toBeInTheDocument()
+      })
+    })
+  })
+
   describe('search globally link', () => {
     it('should render link with correct URL when symbol is provided', async () => {
       mockGetSymbolReferences.mockResolvedValue({
