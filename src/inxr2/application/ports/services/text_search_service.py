@@ -33,6 +33,8 @@ class TextSearchQuery:
         commit_id: Optional commit filter (for time travel)
         source_types: Optional list of source types to filter by
         languages: Optional list of languages to filter by
+        extensions: Optional list of file extensions to filter by
+        case_sensitive: Whether the search is case sensitive (default: True)
         scope: Search scope for cross-repo search (e.g. "latest").
             Only applies when repository_id is not provided.
         limit: Maximum results to return (default: 20)
