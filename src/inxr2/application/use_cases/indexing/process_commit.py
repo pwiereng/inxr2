@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from inxr2.domain.entities import Commit, TextContent
+from inxr2.domain.services.file_filter import FileFilter
 from inxr2.domain.value_objects import CommitHash, TextSearchSourceType
 
 from ...ports.repositories import (
@@ -171,7 +172,8 @@ class ProcessCommitUseCase:
             result=result,
         )
 
-        # Full snapshot: always process ALL files in this commit
+        # Full snapshot: list ALL files in this commit, then process non-vendor
+        # files (vendor/minified/bundled paths are skipped inline below).
         files_with_hashes = self._git_service.list_files_with_hashes(
             repo_path=request.repo_path,
             commit_hash=request.commit_data.hash,
@@ -184,6 +186,11 @@ class ProcessCommitUseCase:
         file_ids: list[int] = []
         files_seen = 0
         for file_path_str, blob_hash in files_with_hashes.items():
+            # Skip vendor/minified/bundled files
+            if FileFilter.should_skip(file_path_str):
+                result.files_skipped += 1
+                continue
+
             file_request = ProcessFileRequest(
                 repository_id=request.repository_id,
                 file_path=file_path_str,
@@ -206,6 +213,10 @@ class ProcessCommitUseCase:
         # Send a final progress update if total files isn't on a 100-file boundary
         # (updates fire at file 1, every 100 files, and here at the end)
         if progress_callback and files_seen % 100 != 0:
+            progress_callback(result)
+
+        # Ensure progress fires at least once when all files were skipped
+        if progress_callback and files_seen == 0 and result.files_skipped > 0:
             progress_callback(result)
 
         # Bulk-link all file versions to this commit
