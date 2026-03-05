@@ -2945,3 +2945,73 @@ export let timeout = 3000;
         var_names = [s["name"] for s in var_symbols]
         assert "baseUrl" in var_names
         assert "timeout" in var_names
+
+    @pytest.mark.asyncio
+    async def test_function_expression_is_function_kind(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Function expressions assigned to variables should be function kind."""
+        code = """
+const fn = function() { return 1; };
+const gen = function*() { yield 1; };
+const count = 0;
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        fn_sym = [s for s in symbols if s["name"] == "fn"]
+        assert len(fn_sym) == 1
+        assert fn_sym[0]["kind"] == "function"
+
+        gen_sym = [s for s in symbols if s["name"] == "gen"]
+        assert len(gen_sym) == 1
+        assert gen_sym[0]["kind"] == "function"
+
+        count_sym = [s for s in symbols if s["name"] == "count"]
+        assert len(count_sym) == 1
+        assert count_sym[0]["kind"] == "variable"
+
+    @pytest.mark.asyncio
+    async def test_destructured_object_produces_individual_symbols(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Destructured object bindings should produce one symbol per binding."""
+        code = """
+const { alpha, beta } = getValues();
+const { MAX_SIZE, name: localName } = config;
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        var_symbols = [s for s in symbols if s["kind"] == "variable"]
+        var_names = [s["name"] for s in var_symbols]
+        assert "alpha" in var_names
+        assert "beta" in var_names
+        assert "localName" in var_names
+
+        const_symbols = [s for s in symbols if s["kind"] == "constant"]
+        const_names = [s["name"] for s in const_symbols]
+        assert "MAX_SIZE" in const_names
+
+        # Should NOT have a symbol named "{ alpha, beta }"
+        all_names = [s["name"] for s in symbols]
+        assert not any("{" in n for n in all_names)
+
+    @pytest.mark.asyncio
+    async def test_destructured_array_produces_individual_symbols(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Destructured array bindings should produce one symbol per binding."""
+        code = """
+const [first, second] = getItems();
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        var_symbols = [s for s in symbols if s["kind"] == "variable"]
+        var_names = [s["name"] for s in var_symbols]
+        assert "first" in var_names
+        assert "second" in var_names
