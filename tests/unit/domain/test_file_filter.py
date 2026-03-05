@@ -61,3 +61,6 @@ class TestFileFilterPathSkip:
 
     def test_case_insensitive_directory(self) -> None:
         assert FileFilter.should_skip("Node_Modules/pkg/index.js") is True
+
+    def test_backslash_path_separator(self) -> None:
+        assert FileFilter.should_skip("node_modules\\express\\index.js") is True
