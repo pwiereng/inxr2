@@ -1575,7 +1575,7 @@ class TestPathValidation:
             )
 
         assert response.status_code == 400
-        assert "invalid characters" in response.json()["detail"].lower()
+        assert "must contain only" in response.json()["detail"].lower()
 
     async def test_valid_path_with_subdirs_accepted(self, test_app: FastAPI) -> None:
         """Test that valid paths with subdirectories work (return 404 for not found)."""
@@ -1614,7 +1614,7 @@ class TestPathValidation:
             )
 
         assert response.status_code == 400
-        assert "start/end with a dot" in response.json()["detail"]
+        assert "cannot start or end with a dot" in response.json()["detail"]
 
     async def test_repo_name_dotdot_rejected(self, test_app: FastAPI) -> None:
         """Test that '..' as repo name is rejected."""
@@ -1627,7 +1627,7 @@ class TestPathValidation:
             )
 
         assert response.status_code == 400
-        assert "start/end with a dot" in response.json()["detail"]
+        assert "cannot start or end with a dot" in response.json()["detail"]
 
     async def test_repo_name_starting_with_dot_rejected(
         self, test_app: FastAPI
@@ -1642,7 +1642,7 @@ class TestPathValidation:
             )
 
         assert response.status_code == 400
-        assert "start/end with a dot" in response.json()["detail"]
+        assert "cannot start or end with a dot" in response.json()["detail"]
 
     async def test_repo_name_ending_with_dot_rejected(self, test_app: FastAPI) -> None:
         """Test that repo names ending with dot are rejected."""
@@ -1655,7 +1655,7 @@ class TestPathValidation:
             )
 
         assert response.status_code == 400
-        assert "start/end with a dot" in response.json()["detail"]
+        assert "cannot start or end with a dot" in response.json()["detail"]
 
     async def test_repo_name_with_middle_dot_accepted(self, test_app: FastAPI) -> None:
         """Test that repo names with dots in the middle are accepted."""

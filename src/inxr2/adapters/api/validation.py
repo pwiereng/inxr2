@@ -1,9 +1,10 @@
 """Shared validation functions for API routes."""
 
-import re
 from pathlib import PurePosixPath
 
 from fastapi import HTTPException
+
+from inxr2.domain.services.validators import validate_repo_name as _validate_repo_name
 
 
 def validate_path(path: str) -> str:
@@ -42,6 +43,8 @@ def validate_path(path: str) -> str:
 def validate_repo_name(repo: str) -> str:
     """Validate repository name format.
 
+    Delegates to the shared domain validator and wraps ValueError into HTTPException.
+
     Args:
         repo: Repository name to validate
 
@@ -51,25 +54,9 @@ def validate_repo_name(repo: str) -> str:
     Raises:
         HTTPException: If repo name is invalid
     """
-    if not repo or not repo.strip():
-        raise HTTPException(status_code=400, detail="Repository name cannot be empty")
-
-    # Allow only safe characters for repository names:
-    # - a-zA-Z0-9_ (alphanumeric and underscore)
-    # - hyphen (-)
-    # - dot (.) for repo names like "my.repo"
-    # This prevents injection of path separators, spaces, or special chars
-    if not re.match(r"^[a-zA-Z0-9_.-]+$", repo):
-        raise HTTPException(
-            status_code=400,
-            detail="Repository name contains invalid characters",
-        )
-
-    # Reject problematic dot patterns
-    if repo in (".", "..") or repo.startswith(".") or repo.endswith("."):
-        raise HTTPException(
-            status_code=400,
-            detail="Repository name cannot be '.', '..', or start/end with a dot",
-        )
+    try:
+        _validate_repo_name(repo)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     return repo

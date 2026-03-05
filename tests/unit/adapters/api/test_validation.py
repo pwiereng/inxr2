@@ -129,42 +129,42 @@ class TestValidateRepoName:
         with pytest.raises(HTTPException) as exc_info:
             validate_repo_name("user/repo")
         assert exc_info.value.status_code == 400
-        assert "invalid characters" in exc_info.value.detail
+        assert "must contain only" in exc_info.value.detail
 
     def test_name_with_space_raises(self) -> None:
         """Test that names with spaces raise HTTPException."""
         with pytest.raises(HTTPException) as exc_info:
             validate_repo_name("my repo")
         assert exc_info.value.status_code == 400
-        assert "invalid characters" in exc_info.value.detail
+        assert "must contain only" in exc_info.value.detail
 
     def test_single_dot_raises(self) -> None:
         """Test that single dot raises HTTPException."""
         with pytest.raises(HTTPException) as exc_info:
             validate_repo_name(".")
         assert exc_info.value.status_code == 400
-        assert "cannot be '.'" in exc_info.value.detail
+        assert "cannot start or end with a dot" in exc_info.value.detail
 
     def test_double_dot_raises(self) -> None:
         """Test that double dot raises HTTPException."""
         with pytest.raises(HTTPException) as exc_info:
             validate_repo_name("..")
         assert exc_info.value.status_code == 400
-        assert "cannot be '.'" in exc_info.value.detail
+        assert "cannot start or end with a dot" in exc_info.value.detail
 
     def test_name_starting_with_dot_raises(self) -> None:
         """Test that names starting with dot raise HTTPException."""
         with pytest.raises(HTTPException) as exc_info:
             validate_repo_name(".hidden")
         assert exc_info.value.status_code == 400
-        assert "start/end with a dot" in exc_info.value.detail
+        assert "cannot start or end with a dot" in exc_info.value.detail
 
     def test_name_ending_with_dot_raises(self) -> None:
         """Test that names ending with dot raise HTTPException."""
         with pytest.raises(HTTPException) as exc_info:
             validate_repo_name("repo.")
         assert exc_info.value.status_code == 400
-        assert "start/end with a dot" in exc_info.value.detail
+        assert "cannot start or end with a dot" in exc_info.value.detail
 
     def test_name_with_special_chars_raises(self) -> None:
         """Test that names with special characters raise HTTPException."""
@@ -172,4 +172,4 @@ class TestValidateRepoName:
             with pytest.raises(HTTPException) as exc_info:
                 validate_repo_name(f"repo{char}name")
             assert exc_info.value.status_code == 400
-            assert "invalid characters" in exc_info.value.detail
+            assert "must contain only" in exc_info.value.detail

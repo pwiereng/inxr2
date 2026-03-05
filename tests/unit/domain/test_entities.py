@@ -30,19 +30,19 @@ class TestRepository:
         assert repo.name == "vue.js.org"
 
     def test_invalid_name_starts_with_dot(self) -> None:
-        with pytest.raises(ValueError, match="start/end with a dot"):
+        with pytest.raises(ValueError, match="cannot start or end with a dot"):
             self._make_repo(".hidden")
 
     def test_invalid_name_ends_with_dot(self) -> None:
-        with pytest.raises(ValueError, match="start/end with a dot"):
+        with pytest.raises(ValueError, match="cannot start or end with a dot"):
             self._make_repo("repo.")
 
     def test_invalid_name_single_dot(self) -> None:
-        with pytest.raises(ValueError, match="start/end with a dot"):
+        with pytest.raises(ValueError, match="cannot start or end with a dot"):
             self._make_repo(".")
 
     def test_invalid_name_double_dot(self) -> None:
-        with pytest.raises(ValueError, match="start/end with a dot"):
+        with pytest.raises(ValueError, match="cannot start or end with a dot"):
             self._make_repo("..")
 
     def test_invalid_name_with_spaces(self) -> None:
