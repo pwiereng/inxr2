@@ -609,6 +609,7 @@ describe('Search', () => {
         extensions: ['.py', '.ts', '.tsx', '.js'],
       })
 
+      window.history.pushState({}, '', '/search')
       render(<Search />)
 
       await waitFor(() => {
@@ -625,14 +626,11 @@ describe('Search', () => {
       window.history.pushState({}, '', '?query=test')
       render(<Search />)
 
-      await waitFor(() => {
-        expect(mockGetFileExtensions).toHaveBeenCalled()
-      })
-
       await openExtensionDropdown()
 
+      // Wait for extension options to render (ensures state update from async effect is done)
       await waitFor(() => {
-        expect(screen.getByText('Hide all extensions')).toBeInTheDocument()
+        expect(screen.getByText('.py')).toBeInTheDocument()
       })
       fireEvent.click(screen.getByText('Hide all extensions'))
 
@@ -655,12 +653,9 @@ describe('Search', () => {
       window.history.pushState({}, '', '?query=test&exclude_ext=.py,.ts,.tsx')
       render(<Search />)
 
-      await waitFor(() => {
-        expect(mockGetFileExtensions).toHaveBeenCalled()
-      })
-
       await openExtensionDropdown()
 
+      // Wait for extension options to render
       await waitFor(() => {
         expect(screen.getByText('Show all extensions')).toBeInTheDocument()
       })
@@ -677,14 +672,12 @@ describe('Search', () => {
         extensions: ['.py', '(none)', '.ts'],
       })
 
+      window.history.pushState({}, '', '/search')
       render(<Search />)
-
-      await waitFor(() => {
-        expect(mockGetFileExtensions).toHaveBeenCalled()
-      })
 
       await openExtensionDropdown()
 
+      // Wait for extension options to render, then verify (none) displays as "(no extension)"
       await waitFor(() => {
         expect(screen.getByText('(no extension)')).toBeInTheDocument()
       })
@@ -697,10 +690,6 @@ describe('Search', () => {
 
       window.history.pushState({}, '', '?query=test&exclude_ext=(none)')
       render(<Search />)
-
-      await waitFor(() => {
-        expect(mockGetFileExtensions).toHaveBeenCalled()
-      })
 
       // The chip in the select's renderValue should display "(no extension)"
       await waitFor(() => {
@@ -717,12 +706,9 @@ describe('Search', () => {
       window.history.pushState({}, '', '?query=test')
       render(<Search />)
 
-      await waitFor(() => {
-        expect(mockGetFileExtensions).toHaveBeenCalled()
-      })
-
       await openExtensionDropdown()
 
+      // Wait for extension options to render
       await waitFor(() => {
         expect(screen.getByText('(no extension)')).toBeInTheDocument()
       })
@@ -743,19 +729,17 @@ describe('Search', () => {
       window.history.pushState({}, '', '?query=test')
       render(<Search />)
 
-      await waitFor(() => {
-        expect(mockGetFileExtensions).toHaveBeenCalled()
-      })
-
       await openExtensionDropdown()
 
-      // Find the .py menu item (there may be multiple .py texts; target the one in the listbox)
+      // Wait for extension options to render, then click .py
       await waitFor(() => {
         expect(screen.getByRole('listbox')).toBeInTheDocument()
       })
       const listbox = screen.getByRole('listbox')
-      const pyOption = within(listbox).getByText('.py')
-      fireEvent.click(pyOption)
+      await waitFor(() => {
+        expect(within(listbox).getByText('.py')).toBeInTheDocument()
+      })
+      fireEvent.click(within(listbox).getByText('.py'))
 
       await waitFor(() => {
         const params = new URLSearchParams(window.location.search)
@@ -773,10 +757,6 @@ describe('Search', () => {
       render(<Search />)
 
       await waitFor(() => {
-        expect(mockGetFileExtensions).toHaveBeenCalled()
-      })
-
-      await waitFor(() => {
         expect(screen.getByText('No results found')).toBeInTheDocument()
       })
 
@@ -791,10 +771,6 @@ describe('Search', () => {
       // Mount with exclude_ext already in URL (simulates page reload)
       window.history.pushState({}, '', '?query=test&exclude_ext=.py,.tsx')
       render(<Search />)
-
-      await waitFor(() => {
-        expect(mockGetFileExtensions).toHaveBeenCalled()
-      })
 
       // The chips should show the excluded extensions in the select's renderValue
       await waitFor(() => {
