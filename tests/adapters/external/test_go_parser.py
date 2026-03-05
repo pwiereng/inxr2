@@ -862,6 +862,58 @@ type User struct {
         assert "Age" in field_names
 
     @pytest.mark.asyncio
+    async def test_chained_selector_call(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that chained selector calls like a.B.Method() emit references."""
+        code = """package main
+
+type Registry struct{}
+type Service struct{}
+
+func (r *Registry) GetService() Service { return Service{} }
+func (s *Service) Process() {}
+
+func main() {
+    var reg Registry
+    reg.GetService().Process()
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="main.go"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_texts = [r["text"] for r in call_refs]
+        # Both method names in the chain should be captured
+        assert "GetService" in call_texts
+        assert "Process" in call_texts
+
+    @pytest.mark.asyncio
+    async def test_chained_selector_field_access(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that chained selector field access like a.B.C emits references."""
+        code = """package main
+
+type Outer struct{}
+type Inner struct{}
+
+func main() {
+    var o Outer
+    _ = o.Inner.Value
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="main.go"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_texts = [r["text"] for r in usage_refs]
+        # The outermost field "Value" should be captured
+        assert "Value" in usage_texts
+
+    @pytest.mark.asyncio
     async def test_iota_const_block(self, parser_service: TreeSitterService) -> None:
         """Test parsing const block with iota."""
         code = """package main
