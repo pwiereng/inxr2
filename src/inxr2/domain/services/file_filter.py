@@ -41,9 +41,8 @@ class FileFilter:
         lower = file_path.lower()
 
         # Check minified suffixes
-        for suffix in _MINIFIED_SUFFIXES:
-            if lower.endswith(suffix):
-                return True
+        if lower.endswith(_MINIFIED_SUFFIXES):
+            return True
 
         # Check if any path segment is a skip directory
         parts = lower.replace("\\", "/").split("/")
