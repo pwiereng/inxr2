@@ -577,16 +577,22 @@ class GoParser(BaseLanguageParser):
                         "call_expression",
                     ):
                         # Chained call: a.B.Method() or a.B().Method()
+                        leftmost = operand_text.split(".", 1)[0] if operand_text else ""
+                        if is_std_lib_prefix(leftmost):
+                            call_name = f"{operand_text}.{field_text}"
+                        else:
+                            call_name = field_text
                         add_reference(
-                            self._make_reference(field_text, "call", field_node, scope)
+                            self._make_reference(call_name, "call", field_node, scope)
                         )
             else:
                 # Field access or type reference
+                leftmost = operand_text.split(".", 1)[0] if operand_text else ""
                 if operand_node.type in (
                     "identifier",
                     "selector_expression",
                     "call_expression",
-                ) and not is_std_lib_prefix(operand_text):
+                ) and not is_std_lib_prefix(leftmost):
                     if not is_builtin_or_primitive(field_text):
                         add_reference(
                             self._make_reference(field_text, "usage", field_node, scope)

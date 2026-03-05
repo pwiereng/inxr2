@@ -890,6 +890,53 @@ func main() {
         assert "Process" in call_texts
 
     @pytest.mark.asyncio
+    async def test_chained_selector_call_stdlib(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that stdlib chained calls like http.DefaultClient.Do() are qualified."""
+        code = """package main
+
+import "net/http"
+
+func main() {
+    req, _ := http.NewRequest("GET", "/", nil)
+    http.DefaultClient.Do(req)
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="main.go"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_texts = [r["text"] for r in call_refs]
+        # Stdlib chained call should be qualified
+        assert "http.DefaultClient.Do" in call_texts
+        # Simple stdlib call should also be qualified
+        assert "http.NewRequest" in call_texts
+
+    @pytest.mark.asyncio
+    async def test_chained_selector_field_access_stdlib_filtered(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that stdlib chained field access is filtered from usage refs."""
+        code = """package main
+
+import "net/http"
+
+func main() {
+    _ = http.DefaultClient.Transport
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="main.go"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_texts = [r["text"] for r in usage_refs]
+        # Stdlib field access should not appear as bare usage refs
+        assert "Transport" not in usage_texts
+
+    @pytest.mark.asyncio
     async def test_chained_selector_field_access(
         self, parser_service: TreeSitterService
     ) -> None:
