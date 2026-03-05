@@ -761,6 +761,7 @@ describe('Search', () => {
       })
 
       expect(mockSearchText).not.toHaveBeenCalled()
+      expect(mockSearchSymbols).not.toHaveBeenCalled()
     })
 
     it('should restore extension filter state from URL on mount', async () => {
