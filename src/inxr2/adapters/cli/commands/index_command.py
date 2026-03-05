@@ -22,7 +22,6 @@ from inxr2.application.use_cases.indexing import (
     GetIndexStatusUseCase,
 )
 from inxr2.application.use_cases.indexing.orchestrator import DBQueryStats
-from inxr2.infrastructure.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
 
@@ -101,40 +100,35 @@ async def _reset_database_async(console: Console) -> None:
     """Async implementation of database reset using TRUNCATE CASCADE."""
     from sqlalchemy import text
 
-    db = DatabaseConnection()
+    from inxr2.adapters.cli.dependencies import cli_session
 
-    try:
-        async with db.session() as session:
-            # First, kill all other connections to avoid lock contention
-            console.print("  Terminating other database connections...")
-            await session.execute(
-                text(
-                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = current_database() AND pid <> pg_backend_pid();"
-                )
+    async with cli_session() as session:
+        # First, kill all other connections to avoid lock contention
+        console.print("  Terminating other database connections...")
+        await session.execute(
+            text(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = current_database() AND pid <> pg_backend_pid();"
             )
-            await session.commit()
+        )
+        await session.commit()
 
-            # TRUNCATE CASCADE is much faster than DELETE for large tables
-            # Order matters due to foreign key constraints, but CASCADE handles it
-            console.print("  Truncating all tables...")
-            await session.execute(
-                text(
-                    'TRUNCATE TABLE "references", symbols, text_contents, '
-                    "commit_files, files, branch_commits, commits, "
-                    "index_status, repositories CASCADE;"
-                )
+        # TRUNCATE CASCADE is much faster than DELETE for large tables
+        # Order matters due to foreign key constraints, but CASCADE handles it
+        console.print("  Truncating all tables...")
+        await session.execute(
+            text(
+                'TRUNCATE TABLE "references", symbols, text_contents, '
+                "commit_files, files, branch_commits, commits, "
+                "index_status, repositories CASCADE;"
             )
-            await session.commit()
+        )
+        await session.commit()
 
-            # Verify the reset worked
-            result = await session.execute(text("SELECT COUNT(*) FROM repositories"))
-            repo_count = result.scalar()
-            console.print(
-                f"  [green]All tables truncated (repos: {repo_count})[/green]"
-            )
-    finally:
-        await db.close()
+        # Verify the reset worked
+        result = await session.execute(text("SELECT COUNT(*) FROM repositories"))
+        repo_count = result.scalar()
+        console.print(f"  [green]All tables truncated (repos: {repo_count})[/green]")
 
 
 def _utc_now() -> datetime:
@@ -290,18 +284,10 @@ async def _run_full_index_async(
     """Async implementation of full indexing using the orchestrator."""
     from sqlalchemy import text
 
+    from inxr2.adapters.cli.dependencies import cli_repositories
     from inxr2.adapters.external.git_service import GitService
     from inxr2.adapters.external.plaintext_parser import PlaintextParser
     from inxr2.adapters.external.treesitter import TreeSitterService
-    from inxr2.adapters.persistence.repositories import (
-        PostgresCommitRepository,
-        PostgresFileRepository,
-        PostgresIndexStatusRepository,
-        PostgresReferenceRepository,
-        PostgresRepositoryAdapter,
-        PostgresSymbolRepository,
-        PostgresTextContentRepository,
-    )
     from inxr2.application.use_cases.indexing.default_orchestrator import (
         DefaultIndexingOrchestrator,
     )
@@ -309,22 +295,13 @@ async def _run_full_index_async(
         IndexRepositoryRequest,
     )
 
-    # Initialize database connection
-    db = DatabaseConnection()
-    try:
-        # Initialize services
-        git_service = GitService()
-        parser_service = TreeSitterService()
+    # Initialize services
+    git_service = GitService()
+    parser_service = TreeSitterService()
 
-        # Initialize repositories
-        async with db.session() as session:
-            repository_repo = PostgresRepositoryAdapter(session)
-            commit_repo = PostgresCommitRepository(session)
-            file_repo = PostgresFileRepository(session)
-            symbol_repo = PostgresSymbolRepository(session)
-            reference_repo = PostgresReferenceRepository(session)
-            index_status_repo = PostgresIndexStatusRepository(session)
-            text_content_repo = PostgresTextContentRepository(session)
+    try:
+        async with cli_repositories() as repos:
+            session = repos.session
 
             # Pre-resolve callback: flush+expunge the session before resolution.
             # This clears the ORM objects accumulated during indexing so
@@ -335,13 +312,13 @@ async def _run_full_index_async(
 
             # Create orchestrator
             orchestrator = DefaultIndexingOrchestrator(
-                repository_repo=repository_repo,
-                commit_repo=commit_repo,
-                file_repo=file_repo,
-                symbol_repo=symbol_repo,
-                reference_repo=reference_repo,
-                index_status_repo=index_status_repo,
-                text_content_repo=text_content_repo,
+                repository_repo=repos.repository_repo,
+                commit_repo=repos.commit_repo,
+                file_repo=repos.file_repo,
+                symbol_repo=repos.symbol_repo,
+                reference_repo=repos.reference_repo,
+                index_status_repo=repos.index_status_repo,
+                text_content_repo=repos.text_content_repo,
                 git_service=git_service,
                 parser_service=parser_service,
                 plaintext_parser=PlaintextParser(),
@@ -461,7 +438,6 @@ async def _run_full_index_async(
 
     finally:
         git_service.clear_repo_cache()
-        await db.close()
 
 
 def show_index_status(repo_path: Path, console: Console) -> None:
@@ -474,11 +450,8 @@ async def _show_index_status_async(repo_path: Path, console: Console) -> None:
 
     Uses GetIndexStatusUseCase for business logic, handles presentation here.
     """
+    from inxr2.adapters.cli.dependencies import cli_repositories
     from inxr2.adapters.external.git_service import GitService
-    from inxr2.adapters.persistence.repositories import (
-        PostgresIndexStatusRepository,
-        PostgresRepositoryAdapter,
-    )
 
     git_service = GitService()
 
@@ -489,71 +462,63 @@ async def _show_index_status_async(repo_path: Path, console: Console) -> None:
     repo_name = repo_info.name
 
     # Connect to database and execute use case
-    db = DatabaseConnection()
+    async with cli_repositories() as repos:
+        # Create use case with dependencies
+        use_case = GetIndexStatusUseCase(
+            repository_repo=repos.repository_repo,
+            index_status_repo=repos.index_status_repo,
+        )
 
-    try:
-        async with db.session() as session:
-            # Create use case with dependencies
-            use_case = GetIndexStatusUseCase(
-                repository_repo=PostgresRepositoryAdapter(session),
-                index_status_repo=PostgresIndexStatusRepository(session),
+        # Execute use case
+        status = await use_case.execute(
+            GetIndexStatusRequest(
+                repository_name=repo_name,
+                branch=current_branch,
+                current_commit_hash=current_commit,
             )
+        )
 
-            # Execute use case
-            status = await use_case.execute(
-                GetIndexStatusRequest(
-                    repository_name=repo_name,
-                    branch=current_branch,
-                    current_commit_hash=current_commit,
-                )
-            )
+        # Presentation: Create status table
+        table = Table(show_header=False, box=None)
+        table.add_column("Property", style="dim")
+        table.add_column("Value")
 
-            # Presentation: Create status table
-            table = Table(show_header=False, box=None)
-            table.add_column("Property", style="dim")
-            table.add_column("Value")
+        table.add_row("Repository", repo_name)
+        table.add_row("Current Branch", current_branch)
+        table.add_row(
+            "Current Commit", current_commit[:8] if current_commit else "unknown"
+        )
+        table.add_row("", "")
 
-            table.add_row("Repository", repo_name)
-            table.add_row("Current Branch", current_branch)
+        if status.is_indexed:
             table.add_row(
-                "Current Commit", current_commit[:8] if current_commit else "unknown"
+                "Last Indexed Commit",
+                (
+                    status.last_indexed_commit[:8]
+                    if status.last_indexed_commit
+                    else "unknown"
+                ),
             )
-            table.add_row("", "")
+            table.add_row(
+                "Last Indexed At",
+                (
+                    status.last_indexed_at.isoformat()
+                    if status.last_indexed_at
+                    else "unknown"
+                ),
+            )
+            table.add_row("Files Indexed", str(status.total_files_indexed))
+            table.add_row("Symbols Indexed", str(status.total_symbols_indexed))
+            table.add_row("References Indexed", str(status.total_references_indexed))
 
-            if status.is_indexed:
-                table.add_row(
-                    "Last Indexed Commit",
-                    (
-                        status.last_indexed_commit[:8]
-                        if status.last_indexed_commit
-                        else "unknown"
-                    ),
-                )
-                table.add_row(
-                    "Last Indexed At",
-                    (
-                        status.last_indexed_at.isoformat()
-                        if status.last_indexed_at
-                        else "unknown"
-                    ),
-                )
-                table.add_row("Files Indexed", str(status.total_files_indexed))
-                table.add_row("Symbols Indexed", str(status.total_symbols_indexed))
-                table.add_row(
-                    "References Indexed", str(status.total_references_indexed)
-                )
-
-                if status.is_up_to_date:
-                    table.add_row("Status", "[green]Up to date[/green]")
-                else:
-                    table.add_row("Status", "[yellow]Updates available[/yellow]")
+            if status.is_up_to_date:
+                table.add_row("Status", "[green]Up to date[/green]")
             else:
-                table.add_row("Status", "[red]Not indexed[/red]")
+                table.add_row("Status", "[yellow]Updates available[/yellow]")
+        else:
+            table.add_row("Status", "[red]Not indexed[/red]")
 
-            console.print(table)
-
-    finally:
-        await db.close()
+        console.print(table)
 
 
 # =============================================================================

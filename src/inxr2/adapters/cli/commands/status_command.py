@@ -32,31 +32,15 @@ async def _show_overall_status_async(
         repository_repo: Optional injected repository port (for testing).
         index_status_repo: Optional injected index status port (for testing).
     """
-    from inxr2.infrastructure.database.connection import DatabaseConnection
+    if repository_repo is not None and index_status_repo is not None:
+        await _render_status(console, repository_repo, index_status_repo)
+    else:
+        from inxr2.adapters.cli.dependencies import cli_repositories
 
-    db: DatabaseConnection | None = None
-
-    if repository_repo is None or index_status_repo is None:
-        from inxr2.adapters.persistence.repositories import (
-            PostgresIndexStatusRepository,
-            PostgresRepositoryAdapter,
-        )
-
-        db = DatabaseConnection()
-
-    try:
-        if db is not None:
-            async with db.session() as session:
-                repo_adapter = PostgresRepositoryAdapter(session)
-                idx_status_adapter = PostgresIndexStatusRepository(session)
-                await _render_status(console, repo_adapter, idx_status_adapter)
-        else:
-            assert repository_repo is not None
-            assert index_status_repo is not None
-            await _render_status(console, repository_repo, index_status_repo)
-    finally:
-        if db is not None:
-            await db.close()
+        async with cli_repositories() as repos:
+            await _render_status(
+                console, repos.repository_repo, repos.index_status_repo
+            )
 
 
 async def _render_status(
