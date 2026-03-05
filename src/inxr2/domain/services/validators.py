@@ -25,5 +25,5 @@ def validate_repo_name(name: str) -> None:
 
     if name.startswith(".") or name.endswith("."):
         raise ValueError(
-            f"Invalid repository name '{name}': " "cannot start or end with a dot"
+            f"Invalid repository name '{name}': cannot start or end with a dot"
         )
