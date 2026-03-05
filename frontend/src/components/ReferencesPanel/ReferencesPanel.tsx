@@ -300,7 +300,7 @@ export function ReferencesPanel({
                 allDefinitions.map((def) => {
                   const isSelected = symbol ? def.id === symbol.id : false
                   // Show full path when multiple definitions exist to disambiguate
-                  const fileName =
+                  const displayPath =
                     allDefinitions.length > 1
                       ? def.file_path || ''
                       : def.file_path?.split('/').pop() || ''
@@ -350,7 +350,7 @@ export function ReferencesPanel({
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {fileName}
+                            {displayPath}
                           </Typography>
                         }
                       />
