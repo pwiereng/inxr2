@@ -1575,7 +1575,7 @@ class TestPathValidation:
             )
 
         assert response.status_code == 400
-        assert "invalid characters" in response.json()["detail"].lower()
+        assert "must contain only" in response.json()["detail"].lower()
 
     async def test_valid_path_with_subdirs_accepted(self, test_app: FastAPI) -> None:
         """Test that valid paths with subdirectories work (return 404 for not found)."""

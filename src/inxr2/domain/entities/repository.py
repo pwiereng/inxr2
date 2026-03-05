@@ -34,24 +34,8 @@ class Repository:
 
     def __post_init__(self) -> None:
         """Validate repository entity."""
-        if not self.name:
-            raise ValueError("Repository name cannot be empty")
+        from inxr2.domain.services.validators import validate_repo_name
+
+        validate_repo_name(self.name)
         if not self.url:
             raise ValueError("Repository URL cannot be empty")
-        # Name validation: alphanumeric, underscores, hyphens, and dots
-        import re
-
-        if not re.match(r"^[a-zA-Z0-9_.-]+$", self.name):
-            raise ValueError(
-                f"Invalid repository name '{self.name}': "
-                "must contain only letters, numbers, underscores, hyphens, and dots"
-            )
-        if (
-            self.name in (".", "..")
-            or self.name.startswith(".")
-            or self.name.endswith(".")
-        ):
-            raise ValueError(
-                f"Invalid repository name '{self.name}': "
-                "cannot be '.', '..', or start/end with a dot"
-            )

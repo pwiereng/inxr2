@@ -129,14 +129,14 @@ class TestValidateRepoName:
         with pytest.raises(HTTPException) as exc_info:
             validate_repo_name("user/repo")
         assert exc_info.value.status_code == 400
-        assert "invalid characters" in exc_info.value.detail
+        assert "must contain only" in exc_info.value.detail
 
     def test_name_with_space_raises(self) -> None:
         """Test that names with spaces raise HTTPException."""
         with pytest.raises(HTTPException) as exc_info:
             validate_repo_name("my repo")
         assert exc_info.value.status_code == 400
-        assert "invalid characters" in exc_info.value.detail
+        assert "must contain only" in exc_info.value.detail
 
     def test_single_dot_raises(self) -> None:
         """Test that single dot raises HTTPException."""
@@ -172,4 +172,4 @@ class TestValidateRepoName:
             with pytest.raises(HTTPException) as exc_info:
                 validate_repo_name(f"repo{char}name")
             assert exc_info.value.status_code == 400
-            assert "invalid characters" in exc_info.value.detail
+            assert "must contain only" in exc_info.value.detail
