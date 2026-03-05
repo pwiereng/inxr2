@@ -26,11 +26,23 @@ Executed after merging changes into main (worktree cleanup step 5).
 
 ## Base URLs
 
-- Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:8000`
-- QA Agent: `http://localhost:9222`
+- Frontend: `http://localhost:5173` (from host or dev container)
+- Backend API: `http://localhost:8000` (from host or dev container)
+- QA Agent: `http://localhost:9222` (from host)
 
-All QA `curl` commands target `http://localhost:9222`. All git/API commands run inside the dev container.
+**Important — QA agent browser URLs:** The QA agent's browser runs inside the `inxr2-playwright` container. When telling it to navigate to the frontend, use `host.docker.internal` instead of `localhost`:
+
+```bash
+# From host → QA agent API (localhost is fine)
+curl "http://localhost:9222/navigate?url=..."
+
+# URL the QA agent navigates TO (must use host.docker.internal)
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/"
+```
+
+This is because `localhost` inside the playwright container refers to itself, not the host machine. `host.docker.internal` resolves to the Docker host on macOS/Docker Desktop.
+
+All `docker exec` commands (git, API curls inside the dev container) still use `localhost` since the backend listens inside that container.
 
 ---
 
