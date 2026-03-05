@@ -3015,3 +3015,23 @@ const [first, second] = getItems();
         var_names = [s["name"] for s in var_symbols]
         assert "first" in var_names
         assert "second" in var_names
+
+    @pytest.mark.asyncio
+    async def test_nested_destructuring_extracts_inner_bindings(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Nested destructuring should extract inner binding names."""
+        code = """
+const { a: { b, c }, d } = obj;
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        var_symbols = [s for s in symbols if s["kind"] == "variable"]
+        var_names = [s["name"] for s in var_symbols]
+        assert "b" in var_names
+        assert "c" in var_names
+        assert "d" in var_names
+        # "a" is a property key, not a binding — should NOT be a symbol
+        assert "a" not in var_names

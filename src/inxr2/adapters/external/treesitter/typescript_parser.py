@@ -429,7 +429,12 @@ class TypeScriptParser(BaseLanguageParser):
             symbols.append(self._make_symbol(name, "function", node))
 
         def _extract_destructured_names(pattern_node: Node) -> list[Node]:
-            """Extract individual identifier nodes from a destructuring pattern."""
+            """Extract individual name nodes from a destructuring pattern.
+
+            Returns nodes whose text represents the local binding name.
+            These may be ``identifier`` or ``shorthand_property_identifier_pattern``
+            nodes depending on the pattern shape.
+            """
             identifiers: list[Node] = []
             for child in pattern_node.children:
                 if child.type == "shorthand_property_identifier_pattern":
@@ -438,6 +443,8 @@ class TypeScriptParser(BaseLanguageParser):
                     value = child.child_by_field_name("value")
                     if value and value.type == "identifier":
                         identifiers.append(value)
+                    elif value and value.type in ("object_pattern", "array_pattern"):
+                        identifiers.extend(_extract_destructured_names(value))
                 elif child.type == "identifier":
                     identifiers.append(child)
                 elif child.type in ("object_pattern", "array_pattern"):
