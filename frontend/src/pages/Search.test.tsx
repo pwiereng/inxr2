@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@/test/utils'
+import { render, screen, waitFor, fireEvent, within } from '@/test/utils'
 import Search from './Search'
 import * as api from '@/lib/api'
 
@@ -583,6 +583,245 @@ describe('Search', () => {
           repo: 1,
         })
       )
+    })
+  })
+
+  describe('Extension filter', () => {
+    /**
+     * Helper to find and open the MUI "Hide Extensions" multi-select dropdown.
+     * MUI InputLabel renders the label text twice (label element + notched outline),
+     * so we find the label, navigate to the FormControl, then find the select trigger.
+     */
+    async function openExtensionDropdown() {
+      await waitFor(() => {
+        const labels = screen.getAllByText('Hide Extensions')
+        expect(labels.length).toBeGreaterThan(0)
+      })
+      // Find the MUI Select trigger (div with role="combobox" or class MuiSelect-select)
+      const labels = screen.getAllByText('Hide Extensions')
+      const formControl = labels[0]!.closest('.MuiFormControl-root')!
+      const trigger = formControl.querySelector('.MuiSelect-select') as HTMLElement
+      fireEvent.mouseDown(trigger)
+    }
+
+    it('should render Hide Extensions dropdown', async () => {
+      mockGetFileExtensions.mockResolvedValue({
+        extensions: ['.py', '.ts', '.tsx', '.js'],
+      })
+
+      render(<Search />)
+
+      await waitFor(() => {
+        const labels = screen.getAllByText('Hide Extensions')
+        expect(labels.length).toBeGreaterThan(0)
+      })
+    })
+
+    it('should set exclude_ext to all extensions when clicking "Hide all extensions"', async () => {
+      mockGetFileExtensions.mockResolvedValue({
+        extensions: ['.py', '.ts', '.tsx'],
+      })
+
+      window.history.pushState({}, '', '?query=test')
+      render(<Search />)
+
+      await waitFor(() => {
+        expect(mockGetFileExtensions).toHaveBeenCalled()
+      })
+
+      await openExtensionDropdown()
+
+      await waitFor(() => {
+        expect(screen.getByText('Hide all extensions')).toBeInTheDocument()
+      })
+      fireEvent.click(screen.getByText('Hide all extensions'))
+
+      await waitFor(() => {
+        const params = new URLSearchParams(window.location.search)
+        const excludeExt = params.get('exclude_ext')
+        expect(excludeExt).toBeTruthy()
+        const excluded = excludeExt!.split(',')
+        expect(excluded).toContain('.py')
+        expect(excluded).toContain('.ts')
+        expect(excluded).toContain('.tsx')
+      })
+    })
+
+    it('should clear exclude_ext when clicking "Show all extensions"', async () => {
+      mockGetFileExtensions.mockResolvedValue({
+        extensions: ['.py', '.ts', '.tsx'],
+      })
+
+      window.history.pushState({}, '', '?query=test&exclude_ext=.py,.ts,.tsx')
+      render(<Search />)
+
+      await waitFor(() => {
+        expect(mockGetFileExtensions).toHaveBeenCalled()
+      })
+
+      await openExtensionDropdown()
+
+      await waitFor(() => {
+        expect(screen.getByText('Show all extensions')).toBeInTheDocument()
+      })
+      fireEvent.click(screen.getByText('Show all extensions'))
+
+      await waitFor(() => {
+        const params = new URLSearchParams(window.location.search)
+        expect(params.get('exclude_ext')).toBeNull()
+      })
+    })
+
+    it('should render (none) sentinel as "(no extension)" in dropdown menu', async () => {
+      mockGetFileExtensions.mockResolvedValue({
+        extensions: ['.py', '(none)', '.ts'],
+      })
+
+      render(<Search />)
+
+      await waitFor(() => {
+        expect(mockGetFileExtensions).toHaveBeenCalled()
+      })
+
+      await openExtensionDropdown()
+
+      await waitFor(() => {
+        expect(screen.getByText('(no extension)')).toBeInTheDocument()
+      })
+    })
+
+    it('should render (none) sentinel as "(no extension)" in chip display when excluded', async () => {
+      mockGetFileExtensions.mockResolvedValue({
+        extensions: ['.py', '(none)', '.ts'],
+      })
+
+      window.history.pushState({}, '', '?query=test&exclude_ext=(none)')
+      render(<Search />)
+
+      await waitFor(() => {
+        expect(mockGetFileExtensions).toHaveBeenCalled()
+      })
+
+      // The chip in the select's renderValue should display "(no extension)"
+      await waitFor(() => {
+        const chips = screen.getAllByText('(no extension)')
+        expect(chips.length).toBeGreaterThanOrEqual(1)
+      })
+    })
+
+    it('should persist (none) in exclude_ext URL param when selected', async () => {
+      mockGetFileExtensions.mockResolvedValue({
+        extensions: ['.py', '(none)', '.ts'],
+      })
+
+      window.history.pushState({}, '', '?query=test')
+      render(<Search />)
+
+      await waitFor(() => {
+        expect(mockGetFileExtensions).toHaveBeenCalled()
+      })
+
+      await openExtensionDropdown()
+
+      await waitFor(() => {
+        expect(screen.getByText('(no extension)')).toBeInTheDocument()
+      })
+      fireEvent.click(screen.getByText('(no extension)'))
+
+      await waitFor(() => {
+        const params = new URLSearchParams(window.location.search)
+        const excludeExt = params.get('exclude_ext')
+        expect(excludeExt).toContain('(none)')
+      })
+    })
+
+    it('should set exclude_ext correctly on individual extension filter change', async () => {
+      mockGetFileExtensions.mockResolvedValue({
+        extensions: ['.py', '.ts', '.tsx'],
+      })
+
+      window.history.pushState({}, '', '?query=test')
+      render(<Search />)
+
+      await waitFor(() => {
+        expect(mockGetFileExtensions).toHaveBeenCalled()
+      })
+
+      await openExtensionDropdown()
+
+      // Find the .py menu item (there may be multiple .py texts; target the one in the listbox)
+      await waitFor(() => {
+        expect(screen.getByRole('listbox')).toBeInTheDocument()
+      })
+      const listbox = screen.getByRole('listbox')
+      const pyOption = within(listbox).getByText('.py')
+      fireEvent.click(pyOption)
+
+      await waitFor(() => {
+        const params = new URLSearchParams(window.location.search)
+        expect(params.get('exclude_ext')).toBe('.py')
+      })
+    })
+
+    it('should skip search when all extensions are excluded', async () => {
+      mockGetFileExtensions.mockResolvedValue({
+        extensions: ['.py', '.ts'],
+      })
+
+      // All extensions excluded
+      window.history.pushState({}, '', '?query=test&exclude_ext=.py,.ts')
+      render(<Search />)
+
+      await waitFor(() => {
+        expect(mockGetFileExtensions).toHaveBeenCalled()
+      })
+
+      await waitFor(() => {
+        expect(screen.getByText('No results found')).toBeInTheDocument()
+      })
+
+      expect(mockSearchText).not.toHaveBeenCalled()
+    })
+
+    it('should restore extension filter state from URL on mount', async () => {
+      mockGetFileExtensions.mockResolvedValue({
+        extensions: ['.py', '.ts', '.tsx'],
+      })
+
+      // Mount with exclude_ext already in URL (simulates page reload)
+      window.history.pushState({}, '', '?query=test&exclude_ext=.py,.tsx')
+      render(<Search />)
+
+      await waitFor(() => {
+        expect(mockGetFileExtensions).toHaveBeenCalled()
+      })
+
+      // The chips should show the excluded extensions in the select's renderValue
+      await waitFor(() => {
+        const pyChips = screen.getAllByText('.py')
+        expect(pyChips.length).toBeGreaterThanOrEqual(1)
+        const tsxChips = screen.getAllByText('.tsx')
+        expect(tsxChips.length).toBeGreaterThanOrEqual(1)
+      })
+    })
+
+    it('should pass included extensions to searchText API call', async () => {
+      mockGetFileExtensions.mockResolvedValue({
+        extensions: ['.py', '.ts', '.tsx'],
+      })
+
+      // Exclude .py — so .ts and .tsx should be passed as extensions
+      window.history.pushState({}, '', '?query=test&exclude_ext=.py')
+      render(<Search />)
+
+      await waitFor(() => {
+        expect(mockSearchText).toHaveBeenCalledWith(
+          expect.objectContaining({
+            q: 'test',
+            extensions: ['.ts', '.tsx'],
+          })
+        )
+      })
     })
   })
 
