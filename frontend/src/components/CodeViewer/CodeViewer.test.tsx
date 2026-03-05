@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@/test/utils'
 import { CodeViewer } from './CodeViewer'
-import type { FileSymbol, FileReference } from '@/lib/api'
+import type { FileSymbol, FileReference, BlameLine } from '@/lib/api'
 
 describe('CodeViewer', () => {
   describe('basic rendering', () => {
@@ -385,6 +385,56 @@ line 3`
 
       const line2Row = document.querySelector('[data-line="2"]')
       expect(line2Row).toBeInTheDocument()
+    })
+  })
+
+  describe('blame annotations', () => {
+    const makeBlameData = (overrides: Partial<BlameLine> = {}): BlameLine[] => [
+      {
+        line_number: 1,
+        commit_hash: 'abc123def456abc123def456abc123def456abc1',
+        short_hash: 'abc123d',
+        author_name: 'Test Author',
+        commit_date: '2026-01-15',
+        message: 'test commit',
+        is_indexed: true,
+        ...overrides,
+      },
+    ]
+
+    it('should call onBlameCommitClick when clicking an indexed blame hash', () => {
+      const onBlameCommitClick = vi.fn()
+      const blameData = makeBlameData({ is_indexed: true })
+
+      render(
+        <CodeViewer
+          content="line 1"
+          language="text"
+          blameData={blameData}
+          onBlameCommitClick={onBlameCommitClick}
+        />
+      )
+
+      fireEvent.click(screen.getByText('abc123d'))
+      expect(onBlameCommitClick).toHaveBeenCalledWith('abc123def456abc123def456abc123def456abc1')
+    })
+
+    it('should call onBlameCommitClick when clicking an un-indexed blame hash', () => {
+      const onBlameCommitClick = vi.fn()
+      const blameData = makeBlameData({ is_indexed: false })
+
+      render(
+        <CodeViewer
+          content="line 1"
+          language="text"
+          blameData={blameData}
+          onBlameCommitClick={onBlameCommitClick}
+        />
+      )
+
+      // Un-indexed commits should still be clickable
+      fireEvent.click(screen.getByText('abc123d'))
+      expect(onBlameCommitClick).toHaveBeenCalledWith('abc123def456abc123def456abc123def456abc1')
     })
   })
 
