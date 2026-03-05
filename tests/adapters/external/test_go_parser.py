@@ -915,6 +915,31 @@ func main() {
         assert "http.NewRequest" in call_texts
 
     @pytest.mark.asyncio
+    async def test_chained_selector_call_stdlib_with_args(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test stdlib chained call where operand is a call_expression with args."""
+        code = """package main
+
+import "net/http"
+
+func main() {
+    http.NewRequest("GET", "/", nil).Body.Close()
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="main.go"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_texts = [r["text"] for r in call_refs]
+        # Should use function name, not full call text with args
+        assert "http.NewRequest.Body.Close" in call_texts
+        # Should NOT contain argument text in the reference
+        for text in call_texts:
+            assert "GET" not in text
+
+    @pytest.mark.asyncio
     async def test_chained_selector_field_access_stdlib_filtered(
         self, parser_service: TreeSitterService
     ) -> None:
