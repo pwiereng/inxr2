@@ -536,6 +536,23 @@ class GoParser(BaseLanguageParser):
                 # pkg.Func() or obj.Method() — handled by selector processing
                 pass
 
+        def get_selector_chain_text(node: Node) -> str:
+            """Get clean selector chain text, stripping call arguments.
+
+            For `http.NewRequest("GET", "/", nil)` returns `http.NewRequest`.
+            For `http.DefaultClient` returns `http.DefaultClient`.
+            """
+            if node.type == "call_expression":
+                func_node = node.child_by_field_name("function")
+                return get_selector_chain_text(func_node) if func_node else ""
+            if node.type == "selector_expression":
+                operand = node.child_by_field_name("operand")
+                field = node.child_by_field_name("field")
+                if operand and field:
+                    return f"{get_selector_chain_text(operand)}.{get_text(field)}"
+                return get_text(node)
+            return get_text(node)
+
         def process_selector_reference(node: Node, scope: str | None) -> None:
             """Process a selector expression (e.g., pkg.Symbol, obj.Method)."""
             parent = node.parent
@@ -572,11 +589,29 @@ class GoParser(BaseLanguageParser):
                                     field_text, "call", field_node, scope
                                 )
                             )
+                    elif operand_node.type in (
+                        "selector_expression",
+                        "call_expression",
+                    ):
+                        # Chained call: a.B.Method() or a.B().Method()
+                        chain_text = get_selector_chain_text(operand_node)
+                        leftmost = chain_text.split(".", 1)[0] if chain_text else ""
+                        if is_std_lib_prefix(leftmost):
+                            call_name = f"{chain_text}.{field_text}"
+                        else:
+                            call_name = field_text
+                        add_reference(
+                            self._make_reference(call_name, "call", field_node, scope)
+                        )
             else:
                 # Field access or type reference
-                if operand_node.type == "identifier" and not is_std_lib_prefix(
-                    operand_text
-                ):
+                chain_text = get_selector_chain_text(operand_node)
+                leftmost = chain_text.split(".", 1)[0] if chain_text else ""
+                if operand_node.type in (
+                    "identifier",
+                    "selector_expression",
+                    "call_expression",
+                ) and not is_std_lib_prefix(leftmost):
                     if not is_builtin_or_primitive(field_text):
                         add_reference(
                             self._make_reference(field_text, "usage", field_node, scope)

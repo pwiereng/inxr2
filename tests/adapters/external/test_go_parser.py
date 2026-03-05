@@ -862,6 +862,130 @@ type User struct {
         assert "Age" in field_names
 
     @pytest.mark.asyncio
+    async def test_chained_selector_call(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that chained selector calls like a.B.Method() emit references."""
+        code = """package main
+
+type Registry struct{}
+type Service struct{}
+
+func (r *Registry) GetService() Service { return Service{} }
+func (s *Service) Process() {}
+
+func main() {
+    var reg Registry
+    reg.GetService().Process()
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="main.go"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_texts = [r["text"] for r in call_refs]
+        # Both method names in the chain should be captured
+        assert "GetService" in call_texts
+        assert "Process" in call_texts
+
+    @pytest.mark.asyncio
+    async def test_chained_selector_call_stdlib(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that stdlib chained calls like http.DefaultClient.Do() are qualified."""
+        code = """package main
+
+import "net/http"
+
+func main() {
+    req, _ := http.NewRequest("GET", "/", nil)
+    http.DefaultClient.Do(req)
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="main.go"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_texts = [r["text"] for r in call_refs]
+        # Stdlib chained call should be qualified
+        assert "http.DefaultClient.Do" in call_texts
+        # Simple stdlib call should also be qualified
+        assert "http.NewRequest" in call_texts
+
+    @pytest.mark.asyncio
+    async def test_chained_selector_call_stdlib_with_args(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test stdlib chained call where operand is a call_expression with args."""
+        code = """package main
+
+import "net/http"
+
+func main() {
+    http.NewRequest("GET", "/", nil).Body.Close()
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="main.go"
+        )
+
+        call_refs = [r for r in references if r["type"] == "call"]
+        call_texts = [r["text"] for r in call_refs]
+        # Should use function name, not full call text with args
+        assert "http.NewRequest.Body.Close" in call_texts
+        # Should NOT contain argument text in the reference
+        for text in call_texts:
+            assert "GET" not in text
+
+    @pytest.mark.asyncio
+    async def test_chained_selector_field_access_stdlib_filtered(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that stdlib chained field access is filtered from usage refs."""
+        code = """package main
+
+import "net/http"
+
+func main() {
+    _ = http.DefaultClient.Transport
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="main.go"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_texts = [r["text"] for r in usage_refs]
+        # Stdlib field access should not appear as bare usage refs
+        assert "Transport" not in usage_texts
+
+    @pytest.mark.asyncio
+    async def test_chained_selector_field_access(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that chained selector field access like a.B.C emits references."""
+        code = """package main
+
+type Outer struct{}
+type Inner struct{}
+
+func main() {
+    var o Outer
+    _ = o.Inner.Value
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="main.go"
+        )
+
+        usage_refs = [r for r in references if r["type"] == "usage"]
+        usage_texts = [r["text"] for r in usage_refs]
+        # The outermost field "Value" should be captured
+        assert "Value" in usage_texts
+
+    @pytest.mark.asyncio
     async def test_iota_const_block(self, parser_service: TreeSitterService) -> None:
         """Test parsing const block with iota."""
         code = """package main
