@@ -24,8 +24,10 @@ _MINIFIED_SUFFIXES: tuple[str, ...] = (
     ".bundle.css",
 )
 
-# Regex to detect common bundler output filenames (e.g., app.abc123.js)
-_BUNDLE_HASH_RE = re.compile(r"\.[a-f0-9]{8,}\.(?:js|css|mjs)$")
+# Regex to detect common bundler output filenames with a hex hash segment
+# (e.g., app.abc123ef.js). Uses a negative lookahead to exclude purely numeric
+# segments like date stamps (e.g., app.20240101.js).
+_BUNDLE_HASH_RE = re.compile(r"\.(?!\d{8,}\.)(?:[a-f0-9]{8,})\.(?:js|css|mjs)$")
 
 
 class FileFilter:

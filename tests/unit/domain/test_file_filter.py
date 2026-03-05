@@ -49,6 +49,8 @@ class TestFileFilterPathSkip:
             "dist.py",  # "dist" as filename, not directory
             "src/main.js",
             "frontend/src/App.js",
+            "assets/app.20240101.js",  # date stamp, not bundler hash
+            "static/data.12345678.css",  # purely numeric, not hex hash
         ],
     )
     def test_does_not_skip_normal_files(self, path: str) -> None:
