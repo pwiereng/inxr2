@@ -32,6 +32,11 @@ async def _show_overall_status_async(
         repository_repo: Optional injected repository port (for testing).
         index_status_repo: Optional injected index status port (for testing).
     """
+    if (repository_repo is None) != (index_status_repo is None):
+        raise ValueError(
+            "Both repository_repo and index_status_repo must be provided, or neither"
+        )
+
     if repository_repo is not None and index_status_repo is not None:
         await _render_status(console, repository_repo, index_status_repo)
     else:
