@@ -1058,6 +1058,35 @@ class TypeScriptParser(BaseLanguageParser):
                         child_scope = name
                 extract_references(child, child_scope)
 
+        def _walk_function_body(body: Node) -> None:
+            """Walk a function/arrow-function body to extract nested symbols.
+
+            Recursively descends into statement blocks to find variable
+            declarations (including const arrow functions) inside function
+            bodies at any nesting depth.
+            """
+            for child in body.children:
+                if child.type in ("lexical_declaration", "variable_declaration"):
+                    process_variable_declaration(child, is_exported=False)
+                    # If the declaration contains an arrow/function expression,
+                    # descend into its body for further nesting.
+                    for declarator in child.children:
+                        if declarator.type == "variable_declarator":
+                            value = declarator.child_by_field_name("value")
+                            if value and value.type in (
+                                "arrow_function",
+                                "function_expression",
+                                "generator_function",
+                            ):
+                                for sub in value.children:
+                                    if sub.type == "statement_block":
+                                        _walk_function_body(sub)
+                elif child.type == "function_declaration":
+                    process_function(child, is_exported=False)
+                    for sub in child.children:
+                        if sub.type == "statement_block":
+                            _walk_function_body(sub)
+
         def process_node(node: Node, is_exported: bool = False) -> None:
             """Process a top-level node."""
             if node.type == "interface_declaration":
@@ -1070,8 +1099,24 @@ class TypeScriptParser(BaseLanguageParser):
                 process_class(node)
             elif node.type == "function_declaration":
                 process_function(node, is_exported)
+                # Descend into function body for nested symbols
+                for child in node.children:
+                    if child.type == "statement_block":
+                        _walk_function_body(child)
             elif node.type in ("lexical_declaration", "variable_declaration"):
                 process_variable_declaration(node, is_exported)
+                # Descend into arrow/function expression bodies
+                for declarator in node.children:
+                    if declarator.type == "variable_declarator":
+                        value = declarator.child_by_field_name("value")
+                        if value and value.type in (
+                            "arrow_function",
+                            "function_expression",
+                            "generator_function",
+                        ):
+                            for sub in value.children:
+                                if sub.type == "statement_block":
+                                    _walk_function_body(sub)
             elif node.type == "expression_statement":
                 # Handle module.exports = class ..., exports.X = class ..., etc.
                 for child in node.children:
