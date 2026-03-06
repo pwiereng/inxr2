@@ -99,10 +99,10 @@ export function CodeViewer({
       .sort((a, b) => a.start_column - b.start_column)
   }
 
-  // Get references on this line (only those with resolved target_symbol_id)
+  // Get references on this line
   const getReferencesOnLine = (lineNum: number): FileReference[] => {
     return references
-      .filter((r) => r.source_line === lineNum && r.target_symbol_id !== null)
+      .filter((r) => r.source_line === lineNum)
       .sort((a, b) => a.source_column - b.source_column)
   }
 
@@ -270,7 +270,8 @@ export function CodeViewer({
                   {ref.reference_text}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {ref.reference_type} - Click to see references
+                  {ref.reference_type} -{' '}
+                  {ref.target_symbol_id !== null ? 'Click to see references' : 'Click to search'}
                 </Typography>
               </Box>
             }

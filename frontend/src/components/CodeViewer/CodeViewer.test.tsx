@@ -271,7 +271,7 @@ line 3`
       expect(onReferenceClick).toHaveBeenCalledWith(references[0])
     })
 
-    it('should not make reference without target_symbol_id clickable', () => {
+    it('should make reference without target_symbol_id clickable', () => {
       const onReferenceClick = vi.fn()
       const references: FileReference[] = [
         {
@@ -293,12 +293,12 @@ line 3`
         />
       )
 
-      // Click on the text - it should not trigger the handler
+      // Click on the text - unresolved refs should still be clickable
       const elements = screen.getAllByText(/unresolved/)
       expect(elements.length).toBeGreaterThan(0)
       fireEvent.click(elements[0]!)
 
-      expect(onReferenceClick).not.toHaveBeenCalled()
+      expect(onReferenceClick).toHaveBeenCalledWith(references[0])
     })
 
     it('should make multiple references on same line all clickable', () => {

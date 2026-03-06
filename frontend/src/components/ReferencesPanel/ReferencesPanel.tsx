@@ -24,7 +24,13 @@ import SearchIcon from '@mui/icons-material/Search'
 
 import { Link } from 'react-router-dom'
 
-import { getSymbolReferences, getSymbolsByName, type Reference, type Symbol } from '@/lib/api'
+import {
+  getSymbolReferences,
+  getSymbolsByName,
+  searchText,
+  type Reference,
+  type Symbol,
+} from '@/lib/api'
 
 // Get icon for reference type
 function getReferenceIcon(
@@ -136,7 +142,27 @@ export function ReferencesPanel({
             )
             setReferences(refsResult.items)
           } else {
-            setReferences([])
+            // No definitions found — search for references by text via full-text search
+            const textResult = await searchText({
+              q: searchByName.name,
+              mode: 'keyword',
+              repo: searchByName.repositoryId,
+              branch: selectedBranch || undefined,
+              source_types: ['reference'],
+              limit: 100,
+            })
+            setReferences(
+              textResult.results.map((r, i) => ({
+                id: -(i + 1), // Negative IDs to distinguish from real references
+                source_file_id: 0,
+                source_file_path: r.file_path,
+                source_line: r.source_line ?? 0,
+                source_column: 0,
+                target_symbol_id: null,
+                reference_text: r.content,
+                reference_type: r.content_type ?? 'usage',
+              }))
+            )
           }
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Failed to load definitions')
