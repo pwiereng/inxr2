@@ -281,6 +281,7 @@ describe('ReferencesPanel', () => {
           mode: 'keyword',
           repo: 1,
           branch: undefined,
+          commit: undefined,
           source_types: ['reference'],
           limit: 100,
         })
@@ -289,6 +290,44 @@ describe('ReferencesPanel', () => {
       // Should display the reference from text search
       await waitFor(() => {
         expect(screen.getByText('src/app.py')).toBeInTheDocument()
+      })
+    })
+
+    it('should pass selectedCommit and selectedBranch to text search fallback', async () => {
+      mockGetSymbolsByName.mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      })
+      mockSearchText.mockResolvedValue({
+        results: [],
+        total: 0,
+        query: 'someName',
+        mode: 'keyword',
+        limit: 100,
+        offset: 0,
+      })
+
+      render(
+        <ReferencesPanel
+          symbol={null}
+          searchByName={{ name: 'someName', repositoryId: 1 }}
+          selectedCommit="abc123"
+          selectedBranch="feature"
+        />
+      )
+
+      await waitFor(() => {
+        expect(mockSearchText).toHaveBeenCalledWith({
+          q: 'someName',
+          mode: 'keyword',
+          repo: 1,
+          branch: 'feature',
+          commit: 'abc123',
+          source_types: ['reference'],
+          limit: 100,
+        })
       })
     })
   })

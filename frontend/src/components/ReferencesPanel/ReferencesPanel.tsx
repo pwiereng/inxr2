@@ -148,20 +148,23 @@ export function ReferencesPanel({
               mode: 'keyword',
               repo: searchByName.repositoryId,
               branch: selectedBranch || undefined,
+              commit: selectedCommit || undefined,
               source_types: ['reference'],
               limit: 100,
             })
             setReferences(
-              textResult.results.map((r, i) => ({
-                id: -(i + 1), // Negative IDs to distinguish from real references
-                source_file_id: 0,
-                source_file_path: r.file_path,
-                source_line: r.source_line ?? 0,
-                source_column: 0,
-                target_symbol_id: null,
-                reference_text: r.content,
-                reference_type: r.content_type ?? 'usage',
-              }))
+              textResult.results
+                .filter((r) => !!r.file_path)
+                .map((r, i) => ({
+                  id: -(i + 1), // Negative IDs to distinguish from real references
+                  source_file_id: 0,
+                  source_file_path: r.file_path!,
+                  source_line: r.source_line && r.source_line > 0 ? r.source_line : 1,
+                  source_column: 0,
+                  target_symbol_id: null,
+                  reference_text: r.content,
+                  reference_type: r.content_type ?? 'usage',
+                }))
             )
           }
         } catch (err) {
