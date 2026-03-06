@@ -96,8 +96,17 @@ export function VersionSelector({
     )
   }
 
-  if (error || commits.length === 0) {
+  if (!repoName || !filePath) {
     return null
+  }
+
+  if (error || commits.length === 0) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+        <HistoryIcon fontSize="small" />
+        <Typography variant="caption">latest</Typography>
+      </Box>
+    )
   }
 
   // If only one commit, show static display (no dropdown needed)

@@ -326,10 +326,10 @@ export function useBrowseUrlState(
     (branchName: string | null) => {
       refs.resetRefsPanelRef.current()
       const params = new URLSearchParams()
-      // Clear commit when changing branch (will resolve to branch's latest commit)
       if (urlState.highlightLine) params.set('line', urlState.highlightLine.toString())
       if (branchName) params.set('branch', branchName)
-      // Don't preserve commit - branch change means new commit context
+      // Preserve commit when changing branch so the user doesn't lose their place
+      if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
       // Preserve diff state
       if (urlState.diffCommit) params.set('diff', urlState.diffCommit)
       if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
@@ -339,6 +339,8 @@ export function useBrowseUrlState(
       if (urlState.treePanel === 'right') params.set('tp', 'r')
       if (urlState.refPanel === 'right') params.set('rp', 'r')
       if (urlState.activePanel === 'right') params.set('ap', 'r')
+      // Preserve changedOnly state
+      if (urlState.changedOnly) params.set('co', '1')
 
       if (urlState.filePath) {
         navigate(
