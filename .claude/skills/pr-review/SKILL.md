@@ -65,6 +65,8 @@ git push -u origin $(git branch --show-current)
 
 If the push fails (e.g., rejected), report the error and suggest resolution.
 
+After a successful push, always display the PR reference at the end of your output (see "Always Display PR Reference" below).
+
 ### Step 4: Create PR
 
 Create a pull request using `gh pr create`:
@@ -95,6 +97,24 @@ EOF
 ```
 
 6. Report the PR URL to the user
+7. Request Copilot review:
+   ```bash
+   gh pr edit <PR_NUMBER> --add-reviewer copilot
+   ```
+
+### On Subsequent Pushes (PR Already Exists)
+
+When pushing additional commits to a branch that already has an open PR:
+
+1. Push the changes:
+   ```bash
+   git push origin $(git branch --show-current)
+   ```
+
+2. Re-request Copilot review (dismiss stale review first, then re-add):
+   ```bash
+   gh pr edit <PR_NUMBER> --add-reviewer copilot
+   ```
 
 ## Review Mode (Open PR Exists)
 
@@ -154,3 +174,69 @@ Based on the comments, recommend next steps:
 - Whether any comments conflict with each other
 
 DO NOT make any code changes or push anything in Review Mode. Just summarize and advise. Wait for the user to decide what to do next.
+
+### Step 5: Triage Comments
+
+After the user reviews the summary and decides what to address, update each PR review comment with a disposition and resolve it:
+
+For each comment the user wants to **fix**:
+```bash
+# Reply to the comment indicating it will be fixed
+gh api repos/pwiereng/inxr2/pulls/<PR_NUMBER>/comments/<COMMENT_ID>/replies \
+  -f body="Fixing this."
+```
+
+For each comment the user wants to **dismiss**:
+```bash
+# Reply with reason for dismissing, then resolve
+gh api repos/pwiereng/inxr2/pulls/<PR_NUMBER>/comments/<COMMENT_ID>/replies \
+  -f body="Dismissing — <reason provided by user>"
+```
+
+After replying, resolve each conversation thread:
+```bash
+# Get the GraphQL node ID for the review thread
+# The thread ID can be found from the pull_request_review_thread_id in the comment data
+gh api graphql -f query='
+  mutation {
+    resolveReviewThread(input: {threadId: "<THREAD_NODE_ID>"}) {
+      thread { isResolved }
+    }
+  }
+'
+```
+
+To get the thread node ID, fetch the review threads:
+```bash
+gh api graphql -f query='
+  query {
+    repository(owner: "pwiereng", name: "inxr2") {
+      pullRequest(number: <PR_NUMBER>) {
+        reviewThreads(first: 100) {
+          nodes {
+            id
+            isResolved
+            comments(first: 1) {
+              nodes { body databaseId }
+            }
+          }
+        }
+      }
+    }
+  }
+'
+```
+
+This keeps the PR clean — every comment gets an explicit response and resolved conversations don't clutter the review.
+
+## Always Display PR Reference
+
+**At the end of EVERY `/pr-review` run**, regardless of mode, display the PR number and URL prominently so the user can easily match this Claude window to the corresponding PR:
+
+```
+---
+🔗 **PR #<number>:** <url>
+   Branch: <branch-name>
+```
+
+In Create Mode, display this after the PR is created. In Review Mode, display it after the summary. If a push was done (Create Mode step 3) but PR creation hasn't happened yet, display the branch name and note that the PR will be created next.
