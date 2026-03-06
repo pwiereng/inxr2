@@ -31,7 +31,7 @@ export function History(): React.ReactElement {
       setLoading(true)
       setError(null)
       try {
-        const response = await getCommits(repoName, branch || undefined, 500)
+        const response = await getCommits(repoName, branch || undefined, 1000)
         setCommits(response.commits)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load commits')
