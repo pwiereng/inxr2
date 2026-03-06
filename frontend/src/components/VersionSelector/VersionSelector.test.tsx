@@ -66,7 +66,7 @@ describe('VersionSelector', () => {
       expect(container.firstChild).toBeNull()
     })
 
-    it('should render nothing when API returns empty commits', async () => {
+    it('should render fallback when API returns empty commits', async () => {
       mockGetCommits.mockResolvedValue({ commits: [], total: 0 })
 
       const { container } = render(<VersionSelector {...defaultProps} />)
@@ -75,7 +75,8 @@ describe('VersionSelector', () => {
         expect(container.querySelector('[role="progressbar"]')).not.toBeInTheDocument()
       })
 
-      expect(container.firstChild).toBeNull()
+      expect(container.firstChild).not.toBeNull()
+      expect(screen.getByText('latest')).toBeInTheDocument()
     })
   })
 
@@ -488,7 +489,7 @@ describe('VersionSelector', () => {
   })
 
   describe('error handling', () => {
-    it('should render nothing when API throws error', async () => {
+    it('should render fallback when API throws error', async () => {
       mockGetCommits.mockRejectedValue(new Error('API error'))
 
       const { container } = render(<VersionSelector {...defaultProps} />)
@@ -497,7 +498,8 @@ describe('VersionSelector', () => {
         expect(container.querySelector('[role="progressbar"]')).not.toBeInTheDocument()
       })
 
-      expect(container.firstChild).toBeNull()
+      expect(container.firstChild).not.toBeNull()
+      expect(screen.getByText('latest')).toBeInTheDocument()
     })
   })
 
@@ -519,6 +521,23 @@ describe('VersionSelector', () => {
       await waitFor(() => {
         expect(mockGetCommits).toHaveBeenCalledTimes(2)
       })
+    })
+  })
+
+  // ========== Regression test for bug #225 ==========
+
+  describe('bug #225: should render even when API returns error', () => {
+    it('should render a fallback instead of null when commits fetch fails', async () => {
+      mockGetCommits.mockRejectedValue(new Error('Network error'))
+
+      const { container } = render(<VersionSelector {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(container.querySelector('[role="progressbar"]')).not.toBeInTheDocument()
+      })
+
+      // Should render something (not disappear) even on error
+      expect(container.firstChild).not.toBeNull()
     })
   })
 })

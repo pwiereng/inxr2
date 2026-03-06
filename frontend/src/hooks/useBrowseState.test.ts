@@ -1210,7 +1210,7 @@ describe('useBrowseState', () => {
       expect(navigatedUrl).not.toContain('branch=')
     })
 
-    it('should clear commit when changing branch', async () => {
+    it('should preserve commit when changing branch', async () => {
       mockSearchParams = new URLSearchParams('branch=main&commit=abc123')
       const { result } = await renderBrowseStateHook()
 
@@ -1219,7 +1219,7 @@ describe('useBrowseState', () => {
       })
 
       const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
-      expect(navigatedUrl).not.toContain('commit=')
+      expect(navigatedUrl).toContain('commit=abc123')
       expect(navigatedUrl).toContain('branch=feature')
     })
 
@@ -2690,6 +2690,78 @@ describe('useBrowseState', () => {
         )
         expect(call).toBeDefined()
       })
+    })
+  })
+
+  // ========== Regression tests for #224, #225, #226 ==========
+
+  describe('bug #224: changeBranch should preserve commit param', () => {
+    it('should preserve selectedCommit when switching branches', async () => {
+      mockSearchParams = new URLSearchParams('branch=main&commit=abc123')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.changeBranch('feature')
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).toContain('commit=abc123')
+      expect(navigatedUrl).toContain('branch=feature')
+    })
+
+    it('should preserve changedOnly when switching branches', async () => {
+      mockSearchParams = new URLSearchParams('branch=main&co=1')
+      const { result } = await renderBrowseStateHook()
+
+      act(() => {
+        result.current.actions.changeBranch('feature')
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).toContain('co=1')
+    })
+  })
+
+  describe('bug #226: changeDiffVersion should preserve file path', () => {
+    it('should include file path in URL when changing diff version', async () => {
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456')
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 1,
+            commit_hash: 'abc123',
+            short_hash: 'abc123',
+            commit_date: '2024-01-03',
+            message: 'Latest',
+            content_hash: 'hash1',
+          },
+          {
+            commit_id: 2,
+            commit_hash: 'def456',
+            short_hash: 'def456',
+            commit_date: '2024-01-02',
+            message: 'Previous',
+            content_hash: 'hash2',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 2,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(2)
+      })
+
+      act(() => {
+        result.current.actions.changeDiffVersion('ghi789')
+      })
+
+      const navigatedUrl = mockNavigate.mock.calls[0]?.[0] as string
+      expect(navigatedUrl).toContain('src/main.py')
+      expect(navigatedUrl).toContain('diff=ghi789')
     })
   })
 })
