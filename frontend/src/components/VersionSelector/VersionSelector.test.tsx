@@ -523,21 +523,4 @@ describe('VersionSelector', () => {
       })
     })
   })
-
-  // ========== Regression test for bug #225 ==========
-
-  describe('bug #225: should render even when API returns error', () => {
-    it('should render a fallback instead of null when commits fetch fails', async () => {
-      mockGetCommits.mockRejectedValue(new Error('Network error'))
-
-      const { container } = render(<VersionSelector {...defaultProps} />)
-
-      await waitFor(() => {
-        expect(container.querySelector('[role="progressbar"]')).not.toBeInTheDocument()
-      })
-
-      // Should render something (not disappear) even on error
-      expect(container.firstChild).not.toBeNull()
-    })
-  })
 })

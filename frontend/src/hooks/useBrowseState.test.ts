@@ -2693,7 +2693,7 @@ describe('useBrowseState', () => {
     })
   })
 
-  // ========== Regression tests for #224, #225, #226 ==========
+  // ========== Regression tests for #224 and #226 ==========
 
   describe('bug #224: changeBranch should preserve commit param', () => {
     it('should preserve selectedCommit when switching branches', async () => {
