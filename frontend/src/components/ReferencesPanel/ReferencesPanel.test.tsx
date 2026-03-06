@@ -7,10 +7,12 @@ import * as api from '@/lib/api'
 vi.mock('@/lib/api', () => ({
   getSymbolReferences: vi.fn(),
   getSymbolsByName: vi.fn(),
+  searchText: vi.fn(),
 }))
 
 const mockGetSymbolReferences = vi.mocked(api.getSymbolReferences)
 const mockGetSymbolsByName = vi.mocked(api.getSymbolsByName)
+const mockSearchText = vi.mocked(api.searchText)
 
 describe('ReferencesPanel', () => {
   beforeEach(() => {
@@ -228,24 +230,105 @@ describe('ReferencesPanel', () => {
       })
     })
 
-    it('should not fetch references if no definitions found', async () => {
+    it('should fall back to text search when no definitions found', async () => {
       mockGetSymbolsByName.mockResolvedValue({
         items: [],
         total: 0,
         limit: 20,
         offset: 0,
       })
+      mockSearchText.mockResolvedValue({
+        results: [
+          {
+            id: 1,
+            repository_id: 1,
+            repository_name: 'test',
+            file_path: 'src/app.py',
+            source_line: 10,
+            source_end_line: 10,
+            source_type: 'reference',
+            content: 'include_router',
+            content_type: 'call',
+            language: 'python',
+            commit_hash: null,
+            branch: null,
+            rank: 1.0,
+            headline: null,
+          },
+        ],
+        total: 1,
+        query: 'include_router',
+        mode: 'keyword',
+        limit: 100,
+        offset: 0,
+      })
 
       render(
-        <ReferencesPanel symbol={null} searchByName={{ name: 'NonExistent', repositoryId: 1 }} />
+        <ReferencesPanel symbol={null} searchByName={{ name: 'include_router', repositoryId: 1 }} />
       )
 
       await waitFor(() => {
         expect(mockGetSymbolsByName).toHaveBeenCalled()
       })
 
-      // Should NOT call getSymbolReferences when no definitions found
+      // Should NOT call getSymbolReferences — no definitions to get refs for
       expect(mockGetSymbolReferences).not.toHaveBeenCalled()
+
+      // Should fall back to searchText with source_types=['reference']
+      await waitFor(() => {
+        expect(mockSearchText).toHaveBeenCalledWith({
+          q: 'include_router',
+          mode: 'keyword',
+          repo: 1,
+          branch: undefined,
+          commit: undefined,
+          source_types: ['reference'],
+          limit: 100,
+        })
+      })
+
+      // Should display the reference from text search
+      await waitFor(() => {
+        expect(screen.getByText('src/app.py')).toBeInTheDocument()
+      })
+    })
+
+    it('should pass selectedCommit and selectedBranch to text search fallback', async () => {
+      mockGetSymbolsByName.mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      })
+      mockSearchText.mockResolvedValue({
+        results: [],
+        total: 0,
+        query: 'someName',
+        mode: 'keyword',
+        limit: 100,
+        offset: 0,
+      })
+
+      render(
+        <ReferencesPanel
+          symbol={null}
+          searchByName={{ name: 'someName', repositoryId: 1 }}
+          selectedCommit="abc123"
+          selectedBranch="feature"
+        />
+      )
+
+      await waitFor(() => {
+        expect(mockSearchText).toHaveBeenCalledWith({
+          q: 'someName',
+          mode: 'keyword',
+          repo: 1,
+          branch: 'feature',
+          commit: 'abc123',
+          source_types: ['reference'],
+          limit: 100,
+        })
+      })
     })
   })
 
@@ -322,6 +405,14 @@ describe('ReferencesPanel', () => {
         items: [],
         total: 0,
         limit: 20,
+        offset: 0,
+      })
+      mockSearchText.mockResolvedValue({
+        results: [],
+        total: 0,
+        query: 'myFunction',
+        mode: 'keyword',
+        limit: 100,
         offset: 0,
       })
 
