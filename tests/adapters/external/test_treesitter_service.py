@@ -3035,3 +3035,121 @@ const { a: { b, c }, d } = obj;
         assert "d" in var_names
         # "a" is a property key, not a binding — should NOT be a symbol
         assert "a" not in var_names
+
+
+class TestNestedConstArrowFunctions:
+    """Const arrow functions inside function bodies should be extracted as symbols."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_nested_arrow_function_in_ts_function_body(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Arrow function declared inside a function body should be a symbol."""
+        code = """
+function MyComponent() {
+    const handler = () => { console.log("clicked"); };
+    const loadData = async () => { return fetch("/api"); };
+    const add = (x: number) => x + 1;
+    return handler;
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        sym_names = [s["name"] for s in symbols]
+        assert "MyComponent" in sym_names
+
+        handler_sym = [s for s in symbols if s["name"] == "handler"]
+        assert len(handler_sym) == 1
+        assert handler_sym[0]["kind"] == "function"
+
+        load_sym = [s for s in symbols if s["name"] == "loadData"]
+        assert len(load_sym) == 1
+        assert load_sym[0]["kind"] == "function"
+
+        add_sym = [s for s in symbols if s["name"] == "add"]
+        assert len(add_sym) == 1
+        assert add_sym[0]["kind"] == "function"
+
+    @pytest.mark.asyncio
+    async def test_nested_arrow_function_in_js_function_body(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Arrow function inside a JS function body should be a symbol."""
+        code = """
+function setup() {
+    const onClick = () => {};
+    const fetchItems = async () => { return []; };
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="javascript", file_path="test.js"
+        )
+
+        sym_names = [s["name"] for s in symbols]
+        assert "setup" in sym_names
+
+        onclick_sym = [s for s in symbols if s["name"] == "onClick"]
+        assert len(onclick_sym) == 1
+        assert onclick_sym[0]["kind"] == "function"
+
+        fetch_sym = [s for s in symbols if s["name"] == "fetchItems"]
+        assert len(fetch_sym) == 1
+        assert fetch_sym[0]["kind"] == "function"
+
+    @pytest.mark.asyncio
+    async def test_nested_arrow_in_arrow_function(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Arrow function nested inside another arrow function should be extracted."""
+        code = """
+const outer = () => {
+    const inner = () => { return 1; };
+    return inner;
+};
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        outer_sym = [s for s in symbols if s["name"] == "outer"]
+        assert len(outer_sym) == 1
+        assert outer_sym[0]["kind"] == "function"
+
+        inner_sym = [s for s in symbols if s["name"] == "inner"]
+        assert len(inner_sym) == 1
+        assert inner_sym[0]["kind"] == "function"
+
+    @pytest.mark.asyncio
+    async def test_nested_regular_variables_also_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Non-function const declarations inside function bodies should also be extracted."""
+        code = """
+function init() {
+    const MAX_RETRIES = 5;
+    const name = "test";
+    const handler = () => {};
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        max_sym = [s for s in symbols if s["name"] == "MAX_RETRIES"]
+        assert len(max_sym) == 1
+        assert max_sym[0]["kind"] == "constant"
+
+        name_sym = [s for s in symbols if s["name"] == "name"]
+        assert len(name_sym) == 1
+        assert name_sym[0]["kind"] == "variable"
+
+        handler_sym = [s for s in symbols if s["name"] == "handler"]
+        assert len(handler_sym) == 1
+        assert handler_sym[0]["kind"] == "function"
