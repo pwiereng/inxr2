@@ -10,6 +10,33 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
 
 **Architecture:** Clean Architecture (Hexagonal/Ports & Adapters) - see "Architecture" section below.
 
+## Using the INXR2 MCP Server
+
+When the MCP server is running (`http://localhost:3000`), **use it as the first choice** for exploring the inxr2 codebase — symbol search, reference lookups, definition jumping, and code search. Fall back to direct file reads/grep when MCP doesn't cover the need.
+
+**Available MCP tools:** `list_repositories`, `search_symbols`, `find_references`, `go_to_definition`, `search_code`
+
+**Calling MCP tools** (from inside the dev container):
+```bash
+docker exec inxr2-dev bash -c '
+cd /workspace/mcp-server
+INXR2_API_URL=http://localhost:8000 python -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_symbols  # or find_references, go_to_definition, etc.
+
+async def main():
+    client = HttpInxr2Client(\"http://localhost:8000\")
+    result = await search_symbols.handle(client, {\"query\": \"MySymbol\", \"repository\": \"inxr2\"})
+    print(result)
+    await client.close()
+
+asyncio.run(main())
+"'
+```
+
+**Reporting:** Whenever you use an MCP tool during your work, briefly mention it to the user — what tool was used, what you found, and whether it was helpful. This helps evaluate the MCP's usefulness in practice.
+
 ## Critical Development Guidelines
 
 ⚠️ **BEFORE making any changes:**
@@ -882,6 +909,7 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 | Backend    | 8000          | 8010   | 8020   | 8030   |
 | Frontend   | 5173          | 5183   | 5193   | 5203   |
 | Playwright | 9222          | 9232   | 9242   | 9252   |
+| MCP        | 3000          | 3010   | 3020   | 3030   |
 
 ### Pre-Creation Check
 
@@ -944,6 +972,33 @@ This ensures the prompt is preserved and easily accessible when opening a new Cl
 
 - Main: `inxr2-dev`, `inxr2-playwright`
 - Worktree: `inxr2-<branch>-dev`, `inxr2-<branch>-playwright`
+
+### Using the Main MCP from Worktrees
+
+Worktree sessions should use the **main MCP server** (on `inxr2-dev`) for code exploration — it has all the indexed data. Since Claude Code runs on the host, any worktree can reach the main container:
+
+```bash
+# From ANY worktree session — use main container for MCP queries
+docker exec inxr2-dev bash -c '
+cd /workspace/mcp-server
+INXR2_API_URL=http://localhost:8000 python -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_symbols
+
+async def main():
+    client = HttpInxr2Client(\"http://localhost:8000\")
+    result = await search_symbols.handle(client, {\"query\": \"MySymbol\", \"repository\": \"inxr2\"})
+    print(result)
+    await client.close()
+
+asyncio.run(main())
+"'
+```
+
+- ✅ **Read/explore code:** Always use `docker exec inxr2-dev` (main MCP with indexed data)
+- ✅ **Test MCP changes:** Use worktree's own container if working on MCP code specifically
+- The main `inxr2-dev` container must be running for worktree MCP access to work
 
 ## Regression Testing
 
