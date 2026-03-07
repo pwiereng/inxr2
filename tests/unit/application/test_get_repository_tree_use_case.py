@@ -172,7 +172,7 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
 
     @pytest.fixture
     def git_service(self) -> FakeGitService:
-        """Create git service with changed files data."""
+        """Create git service with changed files and file lists."""
         service = FakeGitService()
         # commit2: file_a.py modified, file_d.py added
         service.changed_files_in_commit["b" * 40] = ChangedFiles(
@@ -186,6 +186,18 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
             modified=[],
             deleted=[],
         )
+        # File lists at each commit (for ghost file filtering)
+        service.files_in_commit["a" * 40] = [
+            "file_a.py",
+            "file_b.py",
+            "file_c.py",
+        ]
+        service.files_in_commit["b" * 40] = [
+            "file_a.py",
+            "file_b.py",
+            "file_c.py",
+            "file_d.py",
+        ]
         return service
 
     @pytest.mark.asyncio
@@ -483,14 +495,19 @@ class TestGetRepositoryTreeUseCaseGhostFiles:
         commit_repo: InMemoryCommitRepository,
         git_service: FakeGitService,
     ) -> None:
-        """Ghost files should also be filtered when using changed_only mode."""
+        """Ghost files filtered even when changed_files incorrectly includes them.
+
+        Simulates a stale changed_files response that lists the ghost path
+        as modified. Without git-based filtering, old_name.py would appear
+        in the changed_only results. The list_files filter removes it.
+        """
         file_version_repo = InMemoryFileVersionRepository(file_repo)
 
-        # Set up changed_files for commit2
+        # Stale changed_files: old_name.py reported as modified (ghost)
         git_service.changed_files_in_commit["b" * 40] = ChangedFiles(
             added=["new_name.py"],
-            modified=[],
-            deleted=["old_name.py"],
+            modified=["old_name.py"],
+            deleted=[],
         )
 
         use_case = GetRepositoryTreeUseCase(
@@ -511,7 +528,10 @@ class TestGetRepositoryTreeUseCaseGhostFiles:
 
         file_paths = self._extract_file_paths(result.root)
         assert "new_name.py" in file_paths
-        assert "old_name.py" not in file_paths
+        assert "old_name.py" not in file_paths, (
+            "Ghost file old_name.py should be filtered by git even when "
+            "changed_files incorrectly reports it as modified"
+        )
 
     @pytest.mark.asyncio
     async def test_tree_without_git_service_returns_unfiltered(

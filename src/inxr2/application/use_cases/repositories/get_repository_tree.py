@@ -131,19 +131,17 @@ class GetRepositoryTreeUseCase:
                 repository_id, commit.id
             )
 
-            # Filter out ghost files using git ls-tree as source of truth.
+            # Filter out ghost files using git as source of truth.
             # Ghost files appear when renamed/deleted files remain in the
             # commit_files table from stale indexing data.
             if self._git_service:
                 repo_path = Path(repository.url)
                 try:
-                    git_paths = self._git_service.list_files(
-                        repo_path, request.commit_hash
+                    valid_paths = set(
+                        self._git_service.list_files(repo_path, request.commit_hash)
                     )
-                    if git_paths:
-                        valid_paths = set(git_paths)
-                        all_files = [f for f in all_files if f.path in valid_paths]
-                except (DomainException, ValueError):
+                    all_files = [f for f in all_files if f.path in valid_paths]
+                except Exception:
                     pass  # Fall back to unfiltered if git fails
 
             if request.changed_only:
