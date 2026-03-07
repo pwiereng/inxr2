@@ -348,56 +348,50 @@ class TestRepositoriesAPI:
 
         assert response.status_code == 404
 
-    async def test_get_repository_tree_by_id_changed_only(
-        self, test_app: FastAPI, db_session: AsyncSession
+    async def test_get_repository_tree_by_id_passes_changed_only(
+        self, test_app: FastAPI
     ) -> None:
-        """Test that the by-ID tree endpoint accepts the changed_only parameter."""
-        # Arrange
-        repo_adapter = PostgresRepositoryAdapter(db_session)
-        repository = Repository(
-            name="tree-changed-only-repo",
-            url="https://github.com/test/tree-changed-only.git",
+        """Test that the by-ID tree endpoint passes changed_only to the use case."""
+        from inxr2.application.use_cases.repositories.get_repository_tree import (
+            GetRepositoryTreeRequest,
+            GetRepositoryTreeResponse,
         )
-        saved_repo = await repo_adapter.save(repository)
-        assert saved_repo.id is not None
+        from inxr2.infrastructure.dependencies import get_repository_tree_use_case
 
-        # Create commit
-        commit_adapter = PostgresCommitRepository(db_session)
-        commit = Commit(
-            repository_id=saved_repo.id,
-            commit_hash=make_test_commit_hash("chonly1"),
-            author_date=datetime(2025, 1, 1),
-            commit_date=datetime(2025, 1, 1),
-        )
-        saved_commit = await commit_adapter.save(commit)
-        assert saved_commit.id is not None
+        # Spy that captures the request
+        captured_requests: list[GetRepositoryTreeRequest] = []
 
-        # Create files
-        file_adapter = PostgresFileRepository(db_session)
-        files = [
-            File(
-                repository_id=saved_repo.id,
-                path="src/main.py",
-                content_hash="hash1",
-                size_bytes=100,
-                language="python",
-            ),
-        ]
-        await file_adapter.save_many(files)
+        class SpyUseCase:
+            async def execute(
+                self, request: GetRepositoryTreeRequest
+            ) -> GetRepositoryTreeResponse:
+                captured_requests.append(request)
+                return GetRepositoryTreeResponse(
+                    repository_id=request.repository_id or 0,
+                    repository_name="spy-repo",
+                    root=[],
+                    total_files=0,
+                    total_directories=0,
+                )
+
+        spy = SpyUseCase()
+        test_app.dependency_overrides[get_repository_tree_use_case] = lambda: spy
 
         # Act — pass changed_only=true to the by-ID endpoint
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
             response = await client.get(
-                f"/api/repositories/{saved_repo.id}/tree",
-                params={"changed_only": "true"},
+                "/api/repositories/1/tree",
+                params={"commit": "a" * 40, "changed_only": "true"},
             )
 
-        # Assert — endpoint accepts the parameter and returns 200
+        # Assert — endpoint passes changed_only=True to the use case
         assert response.status_code == 200
-        data = response.json()
-        assert data["repository_id"] == saved_repo.id
+        assert len(captured_requests) == 1
+        assert captured_requests[0].changed_only is True
+        assert captured_requests[0].repository_id == 1
+        assert captured_requests[0].commit_hash == "a" * 40
 
     async def test_get_repository_by_name(
         self, test_app: FastAPI, db_session: AsyncSession
