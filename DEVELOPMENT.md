@@ -65,6 +65,7 @@ When running, the following services are available:
   - Password: `inxr2_dev_password`
 - **Backend (FastAPI)**: `localhost:8000` (when started)
 - **Frontend (Vite)**: `localhost:5173` (when started)
+- **MCP Server**: `localhost:3000` (SSE transport, started by `./scripts/dev-serve.sh`)
 
 ### Running Tests in Docker
 
