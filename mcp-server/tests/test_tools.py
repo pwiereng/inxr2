@@ -972,6 +972,42 @@ class TestReviewHelper:
 
         assert "Blast radius for commit abc1234" in result
 
+    async def test_ambiguous_commit_prefix(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_commit("my-repo", "abc1234" + "a" * 33, message="commit A")
+        client.add_commit("my-repo", "abc1234" + "b" * 33, message="commit B")
+
+        result = await review_helper.handle(
+            client, {"repository": "my-repo", "commit": "abc1234"}
+        )
+
+        assert "ambiguous" in result
+        assert "abc1234" in result
+
+    async def test_warns_when_scan_incomplete(self) -> None:
+        client = self._setup_client()
+
+        # Monkey-patch to return inflated total
+        original_get = client.get
+
+        async def patched_get(
+            path: str, params: dict[str, Any] | None = None
+        ) -> dict[str, Any]:
+            result = await original_get(path, params)
+            if path == "/api/symbols" and isinstance(result, dict):
+                result["total"] = 500
+            return dict(result)
+
+        client.get = patched_get  # type: ignore[method-assign]
+
+        result = await review_helper.handle(
+            client, {"repository": "my-repo", "commit": "abc1234"}
+        )
+
+        assert "scanned 2 of 500 symbols" in result
+        assert "results may be incomplete" in result
+
 
 # --- server creation ---
 

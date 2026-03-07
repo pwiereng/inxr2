@@ -66,14 +66,24 @@ async def handle(
     commits_data = await client.get(
         "/api/commits", params={"repo": repository, "limit": 200}
     )
-    matching_commit = None
-    for c in commits_data.get("commits", []):
-        if c["hash"].startswith(commit_prefix) or c["short_hash"] == commit_prefix:
-            matching_commit = c
-            break
+    matching_commits = [
+        c
+        for c in commits_data.get("commits", [])
+        if c["hash"].startswith(commit_prefix) or c["short_hash"] == commit_prefix
+    ]
 
-    if not matching_commit:
+    if not matching_commits:
         return f"Commit '{commit_prefix}' not found in '{repository}'."
+
+    if len(matching_commits) > 1:
+        candidates = ", ".join(c["short_hash"] for c in matching_commits[:10])
+        return (
+            f"Commit prefix '{commit_prefix}' is ambiguous in '{repository}'. "
+            f"Matching commits: {candidates}. "
+            "Please provide a longer prefix or a full hash."
+        )
+
+    matching_commit = matching_commits[0]
 
     full_hash = matching_commit["hash"]
     short_hash = matching_commit["short_hash"]
@@ -110,6 +120,8 @@ async def handle(
         },
     )
     all_symbols = symbols_data.get("items", [])
+    symbols_total = symbols_data.get("total", len(all_symbols))
+    scan_incomplete = symbols_total > len(all_symbols)
     changed_symbols = [s for s in all_symbols if s.get("file_path") in changed_paths]
 
     # Deduplicate symbols by name+file_path
@@ -126,7 +138,11 @@ async def handle(
 
     # Step 5: Get downstream references for each symbol
     async def fetch_refs(symbol: dict[str, Any]) -> list[dict[str, Any]]:
-        ref_params: dict[str, Any] = {"by_name": "true", "limit": 50}
+        ref_params: dict[str, Any] = {
+            "by_name": "true",
+            "limit": 50,
+            "commit": full_hash,
+        }
         refs_data = await client.get(
             f"/api/symbols/{symbol['id']}/references",
             params=ref_params,
@@ -161,6 +177,11 @@ async def handle(
 
     # Symbols section
     lines.append(f"\nSymbols in changed files: {len(unique_symbols)}")
+    if scan_incomplete:
+        lines.append(
+            f"  Note: scanned {len(all_symbols)} of {symbols_total} symbols"
+            " — results may be incomplete."
+        )
     if len(unique_symbols) > limit:
         lines.append(f"  (showing first {limit} for reference analysis)")
     for s in symbols_to_check:
