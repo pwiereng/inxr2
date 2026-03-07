@@ -348,6 +348,57 @@ class TestRepositoriesAPI:
 
         assert response.status_code == 404
 
+    async def test_get_repository_tree_by_id_changed_only(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
+        """Test that the by-ID tree endpoint accepts the changed_only parameter."""
+        # Arrange
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repository = Repository(
+            name="tree-changed-only-repo",
+            url="https://github.com/test/tree-changed-only.git",
+        )
+        saved_repo = await repo_adapter.save(repository)
+        assert saved_repo.id is not None
+
+        # Create commit
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = Commit(
+            repository_id=saved_repo.id,
+            commit_hash=make_test_commit_hash("chonly1"),
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+        )
+        saved_commit = await commit_adapter.save(commit)
+        assert saved_commit.id is not None
+
+        # Create files
+        file_adapter = PostgresFileRepository(db_session)
+        files = [
+            File(
+                repository_id=saved_repo.id,
+                path="src/main.py",
+                content_hash="hash1",
+                size_bytes=100,
+                language="python",
+            ),
+        ]
+        await file_adapter.save_many(files)
+
+        # Act — pass changed_only=true to the by-ID endpoint
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                f"/api/repositories/{saved_repo.id}/tree",
+                params={"changed_only": "true"},
+            )
+
+        # Assert — endpoint accepts the parameter and returns 200
+        assert response.status_code == 200
+        data = response.json()
+        assert data["repository_id"] == saved_repo.id
+
     async def test_get_repository_by_name(
         self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:

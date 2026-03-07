@@ -279,6 +279,7 @@ async def get_repository_tree(
     use_case: GetRepositoryTreeUseCaseDep,
     commit: str | None = None,
     branch: str | None = None,
+    changed_only: bool = False,
 ) -> TreeResponse:
     """
     Get the file tree structure for a repository.
@@ -290,13 +291,18 @@ async def get_repository_tree(
               the tree as it existed at that specific commit.
     - branch: Branch name (optional). If provided, resolves to latest
               indexed commit for that branch.
+    - changed_only: If true and commit is provided, only show files that were
+                    changed at that specific commit (default: false).
 
     Priority: commit > branch > default (latest)
     """
     try:
         response = await use_case.execute(
             GetRepositoryTreeRequest(
-                repository_id=repository_id, commit_hash=commit, branch=branch
+                repository_id=repository_id,
+                commit_hash=commit,
+                branch=branch,
+                changed_only=changed_only,
             )
         )
     except ValueError as e:
