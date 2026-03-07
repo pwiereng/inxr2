@@ -19,6 +19,7 @@ class FakeInxr2Client(Inxr2Client):
         self._references: dict[int, list[dict[str, Any]]] = {}  # symbol_id -> refs
         self._search_results: list[dict[str, Any]] = []
         self._branches: dict[int, list[dict[str, Any]]] = {}  # repo_id -> branches
+        self._stats: dict[int, dict[str, Any]] = {}  # repo_id -> stats
 
     # --- Data population helpers ---
 
@@ -88,6 +89,19 @@ class FakeInxr2Client(Inxr2Client):
             }
         )
 
+    def set_stats(
+        self,
+        repo_id: int,
+        is_stale: bool = False,
+        last_indexed_commit: str | None = None,
+        last_indexed_at: str | None = None,
+    ) -> None:
+        self._stats[repo_id] = {
+            "is_stale": is_stale,
+            "last_indexed_commit": last_indexed_commit,
+            "last_indexed_at": last_indexed_at,
+        }
+
     def add_search_result(
         self,
         file_path: str,
@@ -135,6 +149,19 @@ class FakeInxr2Client(Inxr2Client):
             parts = path.split("/")
             repo_id = int(parts[3])  # /api/repositories/{id}/branches
             return {"branches": self._branches.get(repo_id, [])}
+
+        # GET /api/repositories/{id}/stats
+        if path.endswith("/stats") and "/repositories/" in path:
+            parts = path.split("/")
+            repo_id = int(parts[3])  # /api/repositories/{id}/stats
+            return self._stats.get(
+                repo_id,
+                {
+                    "is_stale": False,
+                    "last_indexed_commit": None,
+                    "last_indexed_at": None,
+                },
+            )
 
         # GET /api/repositories/by-name/{name}
         if path.startswith("/api/repositories/by-name/"):

@@ -6,6 +6,7 @@ import asyncio
 from typing import Any
 
 from src.client import Inxr2Client
+from src.staleness import check_staleness
 from src.urls import build_browse_url
 
 TOOL_NAME = "find_dead_code"
@@ -76,6 +77,9 @@ async def handle(
     limit = min(arguments.get("limit", 20), 100)
     branch = arguments.get("branch")
     commit = arguments.get("commit")
+
+    # Check staleness
+    staleness_warning = await check_staleness(client, repository)
 
     # Resolve repository_id
     repo_data = await client.get(f"/api/repositories/by-name/{repository}")
@@ -175,4 +179,7 @@ async def handle(
             )
             lines.append(f"    {url}")
 
-    return "\n".join(lines)
+    output = "\n".join(lines)
+    if staleness_warning:
+        output = staleness_warning + "\n\n" + output
+    return output

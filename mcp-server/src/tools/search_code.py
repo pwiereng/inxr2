@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.client import Inxr2Client
+from src.staleness import check_staleness
 from src.urls import build_browse_url
 
 TOOL_NAME = "search_code"
@@ -71,6 +72,11 @@ async def handle(
     if commit and not repository:
         return "Error: 'commit' requires 'repository' to be specified."
 
+    # Check staleness
+    staleness_warning = None
+    if repository:
+        staleness_warning = await check_staleness(client, repository)
+
     # Resolve repository_id if repository name given
     repository_id = None
     if repository:
@@ -131,4 +137,7 @@ async def handle(
             )
             lines.append(f"    {url}")
 
-    return "\n".join(lines)
+    output = "\n".join(lines)
+    if staleness_warning:
+        output = staleness_warning + "\n\n" + output
+    return output

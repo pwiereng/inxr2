@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.client import Inxr2Client
+from src.staleness import check_staleness
 from src.urls import build_browse_url
 
 TOOL_NAME = "find_references"
@@ -61,6 +62,11 @@ async def handle(
     # commit requires repository (API returns 400 otherwise)
     if commit and not repository:
         return "Error: 'commit' requires 'repository' to be specified."
+
+    # Check staleness
+    staleness_warning = None
+    if repository:
+        staleness_warning = await check_staleness(client, repository)
 
     # Step 1: Resolve repository_id if repository name given
     repository_id = None
@@ -122,24 +128,26 @@ async def handle(
     lines = [f"References for '{name}': {len(all_references)} found"]
     if not all_references:
         lines.append("No references found.")
-        return "\n".join(lines)
+    else:
+        for ref in all_references:
+            location = f"{ref['file']}:{ref['line']}" if ref["line"] else ref["file"]
+            lines.append(f"  [{ref['type']}] {location}")
+            if ref["context"]:
+                lines.append(f"    {ref['context']}")
 
-    for ref in all_references:
-        location = f"{ref['file']}:{ref['line']}" if ref["line"] else ref["file"]
-        lines.append(f"  [{ref['type']}] {location}")
-        if ref["context"]:
-            lines.append(f"    {ref['context']}")
+            # Add browse URL when repository is known
+            if frontend_url and repository and ref["file"] and ref["file"] != "unknown":
+                url = build_browse_url(
+                    frontend_url,
+                    repository,
+                    ref["file"],
+                    line=ref["line"],
+                    branch=branch,
+                    commit=commit,
+                )
+                lines.append(f"    {url}")
 
-        # Add browse URL when repository is known
-        if frontend_url and repository and ref["file"] and ref["file"] != "unknown":
-            url = build_browse_url(
-                frontend_url,
-                repository,
-                ref["file"],
-                line=ref["line"],
-                branch=branch,
-                commit=commit,
-            )
-            lines.append(f"    {url}")
-
-    return "\n".join(lines)
+    output = "\n".join(lines)
+    if staleness_warning:
+        output = staleness_warning + "\n\n" + output
+    return output
