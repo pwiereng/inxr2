@@ -795,6 +795,22 @@ class TestStalenessWarning:
         assert "stale" in result
         assert "No symbols found" in result
 
+    async def test_warning_when_stale_and_all_have_references_for_dead_code(
+        self,
+    ) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+        client.add_symbol(1, "used_func", kind="function", repository_id=1)
+        client.add_reference(1, "src/app.py", 10, "call", "used_func()")
+
+        result = await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "No dead code found" in result
+        assert "all" in result
+
 
 # --- server creation ---
 
