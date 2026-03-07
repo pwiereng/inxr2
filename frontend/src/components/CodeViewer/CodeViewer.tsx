@@ -8,6 +8,7 @@ import type { FileSymbol, FileReference, BlameLine } from '@/lib/api'
 import { formatDateYMD } from '@/lib/dateUtils'
 import { useCodeContextMenu } from '@/hooks/useCodeContextMenu'
 import { CodeContextMenu } from '@/components/CodeContextMenu'
+import { CopyButton } from '@/components/CopyButton/CopyButton'
 
 interface CodeViewerProps {
   content: string
@@ -395,6 +396,12 @@ export function CodeViewer({
                             >
                               {blame.short_hash}
                             </Box>
+                            <CopyButton
+                              value={blame.short_hash}
+                              fullValue={blame.commit_hash}
+                              tooltip="Copy commit hash"
+                              size={11}
+                            />
                             <Box component="span" sx={{ color: theme.palette.blame.date }}>
                               {formatDateYMD(blame.commit_date)}
                             </Box>

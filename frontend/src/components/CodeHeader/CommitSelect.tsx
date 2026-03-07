@@ -10,6 +10,7 @@ import {
 import type { CommitInfo } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
 import { MENU_PROPS } from '@/lib/menuProps'
+import { CopyButton } from '@/components/CopyButton/CopyButton'
 
 interface CommitSelectProps {
   commits: CommitInfo[]
@@ -89,6 +90,12 @@ export function CommitSelect({
                   >
                     {getShortHash(commitInfo.hash)}
                   </Box>
+                  <CopyButton
+                    value={getShortHash(commitInfo.hash)}
+                    fullValue={commitInfo.hash}
+                    tooltip="Copy commit hash"
+                    size={12}
+                  />
                   {formattedDate && (
                     <Box
                       component="span"

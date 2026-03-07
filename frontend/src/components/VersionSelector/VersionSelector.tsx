@@ -10,6 +10,7 @@ import {
 } from '@mui/material'
 import HistoryIcon from '@mui/icons-material/History'
 import EditIcon from '@mui/icons-material/Edit'
+import { CopyButton } from '@/components/CopyButton/CopyButton'
 import { getCommits, getFileHistory, type CommitInfo } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
 import { MENU_PROPS } from '@/lib/menuProps'
@@ -116,6 +117,13 @@ export function VersionSelector({
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
         <HistoryIcon fontSize="small" />
         <Typography variant="caption">{singleCommit?.short_hash}</Typography>
+        {singleCommit && (
+          <CopyButton
+            value={singleCommit.short_hash}
+            fullValue={singleCommit.hash}
+            tooltip="Copy commit hash"
+          />
+        )}
       </Box>
     )
   }
@@ -190,6 +198,12 @@ export function VersionSelector({
                   >
                     {commit.short_hash}
                   </Typography>
+                  <CopyButton
+                    value={commit.short_hash}
+                    fullValue={commit.hash}
+                    tooltip="Copy commit hash"
+                    size={12}
+                  />
                   <Typography component="span" variant="caption" color="text.secondary">
                     {formatDateTimeUTC(commit.commit_date)}
                   </Typography>

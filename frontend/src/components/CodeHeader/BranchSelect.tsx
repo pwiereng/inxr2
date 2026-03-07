@@ -2,6 +2,7 @@ import { Box, Select, MenuItem, FormControl, CircularProgress } from '@mui/mater
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import type { BranchInfo } from '@/lib/api'
 import { MENU_PROPS } from '@/lib/menuProps'
+import { CopyButton } from '@/components/CopyButton/CopyButton'
 
 interface BranchSelectProps {
   branches: BranchInfo[]
@@ -51,8 +52,13 @@ export function BranchSelect({
       >
         {branches.map((branchInfo) => (
           <MenuItem key={branchInfo.name} value={branchInfo.name}>
-            {branchInfo.name}
-            {branchInfo.name === defaultBranch && ' (default)'}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, width: '100%' }}>
+              <Box component="span" sx={{ flex: 1 }}>
+                {branchInfo.name}
+                {branchInfo.name === defaultBranch && ' (default)'}
+              </Box>
+              <CopyButton value={branchInfo.name} tooltip="Copy branch name" size={12} />
+            </Box>
           </MenuItem>
         ))}
       </Select>
