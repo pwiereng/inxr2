@@ -63,15 +63,17 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
         repo_data = await client.get(f"/api/repositories/by-name/{repository}")
         repository_id = repo_data["id"]
 
-    # Step 2: Find matching symbols
-    symbol_params: dict[str, Any] = {"q": name, "limit": 50}
+    # Step 2: Find matching symbols by exact name
+    symbol_params: dict[str, Any] = {}
     if repository_id is not None:
         symbol_params["repository_id"] = repository_id
     if branch:
         symbol_params["branch"] = branch
     if commit:
         symbol_params["commit"] = commit
-    symbols_data = await client.get("/api/symbols", params=symbol_params)
+    symbols_data = await client.get(
+        f"/api/symbols/by-name/{name}", params=symbol_params
+    )
 
     if not symbols_data["items"]:
         return f"No symbols found matching '{name}'."

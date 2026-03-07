@@ -170,6 +170,7 @@ class TestSearchSymbols:
         result = await search_symbols.handle(client, {"query": "item", "limit": 3})
 
         assert "3 shown" in result
+        assert "of 10 total" in result
 
     async def test_no_results(self) -> None:
         client = FakeInxr2Client()

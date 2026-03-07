@@ -43,7 +43,7 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
         lines.append(f"  Default branch: {repo.get('default_branch', 'unknown')}")
         lines.append(f"  Indexed branches: {len(indexed)}")
         for b in indexed:
-            commit = b.get("last_indexed_commit", "")[:12]
+            commit = (b.get("last_indexed_commit") or "")[:12]
             count = b.get("commit_count", 0)
             lines.append(f"    {b['name']} ({count} commits, head: {commit})")
         return "\n".join(lines)

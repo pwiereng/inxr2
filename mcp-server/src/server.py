@@ -96,7 +96,7 @@ def main() -> None:
 
         async def handle_sse(request):  # type: ignore[no-untyped-def]
             async with sse.connect_sse(
-                request.scope, request.receive, request._send
+                request.scope, request.receive, request.send
             ) as streams:
                 await server.run(
                     streams[0], streams[1], server.create_initialization_options()

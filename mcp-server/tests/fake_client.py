@@ -166,10 +166,11 @@ class FakeInxr2Client(Inxr2Client):
                 matches = [s for s in matches if s["kind"] == kind]
             if repo_id is not None:
                 matches = [s for s in matches if s["repository_id"] == int(repo_id)]
+            total = len(matches)
             matches = matches[:limit]
             return {
                 "items": matches,
-                "total": len(matches),
+                "total": total,
                 "limit": limit,
                 "offset": 0,
             }

@@ -2,12 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install Python dependencies
+# Copy source and install
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
-
-# Copy source code
 COPY src/ src/
+RUN pip install --no-cache-dir .
 
 # Expose the SSE server port
 EXPOSE 3000
