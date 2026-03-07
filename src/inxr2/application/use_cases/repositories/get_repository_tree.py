@@ -184,8 +184,17 @@ class GetRepositoryTreeUseCase:
                     f"remove the branch parameter to use the latest indexed version."
                 )
         else:
-            # Default: get latest files across all branches
-            files = await self._file_repo.list_by_repository(repository_id)
+            # Default: use the repository's default branch to get the latest
+            # file tree.  Falling back to all-branches only when no default
+            # branch is set or the branch has no indexed files.  This prevents
+            # ghost files (stale paths from renames/deletes) from appearing.
+            files = []
+            if repository.default_branch:
+                files = await self._file_version_repo.list_latest_by_branch(
+                    repository_id, repository.default_branch
+                )
+            if not files:
+                files = await self._file_repo.list_by_repository(repository_id)
 
         # Build tree structure
         tree_dict: dict[str, TreeNode] = {}

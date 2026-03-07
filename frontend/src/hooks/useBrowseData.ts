@@ -142,12 +142,18 @@ export function useBrowseData({
 
     const loadTree = async () => {
       try {
-        // When changedOnly is requested but latestBranchCommit is still pending
-        // (undefined = not yet resolved), skip loading to avoid showing the full
-        // unfiltered tree. Once it resolves (to a string or null), the effect
-        // re-fires. If it resolved to null (no indexed commits), we fall through
-        // and load the unfiltered tree rather than staying empty forever.
+        // Guard 1: When changedOnly is requested but latestBranchCommit is still
+        // pending (undefined = not yet resolved), skip loading to avoid showing
+        // the full unfiltered tree. Once it resolves (to a string or null), the
+        // effect re-fires.
         if (urlState.changedOnly && !treeCommit && latestBranchCommit === undefined) return
+
+        // Guard 2: When neither an explicit commit nor branch is available, wait
+        // for latestBranchCommit to resolve. Without this, the tree API is called
+        // without filtering params, which returns ghost files (stale paths from
+        // renamed/deleted files). Once latestBranchCommit resolves, the effect
+        // re-fires with a proper commit.
+        if (!treeCommit && !treeBranch && latestBranchCommit === undefined) return
 
         // changedOnly only applies when viewing a specific commit
         const shouldUseChangedOnly = urlState.changedOnly && !!treeCommit
