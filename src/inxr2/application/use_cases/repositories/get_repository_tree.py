@@ -1,5 +1,6 @@
 """Get repository file tree use case."""
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from ...ports.repositories import (
     RepositoryPort,
 )
 from ...ports.services import GitServicePort
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -142,7 +145,12 @@ class GetRepositoryTreeUseCase:
                     )
                     all_files = [f for f in all_files if f.path in valid_paths]
                 except Exception:
-                    pass  # Fall back to unfiltered if git fails
+                    logger.debug(
+                        "Ghost file filter skipped: git list_files failed "
+                        "for commit %s",
+                        request.commit_hash,
+                        exc_info=True,
+                    )
 
             if request.changed_only:
                 # Use git to determine which files changed at this commit

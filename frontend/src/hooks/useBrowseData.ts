@@ -153,7 +153,10 @@ export function useBrowseData({
         // without filtering params, which returns ghost files (stale paths from
         // renamed/deleted files). Once latestBranchCommit resolves, the effect
         // re-fires with a proper commit.
-        if (!treeCommit && !treeBranch && latestBranchCommit === undefined) return
+        if (!treeCommit && !treeBranch && latestBranchCommit === undefined) {
+          setTreeNodes([])
+          return
+        }
 
         // changedOnly only applies when viewing a specific commit
         const shouldUseChangedOnly = urlState.changedOnly && !!treeCommit

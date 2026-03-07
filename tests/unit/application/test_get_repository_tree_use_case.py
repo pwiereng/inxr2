@@ -343,7 +343,7 @@ class TestGetRepositoryTreeUseCaseGhostFiles:
     Ghost files appear when a file is renamed or deleted between commits.
     The indexed commit_files table may contain stale paths that no longer
     exist at the target commit. The use case should filter these out using
-    git ls-tree as the source of truth.
+    git (via git_service.list_files()) as the source of truth.
     """
 
     @pytest.fixture
