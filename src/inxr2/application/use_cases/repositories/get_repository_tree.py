@@ -1,5 +1,6 @@
 """Get repository file tree use case."""
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from ...ports.repositories import (
     RepositoryPort,
 )
 from ...ports.services import GitServicePort
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -112,7 +115,7 @@ class GetRepositoryTreeUseCase:
         # 1. Explicit commit_hash with changed_only: get only files changed at that commit
         # 2. Explicit commit_hash: get full tree state at that commit
         # 3. Branch specified: get latest version of each file on that branch
-        # 4. Default: get latest files across all branches
+        # 4. Default: get latest snapshot from default branch, else all files
         if request.commit_hash:
             # Time travel to specific commit
             if not self._commit_repo:
@@ -125,6 +128,29 @@ class GetRepositoryTreeUseCase:
             )
             if not commit or commit.id is None:
                 raise ValueError(f"Commit not found: {request.commit_hash}")
+
+            # Get the indexed files at this commit
+            all_files = await self._file_version_repo.list_at_or_before_commit(
+                repository_id, commit.id
+            )
+
+            # Filter out ghost files using git as source of truth.
+            # Ghost files appear when renamed/deleted files remain in the
+            # commit_files table from stale indexing data.
+            if self._git_service:
+                repo_path = Path(repository.url)
+                try:
+                    valid_paths = set(
+                        self._git_service.list_files(repo_path, request.commit_hash)
+                    )
+                    all_files = [f for f in all_files if f.path in valid_paths]
+                except Exception:
+                    logger.debug(
+                        "Ghost file filter skipped: git list_files failed "
+                        "for commit %s",
+                        request.commit_hash,
+                        exc_info=True,
+                    )
 
             if request.changed_only:
                 # Use git to determine which files changed at this commit
@@ -147,17 +173,9 @@ class GetRepositoryTreeUseCase:
                 if not changed_paths:
                     files = []
                 else:
-                    # Get full tree at this commit, then filter to changed paths
-                    all_files = await self._file_version_repo.list_at_or_before_commit(
-                        repository_id, commit.id
-                    )
                     files = [f for f in all_files if f.path in changed_paths]
             else:
-                # Get the latest version of each file at or before this commit
-                # This returns the full tree state, not just files changed at this commit
-                files = await self._file_version_repo.list_at_or_before_commit(
-                    repository_id, commit.id
-                )
+                files = all_files
         elif request.branch:
             # Get latest version of each file on the branch
             # This aggregates across all commits on the branch
@@ -172,8 +190,17 @@ class GetRepositoryTreeUseCase:
                     f"remove the branch parameter to use the latest indexed version."
                 )
         else:
-            # Default: get latest files across all branches
-            files = await self._file_repo.list_by_repository(repository_id)
+            # Default: use the default branch's latest commit snapshot for a
+            # clean tree. Fall back to list_by_repository (all file rows) only
+            # when no default branch is set or it has no indexed files — this
+            # fallback may include stale paths but is better than an empty tree.
+            files = []
+            if repository.default_branch:
+                files = await self._file_version_repo.list_latest_by_branch(
+                    repository_id, repository.default_branch
+                )
+            if not files:
+                files = await self._file_repo.list_by_repository(repository_id)
 
         # Build tree structure
         tree_dict: dict[str, TreeNode] = {}

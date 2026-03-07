@@ -746,6 +746,7 @@ class TestGetRepositoryTreeUseCase:
             modified=[],
             deleted=[],
         )
+        git_service.files_in_commit["bbb222" + "0" * 34] = ["app.py", "utils.py"]
 
         use_case = GetRepositoryTreeUseCase(
             repository_repo=repo_repository,
