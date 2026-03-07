@@ -147,10 +147,12 @@ class FakeInxr2Client(Inxr2Client):
         # GET /api/symbols/by-name/{name}
         if path.startswith("/api/symbols/by-name/"):
             name = path.split("/")[-1]
-            repo_id = params.get("repository_id")
+            byname_repo_id: Any = params.get("repository_id")
             matches = [s for s in self._symbols if s["name"] == name]
-            if repo_id is not None:
-                matches = [s for s in matches if s["repository_id"] == int(repo_id)]
+            if byname_repo_id is not None:
+                matches = [
+                    s for s in matches if s["repository_id"] == int(byname_repo_id)
+                ]
             return {"items": matches, "total": len(matches), "limit": 50, "offset": 0}
 
         # GET /api/symbols/{id}/references
@@ -164,14 +166,14 @@ class FakeInxr2Client(Inxr2Client):
         if path == "/api/symbols":
             query = params.get("q", "")
             kind = params.get("kind")
-            repo_id = params.get("repository_id")
+            sym_repo_id: Any = params.get("repository_id")
             limit = int(params.get("limit", 50))
 
             matches = [s for s in self._symbols if query.lower() in s["name"].lower()]
             if kind:
                 matches = [s for s in matches if s["kind"] == kind]
-            if repo_id is not None:
-                matches = [s for s in matches if s["repository_id"] == int(repo_id)]
+            if sym_repo_id is not None:
+                matches = [s for s in matches if s["repository_id"] == int(sym_repo_id)]
             total = len(matches)
             matches = matches[:limit]
             return {
@@ -186,10 +188,12 @@ class FakeInxr2Client(Inxr2Client):
             query = params.get("q", "")
             mode = params.get("mode", "keyword")
             limit = int(params.get("limit", 20))
-            repo_id = params.get("repository_id")
+            search_repo_id: Any = params.get("repository_id")
             matches = list(self._search_results)
-            if repo_id is not None:
-                matches = [r for r in matches if r.get("repository_id") == int(repo_id)]
+            if search_repo_id is not None:
+                matches = [
+                    r for r in matches if r.get("repository_id") == int(search_repo_id)
+                ]
             total = len(matches)
             results = matches[:limit]
             return {

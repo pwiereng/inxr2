@@ -21,6 +21,7 @@ from src.tools import (
     search_code,
     search_symbols,
 )
+from src.urls import get_frontend_url
 
 # Registry of all tools
 TOOLS = [
@@ -33,7 +34,7 @@ TOOLS = [
 TOOL_MAP = {tool.TOOL_NAME: tool for tool in TOOLS}
 
 
-def create_server(client: Inxr2Client) -> Server:
+def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Server:
     """Create an MCP server wired to the given INXR2 client."""
     server = Server("inxr2")
 
@@ -55,7 +56,9 @@ def create_server(client: Inxr2Client) -> Server:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
         try:
-            result = await tool_module.handle(client, arguments)
+            result = await tool_module.handle(
+                client, arguments, frontend_url=frontend_url
+            )
             return [TextContent(type="text", text=result)]
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {e}")]
@@ -63,10 +66,10 @@ def create_server(client: Inxr2Client) -> Server:
     return server
 
 
-async def run_stdio(base_url: str) -> None:
+async def run_stdio(base_url: str, frontend_url: str | None = None) -> None:
     """Run the MCP server over stdio transport."""
     client = HttpInxr2Client(base_url)
-    server = create_server(client)
+    server = create_server(client, frontend_url=frontend_url)
     try:
         async with stdio_server() as (read_stream, write_stream):
             await server.run(
@@ -80,11 +83,12 @@ def main() -> None:
     import asyncio
 
     base_url = os.environ.get("INXR2_API_URL", "http://localhost:8000")
+    frontend_url = get_frontend_url()
 
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
 
     if transport == "stdio":
-        asyncio.run(run_stdio(base_url))
+        asyncio.run(run_stdio(base_url, frontend_url=frontend_url))
     elif transport == "sse":
         from mcp.server.sse import SseServerTransport
         from starlette.applications import Starlette
@@ -92,7 +96,7 @@ def main() -> None:
         from starlette.routing import Mount, Route
 
         client = HttpInxr2Client(base_url)
-        server = create_server(client)
+        server = create_server(client, frontend_url=frontend_url)
         sse = SseServerTransport("/messages/")
 
         async def handle_sse(request):  # type: ignore[no-untyped-def]

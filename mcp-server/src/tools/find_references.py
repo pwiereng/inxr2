@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.client import Inxr2Client
+from src.urls import build_browse_url
 
 TOOL_NAME = "find_references"
 
@@ -44,7 +45,11 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
-async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
+async def handle(
+    client: Inxr2Client,
+    arguments: dict[str, Any],
+    frontend_url: str | None = None,
+) -> str:
     import asyncio
 
     name = arguments["name"]
@@ -124,5 +129,17 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
         lines.append(f"  [{ref['type']}] {location}")
         if ref["context"]:
             lines.append(f"    {ref['context']}")
+
+        # Add browse URL when repository is known
+        if frontend_url and repository and ref["file"] and ref["file"] != "unknown":
+            url = build_browse_url(
+                frontend_url,
+                repository,
+                ref["file"],
+                line=ref["line"],
+                branch=branch,
+                commit=commit,
+            )
+            lines.append(f"    {url}")
 
     return "\n".join(lines)
