@@ -89,6 +89,7 @@ def main() -> None:
         from mcp.server.sse import SseServerTransport
         from starlette.applications import Starlette
         from starlette.routing import Mount, Route
+        from starlette.responses import Response
 
         client = HttpInxr2Client(base_url)
         server = create_server(client)
@@ -96,11 +97,12 @@ def main() -> None:
 
         async def handle_sse(request):  # type: ignore[no-untyped-def]
             async with sse.connect_sse(
-                request.scope, request.receive, request.send
+                request.scope, request.receive, request._send
             ) as streams:
                 await server.run(
                     streams[0], streams[1], server.create_initialization_options()
                 )
+            return Response()
 
         from contextlib import asynccontextmanager
 
