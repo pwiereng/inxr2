@@ -182,6 +182,15 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
       case 'history':
         navigate(`/history?${params.toString()}`)
         break
+      case 'logical-view':
+        navigate(`/logical-view?${params.toString()}`)
+        break
+      case 'dependencies':
+        navigate(`/dependencies?${params.toString()}`)
+        break
+      case 'mcp-help':
+        navigate(`/help?${params.toString()}`)
+        break
     }
   }
 

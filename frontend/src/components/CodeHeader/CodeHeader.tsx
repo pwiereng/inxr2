@@ -11,7 +11,13 @@ import { CommitSelect } from './CommitSelect'
 import { CommitDateIndicator } from './CommitDateIndicator'
 import { NavigationTabs } from './NavigationTabs'
 
-export type TabValue = 'browse' | 'search' | 'history'
+export type TabValue =
+  | 'browse'
+  | 'search'
+  | 'history'
+  | 'logical-view'
+  | 'dependencies'
+  | 'mcp-help'
 
 interface CodeHeaderProps {
   currentTab: TabValue

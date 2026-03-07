@@ -2,6 +2,9 @@ import { Toolbar, Tabs, Tab } from '@mui/material'
 import CodeIcon from '@mui/icons-material/Code'
 import SearchIcon from '@mui/icons-material/Search'
 import HistoryIcon from '@mui/icons-material/History'
+import AccountTreeIcon from '@mui/icons-material/AccountTree'
+import HubIcon from '@mui/icons-material/Hub'
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import type { TabValue } from './CodeHeader'
 
 interface NavigationTabsProps {
@@ -47,6 +50,24 @@ export function NavigationTabs({
           value="history"
           label="History"
           icon={<HistoryIcon fontSize="small" />}
+          iconPosition="start"
+        />
+        <Tab
+          value="logical-view"
+          label="Logical View"
+          icon={<AccountTreeIcon fontSize="small" />}
+          iconPosition="start"
+        />
+        <Tab
+          value="dependencies"
+          label="Dependencies"
+          icon={<HubIcon fontSize="small" />}
+          iconPosition="start"
+        />
+        <Tab
+          value="mcp-help"
+          label="Help"
+          icon={<HelpOutlineIcon fontSize="small" />}
           iconPosition="start"
         />
       </Tabs>
