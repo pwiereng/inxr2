@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.client import Inxr2Client
+from src.urls import build_browse_url
 
 TOOL_NAME = "search_code"
 
@@ -53,7 +54,11 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
-async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
+async def handle(
+    client: Inxr2Client,
+    arguments: dict[str, Any],
+    frontend_url: str | None = None,
+) -> str:
     query = arguments["query"]
     repository = arguments.get("repository")
     mode = arguments.get("mode", "keyword")
@@ -113,5 +118,17 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
             if len(display) > 200:
                 display = display[:200] + "..."
             lines.append(f"    {display}")
+
+        # Add browse URL
+        if frontend_url and repo_name and file_path != "unknown":
+            url = build_browse_url(
+                frontend_url,
+                repo_name,
+                file_path,
+                line=line,
+                branch=branch,
+                commit=commit,
+            )
+            lines.append(f"    {url}")
 
     return "\n".join(lines)

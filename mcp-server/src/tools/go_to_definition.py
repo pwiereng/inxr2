@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.client import Inxr2Client
+from src.urls import build_browse_url
 
 TOOL_NAME = "go_to_definition"
 
@@ -39,7 +40,11 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
-async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
+async def handle(
+    client: Inxr2Client,
+    arguments: dict[str, Any],
+    frontend_url: str | None = None,
+) -> str:
     name = arguments["name"]
     repository = arguments.get("repository")
     file_path = arguments.get("file_path")
@@ -73,11 +78,21 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
     if not items:
         return f"No definition found for '{name}'."
 
+    # Build repo_id -> name map for browse URLs
+    repo_names: dict[int, str] = {}
+    if frontend_url:
+        if repository and repository_id is not None:
+            repo_names[repository_id] = repository
+        else:
+            repos = await client.get("/api/repositories")
+            repo_names = {r["id"]: r["name"] for r in repos}
+
     # Format results
     lines = [f"Definitions for '{name}': {len(items)} found"]
     for symbol in items:
+        sym_file = symbol.get("file_path", "unknown")
         lines.append("")
-        lines.append(f"  File: {symbol.get('file_path', 'unknown')}")
+        lines.append(f"  File: {sym_file}")
         lines.append(f"  Line: {symbol.get('start_line')}")
         lines.append(f"  Kind: {symbol.get('kind', 'unknown')}")
         if symbol.get("qualified_name"):
@@ -90,5 +105,18 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
             if len(docstring) > 200:
                 docstring = docstring[:200] + "..."
             lines.append(f"  Docstring: {docstring}")
+
+        # Add browse URL
+        if frontend_url:
+            repo_name = repo_names.get(symbol.get("repository_id", 0))
+            if repo_name and sym_file != "unknown":
+                url = build_browse_url(
+                    frontend_url,
+                    repo_name,
+                    sym_file,
+                    line=symbol.get("start_line"),
+                    commit=commit,
+                )
+                lines.append(f"  URL: {url}")
 
     return "\n".join(lines)

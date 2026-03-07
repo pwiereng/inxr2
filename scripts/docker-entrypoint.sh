@@ -175,6 +175,7 @@ cd /workspace/mcp-server && \
 MCP_TRANSPORT=sse \
 MCP_PORT="${MCP_PORT:-3000}" \
 INXR2_API_URL="http://localhost:8000" \
+INXR2_FRONTEND_URL="${INXR2_FRONTEND_URL:-http://localhost:5173}" \
 python -m src.server \
     > /tmp/mcp-server.log 2>&1 &
 cd /workspace

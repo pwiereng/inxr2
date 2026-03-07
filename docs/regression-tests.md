@@ -1125,6 +1125,141 @@ docker exec -w /workspace/mcp-server inxr2-dev python -m pytest tests/ -v
 
 ---
 
+## MCP-12: Browse URLs Point to Correct Code Locations
+
+MCP tool responses include INXR2 frontend browse URLs when `INXR2_FRONTEND_URL` is set.
+This test verifies that each URL loads the correct file and highlights the correct line.
+
+**Prerequisites:**
+- Backend and frontend running
+- QA agent running
+- `INXR2_FRONTEND_URL` set when invoking tool handlers
+
+**Steps:**
+```bash
+# Use container-internal frontend URL for QA agent navigation
+# (QA agent browser can reach dev container by hostname, not localhost)
+FE_URL="http://inxr2-dev:5173"
+QA="http://localhost:9222"
+
+# --- Step 1: DISCOVER — Get browse URLs from all 4 MCP tools ---
+
+# search_symbols: pick a known symbol
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_symbols
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_symbols.handle(
+        client,
+        {'query': 'Repository', 'repository': 'inxr2', 'limit': 1},
+        frontend_url='$FE_URL',
+    )
+    print(result)
+    await client.close()
+asyncio.run(main())
+"
+# VERIFY: Output contains a browse URL with repo name, file path, and line number
+
+# go_to_definition: jump to a specific symbol
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import go_to_definition
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await go_to_definition.handle(
+        client,
+        {'name': 'SearchSymbolsUseCase', 'repository': 'inxr2'},
+        frontend_url='$FE_URL',
+    )
+    print(result)
+    await client.close()
+asyncio.run(main())
+"
+# VERIFY: Output contains a URL: line with browse link
+
+# find_references: get references for a symbol
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import find_references
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await find_references.handle(
+        client,
+        {'name': 'SearchSymbolsUseCase', 'repository': 'inxr2'},
+        frontend_url='$FE_URL',
+    )
+    # Print first few lines (references can be long)
+    for line in result.splitlines()[:8]:
+        print(line)
+    await client.close()
+asyncio.run(main())
+"
+# VERIFY: Each reference entry includes a browse URL
+
+# search_code: full-text search
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_code.handle(
+        client,
+        {'query': 'cJSON_Parse', 'repository': 'cJSON', 'limit': 1},
+        frontend_url='$FE_URL',
+    )
+    print(result)
+    await client.close()
+asyncio.run(main())
+"
+# VERIFY: Output contains a browse URL for the search result
+
+# --- Step 2: NAVIGATE — Open each URL in QA agent browser ---
+
+# Extract the first URL from each tool's output above (manually or via grep).
+# For each URL, navigate the QA agent and check that the page loads:
+
+# Example for search_symbols URL:
+curl "$QA/navigate?url=<URL_FROM_SEARCH_SYMBOLS>&wait=4000"
+# Check page loaded:
+curl "$QA/text?selector=body"
+# VERIFY: Body text contains the expected symbol/function name from the URL's file
+
+# Repeat for go_to_definition, find_references, and search_code URLs.
+
+# --- Step 3: VERIFY — No URLs without frontend_url ---
+
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_symbols
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_symbols.handle(
+        client,
+        {'query': 'Repository', 'repository': 'inxr2', 'limit': 1},
+    )
+    print(result)
+    assert 'http://' not in result, 'URL should not appear without frontend_url'
+    print('PASS: No URLs without frontend_url')
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- All 4 tools (search_symbols, go_to_definition, find_references, search_code) include browse URLs in output when `frontend_url` is provided
+- URLs follow pattern: `{frontend_url}/browse/{repo}/{path}?line=N`
+- Navigating each URL in the QA agent browser loads the correct file with expected content visible
+- When `frontend_url` is not provided, no URLs appear in the output
+- URLs include `branch` or `commit` query params when those filters are specified
+
+---
+
 ## Summary
 
 ### Phase 1: Indexing (7 tests)
@@ -1172,7 +1307,7 @@ docker exec -w /workspace/mcp-server inxr2-dev python -m pytest tests/ -v
 | RT-22a | Diff colors in both themes | Theme-adapted diff colors |
 | RT-23 | Markdown rendering matches file | `grep '^#'` heading |
 
-### Phase 3: MCP Server (11 tests)
+### Phase 3: MCP Server (12 tests)
 
 | ID | Test | Validates Against |
 |----|------|-------------------|
@@ -1186,6 +1321,7 @@ docker exec -w /workspace/mcp-server inxr2-dev python -m pytest tests/ -v
 | MCP-08 | Search code returns matching content | API search/text endpoint |
 | MCP-09 | Search code with repository filter | Repo filter consistency |
 | MCP-10 | No-match queries return graceful messages | Error handling |
-| MCP-11 | MCP unit tests pass | Test suite (20 tests) |
+| MCP-11 | MCP unit tests pass | Test suite |
+| MCP-12 | Browse URLs point to correct code locations | QA agent navigation + page content |
 
-**Total: 47 test cases** (7 indexing + 29 browser + 11 MCP) — all verified against git/API, no hardcoded data.
+**Total: 48 test cases** (7 indexing + 29 browser + 12 MCP) — all verified against git/API, no hardcoded data.

@@ -26,7 +26,11 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
-async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
+async def handle(
+    client: Inxr2Client,
+    arguments: dict[str, Any],
+    frontend_url: str | None = None,
+) -> str:
     import asyncio
 
     repository = arguments.get("repository")

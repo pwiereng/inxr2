@@ -9,6 +9,8 @@ from src.tools import (
 )
 from tests.fake_client import FakeInxr2Client
 
+FRONTEND_URL = "http://localhost:5173"
+
 # --- find_references ---
 
 
@@ -71,6 +73,43 @@ class TestFindReferences:
         assert "Error" in result
         assert "'commit' requires 'repository'" in result
 
+    async def test_includes_browse_urls_with_repository(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "MyClass", kind="class", repository_id=1)
+        client.add_reference(1, "src/app.py", 10, "import", "import MyClass")
+
+        result = await find_references.handle(
+            client,
+            {"name": "MyClass", "repository": "my-repo"},
+            frontend_url=FRONTEND_URL,
+        )
+
+        assert "http://localhost:5173/browse/my-repo/src/app.py?line=10" in result
+
+    async def test_no_browse_urls_without_repository(self) -> None:
+        client = FakeInxr2Client()
+        client.add_symbol(1, "MyClass", kind="class")
+        client.add_reference(1, "src/app.py", 10, "import", "import MyClass")
+
+        result = await find_references.handle(
+            client, {"name": "MyClass"}, frontend_url=FRONTEND_URL
+        )
+
+        assert "http://localhost:5173" not in result
+
+    async def test_no_browse_urls_without_frontend_url(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "MyClass", kind="class", repository_id=1)
+        client.add_reference(1, "src/app.py", 10, "import", "import MyClass")
+
+        result = await find_references.handle(
+            client, {"name": "MyClass", "repository": "my-repo"}
+        )
+
+        assert "http://" not in result
+
 
 # --- go_to_definition ---
 
@@ -132,6 +171,39 @@ class TestGoToDefinition:
         assert "src/a.py" in result
         assert "src/b.py" in result
 
+    async def test_includes_browse_urls_with_repository(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1,
+            "MyFunc",
+            kind="function",
+            file_path="src/lib.py",
+            start_line=42,
+            repository_id=1,
+        )
+
+        result = await go_to_definition.handle(
+            client,
+            {"name": "MyFunc", "repository": "my-repo"},
+            frontend_url=FRONTEND_URL,
+        )
+
+        assert "http://localhost:5173/browse/my-repo/src/lib.py?line=42" in result
+
+    async def test_includes_browse_urls_without_repository(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "auto-repo")
+        client.add_symbol(
+            1, "MyFunc", kind="function", file_path="src/lib.py", repository_id=1
+        )
+
+        result = await go_to_definition.handle(
+            client, {"name": "MyFunc"}, frontend_url=FRONTEND_URL
+        )
+
+        assert "http://localhost:5173/browse/auto-repo/src/lib.py?line=1" in result
+
 
 # --- search_symbols ---
 
@@ -184,6 +256,59 @@ class TestSearchSymbols:
         )
         assert "Error" in result
         assert "'commit' requires 'repository'" in result
+
+    async def test_includes_browse_urls_with_repository(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1,
+            "MyClass",
+            kind="class",
+            file_path="src/models.py",
+            start_line=10,
+            repository_id=1,
+        )
+
+        result = await search_symbols.handle(
+            client,
+            {"query": "MyClass", "repository": "my-repo"},
+            frontend_url=FRONTEND_URL,
+        )
+
+        assert "http://localhost:5173/browse/my-repo/src/models.py?line=10" in result
+
+    async def test_includes_browse_urls_without_repository(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "auto-repo")
+        client.add_symbol(
+            1,
+            "MyClass",
+            kind="class",
+            file_path="src/models.py",
+            start_line=5,
+            repository_id=1,
+        )
+
+        result = await search_symbols.handle(
+            client, {"query": "MyClass"}, frontend_url=FRONTEND_URL
+        )
+
+        assert "http://localhost:5173/browse/auto-repo/src/models.py?line=5" in result
+
+    async def test_browse_urls_include_branch(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1, "MyClass", kind="class", file_path="src/models.py", repository_id=1
+        )
+
+        result = await search_symbols.handle(
+            client,
+            {"query": "MyClass", "repository": "my-repo", "branch": "develop"},
+            frontend_url=FRONTEND_URL,
+        )
+
+        assert "branch=develop" in result
 
 
 # --- search_code ---
@@ -240,6 +365,24 @@ class TestSearchCode:
         assert "1 shown" in result
         assert "src/a.py" in result
         assert "src/b.py" not in result
+
+    async def test_includes_browse_urls(self) -> None:
+        client = FakeInxr2Client()
+        client.add_search_result("src/main.py", 15, "def connect():", "my-repo")
+
+        result = await search_code.handle(
+            client, {"query": "connect"}, frontend_url=FRONTEND_URL
+        )
+
+        assert "http://localhost:5173/browse/my-repo/src/main.py?line=15" in result
+
+    async def test_no_browse_urls_without_frontend_url(self) -> None:
+        client = FakeInxr2Client()
+        client.add_search_result("src/main.py", 15, "def connect():", "my-repo")
+
+        result = await search_code.handle(client, {"query": "connect"})
+
+        assert "http://" not in result
 
 
 # --- list_repositories ---

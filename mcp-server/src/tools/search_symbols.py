@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.client import Inxr2Client
+from src.urls import build_browse_url
 
 TOOL_NAME = "search_symbols"
 
@@ -57,7 +58,11 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
-async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
+async def handle(
+    client: Inxr2Client,
+    arguments: dict[str, Any],
+    frontend_url: str | None = None,
+) -> str:
     query = arguments["query"]
     repository = arguments.get("repository")
     kind = arguments.get("kind")
@@ -93,6 +98,15 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
     if not items:
         return f"No symbols found matching '{query}'."
 
+    # Build repo_id -> name map for browse URLs
+    repo_names: dict[int, str] = {}
+    if frontend_url:
+        if repository and repository_id is not None:
+            repo_names[repository_id] = repository
+        else:
+            repos = await client.get("/api/repositories")
+            repo_names = {r["id"]: r["name"] for r in repos}
+
     # Format results
     lines = [f"Symbols matching '{query}': {len(items)} shown (of {total} total)"]
     for symbol in items:
@@ -106,5 +120,19 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
         lines.append(f"    {file_path}:{line}")
         if sig:
             lines.append(f"    {sig}")
+
+        # Add browse URL
+        if frontend_url:
+            repo_name = repo_names.get(symbol.get("repository_id", 0))
+            if repo_name and file_path != "unknown":
+                url = build_browse_url(
+                    frontend_url,
+                    repo_name,
+                    file_path,
+                    line=symbol.get("start_line"),
+                    branch=branch,
+                    commit=commit,
+                )
+                lines.append(f"    {url}")
 
     return "\n".join(lines)
