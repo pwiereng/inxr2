@@ -66,7 +66,7 @@ async def handle(
 
     # Step 2: Find the commit by matching prefix
     commits_data = await client.get(
-        "/api/commits", params={"repo": repository, "limit": 200}
+        "/api/commits", params={"repo": repository, "limit": 5000}
     )
     matching_commits = [
         c
@@ -75,14 +75,18 @@ async def handle(
     ]
 
     if not matching_commits:
-        return f"Commit '{commit_prefix}' not found in '{repository}'."
+        return prepend_warning(
+            f"Commit '{commit_prefix}' not found in '{repository}'.",
+            staleness_warning,
+        )
 
     if len(matching_commits) > 1:
         candidates = ", ".join(c["short_hash"] for c in matching_commits[:10])
-        return (
+        return prepend_warning(
             f"Commit prefix '{commit_prefix}' is ambiguous in '{repository}'. "
             f"Matching commits: {candidates}. "
-            "Please provide a longer prefix or a full hash."
+            "Please provide a longer prefix or a full hash.",
+            staleness_warning,
         )
 
     matching_commit = matching_commits[0]
