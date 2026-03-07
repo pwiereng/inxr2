@@ -7,6 +7,7 @@ from src.tools import (
     find_references,
     go_to_definition,
     list_repositories,
+    review_helper,
     search_code,
     search_symbols,
 )
@@ -615,11 +616,13 @@ class TestFindDeadCode:
         # Monkey-patch to return inflated total
         original_get = client.get
 
-        async def patched_get(path: str, params: dict[str, Any] | None = None) -> Any:
+        async def patched_get(
+            path: str, params: dict[str, Any] | None = None
+        ) -> dict[str, Any]:
             result = await original_get(path, params)
             if path == "/api/symbols" and isinstance(result, dict):
                 result["total"] = 500
-            return result
+            return dict(result)
 
         client.get = patched_get  # type: ignore[method-assign]
 
@@ -810,6 +813,164 @@ class TestStalenessWarning:
         assert "stale" in result
         assert "No dead code found" in result
         assert "all" in result
+
+
+# --- review_helper ---
+
+
+COMMIT_HASH = "abc1234567890abcdef1234567890abcdef123456"
+
+
+class TestReviewHelper:
+    def _setup_client(self) -> FakeInxr2Client:
+        """Create a client with a repo, commit, changed files, and symbols."""
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_commit(
+            "my-repo", COMMIT_HASH, message="fix: update validation logic"
+        )
+        client.add_changed_file(COMMIT_HASH, "src/validate.py", file_id=10)
+        client.add_changed_file(COMMIT_HASH, "src/models.py", file_id=11)
+        client.add_symbol(
+            1,
+            "validate_input",
+            kind="function",
+            file_path="src/validate.py",
+            start_line=15,
+            repository_id=1,
+        )
+        client.add_symbol(
+            2,
+            "UserModel",
+            kind="class",
+            file_path="src/models.py",
+            start_line=5,
+            repository_id=1,
+        )
+        return client
+
+    async def test_shows_changed_files_and_symbols(self) -> None:
+        client = self._setup_client()
+
+        result = await review_helper.handle(
+            client, {"repository": "my-repo", "commit": "abc1234"}
+        )
+
+        assert "Blast radius for commit abc1234" in result
+        assert "fix: update validation logic" in result
+        assert "Changed files: 2" in result
+        assert "src/validate.py" in result
+        assert "src/models.py" in result
+        assert "Symbols in changed files: 2" in result
+        assert "[function] validate_input" in result
+        assert "[class] UserModel" in result
+
+    async def test_shows_downstream_references(self) -> None:
+        client = self._setup_client()
+        client.add_reference(1, "src/app.py", 42, "call", "validate_input(data)")
+        client.add_reference(2, "src/views.py", 10, "usage", "user = UserModel()")
+
+        result = await review_helper.handle(
+            client, {"repository": "my-repo", "commit": "abc1234"}
+        )
+
+        assert "Downstream references: 2" in result
+        assert "validate_input" in result
+        assert "referenced from 1 location" in result
+        assert "src/app.py:42" in result
+        assert "src/views.py:10" in result
+
+    async def test_includes_browse_urls(self) -> None:
+        client = self._setup_client()
+        client.add_reference(1, "src/app.py", 42, "call", "validate_input()")
+
+        result = await review_helper.handle(
+            client,
+            {"repository": "my-repo", "commit": "abc1234"},
+            frontend_url=FRONTEND_URL,
+        )
+
+        # Browse URL for changed file
+        assert (
+            f"http://localhost:5173/browse/my-repo/src/validate.py?commit={COMMIT_HASH}"
+            in result
+        )
+        # Browse URL for reference
+        assert (
+            f"http://localhost:5173/browse/my-repo/src/app.py?line=42&commit={COMMIT_HASH}"
+            in result
+        )
+
+    async def test_no_browse_urls_without_frontend_url(self) -> None:
+        client = self._setup_client()
+
+        result = await review_helper.handle(
+            client, {"repository": "my-repo", "commit": "abc1234"}
+        )
+
+        assert "http://" not in result
+
+    async def test_commit_not_found(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+
+        result = await review_helper.handle(
+            client, {"repository": "my-repo", "commit": "deadbeef"}
+        )
+
+        assert "Commit 'deadbeef' not found" in result
+
+    async def test_no_changed_files(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_commit("my-repo", COMMIT_HASH, message="empty commit")
+
+        result = await review_helper.handle(
+            client, {"repository": "my-repo", "commit": "abc1234"}
+        )
+
+        assert "Changed files: 0" in result
+        assert "No changed files found" in result
+
+    async def test_no_downstream_references(self) -> None:
+        client = self._setup_client()
+
+        result = await review_helper.handle(
+            client, {"repository": "my-repo", "commit": "abc1234"}
+        )
+
+        assert "Downstream references: 0" in result
+        assert "No downstream references found" in result
+
+    async def test_respects_limit(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_commit("my-repo", COMMIT_HASH, message="many symbols")
+        client.add_changed_file(COMMIT_HASH, "src/big.py", file_id=10)
+        for i in range(10):
+            client.add_symbol(
+                i,
+                f"func_{i}",
+                kind="function",
+                file_path="src/big.py",
+                repository_id=1,
+            )
+
+        result = await review_helper.handle(
+            client, {"repository": "my-repo", "commit": "abc1234", "limit": 3}
+        )
+
+        assert "Symbols in changed files: 10" in result
+        assert "showing first 3" in result
+
+    async def test_matches_full_hash(self) -> None:
+        client = self._setup_client()
+
+        result = await review_helper.handle(
+            client, {"repository": "my-repo", "commit": COMMIT_HASH}
+        )
+
+        assert "Blast radius for commit abc1234" in result
 
 
 # --- server creation ---

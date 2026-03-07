@@ -20,6 +20,10 @@ class FakeInxr2Client(Inxr2Client):
         self._search_results: list[dict[str, Any]] = []
         self._branches: dict[int, list[dict[str, Any]]] = {}  # repo_id -> branches
         self._stats: dict[int, dict[str, Any]] = {}  # repo_id -> stats
+        self._commits: dict[str, list[dict[str, Any]]] = {}  # repo_name -> commits
+        self._changed_files: dict[str, list[dict[str, Any]]] = (
+            {}
+        )  # commit_hash -> files
 
     # --- Data population helpers ---
 
@@ -102,6 +106,50 @@ class FakeInxr2Client(Inxr2Client):
             "last_indexed_at": last_indexed_at,
         }
 
+    def add_commit(
+        self,
+        repo_name: str,
+        full_hash: str,
+        message: str = "",
+        author_name: str = "Test Author",
+    ) -> None:
+        if repo_name not in self._commits:
+            self._commits[repo_name] = []
+        self._commits[repo_name].append(
+            {
+                "hash": full_hash,
+                "short_hash": full_hash[:7],
+                "message": message,
+                "author_name": author_name,
+                "author_email": "test@example.com",
+                "commit_date": "2026-03-01T12:00:00",
+                "is_indexed": True,
+                "tags": [],
+                "is_branch_specific": False,
+                "is_merge_base": False,
+            }
+        )
+
+    def add_changed_file(
+        self,
+        commit_hash: str,
+        file_path: str,
+        file_id: int = 1,
+        language: str | None = None,
+    ) -> None:
+        if commit_hash not in self._changed_files:
+            self._changed_files[commit_hash] = []
+        self._changed_files[commit_hash].append(
+            {
+                "name": file_path.rsplit("/", 1)[-1],
+                "path": file_path,
+                "type": "file",
+                "file_id": file_id,
+                "language": language,
+                "children": None,
+            }
+        )
+
     def add_search_result(
         self,
         file_path: str,
@@ -139,6 +187,32 @@ class FakeInxr2Client(Inxr2Client):
 
     async def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         params = params or {}
+
+        # GET /api/commits
+        if path == "/api/commits":
+            repo_name = params.get("repo", "")
+            commits = self._commits.get(repo_name, [])
+            limit = int(params.get("limit", 50))
+            return {"commits": commits[:limit], "total": len(commits)}
+
+        # GET /api/repositories/by-name/{name}/tree
+        if "/tree" in path and "/repositories/by-name/" in path:
+            parts = path.split("/")
+            # /api/repositories/by-name/{name}/tree
+            repo_name = parts[4]
+            commit_hash = params.get("commit", "")
+            changed_only = params.get("changed_only") in ("true", True)
+            if changed_only and commit_hash:
+                files = self._changed_files.get(commit_hash, [])
+            else:
+                files = []
+            return {
+                "repository_id": 1,
+                "repository_name": repo_name,
+                "root": files,
+                "total_files": len(files),
+                "total_directories": 0,
+            }
 
         # GET /api/repositories
         if path == "/api/repositories":
