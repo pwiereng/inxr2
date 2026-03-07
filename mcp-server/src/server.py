@@ -88,8 +88,8 @@ def main() -> None:
     elif transport == "sse":
         from mcp.server.sse import SseServerTransport
         from starlette.applications import Starlette
-        from starlette.routing import Mount, Route
         from starlette.responses import Response
+        from starlette.routing import Mount, Route
 
         client = HttpInxr2Client(base_url)
         server = create_server(client)

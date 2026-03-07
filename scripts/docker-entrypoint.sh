@@ -166,7 +166,21 @@ else
     fi
 fi
 
-echo "🎉 Container ready!"
+# =============================================================================
+# MCP Server (background — SSE transport on port 3000)
+# =============================================================================
+
+echo "Starting MCP server..."
+cd /workspace/mcp-server && \
+MCP_TRANSPORT=sse \
+MCP_PORT="${MCP_PORT:-3000}" \
+INXR2_API_URL="http://localhost:8000" \
+python -m src.server \
+    > /tmp/mcp-server.log 2>&1 &
+cd /workspace
+echo "MCP server started (port ${MCP_PORT:-3000}, log: /tmp/mcp-server.log)"
+
+echo "Container ready!"
 
 # Execute the main command (e.g., /bin/bash)
 exec "$@"

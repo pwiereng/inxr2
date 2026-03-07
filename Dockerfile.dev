@@ -55,6 +55,12 @@ RUN mkdir -p src/inxr2 && touch src/inxr2/__init__.py && \
     pip install -e '.[dev]' && \
     rm -rf src
 
+# Install MCP server dependencies at build time
+COPY mcp-server/pyproject.toml /tmp/mcp-server/pyproject.toml
+COPY mcp-server/src/ /tmp/mcp-server/src/
+RUN pip install -e /tmp/mcp-server && \
+    rm -rf /tmp/mcp-server
+
 # Create non-root user for development
 ARG USERNAME=devuser
 ARG USER_UID=1000
@@ -82,8 +88,9 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Expose ports
 # 8000 - FastAPI backend
 # 5173 - Vite frontend dev server
+# 3000 - MCP server (SSE transport)
 # 5432 - PostgreSQL (embedded, internal only)
-EXPOSE 8000 5173
+EXPOSE 8000 5173 3000
 
 # Set entrypoint to handle dependency installation
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

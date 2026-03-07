@@ -66,14 +66,17 @@ The MCP server does **not** access the database directly. It calls INXR2's exist
 
 ## Running
 
-### Docker (SSE transport)
+The MCP server runs inside the `inxr2-dev` container automatically (SSE transport on port 3000). It starts as a background process during container startup.
 
 ```bash
-# Start with the mcp profile
-docker compose -f docker-compose.dev.yml --profile mcp up -d mcp
+# Start the dev container (MCP server starts automatically)
+docker compose -f docker-compose.dev.yml up -d --build
 
-# Verify
+# Verify MCP server is running
 curl http://localhost:3000/sse
+
+# View MCP server logs (inside container)
+docker exec inxr2-dev cat /tmp/mcp-server.log
 ```
 
 ### Local (stdio transport)

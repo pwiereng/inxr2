@@ -92,9 +92,10 @@ SLOT=$(find_slot)
 APP_PORT=$((8000 + SLOT * 10))
 FRONTEND_PORT=$((5173 + SLOT * 10))
 PLAYWRIGHT_PORT=$((9222 + SLOT * 10))
+MCP_PORT=$((3000 + SLOT * 10))
 
 # Check ports are available
-for port in $APP_PORT $FRONTEND_PORT $PLAYWRIGHT_PORT; do
+for port in $APP_PORT $FRONTEND_PORT $PLAYWRIGHT_PORT $MCP_PORT; do
     if ! check_port "$port"; then
         die "Port $port is already in use. Free it before creating this worktree."
     fi
@@ -124,9 +125,10 @@ COMPOSE_CONTAINER_PREFIX=inxr2-${BRANCH}
 APP_PORT=${APP_PORT}
 FRONTEND_PORT=${FRONTEND_PORT}
 PLAYWRIGHT_PORT=${PLAYWRIGHT_PORT}
+MCP_PORT=${MCP_PORT}
 EOF
 
-echo "📝 Generated .env (ports: backend=${APP_PORT}, frontend=${FRONTEND_PORT}, playwright=${PLAYWRIGHT_PORT})"
+echo "📝 Generated .env (ports: backend=${APP_PORT}, frontend=${FRONTEND_PORT}, playwright=${PLAYWRIGHT_PORT}, mcp=${MCP_PORT})"
 
 # ── Register slot (with file locking) ──────────────────────────────────────
 
@@ -157,6 +159,7 @@ echo "  Ports:"
 echo "    Backend:    localhost:${APP_PORT}"
 echo "    Frontend:   localhost:${FRONTEND_PORT}"
 echo "    Playwright: localhost:${PLAYWRIGHT_PORT}"
+echo "    MCP:        localhost:${MCP_PORT}"
 echo ""
 echo "  Shell into container:"
 echo "    docker exec -it $DEV_CONTAINER bash"
