@@ -19,3 +19,13 @@ body {
   width: 100%;
   margin: 0 auto;
 }
+
+/* Resize handles for react-resizable-panels */
+[data-separator] {
+  transition: background-color 0.15s;
+}
+
+[data-separator]:hover,
+[data-separator]:active {
+  background-color: rgba(128, 128, 128, 0.35);
+}

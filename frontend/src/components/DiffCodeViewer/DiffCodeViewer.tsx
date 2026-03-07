@@ -8,6 +8,8 @@ import Prism from 'prismjs'
 import * as Diff from 'diff'
 import { getPrismLanguage } from '@/lib/prismLanguages'
 
+import { Group, Panel, Separator } from 'react-resizable-panels'
+
 import type { FileSymbol, FileReference } from '@/lib/api'
 import { useCodeContextMenu } from '@/hooks/useCodeContextMenu'
 import { CodeContextMenu } from '@/components/CodeContextMenu'
@@ -526,12 +528,10 @@ export function DiffCodeViewer({
     return (
       <Box
         sx={{
-          flex: 1,
           display: 'flex',
           flexDirection: 'column',
+          height: '100%',
           minWidth: 0,
-          borderLeft: panel === 'right' ? 1 : 0,
-          borderColor: 'divider',
           outline: isActive ? '1px solid' : 'none',
           outlineColor: 'primary.light',
           outlineOffset: '-1px',
@@ -737,10 +737,15 @@ export function DiffCodeViewer({
       )}
 
       {/* Diff panels */}
-      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {renderPanel('left', leftHeader, leftContainerRef, leftSymbols, leftReferences)}
-        {renderPanel('right', rightHeader, rightContainerRef, rightSymbols, rightReferences)}
-      </Box>
+      <Group orientation="horizontal" style={{ flex: 1, overflow: 'hidden' }}>
+        <Panel defaultSize="50%" minSize="20%" id="diff-left">
+          {renderPanel('left', leftHeader, leftContainerRef, leftSymbols, leftReferences)}
+        </Panel>
+        <Separator style={{ width: 6 }} />
+        <Panel defaultSize="50%" minSize="20%" id="diff-right">
+          {renderPanel('right', rightHeader, rightContainerRef, rightSymbols, rightReferences)}
+        </Panel>
+      </Group>
       {onSearchText && (
         <CodeContextMenu
           contextMenu={contextMenu}

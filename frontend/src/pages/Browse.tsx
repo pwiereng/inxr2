@@ -27,6 +27,8 @@ import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz'
 
+import { Group, Panel, Separator } from 'react-resizable-panels'
+
 import { BranchSelector } from '@/components/BranchSelector'
 import { CodeViewer } from '@/components/CodeViewer'
 import { DiffCodeViewer } from '@/components/DiffCodeViewer'
@@ -407,158 +409,284 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
         />
       </Toolbar>
 
-      {/* Main Content with Flexbox Layout */}
-      <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      {/* Main Content with Resizable Panels */}
+      <Group orientation="horizontal" style={{ flex: 1, minHeight: 0 }}>
         {/* File Tree Panel */}
         {drawerOpen && (
-          <Box
-            sx={{
-              width: 220,
-              minWidth: 150,
-              maxWidth: 350,
-              height: '100%',
-              overflow: 'hidden',
-              borderRight: 1,
-              borderColor: 'divider',
-              flexShrink: 0,
-              resize: 'horizontal',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            {/* Tree version indicator / selector */}
-            {(computedState.treeCommit || diffMode) && (
+          <>
+            <Panel defaultSize="20%" minSize="10%" maxSize="35%" id="file-tree">
               <Box
                 sx={{
-                  px: 1,
-                  py: 0.5,
-                  bgcolor: 'action.selected',
-                  borderBottom: 1,
-                  borderColor: 'divider',
-                  flexShrink: 0,
+                  height: '100%',
+                  overflow: 'hidden',
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.5,
+                  flexDirection: 'column',
                 }}
               >
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  Tree @
-                </Typography>
-                {diffMode ? (
-                  <FormControl size="small" sx={{ minWidth: 80 }}>
-                    <Select
-                      value={treePanel}
-                      onChange={(e) => actions.setTreePanel(e.target.value as 'left' | 'right')}
-                      sx={{
-                        '& .MuiSelect-select': {
-                          py: 0,
-                          px: 0.5,
-                          fontSize: '0.75rem',
-                          fontFamily: 'monospace',
-                        },
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          border: 'none',
-                        },
-                      }}
-                    >
-                      <MenuItem value="left">
-                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                          {getLeftVersionDisplay()} (left)
-                        </Typography>
-                      </MenuItem>
-                      <MenuItem value="right">
-                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                          {getRightVersionDisplay()} (right)
-                        </Typography>
-                      </MenuItem>
-                    </Select>
-                  </FormControl>
-                ) : (
-                  <Typography
-                    variant="caption"
-                    sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                {/* Tree version indicator / selector */}
+                {(computedState.treeCommit || diffMode) && (
+                  <Box
+                    sx={{
+                      px: 1,
+                      py: 0.5,
+                      bgcolor: 'action.selected',
+                      borderBottom: 1,
+                      borderColor: 'divider',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                    }}
                   >
-                    {getShortHash(computedState.treeCommit)}
-                  </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      Tree @
+                    </Typography>
+                    {diffMode ? (
+                      <FormControl size="small" sx={{ minWidth: 80 }}>
+                        <Select
+                          value={treePanel}
+                          onChange={(e) => actions.setTreePanel(e.target.value as 'left' | 'right')}
+                          sx={{
+                            '& .MuiSelect-select': {
+                              py: 0,
+                              px: 0.5,
+                              fontSize: '0.75rem',
+                              fontFamily: 'monospace',
+                            },
+                            '& .MuiOutlinedInput-notchedOutline': {
+                              border: 'none',
+                            },
+                          }}
+                        >
+                          <MenuItem value="left">
+                            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                              {getLeftVersionDisplay()} (left)
+                            </Typography>
+                          </MenuItem>
+                          <MenuItem value="right">
+                            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                              {getRightVersionDisplay()} (right)
+                            </Typography>
+                          </MenuItem>
+                        </Select>
+                      </FormControl>
+                    ) : (
+                      <Typography
+                        variant="caption"
+                        sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                      >
+                        {getShortHash(computedState.treeCommit)}
+                      </Typography>
+                    )}
+                  </Box>
                 )}
+                <Box sx={{ flex: 1, overflow: 'auto' }}>
+                  <FileTree
+                    nodes={treeNodes}
+                    selectedFileId={fileContent?.id ?? null}
+                    onFileSelect={actions.navigateToFile}
+                  />
+                </Box>
               </Box>
-            )}
-            <Box sx={{ flex: 1, overflow: 'auto' }}>
-              <FileTree
-                nodes={treeNodes}
-                selectedFileId={fileContent?.id ?? null}
-                onFileSelect={actions.navigateToFile}
-              />
-            </Box>
-          </Box>
+            </Panel>
+            <Separator style={{ width: 6 }} />
+          </>
         )}
 
         {/* Code Viewer Panel */}
-        <Box
-          sx={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            minWidth: 0,
-            overflow: 'hidden',
-          }}
-        >
-          {fileLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
-              <CircularProgress />
-            </Box>
-          ) : error && filePath ? (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-                flex: 1,
-                p: 3,
-                gap: 2,
-              }}
-            >
-              <Alert severity="error" sx={{ maxWidth: 500 }}>
-                {error}
-              </Alert>
-              <Button
-                variant="outlined"
-                startIcon={<ArrowBackIcon />}
-                onClick={actions.resetToFileTree}
+        <Panel id="code-viewer">
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              overflow: 'hidden',
+            }}
+          >
+            {fileLoading ? (
+              <Box
+                sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}
               >
-                Back to file browser
-              </Button>
-            </Box>
-          ) : // scrollContainerRef is shared with the markdown viewer below.
-          // These branches are mutually exclusive, so only one is mounted at a time.
-          rawContent ? (
-            <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto', display: 'flex' }}>
-              <ImageViewer rawContent={rawContent} />
-            </Box>
-          ) : fileContent ? (
-            <>
-              {/* Code Viewer or Diff Viewer */}
-              <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', position: 'relative' }}>
-                {diffMode && diffContent && repository ? (
-                  <>
-                    <DiffCodeViewer
-                      leftContent={diffContent.content}
-                      rightContent={fileContent.content}
-                      leftHeader={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          {temporalOrderKnown && (
-                            <Chip
-                              label={referenceIsNewer ? 'older' : 'newer'}
-                              size="small"
-                              color={referenceIsNewer ? 'default' : 'primary'}
-                              variant="outlined"
-                              sx={{
-                                height: 18,
-                                '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' },
-                              }}
+                <CircularProgress />
+              </Box>
+            ) : error && filePath ? (
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  flex: 1,
+                  p: 3,
+                  gap: 2,
+                }}
+              >
+                <Alert severity="error" sx={{ maxWidth: 500 }}>
+                  {error}
+                </Alert>
+                <Button
+                  variant="outlined"
+                  startIcon={<ArrowBackIcon />}
+                  onClick={actions.resetToFileTree}
+                >
+                  Back to file browser
+                </Button>
+              </Box>
+            ) : // scrollContainerRef is shared with the markdown viewer below.
+            // These branches are mutually exclusive, so only one is mounted at a time.
+            rawContent ? (
+              <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto', display: 'flex' }}>
+                <ImageViewer rawContent={rawContent} />
+              </Box>
+            ) : fileContent ? (
+              <>
+                {/* Code Viewer or Diff Viewer */}
+                <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', position: 'relative' }}>
+                  {diffMode && diffContent && repository ? (
+                    <>
+                      <DiffCodeViewer
+                        leftContent={diffContent.content}
+                        rightContent={fileContent.content}
+                        leftHeader={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            {temporalOrderKnown && (
+                              <Chip
+                                label={referenceIsNewer ? 'older' : 'newer'}
+                                size="small"
+                                color={referenceIsNewer ? 'default' : 'primary'}
+                                variant="outlined"
+                                sx={{
+                                  height: 18,
+                                  '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' },
+                                }}
+                              />
+                            )}
+                            <BranchSelector
+                              repositoryId={repository.id}
+                              selectedBranch={diffBranch || selectedBranch}
+                              defaultBranch={repository.default_branch}
+                              onBranchChange={actions.changeDiffBranch}
+                              repoName={repoName!}
+                              filePath={filePath!}
+                              compact
                             />
-                          )}
+                            <VersionSelector
+                              repoName={repoName!}
+                              filePath={filePath!}
+                              selectedCommit={diffCommit}
+                              onVersionChange={actions.changeDiffVersion}
+                              selectedBranch={diffBranch || selectedBranch}
+                              showFileChanges
+                              compact
+                            />
+                            {!referenceIsNewer && temporalOrderKnown && (
+                              <Tooltip title="Swap panels (put older on left)">
+                                <IconButton size="small" onClick={actions.swapDiffPanels}>
+                                  <SwapHorizIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </Box>
+                        }
+                        rightHeader={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            {temporalOrderKnown && (
+                              <Chip
+                                label={referenceIsNewer ? 'newer' : 'older'}
+                                size="small"
+                                color={referenceIsNewer ? 'primary' : 'default'}
+                                variant="outlined"
+                                sx={{
+                                  height: 18,
+                                  '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' },
+                                }}
+                              />
+                            )}
+                            <Typography
+                              variant="caption"
+                              sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                            >
+                              {selectedBranch || repository.default_branch}@
+                              {getShortHash(urlState.selectedCommit || globalReferenceCommit)}
+                            </Typography>
+                          </Box>
+                        }
+                        language={detectLanguage(fileContent.path, fileContent.language)}
+                        leftSymbols={diffSymbols}
+                        rightSymbols={fileSymbols}
+                        leftReferences={diffReferences}
+                        rightReferences={fileReferences}
+                        highlightLine={highlightLine}
+                        activePanel={activePanel}
+                        onPanelClick={actions.setActivePanel}
+                        onSymbolClick={actions.handleDiffSymbolClick}
+                        onReferenceClick={actions.handleDiffReferenceClick}
+                        onLineClick={actions.handleDiffLineClick}
+                        onClosePanel={actions.closePanel}
+                        onSearchText={handleSearchText}
+                      />
+                      {/* Hint overlay when both panels show the same version */}
+                      {diffContent.content === fileContent.content && (
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '25%',
+                            transform: 'translate(-50%, -50%)',
+                            bgcolor: 'background.paper',
+                            border: 1,
+                            borderColor: 'divider',
+                            borderRadius: 1,
+                            px: 2,
+                            py: 1,
+                            opacity: 0.9,
+                            pointerEvents: 'none',
+                            zIndex: 1,
+                          }}
+                        >
+                          <Typography variant="body2" color="text.secondary">
+                            Select a version on the left to compare
+                          </Typography>
+                        </Box>
+                      )}
+                    </>
+                  ) : diffMode && diffLoading ? (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        flex: 1,
+                      }}
+                    >
+                      <CircularProgress />
+                    </Box>
+                  ) : diffMode && !diffContent && repository ? (
+                    /* Diff mode but content failed to load - show side-by-side with error message */
+                    <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                      {/* Left pane - comparison (error/select prompt) */}
+                      <Box
+                        sx={{
+                          flex: 1,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          borderRight: 1,
+                          borderColor: 'divider',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            px: 1,
+                            py: 0.5,
+                            bgcolor: 'background.paper',
+                            borderBottom: 1,
+                            borderColor: 'divider',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.5,
+                          }}
+                        >
                           <BranchSelector
                             repositoryId={repository.id}
                             selectedBranch={diffBranch || selectedBranch}
@@ -577,29 +705,46 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                             showFileChanges
                             compact
                           />
-                          {!referenceIsNewer && temporalOrderKnown && (
-                            <Tooltip title="Swap panels (put older on left)">
-                              <IconButton size="small" onClick={actions.swapDiffPanels}>
-                                <SwapHorizIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
                         </Box>
-                      }
-                      rightHeader={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          {temporalOrderKnown && (
-                            <Chip
-                              label={referenceIsNewer ? 'newer' : 'older'}
-                              size="small"
-                              color={referenceIsNewer ? 'primary' : 'default'}
-                              variant="outlined"
-                              sx={{
-                                height: 18,
-                                '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' },
-                              }}
-                            />
-                          )}
+                        <Box
+                          sx={{
+                            flex: 1,
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            color: 'text.secondary',
+                            p: 2,
+                            textAlign: 'center',
+                          }}
+                        >
+                          <Typography>
+                            File not found at selected version.
+                            <br />
+                            Select a different branch or version to compare.
+                          </Typography>
+                        </Box>
+                      </Box>
+                      {/* Right pane - current file */}
+                      <Box
+                        sx={{
+                          flex: 1,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            px: 1,
+                            py: 0.5,
+                            bgcolor: 'background.paper',
+                            borderBottom: 1,
+                            borderColor: 'divider',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.5,
+                          }}
+                        >
                           <Typography
                             variant="caption"
                             sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
@@ -608,335 +753,180 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                             {getShortHash(urlState.selectedCommit || globalReferenceCommit)}
                           </Typography>
                         </Box>
-                      }
-                      language={detectLanguage(fileContent.path, fileContent.language)}
-                      leftSymbols={diffSymbols}
-                      rightSymbols={fileSymbols}
-                      leftReferences={diffReferences}
-                      rightReferences={fileReferences}
-                      highlightLine={highlightLine}
-                      activePanel={activePanel}
-                      onPanelClick={actions.setActivePanel}
-                      onSymbolClick={actions.handleDiffSymbolClick}
-                      onReferenceClick={actions.handleDiffReferenceClick}
-                      onLineClick={actions.handleDiffLineClick}
-                      onClosePanel={actions.closePanel}
-                      onSearchText={handleSearchText}
-                    />
-                    {/* Hint overlay when both panels show the same version */}
-                    {diffContent.content === fileContent.content && (
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          top: '50%',
-                          left: '25%',
-                          transform: 'translate(-50%, -50%)',
-                          bgcolor: 'background.paper',
-                          border: 1,
-                          borderColor: 'divider',
-                          borderRadius: 1,
-                          px: 2,
-                          py: 1,
-                          opacity: 0.9,
-                          pointerEvents: 'none',
-                          zIndex: 1,
-                        }}
-                      >
-                        <Typography variant="body2" color="text.secondary">
-                          Select a version on the left to compare
-                        </Typography>
-                      </Box>
-                    )}
-                  </>
-                ) : diffMode && diffLoading ? (
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      flex: 1,
-                    }}
-                  >
-                    <CircularProgress />
-                  </Box>
-                ) : diffMode && !diffContent && repository ? (
-                  /* Diff mode but content failed to load - show side-by-side with error message */
-                  <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-                    {/* Left pane - comparison (error/select prompt) */}
-                    <Box
-                      sx={{
-                        flex: 1,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        borderRight: 1,
-                        borderColor: 'divider',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          px: 1,
-                          py: 0.5,
-                          bgcolor: 'background.paper',
-                          borderBottom: 1,
-                          borderColor: 'divider',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 0.5,
-                        }}
-                      >
-                        <BranchSelector
-                          repositoryId={repository.id}
-                          selectedBranch={diffBranch || selectedBranch}
-                          defaultBranch={repository.default_branch}
-                          onBranchChange={actions.changeDiffBranch}
-                          repoName={repoName!}
-                          filePath={filePath!}
-                          compact
-                        />
-                        <VersionSelector
-                          repoName={repoName!}
-                          filePath={filePath!}
-                          selectedCommit={diffCommit}
-                          onVersionChange={actions.changeDiffVersion}
-                          selectedBranch={diffBranch || selectedBranch}
-                          showFileChanges
-                          compact
-                        />
-                      </Box>
-                      <Box
-                        sx={{
-                          flex: 1,
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          color: 'text.secondary',
-                          p: 2,
-                          textAlign: 'center',
-                        }}
-                      >
-                        <Typography>
-                          File not found at selected version.
-                          <br />
-                          Select a different branch or version to compare.
-                        </Typography>
+                        <Box sx={{ flex: 1, overflow: 'auto' }}>
+                          <CodeViewer
+                            content={fileContent.content}
+                            language={detectLanguage(fileContent.path, fileContent.language)}
+                            symbols={fileSymbols}
+                            references={fileReferences}
+                            highlightLine={highlightLine}
+                            onSymbolClick={actions.handleSymbolClick}
+                            onReferenceClick={actions.handleCodeReferenceClick}
+                            onLineClick={actions.navigateToLine}
+                            onSearchText={handleSearchText}
+                          />
+                        </Box>
                       </Box>
                     </Box>
-                    {/* Right pane - current file */}
+                  ) : urlState.changedOnly && urlState.selectedCommit && !fileChangedInCommit ? (
+                    /* File not changed in this commit while "Changed files only" is active */
                     <Box
                       sx={{
                         flex: 1,
                         display: 'flex',
                         flexDirection: 'column',
-                        overflow: 'hidden',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        color: 'text.secondary',
+                        p: 3,
+                        textAlign: 'center',
                       }}
                     >
-                      <Box
-                        sx={{
-                          px: 1,
-                          py: 0.5,
-                          bgcolor: 'background.paper',
-                          borderBottom: 1,
-                          borderColor: 'divider',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 0.5,
-                        }}
-                      >
-                        <Typography
-                          variant="caption"
-                          sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                      <Typography variant="h6" gutterBottom>
+                        File not changed in this revision
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {fileContent.path} was not modified in commit{' '}
+                        <code style={{ fontFamily: 'monospace' }}>
+                          {urlState.selectedCommit.substring(0, 7)}
+                        </code>
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Uncheck &quot;Changed files only&quot; to view the file at this revision.
+                      </Typography>
+                    </Box>
+                  ) : isMarkdownFile(fileContent.path, fileContent.language) &&
+                    urlState.viewMode !== 'raw' ? (
+                    <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto' }}>
+                      <MarkdownViewer content={fileContent.content} />
+                    </Box>
+                  ) : (
+                    <Box sx={{ flex: 1, overflow: 'auto' }}>
+                      {blameLoading ? (
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            flex: 1,
+                            p: 4,
+                          }}
                         >
-                          {selectedBranch || repository.default_branch}@
-                          {getShortHash(urlState.selectedCommit || globalReferenceCommit)}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ flex: 1, overflow: 'auto' }}>
+                          <CircularProgress size={24} />
+                        </Box>
+                      ) : (
                         <CodeViewer
                           content={fileContent.content}
                           language={detectLanguage(fileContent.path, fileContent.language)}
                           symbols={fileSymbols}
                           references={fileReferences}
+                          blameData={blameEnabled ? blameData : undefined}
                           highlightLine={highlightLine}
                           onSymbolClick={actions.handleSymbolClick}
                           onReferenceClick={actions.handleCodeReferenceClick}
                           onLineClick={actions.navigateToLine}
+                          onBlameCommitClick={handleBlameCommitClick}
                           onSearchText={handleSearchText}
                         />
-                      </Box>
+                      )}
                     </Box>
-                  </Box>
-                ) : urlState.changedOnly && urlState.selectedCommit && !fileChangedInCommit ? (
-                  /* File not changed in this commit while "Changed files only" is active */
-                  <Box
-                    sx={{
-                      flex: 1,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      color: 'text.secondary',
-                      p: 3,
-                      textAlign: 'center',
-                    }}
-                  >
-                    <Typography variant="h6" gutterBottom>
-                      File not changed in this revision
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      {fileContent.path} was not modified in commit{' '}
-                      <code style={{ fontFamily: 'monospace' }}>
-                        {urlState.selectedCommit.substring(0, 7)}
-                      </code>
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Uncheck &quot;Changed files only&quot; to view the file at this revision.
-                    </Typography>
-                  </Box>
-                ) : isMarkdownFile(fileContent.path, fileContent.language) &&
-                  urlState.viewMode !== 'raw' ? (
-                  <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: 'auto' }}>
-                    <MarkdownViewer content={fileContent.content} />
-                  </Box>
-                ) : (
-                  <Box sx={{ flex: 1, overflow: 'auto' }}>
-                    {blameLoading ? (
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          flex: 1,
-                          p: 4,
-                        }}
-                      >
-                        <CircularProgress size={24} />
-                      </Box>
-                    ) : (
-                      <CodeViewer
-                        content={fileContent.content}
-                        language={detectLanguage(fileContent.path, fileContent.language)}
-                        symbols={fileSymbols}
-                        references={fileReferences}
-                        blameData={blameEnabled ? blameData : undefined}
-                        highlightLine={highlightLine}
-                        onSymbolClick={actions.handleSymbolClick}
-                        onReferenceClick={actions.handleCodeReferenceClick}
-                        onLineClick={actions.navigateToLine}
-                        onBlameCommitClick={handleBlameCommitClick}
-                        onSearchText={handleSearchText}
-                      />
-                    )}
-                  </Box>
-                )}
+                  )}
+                </Box>
+              </>
+            ) : (
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  flex: 1,
+                  color: 'text.secondary',
+                }}
+              >
+                <Typography>Select a file from the tree to view its contents</Typography>
               </Box>
-            </>
-          ) : (
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                flex: 1,
-                color: 'text.secondary',
-              }}
-            >
-              <Typography>Select a file from the tree to view its contents</Typography>
-            </Box>
-          )}
-        </Box>
+            )}
+          </Box>
+        </Panel>
 
         {/* References Panel */}
         {refsPanelOpen && (
-          <Box
-            sx={{
-              width: 280,
-              minWidth: 200,
-              maxWidth: 450,
-              height: '100%',
-              borderLeft: 1,
-              borderColor: 'divider',
-              flexShrink: 0,
-              resize: 'horizontal',
-              direction: 'rtl' /* Makes resize handle appear on left */,
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <Box
-              sx={{ direction: 'ltr', height: '100%', display: 'flex', flexDirection: 'column' }}
-            >
-              {/* Version selector for references in diff mode */}
-              {diffMode && (
-                <Box
-                  sx={{
-                    px: 1,
-                    py: 0.5,
-                    bgcolor: 'action.selected',
-                    borderBottom: 1,
-                    borderColor: 'divider',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                  }}
-                >
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    Refs @
-                  </Typography>
-                  <FormControl size="small" sx={{ minWidth: 80 }}>
-                    <Select
-                      value={refPanel}
-                      onChange={(e) =>
-                        actions.handleRefPanelChange(e.target.value as 'left' | 'right')
-                      }
-                      sx={{
-                        '& .MuiSelect-select': {
-                          py: 0,
-                          px: 0.5,
-                          fontSize: '0.75rem',
-                          fontFamily: 'monospace',
-                        },
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          border: 'none',
-                        },
-                      }}
-                    >
-                      <MenuItem value="left">
-                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                          {getLeftVersionDisplay()} (left)
-                        </Typography>
-                      </MenuItem>
-                      <MenuItem value="right">
-                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                          {getRightVersionDisplay()} (right)
-                        </Typography>
-                      </MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-              )}
-              <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                <ReferencesPanel
-                  symbol={selectedSymbol}
-                  isDirectDefinition={isDirectDefinition}
-                  searchByName={searchByName}
-                  selectedCommit={computedState.refCommit}
-                  selectedBranch={
-                    diffMode
-                      ? refPanel === 'left'
-                        ? (diffBranch ?? selectedBranch)
+          <>
+            <Separator style={{ width: 6 }} />
+            <Panel defaultSize="20%" minSize="10%" maxSize="35%" id="refs-panel">
+              <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                {/* Version selector for references in diff mode */}
+                {diffMode && (
+                  <Box
+                    sx={{
+                      px: 1,
+                      py: 0.5,
+                      bgcolor: 'action.selected',
+                      borderBottom: 1,
+                      borderColor: 'divider',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      Refs @
+                    </Typography>
+                    <FormControl size="small" sx={{ minWidth: 80 }}>
+                      <Select
+                        value={refPanel}
+                        onChange={(e) =>
+                          actions.handleRefPanelChange(e.target.value as 'left' | 'right')
+                        }
+                        sx={{
+                          '& .MuiSelect-select': {
+                            py: 0,
+                            px: 0.5,
+                            fontSize: '0.75rem',
+                            fontFamily: 'monospace',
+                          },
+                          '& .MuiOutlinedInput-notchedOutline': {
+                            border: 'none',
+                          },
+                        }}
+                      >
+                        <MenuItem value="left">
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                            {getLeftVersionDisplay()} (left)
+                          </Typography>
+                        </MenuItem>
+                        <MenuItem value="right">
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                            {getRightVersionDisplay()} (right)
+                          </Typography>
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+                )}
+                <Box sx={{ flex: 1, overflow: 'hidden' }}>
+                  <ReferencesPanel
+                    symbol={selectedSymbol}
+                    isDirectDefinition={isDirectDefinition}
+                    searchByName={searchByName}
+                    selectedCommit={computedState.refCommit}
+                    selectedBranch={
+                      diffMode
+                        ? refPanel === 'left'
+                          ? (diffBranch ?? selectedBranch)
+                          : selectedBranch
                         : selectedBranch
-                      : selectedBranch
-                  }
-                  onReferenceClick={actions.handleRefPanelClick}
-                  onDefinitionClick={actions.handleDefinitionClick}
-                  onClose={actions.closeRefsPanel}
-                />
+                    }
+                    onReferenceClick={actions.handleRefPanelClick}
+                    onDefinitionClick={actions.handleDefinitionClick}
+                    onClose={actions.closeRefsPanel}
+                  />
+                </Box>
               </Box>
-            </Box>
-          </Box>
+            </Panel>
+          </>
         )}
-      </Box>
+      </Group>
     </Box>
   )
 }
