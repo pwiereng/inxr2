@@ -126,6 +126,26 @@ class GetRepositoryTreeUseCase:
             if not commit or commit.id is None:
                 raise ValueError(f"Commit not found: {request.commit_hash}")
 
+            # Get the indexed files at this commit
+            all_files = await self._file_version_repo.list_at_or_before_commit(
+                repository_id, commit.id
+            )
+
+            # Filter out ghost files using git ls-tree as source of truth.
+            # Ghost files appear when renamed/deleted files remain in the
+            # commit_files table from stale indexing data.
+            if self._git_service:
+                repo_path = Path(repository.url)
+                try:
+                    git_paths = self._git_service.list_files(
+                        repo_path, request.commit_hash
+                    )
+                    if git_paths:
+                        valid_paths = set(git_paths)
+                        all_files = [f for f in all_files if f.path in valid_paths]
+                except (DomainException, ValueError):
+                    pass  # Fall back to unfiltered if git fails
+
             if request.changed_only:
                 # Use git to determine which files changed at this commit
                 # (compares against first parent — correct for merges)
@@ -147,17 +167,9 @@ class GetRepositoryTreeUseCase:
                 if not changed_paths:
                     files = []
                 else:
-                    # Get full tree at this commit, then filter to changed paths
-                    all_files = await self._file_version_repo.list_at_or_before_commit(
-                        repository_id, commit.id
-                    )
                     files = [f for f in all_files if f.path in changed_paths]
             else:
-                # Get the latest version of each file at or before this commit
-                # This returns the full tree state, not just files changed at this commit
-                files = await self._file_version_repo.list_at_or_before_commit(
-                    repository_id, commit.id
-                )
+                files = all_files
         elif request.branch:
             # Get latest version of each file on the branch
             # This aggregates across all commits on the branch
