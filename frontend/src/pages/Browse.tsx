@@ -854,81 +854,73 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
           <>
             <Separator style={{ width: 6 }} />
             <Panel defaultSize="20%" minSize="10%" maxSize="35%" id="refs-panel">
-              <Box
-                sx={{
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-              >
-                <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                  {/* Version selector for references in diff mode */}
-                  {diffMode && (
-                    <Box
-                      sx={{
-                        px: 1,
-                        py: 0.5,
-                        bgcolor: 'action.selected',
-                        borderBottom: 1,
-                        borderColor: 'divider',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 0.5,
-                      }}
-                    >
-                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        Refs @
-                      </Typography>
-                      <FormControl size="small" sx={{ minWidth: 80 }}>
-                        <Select
-                          value={refPanel}
-                          onChange={(e) =>
-                            actions.handleRefPanelChange(e.target.value as 'left' | 'right')
-                          }
-                          sx={{
-                            '& .MuiSelect-select': {
-                              py: 0,
-                              px: 0.5,
-                              fontSize: '0.75rem',
-                              fontFamily: 'monospace',
-                            },
-                            '& .MuiOutlinedInput-notchedOutline': {
-                              border: 'none',
-                            },
-                          }}
-                        >
-                          <MenuItem value="left">
-                            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                              {getLeftVersionDisplay()} (left)
-                            </Typography>
-                          </MenuItem>
-                          <MenuItem value="right">
-                            <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                              {getRightVersionDisplay()} (right)
-                            </Typography>
-                          </MenuItem>
-                        </Select>
-                      </FormControl>
-                    </Box>
-                  )}
-                  <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                    <ReferencesPanel
-                      symbol={selectedSymbol}
-                      isDirectDefinition={isDirectDefinition}
-                      searchByName={searchByName}
-                      selectedCommit={computedState.refCommit}
-                      selectedBranch={
-                        diffMode
-                          ? refPanel === 'left'
-                            ? (diffBranch ?? selectedBranch)
-                            : selectedBranch
-                          : selectedBranch
-                      }
-                      onReferenceClick={actions.handleRefPanelClick}
-                      onDefinitionClick={actions.handleDefinitionClick}
-                      onClose={actions.closeRefsPanel}
-                    />
+              <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                {/* Version selector for references in diff mode */}
+                {diffMode && (
+                  <Box
+                    sx={{
+                      px: 1,
+                      py: 0.5,
+                      bgcolor: 'action.selected',
+                      borderBottom: 1,
+                      borderColor: 'divider',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      Refs @
+                    </Typography>
+                    <FormControl size="small" sx={{ minWidth: 80 }}>
+                      <Select
+                        value={refPanel}
+                        onChange={(e) =>
+                          actions.handleRefPanelChange(e.target.value as 'left' | 'right')
+                        }
+                        sx={{
+                          '& .MuiSelect-select': {
+                            py: 0,
+                            px: 0.5,
+                            fontSize: '0.75rem',
+                            fontFamily: 'monospace',
+                          },
+                          '& .MuiOutlinedInput-notchedOutline': {
+                            border: 'none',
+                          },
+                        }}
+                      >
+                        <MenuItem value="left">
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                            {getLeftVersionDisplay()} (left)
+                          </Typography>
+                        </MenuItem>
+                        <MenuItem value="right">
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                            {getRightVersionDisplay()} (right)
+                          </Typography>
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
                   </Box>
+                )}
+                <Box sx={{ flex: 1, overflow: 'hidden' }}>
+                  <ReferencesPanel
+                    symbol={selectedSymbol}
+                    isDirectDefinition={isDirectDefinition}
+                    searchByName={searchByName}
+                    selectedCommit={computedState.refCommit}
+                    selectedBranch={
+                      diffMode
+                        ? refPanel === 'left'
+                          ? (diffBranch ?? selectedBranch)
+                          : selectedBranch
+                        : selectedBranch
+                    }
+                    onReferenceClick={actions.handleRefPanelClick}
+                    onDefinitionClick={actions.handleDefinitionClick}
+                    onClose={actions.closeRefsPanel}
+                  />
                 </Box>
               </Box>
             </Panel>
