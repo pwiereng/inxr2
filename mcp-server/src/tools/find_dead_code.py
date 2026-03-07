@@ -61,6 +61,8 @@ def _pluralize(kind: str | None) -> str:
         return "symbols"
     if kind.endswith("s"):
         return f"{kind}es"
+    if kind.endswith("y") and len(kind) > 1 and kind[-2].lower() not in "aeiou":
+        return f"{kind[:-1]}ies"
     return f"{kind}s"
 
 
@@ -96,6 +98,9 @@ async def handle(
     symbols_data = await client.get("/api/symbols", params=params)
 
     items = symbols_data.get("items", [])
+    symbols_total = symbols_data.get("total", len(items))
+    scan_incomplete = symbols_total > len(items)
+
     if not items:
         kind_str = f" {_pluralize(kind)}" if kind else " symbols"
         return f"No{kind_str} found in '{repository}'."
@@ -137,10 +142,15 @@ async def handle(
 
     # Format output
     kind_str = f" {_pluralize(kind)}" if kind else " symbols"
-    lines = [
-        f"Dead code in '{repository}': {total}{kind_str} with no references"
-        + (f" (showing {limit})" if total > limit else "")
-    ]
+    header = f"Dead code in '{repository}': {total}{kind_str} with no references" + (
+        f" (showing {limit})" if total > limit else ""
+    )
+    if scan_incomplete:
+        header += (
+            f"\nNote: scanned {len(items)} of {symbols_total} symbols"
+            " — results may be incomplete."
+        )
+    lines = [header]
 
     for symbol in unique_dead:
         file_path = symbol.get("file_path", "unknown")

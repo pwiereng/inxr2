@@ -590,6 +590,42 @@ class TestFindDeadCode:
         assert "showing 3" in result
         assert "10 symbols with no references" in result
 
+    async def test_pluralizes_property_correctly(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "my_prop", kind="property", repository_id=1)
+
+        result = await find_dead_code.handle(
+            client, {"repository": "my-repo", "kind": "property"}
+        )
+
+        assert "properties with no references" in result
+        assert "propertys" not in result
+
+    async def test_warns_when_scan_incomplete(self) -> None:
+        """When total symbols exceeds fetched count, warn the user."""
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        # Add 3 symbols but fake the total as higher
+        for i in range(3):
+            client.add_symbol(i, f"dead_{i}", kind="function", repository_id=1)
+
+        # Monkey-patch to return inflated total
+        original_get = client.get
+
+        async def patched_get(path: str, params: dict = None) -> dict:
+            result = await original_get(path, params)
+            if path == "/api/symbols" and isinstance(result, dict):
+                result["total"] = 500
+            return result
+
+        client.get = patched_get  # type: ignore[assignment]
+
+        result = await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        assert "scanned 3 of 500 symbols" in result
+        assert "results may be incomplete" in result
+
 
 # --- server creation ---
 
