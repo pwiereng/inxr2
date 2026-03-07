@@ -115,7 +115,7 @@ class GetRepositoryTreeUseCase:
         # 1. Explicit commit_hash with changed_only: get only files changed at that commit
         # 2. Explicit commit_hash: get full tree state at that commit
         # 3. Branch specified: get latest version of each file on that branch
-        # 4. Default: get latest files across all branches
+        # 4. Default: get latest snapshot from default branch, else all files
         if request.commit_hash:
             # Time travel to specific commit
             if not self._commit_repo:
@@ -190,10 +190,10 @@ class GetRepositoryTreeUseCase:
                     f"remove the branch parameter to use the latest indexed version."
                 )
         else:
-            # Default: use the repository's default branch to get the latest
-            # file tree.  Falling back to all-branches only when no default
-            # branch is set or the branch has no indexed files.  This prevents
-            # ghost files (stale paths from renames/deletes) from appearing.
+            # Default: use the default branch's latest commit snapshot for a
+            # clean tree. Fall back to list_by_repository (all file rows) only
+            # when no default branch is set or it has no indexed files — this
+            # fallback may include stale paths but is better than an empty tree.
             files = []
             if repository.default_branch:
                 files = await self._file_version_repo.list_latest_by_branch(
