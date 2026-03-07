@@ -8,7 +8,7 @@ from urllib.parse import quote, urlencode
 
 def get_frontend_url() -> str | None:
     """Return the frontend base URL from environment, or None if not set."""
-    return os.environ.get("INXR2_FRONTEND_URL")
+    return os.environ.get("INXR2_FRONTEND_URL") or None
 
 
 def build_browse_url(

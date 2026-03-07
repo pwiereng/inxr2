@@ -131,7 +131,7 @@ async def handle(
             lines.append(f"    {ref['context']}")
 
         # Add browse URL when repository is known
-        if frontend_url and repository and ref["file"] != "unknown":
+        if frontend_url and repository and ref["file"] and ref["file"] != "unknown":
             url = build_browse_url(
                 frontend_url,
                 repository,

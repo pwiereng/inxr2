@@ -120,7 +120,7 @@ async def handle(
             lines.append(f"    {display}")
 
         # Add browse URL
-        if frontend_url and repo_name and file_path != "unknown":
+        if frontend_url and repo_name and file_path and file_path != "unknown":
             url = build_browse_url(
                 frontend_url,
                 repo_name,

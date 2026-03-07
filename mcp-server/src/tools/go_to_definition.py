@@ -109,7 +109,7 @@ async def handle(
         # Add browse URL
         if frontend_url:
             repo_name = repo_names.get(symbol.get("repository_id", 0))
-            if repo_name and sym_file != "unknown":
+            if repo_name and sym_file and sym_file != "unknown":
                 url = build_browse_url(
                     frontend_url,
                     repo_name,
