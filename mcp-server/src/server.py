@@ -102,11 +102,19 @@ def main() -> None:
                     streams[0], streams[1], server.create_initialization_options()
                 )
 
+        from contextlib import asynccontextmanager
+
+        @asynccontextmanager
+        async def lifespan(app):  # type: ignore[no-untyped-def]
+            yield
+            await client.close()
+
         app = Starlette(
             routes=[
                 Route("/sse", endpoint=handle_sse),
                 Mount("/messages/", app=sse.handle_post_message),
             ],
+            lifespan=lifespan,
         )
 
         import uvicorn

@@ -62,6 +62,10 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
     branch = arguments.get("branch")
     commit = arguments.get("commit")
 
+    # commit requires repository (API returns 400 otherwise)
+    if commit and not repository:
+        return "Error: 'commit' requires 'repository' to be specified."
+
     # Resolve repository_id if repository name given
     repository_id = None
     if repository:

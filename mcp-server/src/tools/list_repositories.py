@@ -27,6 +27,8 @@ TOOL_SCHEMA: dict[str, Any] = {
 
 
 async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
+    import asyncio
+
     repository = arguments.get("repository")
 
     if repository:
@@ -46,15 +48,19 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
             lines.append(f"    {b['name']} ({count} commits, head: {commit})")
         return "\n".join(lines)
 
-    # All repos
+    # All repos — fetch branches in parallel
     repos = await client.get("/api/repositories")
 
-    lines = [f"Repositories: {len(repos)} available"]
-    for repo in repos:
+    async def fetch_branches(repo: dict[str, Any]) -> dict[str, Any]:
         branches_data = await client.get(f"/api/repositories/{repo['id']}/branches")
-        indexed = [
-            b for b in branches_data.get("branches", []) if b.get("commit_count", 0) > 0
-        ]
+        return {"repo": repo, "branches": branches_data.get("branches", [])}
+
+    results = await asyncio.gather(*[fetch_branches(r) for r in repos])
+
+    lines = [f"Repositories: {len(repos)} available"]
+    for result in results:
+        repo = result["repo"]
+        indexed = [b for b in result["branches"] if b.get("commit_count", 0) > 0]
         branch_names = ", ".join(b["name"] for b in indexed)
         lines.append(
             f"  {repo['name']} (default: {repo.get('default_branch', '?')}, "

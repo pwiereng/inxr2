@@ -45,11 +45,17 @@ TOOL_SCHEMA: dict[str, Any] = {
 
 
 async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
+    import asyncio
+
     name = arguments["name"]
     repository = arguments.get("repository")
     ref_type = arguments.get("ref_type")
     branch = arguments.get("branch")
     commit = arguments.get("commit")
+
+    # commit requires repository (API returns 400 otherwise)
+    if commit and not repository:
+        return "Error: 'commit' requires 'repository' to be specified."
 
     # Step 1: Resolve repository_id if repository name given
     repository_id = None
@@ -71,14 +77,14 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
         return f"No symbols found matching '{name}'."
 
     # Step 3: Get references for matching symbols (by_name=true for cross-repo)
-    all_references: list[dict[str, Any]] = []
     seen_symbol_ids: set[int] = set()
-
+    unique_symbols = []
     for symbol in symbols_data["items"]:
-        if symbol["id"] in seen_symbol_ids:
-            continue
-        seen_symbol_ids.add(symbol["id"])
+        if symbol["id"] not in seen_symbol_ids:
+            seen_symbol_ids.add(symbol["id"])
+            unique_symbols.append(symbol)
 
+    async def fetch_refs(symbol: dict[str, Any]) -> list[dict[str, Any]]:
         ref_params: dict[str, Any] = {"by_name": "true", "limit": 100}
         if branch:
             ref_params["branch"] = branch
@@ -88,15 +94,18 @@ async def handle(client: Inxr2Client, arguments: dict[str, Any]) -> str:
             f"/api/symbols/{symbol['id']}/references",
             params=ref_params,
         )
-
-        for ref in refs_data["items"]:
-            ref_entry: dict[str, Any] = {
+        return [
+            {
                 "file": ref.get("source_file_path", "unknown"),
                 "line": ref.get("source_line"),
                 "type": ref.get("reference_type", "unknown"),
                 "context": ref.get("reference_text", ""),
             }
-            all_references.append(ref_entry)
+            for ref in refs_data["items"]
+        ]
+
+    results = await asyncio.gather(*[fetch_refs(s) for s in unique_symbols])
+    all_references: list[dict[str, Any]] = [ref for refs in results for ref in refs]
 
     # Step 4: Filter by ref_type if specified
     if ref_type:

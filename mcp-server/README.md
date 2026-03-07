@@ -12,6 +12,8 @@ Find all usages of a symbol across all indexed repositories.
 | `name` | string | yes | Symbol name to find references for |
 | `repository` | string | no | Filter to a specific repository |
 | `ref_type` | string | no | Filter by type: `import`, `call`, `usage`, `type_annotation` |
+| `branch` | string | no | Branch to search in (defaults to latest indexed) |
+| `commit` | string | no | Specific commit hash (overrides branch, requires `repository`) |
 
 ### `go_to_definition`
 Jump to the definition of a symbol (works cross-repo).
@@ -21,6 +23,7 @@ Jump to the definition of a symbol (works cross-repo).
 | `name` | string | yes | Symbol name to find |
 | `repository` | string | no | Filter to a specific repository |
 | `file_path` | string | no | Filter to a specific file path |
+| `commit` | string | no | Specific commit hash (requires `repository`) |
 
 ### `search_symbols`
 Find symbol definitions by name (semantic, not text).
@@ -31,6 +34,8 @@ Find symbol definitions by name (semantic, not text).
 | `repository` | string | no | Filter to a specific repository |
 | `kind` | string | no | Filter by kind: `function`, `class`, `method`, `variable`, etc. |
 | `limit` | integer | no | Max results (default 20, max 100) |
+| `branch` | string | no | Branch to search in (defaults to latest indexed) |
+| `commit` | string | no | Specific commit hash (overrides branch, requires `repository`) |
 
 ### `search_code`
 Full-text or regex search across all indexed repos.
@@ -42,6 +47,8 @@ Full-text or regex search across all indexed repos.
 | `mode` | string | no | `keyword` (default), `phrase`, or `regex` |
 | `extensions` | string | no | Comma-separated file extensions (e.g. `py,ts`) |
 | `limit` | integer | no | Max results (default 20, max 100) |
+| `branch` | string | no | Branch to search in (defaults to latest indexed) |
+| `commit` | string | no | Specific commit hash (overrides branch, requires `repository`) |
 
 ## Architecture
 

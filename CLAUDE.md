@@ -938,6 +938,8 @@ When creating a worktree and crafting a prompt for a new Claude instance, **alwa
 
 This ensures the prompt is preserved and easily accessible when opening a new Claude Code session in the worktree.
 
+- **Do NOT commit `instructions.txt`** — it is a local-only file for session bootstrapping. It is listed in `.gitignore`.
+
 ### Container Naming
 
 - Main: `inxr2-dev`, `inxr2-playwright`

@@ -63,6 +63,14 @@ class TestFindReferences:
         result = await find_references.handle(client, {"name": "NonExistent"})
         assert "No symbols found" in result
 
+    async def test_commit_requires_repository(self) -> None:
+        client = FakeInxr2Client()
+        result = await find_references.handle(
+            client, {"name": "Foo", "commit": "abc123"}
+        )
+        assert "Error" in result
+        assert "'commit' requires 'repository'" in result
+
 
 # --- go_to_definition ---
 
@@ -104,6 +112,14 @@ class TestGoToDefinition:
         client = FakeInxr2Client()
         result = await go_to_definition.handle(client, {"name": "Ghost"})
         assert "No definition found" in result
+
+    async def test_commit_requires_repository(self) -> None:
+        client = FakeInxr2Client()
+        result = await go_to_definition.handle(
+            client, {"name": "Foo", "commit": "abc123"}
+        )
+        assert "Error" in result
+        assert "'commit' requires 'repository'" in result
 
     async def test_multiple_definitions(self) -> None:
         client = FakeInxr2Client()
@@ -160,6 +176,14 @@ class TestSearchSymbols:
         result = await search_symbols.handle(client, {"query": "nothing"})
         assert "No symbols found" in result
 
+    async def test_commit_requires_repository(self) -> None:
+        client = FakeInxr2Client()
+        result = await search_symbols.handle(
+            client, {"query": "Foo", "commit": "abc123"}
+        )
+        assert "Error" in result
+        assert "'commit' requires 'repository'" in result
+
 
 # --- search_code ---
 
@@ -194,6 +218,12 @@ class TestSearchCode:
         client = FakeInxr2Client()
         result = await search_code.handle(client, {"query": "nonexistent"})
         assert "No results" in result
+
+    async def test_commit_requires_repository(self) -> None:
+        client = FakeInxr2Client()
+        result = await search_code.handle(client, {"query": "test", "commit": "abc123"})
+        assert "Error" in result
+        assert "'commit' requires 'repository'" in result
 
     async def test_with_repository_filter(self) -> None:
         client = FakeInxr2Client()

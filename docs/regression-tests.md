@@ -801,8 +801,6 @@ curl "http://localhost:9222/text?selector=h1,h2,h3"
 
 ---
 
----
-
 # Phase 3: MCP Server Regression
 
 Verify that the MCP server correctly exposes INXR2 code intelligence via its tool handlers.
@@ -861,7 +859,8 @@ branches = json.load(sys.stdin)[\"branches\"]
 indexed = [b for b in branches if b[\"commit_count\"] > 0]
 print(f\"Indexed: {len(indexed)}\")
 for b in indexed:
-    print(f\"  {b[\"name\"]} ({b[\"commit_count\"]} commits)\")
+    name, cc = b[\"name\"], b[\"commit_count\"]
+    print(f\"  {name} ({cc} commits)\")
 '"
 # VERIFY: MCP detail matches
 docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
@@ -892,7 +891,8 @@ docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=Repo
 import sys, json
 items = json.load(sys.stdin)[\"items\"]
 for s in items:
-    print(f\"{s[\"name\"]} [{s[\"kind\"]}] at {s.get(\"file_path\",\"?\")}:{s.get(\"start_line\",\"?\")}\")
+    n, k, fp, sl = s[\"name\"], s[\"kind\"], s.get(\"file_path\",\"?\"), s.get(\"start_line\",\"?\")
+    print(f\"{n} [{k}] at {fp}:{sl}\")
 '"
 # VERIFY: MCP tool returns same symbols
 docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
@@ -947,7 +947,8 @@ docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols/by-nam
 import sys, json
 items = json.load(sys.stdin)[\"items\"]
 for s in items:
-    print(f\"{s[\"name\"]} at {s.get(\"file_path\",\"?\")}:{s.get(\"start_line\",\"?\")}\")
+    n, fp, sl = s[\"name\"], s.get(\"file_path\",\"?\"), s.get(\"start_line\",\"?\")
+    print(f\"{n} at {fp}:{sl}\")
 '"
 # VERIFY: MCP tool returns same definition
 docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
@@ -979,9 +980,11 @@ SYMBOL_ID=\$(curl -s 'http://localhost:8000/api/symbols?q=SearchSymbolsUseCase&l
 curl -s \"http://localhost:8000/api/symbols/\$SYMBOL_ID/references?by_name=true&limit=5\" | python3 -c '
 import sys, json
 data = json.load(sys.stdin)
-print(f\"Total: {data[\"total\"]}\")
+total = data[\"total\"]
+print(f\"Total: {total}\")
 for r in data[\"items\"][:5]:
-    print(f\"  [{r[\"reference_type\"]}] {r.get(\"source_file_path\",\"?\")}:{r.get(\"source_line\",\"?\")}\")
+    rt, fp, sl = r[\"reference_type\"], r.get(\"source_file_path\",\"?\"), r.get(\"source_line\",\"?\")
+    print(f\"  [{rt}] {fp}:{sl}\")
 '
 "
 # VERIFY: MCP tool returns same references
@@ -1035,9 +1038,11 @@ asyncio.run(main())
 docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/search/text?q=async+def+execute&mode=phrase&limit=3' | python3 -c '
 import sys, json
 data = json.load(sys.stdin)
-print(f\"Total: {data[\"total\"]}\")
+total = data[\"total\"]
+print(f\"Total: {total}\")
 for r in data[\"results\"][:3]:
-    print(f\"  {r.get(\"repository_name\",\"?\")}:{r.get(\"file_path\",\"?\")}:{r.get(\"source_line\",\"?\")}\")
+    rn, fp, sl = r.get(\"repository_name\",\"?\"), r.get(\"file_path\",\"?\"), r.get(\"source_line\",\"?\")
+    print(f\"  {rn}:{fp}:{sl}\")
 '"
 # VERIFY: MCP tool returns same results
 docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
