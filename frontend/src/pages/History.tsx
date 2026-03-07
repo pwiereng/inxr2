@@ -4,6 +4,7 @@ import { Box, Container, Typography, List, ListItem, Paper, CircularProgress } f
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { getCommits, type CommitInfo } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
+import { CopyButton } from '@/components/CopyButton/CopyButton'
 
 export function History(): React.ReactElement {
   const [searchParams] = useSearchParams()
@@ -202,6 +203,11 @@ export function History(): React.ReactElement {
                           </Typography>
                         )}
                       </Typography>
+                      <CopyButton
+                        value={commitInfo.short_hash}
+                        fullValue={commitInfo.hash}
+                        tooltip="Copy commit hash"
+                      />
                       <Typography component="span" variant="body2" color="text.secondary">
                         {commitInfo.author_name}
                       </Typography>

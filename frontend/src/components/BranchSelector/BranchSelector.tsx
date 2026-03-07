@@ -14,6 +14,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import EditIcon from '@mui/icons-material/Edit'
 import { getRepositoryBranches, getFileHistory, type BranchInfo } from '@/lib/api'
 import { MENU_PROPS } from '@/lib/menuProps'
+import { CopyButton } from '@/components/CopyButton/CopyButton'
 
 interface BranchSelectorProps {
   repositoryId: number
@@ -147,6 +148,7 @@ export function BranchSelector({
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
         <AccountTreeIcon fontSize="small" />
         <Typography variant="caption">{singleBranch?.name}</Typography>
+        {singleBranch && <CopyButton value={singleBranch.name} tooltip="Copy branch name" />}
         {showCheckmark && (
           <Tooltip title={filePath ? 'File exists in this branch' : 'Branch is indexed'}>
             <CheckCircleIcon sx={{ fontSize: '0.9rem', color: 'success.main' }} />
@@ -232,6 +234,7 @@ export function BranchSelector({
                 >
                   {branch.name}
                 </Typography>
+                <CopyButton value={branch.name} tooltip="Copy branch name" size={12} />
                 {isDefault && (
                   <Chip label="default" size="small" sx={{ height: 18, fontSize: '0.7rem' }} />
                 )}

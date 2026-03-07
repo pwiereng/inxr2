@@ -39,6 +39,7 @@ import { SymbolSearch } from '@/components/SymbolSearch'
 import { ReferencesPanel } from '@/components/ReferencesPanel'
 import { VersionSelector } from '@/components/VersionSelector'
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
+import { CopyButton } from '@/components/CopyButton/CopyButton'
 import { useBrowseState } from '@/hooks/useBrowseState'
 import { getFileBlame, type BlameLine } from '@/lib/api'
 import { isMarkdownFile, detectLanguage } from '@/lib/fileUtils'
@@ -471,12 +472,22 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                         </Select>
                       </FormControl>
                     ) : (
-                      <Typography
-                        variant="caption"
-                        sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
-                      >
-                        {getShortHash(computedState.treeCommit)}
-                      </Typography>
+                      <>
+                        <Typography
+                          variant="caption"
+                          sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+                        >
+                          {getShortHash(computedState.treeCommit)}
+                        </Typography>
+                        {computedState.treeCommit && (
+                          <CopyButton
+                            value={getShortHash(computedState.treeCommit)}
+                            fullValue={computedState.treeCommit}
+                            tooltip="Copy commit hash"
+                            size={12}
+                          />
+                        )}
+                      </>
                     )}
                   </Box>
                 )}
@@ -609,6 +620,18 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                               {selectedBranch || repository.default_branch}@
                               {getShortHash(urlState.selectedCommit || globalReferenceCommit)}
                             </Typography>
+                            {(urlState.selectedCommit || globalReferenceCommit) && (
+                              <CopyButton
+                                value={getShortHash(
+                                  urlState.selectedCommit || globalReferenceCommit
+                                )}
+                                fullValue={
+                                  urlState.selectedCommit || globalReferenceCommit || undefined
+                                }
+                                tooltip="Copy commit hash"
+                                size={12}
+                              />
+                            )}
                           </Box>
                         }
                         language={detectLanguage(fileContent.path, fileContent.language)}
@@ -752,6 +775,16 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                             {selectedBranch || repository.default_branch}@
                             {getShortHash(urlState.selectedCommit || globalReferenceCommit)}
                           </Typography>
+                          {(urlState.selectedCommit || globalReferenceCommit) && (
+                            <CopyButton
+                              value={getShortHash(urlState.selectedCommit || globalReferenceCommit)}
+                              fullValue={
+                                urlState.selectedCommit || globalReferenceCommit || undefined
+                              }
+                              tooltip="Copy commit hash"
+                              size={12}
+                            />
+                          )}
                         </Box>
                         <Box sx={{ flex: 1, overflow: 'auto' }}>
                           <CodeViewer
