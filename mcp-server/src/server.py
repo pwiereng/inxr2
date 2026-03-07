@@ -15,6 +15,7 @@ from mcp.types import TextContent, Tool
 
 from src.client import HttpInxr2Client, Inxr2Client
 from src.tools import (
+    find_dead_code,
     find_references,
     go_to_definition,
     list_repositories,
@@ -26,6 +27,7 @@ from src.urls import get_frontend_url
 # Registry of all tools
 TOOLS = [
     list_repositories,
+    find_dead_code,
     find_references,
     go_to_definition,
     search_symbols,

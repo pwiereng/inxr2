@@ -1,6 +1,7 @@
 """Tests for MCP tool handlers using FakeInxr2Client."""
 
 from src.tools import (
+    find_dead_code,
     find_references,
     go_to_definition,
     list_repositories,
@@ -471,6 +472,123 @@ class TestListRepositories:
         assert "main" in result
         assert "stale-branch" not in result
         assert "Indexed branches: 1" in result
+
+
+# --- find_dead_code ---
+
+
+class TestFindDeadCode:
+    async def test_finds_symbols_with_no_references(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "used_func", kind="function", repository_id=1)
+        client.add_symbol(2, "dead_func", kind="function", repository_id=1)
+        client.add_reference(1, "src/app.py", 10, "call", "used_func()")
+
+        result = await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        assert "dead_func" in result
+        assert "used_func" not in result
+        assert "1 symbols with no references" in result
+
+    async def test_filters_by_kind(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "DeadClass", kind="class", repository_id=1)
+        client.add_symbol(2, "dead_func", kind="function", repository_id=1)
+
+        result = await find_dead_code.handle(
+            client, {"repository": "my-repo", "kind": "function"}
+        )
+
+        assert "dead_func" in result
+        assert "DeadClass" not in result
+        assert "functions with no references" in result
+
+    async def test_returns_message_when_all_have_references(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "used_func", kind="function", repository_id=1)
+        client.add_reference(1, "src/app.py", 10, "call", "used_func()")
+
+        result = await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        assert "No dead code found" in result
+        assert "all" in result
+
+    async def test_returns_message_when_no_symbols(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+
+        result = await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        assert "No symbols found" in result
+
+    async def test_includes_browse_urls(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1,
+            "dead_func",
+            kind="function",
+            file_path="src/utils.py",
+            start_line=42,
+            repository_id=1,
+        )
+
+        result = await find_dead_code.handle(
+            client,
+            {"repository": "my-repo"},
+            frontend_url=FRONTEND_URL,
+        )
+
+        assert "http://localhost:5173/browse/my-repo/src/utils.py?line=42" in result
+
+    async def test_no_browse_urls_without_frontend_url(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "dead_func", kind="function", repository_id=1)
+
+        result = await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        assert "http://" not in result
+
+    async def test_deduplicates_by_name(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        # Same function name in header and implementation
+        client.add_symbol(
+            1,
+            "my_func",
+            kind="function",
+            file_path="src/lib.h",
+            repository_id=1,
+        )
+        client.add_symbol(
+            2,
+            "my_func",
+            kind="function",
+            file_path="src/lib.c",
+            repository_id=1,
+        )
+
+        result = await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        # Should show only one entry for my_func
+        assert result.count("[function] my_func") == 1
+
+    async def test_respects_limit(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        for i in range(10):
+            client.add_symbol(i, f"dead_{i}", kind="function", repository_id=1)
+
+        result = await find_dead_code.handle(
+            client, {"repository": "my-repo", "limit": 3}
+        )
+
+        assert "showing 3" in result
+        assert "10 symbols with no references" in result
 
 
 # --- server creation ---

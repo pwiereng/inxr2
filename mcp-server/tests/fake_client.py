@@ -164,12 +164,21 @@ class FakeInxr2Client(Inxr2Client):
 
         # GET /api/symbols
         if path == "/api/symbols":
+            import re
+
             query = params.get("q", "")
+            mode = params.get("mode")
             kind = params.get("kind")
             sym_repo_id: Any = params.get("repository_id")
             limit = int(params.get("limit", 50))
 
-            matches = [s for s in self._symbols if query.lower() in s["name"].lower()]
+            if mode == "regex":
+                pattern = re.compile(query)
+                matches = [s for s in self._symbols if pattern.search(s["name"])]
+            else:
+                matches = [
+                    s for s in self._symbols if query.lower() in s["name"].lower()
+                ]
             if kind:
                 matches = [s for s in matches if s["kind"] == kind]
             if sym_repo_id is not None:
