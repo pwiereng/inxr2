@@ -19,6 +19,7 @@ from src.tools import (
     find_references,
     go_to_definition,
     list_repositories,
+    review_helper,
     search_code,
     search_symbols,
 )
@@ -30,6 +31,7 @@ TOOLS = [
     find_dead_code,
     find_references,
     go_to_definition,
+    review_helper,
     search_symbols,
     search_code,
 ]
