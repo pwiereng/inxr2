@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { CopyButton } from './CopyButton'
 
@@ -10,6 +10,10 @@ describe('CopyButton', () => {
         writeText: vi.fn().mockResolvedValue(undefined),
       },
     })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('should render a copy icon button', () => {
@@ -66,8 +70,6 @@ describe('CopyButton', () => {
     await vi.advanceTimersByTimeAsync(1500)
 
     expect(screen.getByTestId('ContentCopyIcon')).toBeInTheDocument()
-
-    vi.useRealTimers()
   })
 
   it('should use custom tooltip text', () => {

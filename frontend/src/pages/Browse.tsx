@@ -620,14 +620,18 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                               {selectedBranch || repository.default_branch}@
                               {getShortHash(urlState.selectedCommit || globalReferenceCommit)}
                             </Typography>
-                            <CopyButton
-                              value={getShortHash(urlState.selectedCommit || globalReferenceCommit)}
-                              fullValue={
-                                urlState.selectedCommit || globalReferenceCommit || undefined
-                              }
-                              tooltip="Copy commit hash"
-                              size={12}
-                            />
+                            {(urlState.selectedCommit || globalReferenceCommit) && (
+                              <CopyButton
+                                value={getShortHash(
+                                  urlState.selectedCommit || globalReferenceCommit
+                                )}
+                                fullValue={
+                                  urlState.selectedCommit || globalReferenceCommit || undefined
+                                }
+                                tooltip="Copy commit hash"
+                                size={12}
+                              />
+                            )}
                           </Box>
                         }
                         language={detectLanguage(fileContent.path, fileContent.language)}
@@ -771,14 +775,16 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                             {selectedBranch || repository.default_branch}@
                             {getShortHash(urlState.selectedCommit || globalReferenceCommit)}
                           </Typography>
-                          <CopyButton
-                            value={getShortHash(urlState.selectedCommit || globalReferenceCommit)}
-                            fullValue={
-                              urlState.selectedCommit || globalReferenceCommit || undefined
-                            }
-                            tooltip="Copy commit hash"
-                            size={12}
-                          />
+                          {(urlState.selectedCommit || globalReferenceCommit) && (
+                            <CopyButton
+                              value={getShortHash(urlState.selectedCommit || globalReferenceCommit)}
+                              fullValue={
+                                urlState.selectedCommit || globalReferenceCommit || undefined
+                              }
+                              tooltip="Copy commit hash"
+                              size={12}
+                            />
+                          )}
                         </Box>
                         <Box sx={{ flex: 1, overflow: 'auto' }}>
                           <CodeViewer

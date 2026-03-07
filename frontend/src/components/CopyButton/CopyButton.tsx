@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { IconButton, Tooltip } from '@mui/material'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CheckIcon from '@mui/icons-material/Check'
@@ -21,16 +21,36 @@ export function CopyButton({
   size = 14,
 }: CopyButtonProps): React.ReactElement {
   const [copied, setCopied] = useState(false)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [])
 
   const handleClick = useCallback(
-    (e: React.MouseEvent) => {
+    async (e: React.MouseEvent) => {
       e.stopPropagation()
       e.preventDefault()
       const textToCopy = e.shiftKey && fullValue ? fullValue : value
-      navigator.clipboard.writeText(textToCopy).then(() => {
+
+      if (!navigator.clipboard?.writeText) {
+        return
+      }
+
+      try {
+        await navigator.clipboard.writeText(textToCopy)
+        if (timeoutRef.current !== null) {
+          clearTimeout(timeoutRef.current)
+        }
         setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
-      })
+        timeoutRef.current = setTimeout(() => setCopied(false), 1500)
+      } catch {
+        // Graceful fallback: do not change UI state on failure
+      }
     },
     [value, fullValue]
   )
@@ -38,7 +58,7 @@ export function CopyButton({
   const tooltipText = copied
     ? 'Copied!'
     : fullValue
-      ? `${tooltip} (Shift+click for full hash)`
+      ? `${tooltip} (Shift+click for full value)`
       : tooltip
 
   return (
