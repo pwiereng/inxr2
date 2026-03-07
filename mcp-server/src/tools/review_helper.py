@@ -97,7 +97,7 @@ async def handle(
 
     # Step 3: Get changed files at this commit
     tree_data = await client.get(
-        f"/api/repositories/by-name/{repository}/tree",
+        f"/api/repositories/{repository_id}/tree",
         params={"commit": full_hash, "changed_only": "true"},
     )
     changed_files = _flatten_tree(tree_data.get("root", []))
