@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.client import Inxr2Client
+from src.staleness import check_staleness, prepend_warning
 from src.urls import build_browse_url
 
 TOOL_NAME = "find_references"
@@ -62,11 +63,13 @@ async def handle(
     if commit and not repository:
         return "Error: 'commit' requires 'repository' to be specified."
 
-    # Step 1: Resolve repository_id if repository name given
+    # Resolve repository and check staleness
+    staleness_warning = None
     repository_id = None
     if repository:
-        repo_data = await client.get(f"/api/repositories/by-name/{repository}")
-        repository_id = repo_data["id"]
+        staleness = await check_staleness(client, repository)
+        staleness_warning = staleness.warning
+        repository_id = staleness.repo_data["id"]
 
     # Step 2: Find matching symbols by exact name
     symbol_params: dict[str, Any] = {}
@@ -81,7 +84,9 @@ async def handle(
     )
 
     if not symbols_data["items"]:
-        return f"No symbols found matching '{name}'."
+        return prepend_warning(
+            f"No symbols found matching '{name}'.", staleness_warning
+        )
 
     # Step 3: Get references for matching symbols (by_name=true for cross-repo)
     seen_symbol_ids: set[int] = set()
@@ -122,24 +127,23 @@ async def handle(
     lines = [f"References for '{name}': {len(all_references)} found"]
     if not all_references:
         lines.append("No references found.")
-        return "\n".join(lines)
+    else:
+        for ref in all_references:
+            location = f"{ref['file']}:{ref['line']}" if ref["line"] else ref["file"]
+            lines.append(f"  [{ref['type']}] {location}")
+            if ref["context"]:
+                lines.append(f"    {ref['context']}")
 
-    for ref in all_references:
-        location = f"{ref['file']}:{ref['line']}" if ref["line"] else ref["file"]
-        lines.append(f"  [{ref['type']}] {location}")
-        if ref["context"]:
-            lines.append(f"    {ref['context']}")
+            # Add browse URL when repository is known
+            if frontend_url and repository and ref["file"] and ref["file"] != "unknown":
+                url = build_browse_url(
+                    frontend_url,
+                    repository,
+                    ref["file"],
+                    line=ref["line"],
+                    branch=branch,
+                    commit=commit,
+                )
+                lines.append(f"    {url}")
 
-        # Add browse URL when repository is known
-        if frontend_url and repository and ref["file"] and ref["file"] != "unknown":
-            url = build_browse_url(
-                frontend_url,
-                repository,
-                ref["file"],
-                line=ref["line"],
-                branch=branch,
-                commit=commit,
-            )
-            lines.append(f"    {url}")
-
-    return "\n".join(lines)
+    return prepend_warning("\n".join(lines), staleness_warning)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.client import Inxr2Client
+from src.staleness import check_staleness, prepend_warning
 from src.urls import build_browse_url
 
 TOOL_NAME = "go_to_definition"
@@ -55,11 +56,13 @@ async def handle(
     if commit and not repository:
         return "Error: 'commit' requires 'repository' to be specified."
 
-    # Resolve repository_id if repository name given
+    # Resolve repository and check staleness
+    staleness_warning = None
     repository_id = None
     if repository:
-        repo_data = await client.get(f"/api/repositories/by-name/{repository}")
-        repository_id = repo_data["id"]
+        staleness = await check_staleness(client, repository)
+        staleness_warning = staleness.warning
+        repository_id = staleness.repo_data["id"]
 
     # Find symbols by exact name
     params: dict[str, Any] = {}
@@ -76,7 +79,7 @@ async def handle(
         items = [s for s in items if s.get("file_path", "").endswith(file_path)]
 
     if not items:
-        return f"No definition found for '{name}'."
+        return prepend_warning(f"No definition found for '{name}'.", staleness_warning)
 
     # Build repo_id -> name map for browse URLs
     repo_names: dict[int, str] = {}
@@ -119,4 +122,4 @@ async def handle(
                 )
                 lines.append(f"  URL: {url}")
 
-    return "\n".join(lines)
+    return prepend_warning("\n".join(lines), staleness_warning)

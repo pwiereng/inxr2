@@ -1,5 +1,7 @@
 """Tests for MCP tool handlers using FakeInxr2Client."""
 
+from typing import Any
+
 from src.tools import (
     find_dead_code,
     find_references,
@@ -613,18 +615,201 @@ class TestFindDeadCode:
         # Monkey-patch to return inflated total
         original_get = client.get
 
-        async def patched_get(path: str, params: dict = None) -> dict:
+        async def patched_get(path: str, params: dict[str, Any] | None = None) -> Any:
             result = await original_get(path, params)
             if path == "/api/symbols" and isinstance(result, dict):
                 result["total"] = 500
             return result
 
-        client.get = patched_get  # type: ignore[assignment]
+        client.get = patched_get  # type: ignore[method-assign]
 
         result = await find_dead_code.handle(client, {"repository": "my-repo"})
 
         assert "scanned 3 of 500 symbols" in result
         assert "results may be incomplete" in result
+
+
+# --- staleness warning ---
+
+
+class TestStalenessWarning:
+    async def test_no_warning_when_not_stale(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=False)
+        client.add_symbol(1, "MyClass", kind="class", repository_id=1)
+
+        result = await search_symbols.handle(
+            client, {"query": "MyClass", "repository": "my-repo"}
+        )
+
+        assert "Warning" not in result
+        assert "stale" not in result
+        assert "MyClass" in result
+
+    async def test_warning_prepended_when_stale(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(
+            1,
+            is_stale=True,
+            last_indexed_commit="abc1234def5678",
+            last_indexed_at="2026-03-07T10:00:00",
+        )
+        client.add_symbol(1, "MyClass", kind="class", repository_id=1)
+
+        result = await search_symbols.handle(
+            client, {"query": "MyClass", "repository": "my-repo"}
+        )
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "abc1234" in result
+        assert "2026-03-07T10:00:00" in result
+        assert "MyClass" in result
+
+    async def test_no_warning_without_repository(self) -> None:
+        client = FakeInxr2Client()
+        client.add_symbol(1, "MyClass", kind="class")
+
+        result = await search_symbols.handle(client, {"query": "MyClass"})
+
+        assert "Warning" not in result
+        assert "MyClass" in result
+
+    async def test_warning_on_find_references(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+        client.add_symbol(1, "MyFunc", kind="function", repository_id=1)
+        client.add_reference(1, "src/app.py", 10, "call", "MyFunc()")
+
+        result = await find_references.handle(
+            client, {"name": "MyFunc", "repository": "my-repo"}
+        )
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "1 found" in result
+
+    async def test_warning_on_go_to_definition(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+        client.add_symbol(1, "MyFunc", kind="function", repository_id=1)
+
+        result = await go_to_definition.handle(
+            client, {"name": "MyFunc", "repository": "my-repo"}
+        )
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "MyFunc" in result
+
+    async def test_warning_on_search_code(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+        client.add_search_result("src/main.py", 15, "def connect():", "my-repo")
+
+        result = await search_code.handle(
+            client, {"query": "connect", "repository": "my-repo"}
+        )
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "connect" in result
+
+    async def test_warning_on_find_dead_code(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+        client.add_symbol(1, "dead_func", kind="function", repository_id=1)
+
+        result = await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "dead_func" in result
+
+    async def test_warning_when_stale_and_no_symbol_results(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+
+        result = await search_symbols.handle(
+            client, {"query": "NonExistent", "repository": "my-repo"}
+        )
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "No symbols found" in result
+
+    async def test_warning_when_stale_and_no_search_code_results(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+
+        result = await search_code.handle(
+            client, {"query": "NonExistent", "repository": "my-repo"}
+        )
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "No results" in result
+
+    async def test_warning_when_stale_and_no_references(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+
+        result = await find_references.handle(
+            client, {"name": "NonExistent", "repository": "my-repo"}
+        )
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "No symbols found" in result
+
+    async def test_warning_when_stale_and_no_definition(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+
+        result = await go_to_definition.handle(
+            client, {"name": "NonExistent", "repository": "my-repo"}
+        )
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "No definition found" in result
+
+    async def test_warning_when_stale_and_no_symbols_for_dead_code(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+
+        result = await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "No symbols found" in result
+
+    async def test_warning_when_stale_and_all_have_references_for_dead_code(
+        self,
+    ) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+        client.add_symbol(1, "used_func", kind="function", repository_id=1)
+        client.add_reference(1, "src/app.py", 10, "call", "used_func()")
+
+        result = await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "No dead code found" in result
+        assert "all" in result
 
 
 # --- server creation ---

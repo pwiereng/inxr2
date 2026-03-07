@@ -6,6 +6,7 @@ import asyncio
 from typing import Any
 
 from src.client import Inxr2Client
+from src.staleness import check_staleness, prepend_warning
 from src.urls import build_browse_url
 
 TOOL_NAME = "find_dead_code"
@@ -77,9 +78,10 @@ async def handle(
     branch = arguments.get("branch")
     commit = arguments.get("commit")
 
-    # Resolve repository_id
-    repo_data = await client.get(f"/api/repositories/by-name/{repository}")
-    repository_id = repo_data["id"]
+    # Resolve repository and check staleness
+    staleness = await check_staleness(client, repository)
+    staleness_warning = staleness.warning
+    repository_id = staleness.repo_data["id"]
 
     # Fetch symbols (get a large batch to check for dead code)
     # Use regex mode with "." to match all symbol names
@@ -103,7 +105,9 @@ async def handle(
 
     if not items:
         kind_str = f" {_pluralize(kind)}" if kind else " symbols"
-        return f"No{kind_str} found in '{repository}'."
+        return prepend_warning(
+            f"No{kind_str} found in '{repository}'.", staleness_warning
+        )
 
     # Check references for each symbol (N+1 calls — acceptable for v1)
     async def has_references(symbol: dict[str, Any]) -> bool:
@@ -134,7 +138,10 @@ async def handle(
 
     if not unique_dead:
         kind_str = f" {_pluralize(kind)}" if kind else " symbols"
-        return f"No dead code found in '{repository}' — all{kind_str} have references."
+        return prepend_warning(
+            f"No dead code found in '{repository}' — all{kind_str} have references.",
+            staleness_warning,
+        )
 
     # Apply limit after dedup
     total = len(unique_dead)
@@ -175,4 +182,4 @@ async def handle(
             )
             lines.append(f"    {url}")
 
-    return "\n".join(lines)
+    return prepend_warning("\n".join(lines), staleness_warning)
