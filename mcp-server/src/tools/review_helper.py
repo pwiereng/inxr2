@@ -6,6 +6,7 @@ import asyncio
 from typing import Any
 
 from src.client import Inxr2Client
+from src.staleness import check_staleness, prepend_warning
 from src.urls import build_browse_url
 
 TOOL_NAME = "review_helper"
@@ -58,9 +59,10 @@ async def handle(
     commit_prefix = arguments["commit"]
     limit = min(arguments.get("limit", 30), 100)
 
-    # Step 1: Resolve repository
-    repo_data = await client.get(f"/api/repositories/by-name/{repository}")
-    repository_id = repo_data["id"]
+    # Step 1: Resolve repository and check staleness
+    staleness = await check_staleness(client, repository)
+    staleness_warning = staleness.warning
+    repository_id = staleness.repo_data["id"]
 
     # Step 2: Find the commit by matching prefix
     commits_data = await client.get(
@@ -105,7 +107,7 @@ async def handle(
             "Changed files: 0",
             "No changed files found at this commit.",
         ]
-        return "\n".join(lines)
+        return prepend_warning("\n".join(lines), staleness_warning)
 
     # Step 4: Get symbols in changed files
     # Fetch symbols for this repo and filter by changed file paths
@@ -221,4 +223,4 @@ async def handle(
                     )
                     lines.append(f"    {url}")
 
-    return "\n".join(lines)
+    return prepend_warning("\n".join(lines), staleness_warning)

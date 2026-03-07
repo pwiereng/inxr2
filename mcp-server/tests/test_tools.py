@@ -814,6 +814,25 @@ class TestStalenessWarning:
         assert "No dead code found" in result
         assert "all" in result
 
+    async def test_warning_on_review_helper(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+        commit_hash = "abc1234567890abcdef1234567890abcdef123456"
+        client.add_commit("my-repo", commit_hash, message="test commit")
+        client.add_changed_file(commit_hash, "src/app.py", file_id=10)
+        client.add_symbol(
+            1, "my_func", kind="function", file_path="src/app.py", repository_id=1
+        )
+
+        result = await review_helper.handle(
+            client, {"repository": "my-repo", "commit": "abc1234"}
+        )
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "Blast radius" in result
+
 
 # --- review_helper ---
 
