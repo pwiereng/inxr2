@@ -229,13 +229,17 @@ class TestSearchCode:
     async def test_with_repository_filter(self) -> None:
         client = FakeInxr2Client()
         client.add_repository(1, "target-repo")
-        client.add_search_result("src/a.py", 1, "match", "target-repo")
+        client.add_repository(2, "other-repo")
+        client.add_search_result("src/a.py", 1, "match in target", "target-repo")
+        client.add_search_result("src/b.py", 5, "match in other", "other-repo")
 
         result = await search_code.handle(
             client, {"query": "match", "repository": "target-repo"}
         )
 
         assert "1 shown" in result
+        assert "src/a.py" in result
+        assert "src/b.py" not in result
 
 
 # --- list_repositories ---

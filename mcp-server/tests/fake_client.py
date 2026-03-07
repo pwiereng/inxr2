@@ -96,10 +96,16 @@ class FakeInxr2Client(Inxr2Client):
         repository_name: str = "test-repo",
         headline: str | None = None,
     ) -> None:
+        # Look up repository_id from name, default to 1
+        repo_id = 1
+        for repo in self._repositories:
+            if repo["name"] == repository_name:
+                repo_id = repo["id"]
+                break
         self._search_results.append(
             {
                 "id": len(self._search_results) + 1,
-                "repository_id": 1,
+                "repository_id": repo_id,
                 "repository_name": repository_name,
                 "file_path": file_path,
                 "source_line": line,
@@ -180,10 +186,15 @@ class FakeInxr2Client(Inxr2Client):
             query = params.get("q", "")
             mode = params.get("mode", "keyword")
             limit = int(params.get("limit", 20))
-            results = self._search_results[:limit]
+            repo_id = params.get("repository_id")
+            matches = list(self._search_results)
+            if repo_id is not None:
+                matches = [r for r in matches if r.get("repository_id") == int(repo_id)]
+            total = len(matches)
+            results = matches[:limit]
             return {
                 "results": results,
-                "total": len(results),
+                "total": total,
                 "query": query,
                 "mode": mode,
                 "limit": limit,
