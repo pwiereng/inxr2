@@ -40,6 +40,7 @@ cd /workspace
 # Track PIDs for cleanup
 BACKEND_PID=""
 FRONTEND_PID=""
+MCP_PID=""
 EXIT_CODE=0
 
 cleanup() {
@@ -51,6 +52,11 @@ cleanup() {
 
     echo ""
     echo -e "${YELLOW}Shutting down services...${NC}"
+
+    if [ -n "$MCP_PID" ] && kill -0 "$MCP_PID" 2>/dev/null; then
+        kill "$MCP_PID" 2>/dev/null
+        echo -e "  ${RED}MCP server stopped${NC}"
+    fi
 
     if [ -n "$FRONTEND_PID" ] && kill -0 "$FRONTEND_PID" 2>/dev/null; then
         kill "$FRONTEND_PID" 2>/dev/null
@@ -107,11 +113,24 @@ echo -e "  Frontend PID: $FRONTEND_PID"
 echo -e "  URL: ${BLUE}http://localhost:5173${NC}"
 echo ""
 
-echo -e "${GREEN}Both services running. Press Ctrl+C to stop.${NC}"
+# Start MCP server if installed
+if [ -d "mcp-server/src" ] && python -c "import mcp" 2>/dev/null; then
+    echo -e "${GREEN}Starting MCP server...${NC}"
+    cd /workspace/mcp-server
+    MCP_TRANSPORT=sse MCP_PORT=3000 INXR2_API_URL=http://localhost:8000 \
+        python -m src.server &
+    MCP_PID=$!
+    cd /workspace
+    echo -e "  MCP PID: $MCP_PID"
+    echo -e "  SSE: ${BLUE}http://localhost:3000/sse${NC}"
+    echo ""
+fi
+
+echo -e "${GREEN}All services running. Press Ctrl+C to stop.${NC}"
 echo ""
 
-# Wait for either process to exit (EXIT trap will run cleanup)
+# Wait for any process to exit (EXIT trap will run cleanup)
 # Note: wait -n returns the exit status of the process that exited
-wait -n $BACKEND_PID $FRONTEND_PID 2>/dev/null
+wait -n $BACKEND_PID $FRONTEND_PID ${MCP_PID:+$MCP_PID} 2>/dev/null
 
 # If we get here, one process died - cleanup will be called by EXIT trap

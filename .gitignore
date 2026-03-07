@@ -279,3 +279,6 @@ htmlcov/
 # Claude Code
 .claude/settings.local.json
 .claude/*.local.json
+
+# Worktree session bootstrapping (local-only)
+instructions.txt

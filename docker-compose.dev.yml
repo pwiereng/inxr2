@@ -25,6 +25,23 @@ services:
     tty: true
     command: /bin/bash
 
+  # MCP server exposing INXR2 code intelligence as tools
+  mcp:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_CONTAINER_PREFIX:-inxr2}-mcp
+    environment:
+      - INXR2_API_URL=http://${COMPOSE_CONTAINER_PREFIX:-inxr2}-dev:8000
+      - MCP_TRANSPORT=sse
+      - MCP_PORT=3000
+    ports:
+      - "${MCP_PORT:-3000}:3000"
+    profiles:
+      - mcp  # Only start with --profile mcp
+    depends_on:
+      - dev
+
   # Playwright browser server for interactive testing
   playwright:
     build:

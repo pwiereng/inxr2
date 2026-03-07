@@ -938,6 +938,8 @@ When creating a worktree and crafting a prompt for a new Claude instance, **alwa
 
 This ensures the prompt is preserved and easily accessible when opening a new Claude Code session in the worktree.
 
+- **Do NOT commit `instructions.txt`** — it is a local-only file for session bootstrapping. It is listed in `.gitignore`.
+
 ### Container Naming
 
 - Main: `inxr2-dev`, `inxr2-playwright`
@@ -948,7 +950,7 @@ This ensures the prompt is preserved and easily accessible when opening a new Cl
 On-demand regression suite covering indexing pipeline and browser UI.
 Run when the user asks (e.g., "run regression tests"). Can be run on any branch — main, worktree, or before merging.
 
-**Full test plan:** See `docs/regression-tests.md` for all 28 test cases.
+**Full test plan:** See `docs/regression-tests.md` for all 47 test cases.
 
 **Testing philosophy:** No hardcoded expected data. Each test discovers what to expect by querying git or the API first, then verifies the UI matches. See "Discover → Navigate → Verify" pattern in the test plan.
 
@@ -996,6 +998,26 @@ Run RT-01 through RT-23 from `docs/regression-tests.md`:
 | Navigation | RT-19 to RT-20 | URL params, `config.yaml` branches |
 | Cross-cutting | RT-21 to RT-23 | URL state, color change, `grep '^#'` heading |
 
+### Phase 3: MCP Server
+
+Verify MCP tools return correct data by calling handlers directly against the live INXR2 API:
+
+```bash
+# Ensure MCP dependencies are installed
+docker exec inxr2-dev pip install -e "/workspace/mcp-server[dev]"
+```
+
+Run MCP-01 through MCP-11 from `docs/regression-tests.md`:
+
+| Area | Tests | Validated Against |
+|------|-------|-------------------|
+| Discovery | MCP-01 to MCP-02 | API repo/branch listing |
+| Symbols | MCP-03 to MCP-05 | API symbols endpoints |
+| References | MCP-06 to MCP-07 | API references endpoint |
+| Code Search | MCP-08 to MCP-09 | API search/text endpoint |
+| Error Handling | MCP-10 | Graceful no-match messages |
+| Unit Tests | MCP-11 | pytest test suite |
+
 ### Interpreting Results
 
 For each test:
@@ -1010,13 +1032,14 @@ After the full suite, report a summary to the user:
 
 ```
 Regression Test Results:
-- Indexing: X/5 passed
-- Browser:  X/23 passed
-- Total:    X/28 passed
+- Indexing: X/7 passed
+- Browser:  X/29 passed
+- MCP:      X/11 passed
+- Total:    X/47 passed
 - Failed:   [list any failures with ID and brief reason]
 ```
 
-If all pass, report: **"Regression suite: 28/28 passed (5 indexing + 23 browser)."**
+If all pass, report: **"Regression suite: 47/47 passed (7 indexing + 29 browser + 11 MCP)."**
 
 ### When to Run
 

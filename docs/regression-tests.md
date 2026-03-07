@@ -801,6 +801,330 @@ curl "http://localhost:9222/text?selector=h1,h2,h3"
 
 ---
 
+# Phase 3: MCP Server Regression
+
+Verify that the MCP server correctly exposes INXR2 code intelligence via its tool handlers.
+**All verifications cross-reference against the INXR2 API — no hardcoded expectations.**
+
+## Setup
+
+```bash
+# Ensure backend is running (MCP server calls the API)
+docker exec -d inxr2-dev inxr2 serve --reload
+
+# Install MCP server dependencies (if not already installed)
+docker exec inxr2-dev pip install -e "/workspace/mcp-server[dev]"
+```
+
+Note: MCP tool tests are run by invoking the tool handlers directly with the real HTTP client,
+not through MCP protocol. This tests the full path: tool handler -> httpx -> INXR2 API -> PostgreSQL.
+
+---
+
+## MCP-01: List Repositories Returns All Indexed Repos
+
+**Steps:**
+```bash
+# DISCOVER: Count repos from API
+docker exec inxr2-dev bash -c "curl -s http://localhost:8000/api/repositories | python3 -c 'import sys,json; data=json.load(sys.stdin); print(len(data)); [print(r[\"name\"]) for r in data]'"
+# VERIFY: MCP tool returns same repos
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import list_repositories
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    print(await list_repositories.handle(client, {}))
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- MCP output lists the same number of repositories as the API
+- Each repo name from the API appears in the MCP output
+- Each repo shows at least one indexed branch
+
+---
+
+## MCP-02: List Repositories Detail Shows Indexed Branches
+
+**Steps:**
+```bash
+# DISCOVER: Get branches for a multi-branch repo from API
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/inxr2' | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"id\"])'"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/<repo_id>/branches' | python3 -c '
+import sys, json
+branches = json.load(sys.stdin)[\"branches\"]
+indexed = [b for b in branches if b[\"commit_count\"] > 0]
+print(f\"Indexed: {len(indexed)}\")
+for b in indexed:
+    name, cc = b[\"name\"], b[\"commit_count\"]
+    print(f\"  {name} ({cc} commits)\")
+'"
+# VERIFY: MCP detail matches
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import list_repositories
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    print(await list_repositories.handle(client, {'repository': 'inxr2'}))
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- MCP output shows the same indexed branches as the API (unindexed branches filtered out)
+- Commit counts match
+- Commit hash prefixes match
+
+---
+
+## MCP-03: Search Symbols Returns Matching Definitions
+
+**Steps:**
+```bash
+# DISCOVER: Pick a symbol name that exists in the API
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=Repository&limit=3' | python3 -c '
+import sys, json
+items = json.load(sys.stdin)[\"items\"]
+for s in items:
+    n, k, fp, sl = s[\"name\"], s[\"kind\"], s.get(\"file_path\",\"?\"), s.get(\"start_line\",\"?\")
+    print(f\"{n} [{k}] at {fp}:{sl}\")
+'"
+# VERIFY: MCP tool returns same symbols
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_symbols
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    print(await search_symbols.handle(client, {'query': 'Repository', 'limit': 3}))
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- MCP output contains the same symbol names as the API
+- File paths and line numbers match
+- Symbol kinds (class, function, etc.) match
+
+---
+
+## MCP-04: Search Symbols Filters by Kind
+
+**Steps:**
+```bash
+# VERIFY: Search with kind filter
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_symbols
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_symbols.handle(client, {'query': 'Repository', 'kind': 'class', 'limit': 10})
+    print(result)
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- All returned symbols have kind `class`
+- No functions, methods, or other kinds appear in the output
+
+---
+
+## MCP-05: Go to Definition Finds Symbol
+
+**Steps:**
+```bash
+# DISCOVER: Pick a specific symbol name from API
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols/by-name/SearchSymbolsUseCase' | python3 -c '
+import sys, json
+items = json.load(sys.stdin)[\"items\"]
+for s in items:
+    n, fp, sl = s[\"name\"], s.get(\"file_path\",\"?\"), s.get(\"start_line\",\"?\")
+    print(f\"{n} at {fp}:{sl}\")
+'"
+# VERIFY: MCP tool returns same definition
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import go_to_definition
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    print(await go_to_definition.handle(client, {'name': 'SearchSymbolsUseCase'}))
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- MCP output includes the correct file path and line number matching the API
+- Symbol kind is shown
+- If the symbol has a signature or docstring, they are displayed
+
+---
+
+## MCP-06: Find References Returns Cross-Repo Usages
+
+**Steps:**
+```bash
+# DISCOVER: Get references for a symbol from API
+docker exec inxr2-dev bash -c "
+SYMBOL_ID=\$(curl -s 'http://localhost:8000/api/symbols?q=SearchSymbolsUseCase&limit=1' | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"items\"][0][\"id\"])')
+curl -s \"http://localhost:8000/api/symbols/\$SYMBOL_ID/references?by_name=true&limit=5\" | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+total = data[\"total\"]
+print(f\"Total: {total}\")
+for r in data[\"items\"][:5]:
+    rt, fp, sl = r[\"reference_type\"], r.get(\"source_file_path\",\"?\"), r.get(\"source_line\",\"?\")
+    print(f\"  [{rt}] {fp}:{sl}\")
+'
+"
+# VERIFY: MCP tool returns same references
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import find_references
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    print(await find_references.handle(client, {'name': 'SearchSymbolsUseCase', 'repository': 'inxr2'}))
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- MCP reference count matches API total
+- Reference types (import, call, usage, type_annotation) are shown
+- File paths and line numbers match the API data
+
+---
+
+## MCP-07: Find References Filters by Type
+
+**Steps:**
+```bash
+# VERIFY: Filter to imports only
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import find_references
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    print(await find_references.handle(client, {'name': 'SearchSymbolsUseCase', 'repository': 'inxr2', 'ref_type': 'import'}))
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- All returned references have type `import`
+- No call, usage, or type_annotation references appear
+
+---
+
+## MCP-08: Search Code Returns Matching Content
+
+**Steps:**
+```bash
+# DISCOVER: Search via API
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/search/text?q=async+def+execute&mode=phrase&limit=3' | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+total = data[\"total\"]
+print(f\"Total: {total}\")
+for r in data[\"results\"][:3]:
+    rn, fp, sl = r.get(\"repository_name\",\"?\"), r.get(\"file_path\",\"?\"), r.get(\"source_line\",\"?\")
+    print(f\"  {rn}:{fp}:{sl}\")
+'"
+# VERIFY: MCP tool returns same results
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    print(await search_code.handle(client, {'query': 'async def execute', 'mode': 'phrase', 'limit': 3}))
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- MCP result count matches API total
+- File paths and line numbers match
+- Content snippets contain the search term
+
+---
+
+## MCP-09: Search Code with Repository Filter
+
+**Steps:**
+```bash
+# VERIFY: Filtered search only returns results from specified repo
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    print(await search_code.handle(client, {'query': 'class', 'repository': 'inxr2', 'limit': 5}))
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- All results are from the `inxr2` repository
+- No results from other repositories appear
+
+---
+
+## MCP-10: No-Match Queries Return Graceful Messages
+
+**Steps:**
+```bash
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_symbols, go_to_definition, find_references, search_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    print('search_symbols:', await search_symbols.handle(client, {'query': 'xyzzy_nonexistent_symbol_42'}))
+    print('go_to_definition:', await go_to_definition.handle(client, {'name': 'xyzzy_nonexistent_symbol_42'}))
+    print('find_references:', await find_references.handle(client, {'name': 'xyzzy_nonexistent_symbol_42'}))
+    print('search_code:', await search_code.handle(client, {'query': 'xyzzy_nonexistent_42', 'mode': 'phrase'}))
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- Each tool returns a human-readable "no results" message (not an error or stack trace)
+- Messages include the original query term
+
+---
+
+## MCP-11: MCP Unit Tests Pass
+
+**Steps:**
+```bash
+docker exec -w /workspace/mcp-server inxr2-dev python -m pytest tests/ -v
+```
+
+**Pass criteria:**
+- All tests pass (currently 20 tests)
+- No warnings or errors
+
+---
+
 ## Summary
 
 ### Phase 1: Indexing (7 tests)
@@ -848,4 +1172,20 @@ curl "http://localhost:9222/text?selector=h1,h2,h3"
 | RT-22a | Diff colors in both themes | Theme-adapted diff colors |
 | RT-23 | Markdown rendering matches file | `grep '^#'` heading |
 
-**Total: 36 test cases** (7 indexing + 29 browser) — all verified against git/API, no hardcoded data.
+### Phase 3: MCP Server (11 tests)
+
+| ID | Test | Validates Against |
+|----|------|-------------------|
+| MCP-01 | List repos returns all indexed repos | API repo list |
+| MCP-02 | List repo detail shows indexed branches | API branches endpoint |
+| MCP-03 | Search symbols returns matching definitions | API symbols endpoint |
+| MCP-04 | Search symbols filters by kind | Kind filter consistency |
+| MCP-05 | Go to definition finds symbol | API by-name endpoint |
+| MCP-06 | Find references returns cross-repo usages | API references endpoint |
+| MCP-07 | Find references filters by type | Type filter consistency |
+| MCP-08 | Search code returns matching content | API search/text endpoint |
+| MCP-09 | Search code with repository filter | Repo filter consistency |
+| MCP-10 | No-match queries return graceful messages | Error handling |
+| MCP-11 | MCP unit tests pass | Test suite (20 tests) |
+
+**Total: 47 test cases** (7 indexing + 29 browser + 11 MCP) — all verified against git/API, no hardcoded data.
