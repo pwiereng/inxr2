@@ -348,6 +348,51 @@ class TestRepositoriesAPI:
 
         assert response.status_code == 404
 
+    async def test_get_repository_tree_by_id_passes_changed_only(
+        self, test_app: FastAPI
+    ) -> None:
+        """Test that the by-ID tree endpoint passes changed_only to the use case."""
+        from inxr2.application.use_cases.repositories.get_repository_tree import (
+            GetRepositoryTreeRequest,
+            GetRepositoryTreeResponse,
+        )
+        from inxr2.infrastructure.dependencies import get_repository_tree_use_case
+
+        # Spy that captures the request
+        captured_requests: list[GetRepositoryTreeRequest] = []
+
+        class SpyUseCase:
+            async def execute(
+                self, request: GetRepositoryTreeRequest
+            ) -> GetRepositoryTreeResponse:
+                captured_requests.append(request)
+                return GetRepositoryTreeResponse(
+                    repository_id=request.repository_id or 0,
+                    repository_name="spy-repo",
+                    root=[],
+                    total_files=0,
+                    total_directories=0,
+                )
+
+        spy = SpyUseCase()
+        test_app.dependency_overrides[get_repository_tree_use_case] = lambda: spy
+
+        # Act — pass changed_only=true to the by-ID endpoint
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/repositories/1/tree",
+                params={"commit": "a" * 40, "changed_only": "true"},
+            )
+
+        # Assert — endpoint passes changed_only=True to the use case
+        assert response.status_code == 200
+        assert len(captured_requests) == 1
+        assert captured_requests[0].changed_only is True
+        assert captured_requests[0].repository_id == 1
+        assert captured_requests[0].commit_hash == "a" * 40
+
     async def test_get_repository_by_name(
         self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:
