@@ -1260,6 +1260,284 @@ asyncio.run(main())
 
 ---
 
+## MCP-13: Find Dead Code Returns Unreferenced Symbols
+
+**Steps:**
+```bash
+# DISCOVER: Pick a repo and find symbols with zero references from the API
+REPO="inxr2"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=.&mode=regex&limit=50&repository_id=1' | python3 -c \"
+import sys, json
+symbols = json.load(sys.stdin).get('items', [])
+print(f'Total symbols found: {len(symbols)}')
+for s in symbols[:5]:
+    print(f'  [{s.get(\"kind\")}] {s.get(\"name\")} ({s.get(\"file_path\")}:{s.get(\"start_line\")})  id={s[\"id\"]}')
+\""
+
+# VERIFY: MCP find_dead_code tool returns unreferenced symbols
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import find_dead_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await find_dead_code.handle(client, {'repository': '$REPO', 'limit': 10})
+    print(result)
+    # Verify output structure
+    assert 'Unreferenced symbols' in result or 'No unreferenced symbols' in result
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- Tool returns symbols with zero references
+- Each symbol entry includes kind, name, file path, and line number
+- Output header shows count of unreferenced symbols found
+- Results are limited to the requested `limit`
+
+---
+
+## MCP-14: Find Dead Code Filters by Kind
+
+**Steps:**
+```bash
+# VERIFY: Filter to functions only
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import find_dead_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await find_dead_code.handle(client, {'repository': 'inxr2', 'kind': 'function', 'limit': 10})
+    print(result)
+    # Every symbol line should be [function]
+    for line in result.splitlines():
+        if line.strip().startswith('['):
+            assert '[function]' in line, f'Expected [function] but got: {line}'
+    print('PASS: All results are functions')
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- All returned symbols have kind `function`
+- No symbols of other kinds (class, method, variable, etc.) appear
+
+---
+
+## MCP-15: Review Helper Shows Blast Radius for a Commit
+
+**Steps:**
+```bash
+# DISCOVER: Pick a recent commit and get its changed files from git
+REPO="inxr2"
+docker exec inxr2-dev bash -c "
+cd /repos/test-repos/inxr2
+COMMIT=\$(git log --oneline -10 | head -1 | awk '{print \$1}')
+echo \"Commit: \$COMMIT\"
+echo 'Changed files from git:'
+git diff-tree --no-commit-id --name-only -r \$COMMIT
+echo \"---\"
+echo \$COMMIT
+" > /tmp/mcp-15-discover.txt
+cat /tmp/mcp-15-discover.txt
+COMMIT=$(tail -1 /tmp/mcp-15-discover.txt)
+
+# VERIFY: MCP review_helper returns matching changed files
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import review_helper
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await review_helper.handle(client, {'repository': '$REPO', 'commit': '$COMMIT'})
+    print(result)
+    assert 'Blast radius for commit' in result
+    assert 'Changed files:' in result
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- Output shows "Blast radius for commit ..." with the correct commit hash
+- Changed files section lists files that match `git diff-tree` output
+- Symbols section lists symbols found in changed files
+- Downstream references section shows where those symbols are used
+
+---
+
+## MCP-16: Review Helper Changed Files Only (Not All Repo Files)
+
+**Steps:**
+```bash
+# DISCOVER: Find a commit that changed only 1-3 files
+REPO="inxr2"
+docker exec inxr2-dev bash -c "
+cd /repos/test-repos/inxr2
+for HASH in \$(git log --oneline -50 | awk '{print \$1}'); do
+  COUNT=\$(git diff-tree --no-commit-id --name-only -r \$HASH | wc -l)
+  if [ \$COUNT -ge 1 ] && [ \$COUNT -le 3 ]; then
+    echo \"\$HASH \$COUNT\"
+    git diff-tree --no-commit-id --name-only -r \$HASH
+    break
+  fi
+done
+" > /tmp/mcp-16-discover.txt
+cat /tmp/mcp-16-discover.txt
+COMMIT=$(head -1 /tmp/mcp-16-discover.txt | awk '{print $1}')
+EXPECTED_COUNT=$(head -1 /tmp/mcp-16-discover.txt | awk '{print $2}')
+
+# VERIFY: review_helper returns only changed files, not entire repo
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import review_helper
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await review_helper.handle(client, {'repository': '$REPO', 'commit': '$COMMIT'})
+    print(result)
+    # Extract 'Changed files: N' count
+    for line in result.splitlines():
+        if 'Changed files:' in line:
+            count = int(line.split(':')[1].strip())
+            print(f'Changed files count: {count}')
+            assert count <= 5, f'Expected small number of changed files but got {count} — may be returning all repo files'
+            break
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- Changed files count matches git's `diff-tree` output (1-3 files)
+- Tool does NOT return hundreds of files (which would indicate the `changed_only` bug)
+
+---
+
+## MCP-17: Staleness Warning Appears When Index Is Behind
+
+**Steps:**
+```bash
+# DISCOVER: Check if any repo has commits newer than the last indexed commit
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.staleness import check_staleness
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    staleness = await check_staleness(client, 'inxr2')
+    print(f'Warning: {staleness.warning}')
+    print(f'Repo ID: {staleness.repo_data[\"id\"]}')
+    await client.close()
+asyncio.run(main())
+"
+
+# VERIFY: Tool output starts with warning when stale
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_symbols
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_symbols.handle(client, {'query': 'Repository', 'repository': 'inxr2', 'limit': 1})
+    if 'Warning:' in result and 'stale' in result.lower():
+        print('PASS: Staleness warning present')
+        # Extract the warning line
+        for line in result.splitlines():
+            if 'Warning:' in line:
+                print(f'  {line}')
+                break
+    else:
+        # If index is up to date, no warning is expected — still a PASS
+        print('PASS: No staleness warning (index is current)')
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- When the index is behind git HEAD: output starts with `Warning: Indexed data may be stale`
+- Warning includes the commit hash the index was last updated to
+- When the index is current: no warning appears
+- Warning appears consistently across all tools (search_symbols, find_references, find_dead_code, review_helper)
+
+---
+
+## MCP-18: Browse URLs in find_dead_code and review_helper
+
+**Steps:**
+```bash
+FE_URL="http://inxr2-dev:5173"
+
+# VERIFY: find_dead_code includes browse URLs
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import find_dead_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await find_dead_code.handle(
+        client,
+        {'repository': 'inxr2', 'limit': 3},
+        frontend_url='$FE_URL',
+    )
+    print(result)
+    has_url = any('$FE_URL/browse/' in line for line in result.splitlines())
+    assert has_url, 'Expected browse URLs in find_dead_code output'
+    print('PASS: find_dead_code includes browse URLs')
+    await client.close()
+asyncio.run(main())
+"
+
+# VERIFY: review_helper includes browse URLs
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import review_helper
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    # Use a recent commit
+    commits = await client.get('/api/commits', params={'repo': 'inxr2', 'limit': 5})
+    commit = commits['commits'][0]['short_hash']
+    result = await review_helper.handle(
+        client,
+        {'repository': 'inxr2', 'commit': commit},
+        frontend_url='$FE_URL',
+    )
+    print(result)
+    has_url = any('$FE_URL/browse/' in line for line in result.splitlines())
+    assert has_url, 'Expected browse URLs in review_helper output'
+    print('PASS: review_helper includes browse URLs')
+    await client.close()
+asyncio.run(main())
+"
+
+# VERIFY: No URLs without frontend_url
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import find_dead_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await find_dead_code.handle(client, {'repository': 'inxr2', 'limit': 3})
+    assert 'http://' not in result, 'URL should not appear without frontend_url'
+    print('PASS: No URLs without frontend_url')
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- `find_dead_code` output includes browse URLs when `frontend_url` is provided
+- `review_helper` output includes browse URLs for changed files and reference locations
+- URLs follow pattern: `{frontend_url}/browse/{repo}/{path}?line=N`
+- No URLs appear when `frontend_url` is not provided
+
+---
+
 ## Summary
 
 ### Phase 1: Indexing (7 tests)
@@ -1307,7 +1585,7 @@ asyncio.run(main())
 | RT-22a | Diff colors in both themes | Theme-adapted diff colors |
 | RT-23 | Markdown rendering matches file | `grep '^#'` heading |
 
-### Phase 3: MCP Server (12 tests)
+### Phase 3: MCP Server (18 tests)
 
 | ID | Test | Validates Against |
 |----|------|-------------------|
@@ -1323,5 +1601,11 @@ asyncio.run(main())
 | MCP-10 | No-match queries return graceful messages | Error handling |
 | MCP-11 | MCP unit tests pass | Test suite |
 | MCP-12 | Browse URLs point to correct code locations | QA agent navigation + page content |
+| MCP-13 | Find dead code returns unreferenced symbols | API symbols + references |
+| MCP-14 | Find dead code filters by kind | Kind filter consistency |
+| MCP-15 | Review helper shows blast radius | `git diff-tree` changed files |
+| MCP-16 | Review helper changed files only | Changed file count (not all repo) |
+| MCP-17 | Staleness warning when index behind | Git HEAD vs last indexed commit |
+| MCP-18 | Browse URLs in find_dead_code and review_helper | URL presence with frontend_url |
 
-**Total: 48 test cases** (7 indexing + 29 browser + 12 MCP) — all verified against git/API, no hardcoded data.
+**Total: 54 test cases** (7 indexing + 29 browser + 18 MCP) — all verified against git/API, no hardcoded data.

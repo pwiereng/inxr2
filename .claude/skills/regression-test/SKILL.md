@@ -7,7 +7,7 @@ argument-hint: "[optional: 'indexing' or 'browser' to run only one phase]"
 
 # Regression Test Skill
 
-Runs the full regression test suite (36 tests) autonomously. See `docs/regression-tests.md` for detailed test procedures.
+Runs the full regression test suite (54 tests) autonomously. See `docs/regression-tests.md` for detailed test procedures.
 
 ## CRITICAL: Autonomy Rule
 
@@ -166,15 +166,24 @@ After all tests complete, output a summary:
 | RT-02 | Repo card stats | PASS/FAIL |
 | ... | ... | ... |
 
+### Phase 3: MCP Server (X/18 passed)
+| ID | Test | Result |
+|----|------|--------|
+| MCP-01 | List repos | PASS/FAIL |
+| MCP-13 | Find dead code | PASS/FAIL |
+| MCP-15 | Review helper blast radius | PASS/FAIL |
+| ... | ... | ... |
+
 ### Summary
 - Indexing: X/7 passed
 - Browser: X/29 passed
-- **Total: X/36 passed**
+- MCP: X/18 passed
+- **Total: X/54 passed**
 - Failed: [list failures with ID and brief reason]
 - Screenshots: [list screenshot paths for any failures]
 ```
 
-If all pass: **"Regression suite: 36/36 passed (7 indexing + 29 browser)."**
+If all pass: **"Regression suite: 54/54 passed (7 indexing + 29 browser + 18 MCP)."**
 
 ### Performance Comparison (from IX-05)
 

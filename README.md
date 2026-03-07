@@ -25,6 +25,7 @@ INXR2 is similar to LXR (Linux Cross Reference) but built specifically for git-b
 - **Side-by-Side Diff View**: Compare file versions across time
 - **Incremental Indexing**: Fast updates without full re-indexing
 - **Shareable Links**: Permanent URLs for lines, ranges, symbols, and diffs
+- **MCP Server**: AI assistant integration via Model Context Protocol (Claude, Cursor)
 
 ### Supported Languages
 
@@ -191,11 +192,29 @@ docker-compose up -d
 
 See [Deployment](#deployment) section below for complete production setup instructions.
 
+## MCP Server (AI Assistant Integration)
+
+INXR2 includes an MCP (Model Context Protocol) server that exposes code intelligence as tools for AI assistants like Claude Desktop, Cursor, and Claude Code.
+
+**Available tools:**
+- `list_repositories` — List indexed repos with branches and stats
+- `search_symbols` — Find symbol definitions by name (semantic search)
+- `find_references` — Find all usages of a symbol across repos
+- `go_to_definition` — Jump to where a symbol is defined
+- `search_code` — Full-text or regex search across all files
+- `find_dead_code` — Find unreferenced symbols (potential dead code)
+- `review_helper` — Analyze blast radius of a commit (changed files, affected symbols, downstream references)
+
+The MCP server runs inside the dev container on port 3000 (SSE transport) and starts automatically with `./scripts/dev-serve.sh`.
+
+See [mcp-server/README.md](mcp-server/README.md) for tool parameters, configuration, and setup instructions.
+
 ## Documentation
 
 - **[CLAUDE.md](CLAUDE.md)** - Architecture, project structure, development guidelines, and AI assistant instructions
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Coding standards, testing requirements, and contribution guidelines
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Quick reference for common development tasks and workflows
+- **[mcp-server/README.md](mcp-server/README.md)** - MCP server tools, configuration, and AI assistant setup
 
 ## Development
 

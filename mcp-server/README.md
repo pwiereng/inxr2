@@ -4,6 +4,25 @@ MCP (Model Context Protocol) server that exposes INXR2's code intelligence as to
 
 ## Tools
 
+### `list_repositories`
+List all indexed repositories with their branches and statistics.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `detail` | boolean | no | Include branches and commit counts (default false) |
+
+### `search_symbols`
+Find symbol definitions by name (semantic, not text).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | yes | Search query for symbol name |
+| `repository` | string | no | Filter to a specific repository |
+| `kind` | string | no | Filter by kind: `function`, `class`, `method`, `variable`, etc. |
+| `limit` | integer | no | Max results (default 20, max 100) |
+| `branch` | string | no | Branch to search in (defaults to latest indexed) |
+| `commit` | string | no | Specific commit hash (overrides branch, requires `repository`) |
+
 ### `find_references`
 Find all usages of a symbol across all indexed repositories.
 
@@ -25,18 +44,6 @@ Jump to the definition of a symbol (works cross-repo).
 | `file_path` | string | no | Filter to a specific file path |
 | `commit` | string | no | Specific commit hash (requires `repository`) |
 
-### `search_symbols`
-Find symbol definitions by name (semantic, not text).
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `query` | string | yes | Search query for symbol name |
-| `repository` | string | no | Filter to a specific repository |
-| `kind` | string | no | Filter by kind: `function`, `class`, `method`, `variable`, etc. |
-| `limit` | integer | no | Max results (default 20, max 100) |
-| `branch` | string | no | Branch to search in (defaults to latest indexed) |
-| `commit` | string | no | Specific commit hash (overrides branch, requires `repository`) |
-
 ### `search_code`
 Full-text or regex search across all indexed repos.
 
@@ -49,6 +56,32 @@ Full-text or regex search across all indexed repos.
 | `limit` | integer | no | Max results (default 20, max 100) |
 | `branch` | string | no | Branch to search in (defaults to latest indexed) |
 | `commit` | string | no | Specific commit hash (overrides branch, requires `repository`) |
+
+### `find_dead_code`
+Find symbol definitions with zero references (potential dead code).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repository` | string | yes | Repository name to analyze |
+| `kind` | string | no | Filter by kind: `function`, `class`, `method`, `variable`, etc. |
+| `limit` | integer | no | Max results (default 20, max 100) |
+
+### `review_helper`
+Analyze the blast radius of a commit: changed files, symbols in those files, and downstream references.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repository` | string | yes | Repository name to analyze |
+| `commit` | string | yes | Commit hash (short or full) to analyze |
+| `limit` | integer | no | Max symbols to analyze for references (default 30, max 100) |
+
+## Features
+
+### Staleness Warnings
+All tools automatically detect when the indexed data is behind the latest git commits and prepend a warning to the output, including the hash of the last indexed commit.
+
+### Browse URLs
+When `INXR2_FRONTEND_URL` is set, tool responses include clickable links to the INXR2 web UI for each file, symbol, and reference location.
 
 ## Architecture
 
