@@ -191,9 +191,9 @@ async def handle(
     if len(unique_symbols) > limit:
         lines.append(f"  (showing first {limit} for reference analysis)")
     for s in symbols_to_check:
-        kind = s.get("kind", "unknown")
-        name = s.get("name", "unknown")
-        file_path = s.get("file_path", "unknown")
+        kind = s.get("kind") or "unknown"
+        name = s.get("name") or "unknown"
+        file_path = s.get("file_path") or "unknown"
         start_line = s.get("start_line", "?")
         lines.append(f"  [{kind}] {name} ({file_path}:{start_line})")
 
@@ -211,7 +211,7 @@ async def handle(
                 f"— referenced from {len(refs)} location{'s' if len(refs) != 1 else ''}"
             )
             for ref in refs:
-                ref_file = ref.get("source_file_path", "unknown")
+                ref_file = ref.get("source_file_path") or "unknown"
                 ref_line = ref.get("source_line")
                 ref_type = ref.get("reference_type", "unknown")
                 location = f"{ref_file}:{ref_line}" if ref_line else ref_file
