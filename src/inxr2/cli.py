@@ -53,6 +53,7 @@ def _run_single_repo_index(
     index_func: Callable[..., Any],
     index_type: str,
     days: int | None = None,
+    no_deps: bool = False,
 ) -> None:
     """Run indexing for a single repository path."""
     # Validate git repository
@@ -74,6 +75,7 @@ def _run_single_repo_index(
             "repo_path": path,
             "branch": branch,
             "console": console,
+            "no_deps": no_deps,
         }
         if days is not None:
             kwargs["days"] = days
@@ -93,6 +95,7 @@ def _run_config_based_index(
     index_func: Callable[..., Any],
     index_type: str,
     days: int | None = None,
+    no_deps: bool = False,
 ) -> None:
     """Run indexing for repositories defined in config file."""
     from inxr2.adapters.config.yaml_config import YamlConfigService
@@ -242,6 +245,7 @@ def _run_config_based_index(
                     "repo_path": resolved_path,
                     "branch": branch,
                     "console": console,
+                    "no_deps": no_deps,
                 }
                 if effective_days is not None:
                     kwargs["days"] = effective_days
@@ -412,6 +416,11 @@ def main() -> None:
     is_flag=True,
     help="Confirm destructive operations like --reset-db without prompting",
 )
+@click.option(
+    "--no-deps",
+    is_flag=True,
+    help="Skip dependency extraction from manifest/lock files during indexing",
+)
 @click.pass_context
 def index(
     ctx: click.Context,
@@ -424,6 +433,7 @@ def index(
     log_level: str,
     reset_db: bool,
     yes: bool,
+    no_deps: bool,
 ) -> None:
     """
     Index repositories for code navigation.
@@ -489,6 +499,7 @@ def index(
             index_func=run_full_index,
             index_type="Indexing",
             days=days,
+            no_deps=no_deps,
         )
     else:
         # Single repository path-based indexing
@@ -500,6 +511,7 @@ def index(
             index_func=run_full_index,
             index_type="Indexing",
             days=days,
+            no_deps=no_deps,
         )
 
 

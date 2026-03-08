@@ -90,6 +90,7 @@ class IndexRepositoryResponse:
     docstrings_indexed: int = 0
     commit_messages_indexed: int = 0
     non_code_files_indexed: int = 0
+    dependencies_found: int = 0
     errors: list[str] = field(default_factory=list)
     elapsed_seconds: float = 0.0
     indexing_seconds: float = 0.0

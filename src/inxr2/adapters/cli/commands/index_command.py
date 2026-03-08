@@ -119,7 +119,7 @@ async def _reset_database_async(console: Console) -> None:
         await session.execute(
             text(
                 'TRUNCATE TABLE "references", symbols, text_contents, '
-                "commit_files, files, branch_commits, commits, "
+                "dependencies, commit_files, files, branch_commits, commits, "
                 "index_status, repositories CASCADE;"
             )
         )
@@ -175,6 +175,8 @@ class IndexingStats:
     comments_indexed: int = 0
     docstrings_indexed: int = 0
     commit_messages_indexed: int = 0
+    # Dependency counters
+    dependencies_found: int = 0
     errors: list[str] = field(default_factory=list)
     # Database query statistics
     db_stats: DBQueryStats = field(default_factory=DBQueryStats)
@@ -234,6 +236,7 @@ def run_full_index(
     console: Console,
     days: int | None = None,
     base_branch: str | None = None,
+    no_deps: bool = False,
 ) -> IndexingResult | None:
     """
     Run full snapshot indexing of a repository.
@@ -266,6 +269,7 @@ def run_full_index(
                 console=console,
                 days=days,
                 base_branch=base_branch,
+                no_deps=no_deps,
             )
         )
     except KeyboardInterrupt:
@@ -280,6 +284,7 @@ async def _run_full_index_async(
     console: Console,
     days: int | None = None,
     base_branch: str | None = None,
+    no_deps: bool = False,
 ) -> IndexingResult:
     """Async implementation of full indexing using the orchestrator."""
     from sqlalchemy import text
@@ -310,6 +315,17 @@ async def _run_full_index_async(
                 await session.flush()
                 session.expunge_all()
 
+            # Initialize dependency parser (unless --no-deps)
+            dep_parser = None
+            dep_repo = None
+            if not no_deps:
+                from inxr2.adapters.external.dependency_parsers.service import (
+                    DependencyParserService,
+                )
+
+                dep_parser = DependencyParserService()
+                dep_repo = repos.dependency_repo
+
             # Create orchestrator
             orchestrator = DefaultIndexingOrchestrator(
                 repository_repo=repos.repository_repo,
@@ -324,6 +340,8 @@ async def _run_full_index_async(
                 plaintext_parser=PlaintextParser(),
                 pre_resolve_callback=flush_and_expunge,
                 post_commit_callback=flush_and_expunge,
+                dependency_parser=dep_parser,
+                dependency_repo=dep_repo,
             )
 
             # Get repository info for display
@@ -394,6 +412,7 @@ async def _run_full_index_async(
                 comments_indexed=response.comments_indexed,
                 docstrings_indexed=response.docstrings_indexed,
                 commit_messages_indexed=response.commit_messages_indexed,
+                dependencies_found=response.dependencies_found,
                 errors=response.errors,
                 db_stats=response.db_stats,
                 db_size_bytes=db_size_after,

@@ -4,6 +4,7 @@ from .base import Base
 from .branch_commit import BranchCommitModel
 from .commit import CommitModel
 from .commit_file import CommitFileModel
+from .dependency import DependencyModel
 from .file import FileModel
 from .index_status import IndexStatusModel
 from .reference import ReferenceModel
@@ -17,6 +18,7 @@ __all__ = [
     "CommitModel",
     "CommitFileModel",
     "BranchCommitModel",
+    "DependencyModel",
     "FileModel",
     "SymbolModel",
     "ReferenceModel",

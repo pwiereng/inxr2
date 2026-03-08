@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from ...domain.entities import (
     Commit,
+    Dependency,
     File,
     IndexStatus,
     Reference,
@@ -18,6 +19,7 @@ from ...domain.entities import (
 from ...domain.value_objects import CommitHash, ReferenceType, SymbolKind
 from .models import (
     CommitModel,
+    DependencyModel,
     FileModel,
     IndexStatusModel,
     ReferenceModel,
@@ -276,6 +278,46 @@ class IndexStatusMapper:
             extra_metadata=entity.metadata,
             created_at=entity.created_at or datetime.now(UTC).replace(tzinfo=None),
             updated_at=entity.updated_at or datetime.now(UTC).replace(tzinfo=None),
+        )
+
+
+class DependencyMapper:
+    """Maps between Dependency entity and DependencyModel."""
+
+    @staticmethod
+    def to_domain(model: DependencyModel) -> Dependency:
+        """Convert ORM model to domain entity."""
+        return Dependency(
+            id=model.id,
+            file_id=model.file_id,
+            repository_id=model.repository_id,
+            package_name=model.package_name,
+            version_spec=model.version_spec,
+            resolved_version=model.resolved_version,
+            language=model.language,
+            dependency_type=model.dependency_type,
+            is_direct=model.is_direct,
+            parent_dependency_id=model.parent_dependency_id,
+            extras=model.extras,
+            indexed_at=model.indexed_at,
+        )
+
+    @staticmethod
+    def to_model(entity: Dependency) -> DependencyModel:
+        """Convert domain entity to ORM model."""
+        return DependencyModel(
+            id=entity.id,
+            file_id=entity.file_id,
+            repository_id=entity.repository_id,
+            package_name=entity.package_name,
+            version_spec=entity.version_spec,
+            resolved_version=entity.resolved_version,
+            language=entity.language,
+            dependency_type=entity.dependency_type,
+            is_direct=entity.is_direct,
+            parent_dependency_id=entity.parent_dependency_id,
+            extras=entity.extras,
+            indexed_at=entity.indexed_at or datetime.now(UTC).replace(tzinfo=None),
         )
 
 

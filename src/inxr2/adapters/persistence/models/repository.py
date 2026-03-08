@@ -9,6 +9,7 @@ from .base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from .commit import CommitModel
+    from .dependency import DependencyModel
     from .file import FileModel
     from .index_status import IndexStatusModel
     from .reference import ReferenceModel
@@ -57,6 +58,9 @@ class RepositoryModel(Base, TimestampMixin):
     )
     text_contents: Mapped[list["TextContentModel"]] = relationship(
         "TextContentModel", back_populates="repository", cascade="all, delete-orphan"
+    )
+    dependencies: Mapped[list["DependencyModel"]] = relationship(
+        "DependencyModel", back_populates="repository", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

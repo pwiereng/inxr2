@@ -40,6 +40,7 @@ from typing import Any, BinaryIO
 
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
+    DependencyRepositoryPort,
     FileRepositoryPort,
     FileSearchPort,
     FileVersionPort,
@@ -65,6 +66,7 @@ from inxr2.application.ports.services import (
 )
 from inxr2.domain.entities import (
     Commit,
+    Dependency,
     File,
     IndexStatus,
     Reference,
@@ -2814,6 +2816,156 @@ def create_populated_symbol_repository() -> InMemorySymbolRepository:
     )
 
     return repo
+
+
+# ============================================================================
+# InMemoryDependencyRepository
+# ============================================================================
+
+
+class InMemoryDependencyRepository(DependencyRepositoryPort):
+    """In-memory fake implementation of DependencyRepositoryPort.
+
+    Stores dependencies in a dict keyed by ID.
+    Accepts optional file_repo for commit-scoped queries via commit_files.
+    """
+
+    def __init__(
+        self,
+        file_repo: "InMemoryFileRepository | None" = None,
+    ) -> None:
+        self._dependencies: dict[int, Dependency] = {}
+        self._next_id = 1
+        self._file_repo = file_repo
+
+    async def save(self, dependency: Dependency) -> Dependency:
+        """Save a dependency, auto-assigning ID if needed."""
+        if dependency.id is None:
+            dep_id = self._next_id
+            self._next_id += 1
+            dependency = Dependency(
+                id=dep_id,
+                file_id=dependency.file_id,
+                repository_id=dependency.repository_id,
+                package_name=dependency.package_name,
+                language=dependency.language,
+                version_spec=dependency.version_spec,
+                resolved_version=dependency.resolved_version,
+                dependency_type=dependency.dependency_type,
+                is_direct=dependency.is_direct,
+                parent_dependency_id=dependency.parent_dependency_id,
+                extras=dependency.extras,
+                indexed_at=dependency.indexed_at,
+            )
+        assert dependency.id is not None
+        self._dependencies[dependency.id] = dependency
+        return dependency
+
+    async def save_many(self, dependencies: list[Dependency]) -> list[Dependency]:
+        """Bulk save dependencies."""
+        return [await self.save(d) for d in dependencies]
+
+    async def find_by_id(self, dependency_id: int) -> Dependency | None:
+        """Find dependency by ID."""
+        return self._dependencies.get(dependency_id)
+
+    async def find_by_file(
+        self,
+        file_id: int,
+        dependency_type: str | None = None,
+        is_direct: bool | None = None,
+    ) -> list[Dependency]:
+        """Find all dependencies for a manifest file version."""
+        results = [d for d in self._dependencies.values() if d.file_id == file_id]
+        if dependency_type is not None:
+            results = [d for d in results if d.dependency_type == dependency_type]
+        if is_direct is not None:
+            results = [d for d in results if d.is_direct == is_direct]
+        return sorted(results, key=lambda d: d.package_name)
+
+    async def find_by_commit(
+        self,
+        commit_id: int,
+        repository_id: int,
+        language: str | None = None,
+        dependency_type: str | None = None,
+        is_direct: bool | None = None,
+    ) -> list[Dependency]:
+        """Find all dependencies at a specific commit via commit_files junction."""
+        if self._file_repo is None:
+            return []
+
+        # Get file IDs linked to this commit
+        commit_file_ids = {
+            fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+        }
+
+        results = [
+            d
+            for d in self._dependencies.values()
+            if d.repository_id == repository_id and d.file_id in commit_file_ids
+        ]
+
+        if language is not None:
+            results = [d for d in results if d.language == language]
+        if dependency_type is not None:
+            results = [d for d in results if d.dependency_type == dependency_type]
+        if is_direct is not None:
+            results = [d for d in results if d.is_direct == is_direct]
+
+        return sorted(results, key=lambda d: (d.file_id, d.package_name))
+
+    async def find_by_package_name(
+        self,
+        package_name: str,
+        repository_id: int | None = None,
+        language: str | None = None,
+    ) -> list[Dependency]:
+        """Find all dependencies matching a package name (reverse lookup)."""
+        results = [
+            d for d in self._dependencies.values() if d.package_name == package_name
+        ]
+        if repository_id is not None:
+            results = [d for d in results if d.repository_id == repository_id]
+        if language is not None:
+            results = [d for d in results if d.language == language]
+        return sorted(results, key=lambda d: (d.repository_id, d.file_id))
+
+    async def count_by_repository(self, repository_id: int) -> int:
+        """Count total dependencies in a repository."""
+        return sum(
+            1 for d in self._dependencies.values() if d.repository_id == repository_id
+        )
+
+    async def delete_by_file(self, file_id: int) -> int:
+        """Delete all dependencies for a file."""
+        to_delete = [
+            did for did, d in self._dependencies.items() if d.file_id == file_id
+        ]
+        for did in to_delete:
+            del self._dependencies[did]
+        return len(to_delete)
+
+    async def delete_by_repository(self, repository_id: int) -> int:
+        """Delete all dependencies for a repository."""
+        to_delete = [
+            did
+            for did, d in self._dependencies.items()
+            if d.repository_id == repository_id
+        ]
+        for did in to_delete:
+            del self._dependencies[did]
+        return len(to_delete)
+
+    # Test helpers
+    def clear(self) -> None:
+        """Clear all stored dependencies."""
+        self._dependencies.clear()
+        self._next_id = 1
+
+    def count(self) -> int:
+        """Return total stored dependencies."""
+        return len(self._dependencies)
 
 
 # ============================================================================

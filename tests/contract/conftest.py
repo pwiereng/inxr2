@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import (
 from inxr2.adapters.persistence.models import Base
 from inxr2.adapters.persistence.repositories import (
     PostgresCommitRepository,
+    PostgresDependencyRepository,
     PostgresFileRepository,
     PostgresFileSearchRepository,
     PostgresFileVersionRepository,
@@ -26,6 +27,7 @@ from inxr2.adapters.persistence.repositories import (
 )
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
+    DependencyRepositoryPort,
     FileRepositoryPort,
     FileSearchPort,
     FileVersionPort,
@@ -35,6 +37,7 @@ from inxr2.application.ports.repositories import (
 )
 from tests.fixtures.test_doubles import (
     InMemoryCommitRepository,
+    InMemoryDependencyRepository,
     InMemoryFileRepository,
     InMemoryFileSearchRepository,
     InMemoryFileVersionRepository,
@@ -65,6 +68,7 @@ class Repos:
     file_version: FileVersionPort
     symbol: SymbolRepositoryPort
     reference: ReferenceRepositoryPort
+    dependency: DependencyRepositoryPort
 
 
 def _assert_test_database(url: str) -> None:
@@ -143,6 +147,7 @@ async def repos(impl: str, db_session: AsyncSession) -> Repos:
             file_repo=file_repo,
             commit_repo=commit_repo,
         )
+        dep_repo = InMemoryDependencyRepository(file_repo=file_repo)
         repo_repo = InMemoryRepositoryRepository()
         return Repos(
             repository=repo_repo,
@@ -152,6 +157,7 @@ async def repos(impl: str, db_session: AsyncSession) -> Repos:
             file_version=file_version_repo,
             symbol=symbol_repo,
             reference=ref_repo,
+            dependency=dep_repo,
         )
     else:
         return Repos(
@@ -162,6 +168,7 @@ async def repos(impl: str, db_session: AsyncSession) -> Repos:
             file_version=PostgresFileVersionRepository(db_session),
             symbol=PostgresSymbolRepository(db_session),
             reference=PostgresReferenceRepository(db_session),
+            dependency=PostgresDependencyRepository(db_session),
         )
 
 

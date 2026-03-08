@@ -62,6 +62,7 @@ class ProcessCommitResult:
     comments_indexed: int = 0
     docstrings_indexed: int = 0
     commit_messages_indexed: int = 0
+    dependencies_found: int = 0
     non_code_files_indexed: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -244,6 +245,7 @@ class ProcessCommitUseCase:
         result.lines_indexed += file_result.lines_indexed
         result.comments_indexed += file_result.comments_indexed
         result.docstrings_indexed += file_result.docstrings_indexed
+        result.dependencies_found += file_result.dependencies_found
         if file_result.non_code_file_indexed:
             result.non_code_files_indexed += 1
         if file_result.error:

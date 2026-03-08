@@ -581,3 +581,46 @@ export async function getFileExtensions(params?: {
   const query = searchParams.toString()
   return fetchApi<ExtensionsResponse>(`/search/extensions${query ? `?${query}` : ''}`)
 }
+
+// Dependencies
+export interface DependencyItem {
+  id: number
+  package_name: string
+  language: string
+  version_spec: string | null
+  resolved_version: string | null
+  dependency_type: string
+  is_direct: boolean
+  file_id: number
+  file_path: string | null
+}
+
+export interface DependenciesListResponse {
+  repository_id: number
+  repository_name: string
+  commit_hash: string | null
+  items: DependencyItem[]
+  total: number
+}
+
+export async function getRepositoryDependencies(
+  repoName: string,
+  params?: {
+    commit?: string
+    branch?: string
+    language?: string
+    dependency_type?: string
+    is_direct?: boolean
+  }
+): Promise<DependenciesListResponse> {
+  const searchParams = new URLSearchParams()
+  if (params?.commit) searchParams.set('commit', params.commit)
+  if (params?.branch) searchParams.set('branch', params.branch)
+  if (params?.language) searchParams.set('language', params.language)
+  if (params?.dependency_type) searchParams.set('dependency_type', params.dependency_type)
+  if (params?.is_direct !== undefined) searchParams.set('is_direct', params.is_direct.toString())
+  const query = searchParams.toString()
+  return fetchApi<DependenciesListResponse>(
+    `/repositories/by-name/${encodeURIComponent(repoName)}/dependencies${query ? `?${query}` : ''}`
+  )
+}

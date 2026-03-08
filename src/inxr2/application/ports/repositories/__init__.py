@@ -15,6 +15,7 @@ Each port is defined in its own module for easier navigation:
 """
 
 from .commit_repository_port import CommitRepositoryPort
+from .dependency_repository_port import DependencyRepositoryPort
 from .file_repository_port import FileRepositoryPort, FileSearchPort, FileVersionPort
 from .index_status_repository_port import IndexStatusRepositoryPort
 from .reference_repository_port import ReferenceRepositoryPort
@@ -24,6 +25,7 @@ from .text_content_repository_port import TextContentRepositoryPort
 
 __all__ = [
     "CommitRepositoryPort",
+    "DependencyRepositoryPort",
     "FileRepositoryPort",
     "FileSearchPort",
     "FileVersionPort",
