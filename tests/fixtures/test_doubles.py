@@ -172,6 +172,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         mode: str | None = None,
         case_sensitive: bool = True,
         commit_id: int | None = None,
+        top_level_only: bool = False,
     ) -> list[Symbol]:
         """Search symbols by name with optional filters.
 
@@ -270,6 +271,8 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 extension_file_ids is not None
                 and symbol.file_id not in extension_file_ids
             ):
+                continue
+            if top_level_only and not self._is_effectively_top_level(symbol):
                 continue
             results.append(symbol)
         results.sort(key=lambda s: s.name)

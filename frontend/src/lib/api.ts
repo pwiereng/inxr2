@@ -346,6 +346,7 @@ export async function searchSymbols(params: {
   mode?: string
   case_sensitive?: boolean
   scope?: 'latest' | 'all_branches' | 'all_history'
+  top_level_only?: boolean
   limit?: number
   offset?: number
 }): Promise<SymbolListResponse> {
@@ -363,6 +364,7 @@ export async function searchSymbols(params: {
   if (params.case_sensitive !== undefined)
     searchParams.set('case_sensitive', params.case_sensitive.toString())
   if (params.scope) searchParams.set('scope', params.scope)
+  if (params.top_level_only) searchParams.set('top_level_only', 'true')
   if (params.limit) searchParams.set('limit', params.limit.toString())
   if (params.offset) searchParams.set('offset', params.offset.toString())
 

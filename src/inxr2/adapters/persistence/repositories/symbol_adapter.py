@@ -40,6 +40,7 @@ class PostgresSymbolRepository(
         mode: str | None = None,
         case_sensitive: bool = True,
         commit_id: int | None = None,
+        top_level_only: bool = False,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
@@ -83,6 +84,17 @@ class PostgresSymbolRepository(
 
         if kind is not None:
             query = query.where(SymbolModel.kind == kind)
+
+        if top_level_only:
+            parent_sym = aliased(SymbolModel, flat=True)
+            query = query.outerjoin(
+                parent_sym, SymbolModel.parent_symbol_id == parent_sym.id
+            ).where(
+                or_(
+                    SymbolModel.parent_symbol_id.is_(None),
+                    parent_sym.kind == "namespace",
+                )
+            )
 
         if language is not None:
             query = query.where(

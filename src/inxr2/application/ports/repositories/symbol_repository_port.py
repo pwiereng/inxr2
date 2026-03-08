@@ -37,6 +37,7 @@ class SymbolRepositoryPort(ABC):
         mode: str | None = None,
         case_sensitive: bool = True,
         commit_id: int | None = None,
+        top_level_only: bool = False,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
@@ -56,6 +57,8 @@ class SymbolRepositoryPort(ABC):
                 default True)
             commit_id: Filter by specific commit via commit_files (optional).
                 When set, takes precedence over branch-based dedup.
+            top_level_only: If True, only return symbols that are effectively
+                top-level (no parent, or parent is a namespace).
         """
         pass
 

@@ -103,6 +103,10 @@ async def search_symbols(
         default=None,
         description="Commit hash for time travel (requires repository_id)",
     ),
+    top_level_only: bool = Query(
+        default=False,
+        description="Only return top-level symbols (no parent, or parent is namespace)",
+    ),
     limit: int = Query(default=50, ge=1, le=200, description="Max results"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ) -> SymbolListResponse:
@@ -132,6 +136,7 @@ async def search_symbols(
                 mode=mode,
                 case_sensitive=case_sensitive,
                 commit_hash=commit,
+                top_level_only=top_level_only,
             )
         )
     except ValueError as e:

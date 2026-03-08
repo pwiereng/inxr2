@@ -26,14 +26,16 @@ import SearchIcon from '@mui/icons-material/Search'
 import BlockIcon from '@mui/icons-material/Block'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import TagIcon from '@mui/icons-material/Tag'
-import AbcIcon from '@mui/icons-material/Abc'
+import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import ClearIcon from '@mui/icons-material/Clear'
+import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import IconButton from '@mui/material/IconButton'
 import { CodeHeader } from '@/components/CodeHeader'
 import type { TabValue } from '@/components/CodeHeader'
 import {
   getSymbolTree,
   searchSymbols,
+  type Symbol as ApiSymbol,
   type SymbolTreeFile,
   type SymbolTreeSymbol,
   type SymbolTreeInheritance,
@@ -98,6 +100,7 @@ export default function LogicalView(): React.ReactElement {
   const branch = searchParams.get('branch')
   const commit = searchParams.get('commit')
   const fileParam = searchParams.get('file')
+  const kindParam = searchParams.get('kind')
 
   // Data state
   const [files, setFiles] = useState<SymbolTreeFile[]>([])
@@ -116,15 +119,22 @@ export default function LogicalView(): React.ReactElement {
   const [filterText, setFilterText] = useState('')
   const [excludeText, setExcludeText] = useState('')
   const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null)
-  const [selectedKinds, setSelectedKinds] = useState<Set<string>>(new Set())
-  const [kindChipMode, setKindChipMode] = useState<'counts' | 'names' | 'off'>('off')
+  const [activeKind, setActiveKind] = useState<string | null>(kindParam)
+  const [showKindCounts, setShowKindCounts] = useState(false)
   const [symbolSearch, setSymbolSearch] = useState('')
   const [symbolSearchMatchFileIds, setSymbolSearchMatchFileIds] = useState<Set<number> | null>(null)
   const [symbolSearchMatchIds, setSymbolSearchMatchIds] = useState<Set<number>>(new Set())
   const [symbolSearchLoading, setSymbolSearchLoading] = useState(false)
   const [repositoryId, setRepositoryId] = useState<number | null>(null)
+
+  // Kind mode state
+  const [kindSymbols, setKindSymbols] = useState<ApiSymbol[]>([])
+  const [kindSymbolsLoading, setKindSymbolsLoading] = useState(false)
+  const [kindExpandedSymbols, setKindExpandedSymbols] = useState<Set<number>>(new Set())
+  const [kindSymbolChildren, setKindSymbolChildren] = useState<SymbolChildren>({})
+  const [kindExpandingSymbol, setKindExpandingSymbol] = useState<number | null>(null)
+
   const symbolSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const fetchedFileIds = useRef(new Set<number>())
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScrollTop = useRef(0)
   const initialFileExpanded = useRef(false)
@@ -141,7 +151,7 @@ export default function LogicalView(): React.ReactElement {
   // Available kinds from backend (tier 1 response)
   const [availableKinds, setAvailableKinds] = useState<string[]>([])
 
-  // Load tier 1 (files) when repo/branch/commit/kinds changes
+  // Load tier 1 (files) when repo/branch/commit changes
   useEffect(() => {
     if (!repoName) {
       setFiles([])
@@ -157,14 +167,12 @@ export default function LogicalView(): React.ReactElement {
       setFileSymbols({})
       setSymbolChildren({})
       setExpanded({ files: new Set(), symbols: new Set() })
-      fetchedFileIds.current = new Set()
       initialFileExpanded.current = false
 
       try {
         const result = await getSymbolTree(repoName, {
           branch: branch ?? undefined,
           commit: commit ?? undefined,
-          kinds: selectedKinds.size > 0 ? [...selectedKinds] : undefined,
         })
         if (!cancelled) {
           if (result.files) setFiles(result.files)
@@ -183,7 +191,7 @@ export default function LogicalView(): React.ReactElement {
     return () => {
       cancelled = true
     }
-  }, [repoName, branch, commit, selectedKinds])
+  }, [repoName, branch, commit])
 
   // Debounced symbol search
   useEffect(() => {
@@ -205,7 +213,7 @@ export default function LogicalView(): React.ReactElement {
           branch: branch ?? undefined,
           commit: commit ?? undefined,
           case_sensitive: false,
-          kind: selectedKinds.size === 1 ? [...selectedKinds][0] : undefined,
+          kind: activeKind ?? undefined,
           limit: 200,
         })
         const fileIds = new Set(result.items.map((s) => s.file_id))
@@ -223,16 +231,25 @@ export default function LogicalView(): React.ReactElement {
     return () => {
       if (symbolSearchTimer.current) clearTimeout(symbolSearchTimer.current)
     }
-  }, [symbolSearch, repositoryId, branch, commit, selectedKinds])
+  }, [symbolSearch, repositoryId, branch, commit, activeKind])
 
-  // Update URL with the most recently expanded file path
-  const updateFileParam = useCallback(
-    (filePath: string | null) => {
+  // Update URL to reflect current browsing state
+  const updateUrlState = useCallback(
+    (updates: { file?: string | null; kind?: string | null }) => {
       const params = new URLSearchParams(searchParams)
-      if (filePath !== null) {
-        params.set('file', filePath)
-      } else {
-        params.delete('file')
+      if ('file' in updates) {
+        if (updates.file) {
+          params.set('file', updates.file)
+        } else {
+          params.delete('file')
+        }
+      }
+      if ('kind' in updates) {
+        if (updates.kind) {
+          params.set('kind', updates.kind)
+        } else {
+          params.delete('kind')
+        }
       }
       navigate(`/logical-view?${params.toString()}`, { replace: true })
     },
@@ -305,9 +322,9 @@ export default function LogicalView(): React.ReactElement {
       })
 
       const file = files.find((f) => f.file_id === fileId)
-      if (file) updateFileParam(file.path)
+      if (file) updateUrlState({ file: file.path })
     },
-    [expanded.files, fileSymbols, symbolChildren, repoName, branch, commit, updateFileParam, files]
+    [expanded.files, fileSymbols, symbolChildren, repoName, branch, commit, updateUrlState, files]
   )
 
   // Expand/collapse a symbol (tier 3)
@@ -348,6 +365,112 @@ export default function LogicalView(): React.ReactElement {
       })
     },
     [expanded.symbols, symbolChildren, repoName, branch, commit]
+  )
+
+  // Fetch symbols when entering kind mode
+  useEffect(() => {
+    if (!activeKind || !repositoryId) {
+      setKindSymbols([])
+      setKindExpandedSymbols(new Set())
+      setKindSymbolChildren({})
+      return
+    }
+
+    let cancelled = false
+    const loadKindSymbols = async () => {
+      setKindSymbolsLoading(true)
+      setKindSymbols([])
+      setKindExpandedSymbols(new Set())
+      setKindSymbolChildren({})
+
+      try {
+        // Fetch all symbols of this kind (paginate if needed)
+        const allSymbols: ApiSymbol[] = []
+        let offset = 0
+        const limit = 200
+        let hasMore = true
+
+        while (hasMore) {
+          const result = await searchSymbols({
+            kind: activeKind,
+            repository_id: repositoryId,
+            branch: branch ?? undefined,
+            commit: commit ?? undefined,
+            top_level_only: true,
+            limit,
+            offset,
+          })
+          if (cancelled) return
+          allSymbols.push(...result.items)
+          hasMore = result.items.length === limit
+          offset += limit
+        }
+
+        if (!cancelled) {
+          // Sort alphabetically by name
+          allSymbols.sort((a, b) => a.name.localeCompare(b.name))
+          setKindSymbols(allSymbols)
+        }
+      } catch {
+        // Silently fail
+      } finally {
+        if (!cancelled) setKindSymbolsLoading(false)
+      }
+    }
+    loadKindSymbols()
+    return () => {
+      cancelled = true
+    }
+  }, [activeKind, repositoryId, branch, commit])
+
+  // Expand/collapse a symbol in kind mode (fetch children via symbol tree)
+  const toggleKindSymbol = useCallback(
+    async (symbolId: number) => {
+      if (kindExpandedSymbols.has(symbolId)) {
+        setKindExpandedSymbols((prev) => {
+          const next = new Set(prev)
+          next.delete(symbolId)
+          return next
+        })
+        return
+      }
+
+      if (!kindSymbolChildren[symbolId] && repoName) {
+        setKindExpandingSymbol(symbolId)
+        try {
+          const result: SymbolTreeResponse = await getSymbolTree(repoName, {
+            branch: branch ?? undefined,
+            commit: commit ?? undefined,
+            parent_symbol_id: symbolId,
+          })
+          if (result.symbols) {
+            setKindSymbolChildren((prev) => ({ ...prev, [symbolId]: result.symbols! }))
+          }
+        } catch {
+          // Silently fail
+        } finally {
+          setKindExpandingSymbol(null)
+        }
+      }
+
+      setKindExpandedSymbols((prev) => {
+        const next = new Set(prev)
+        next.add(symbolId)
+        return next
+      })
+    },
+    [kindExpandedSymbols, kindSymbolChildren, repoName, branch, commit]
+  )
+
+  // Switch from kind mode back to outline mode, expanding the file containing a symbol
+  const switchToOutline = useCallback(
+    (filePath: string) => {
+      setActiveKind(null)
+      updateUrlState({ file: filePath, kind: null })
+      // Reset initialFileExpanded so the auto-expand effect triggers
+      initialFileExpanded.current = false
+    },
+    [updateUrlState]
   )
 
   // Auto-expand file from URL param on initial load / bookmark navigation
@@ -550,6 +673,72 @@ export default function LogicalView(): React.ReactElement {
     return result
   }, [files, selectedLanguage, filterText, excludeText, fileSymbols, symbolSearchMatchFileIds])
 
+  // Filter kind-mode symbols by text, language, and symbol search
+  const filteredKindSymbols = useMemo(() => {
+    let result = kindSymbols
+    if (selectedLanguage) {
+      result = result.filter((s) => {
+        // Match language from file extension
+        const ext = s.file_path?.split('.').pop()?.toLowerCase()
+        const langMap: Record<string, string> = {
+          py: 'python',
+          ts: 'typescript',
+          tsx: 'typescript',
+          js: 'javascript',
+          jsx: 'javascript',
+          rb: 'ruby',
+          go: 'go',
+          rs: 'rust',
+          java: 'java',
+          cs: 'csharp',
+          cpp: 'cpp',
+          c: 'c',
+          h: 'c',
+          sh: 'bash',
+          bash: 'bash',
+        }
+        return ext ? langMap[ext] === selectedLanguage : false
+      })
+    }
+    if (filterText) {
+      const lower = filterText.toLowerCase()
+      result = result.filter(
+        (s) =>
+          s.name.toLowerCase().includes(lower) ||
+          (s.file_path?.toLowerCase().includes(lower) ?? false)
+      )
+    }
+    if (excludeText) {
+      const lower = excludeText.toLowerCase()
+      result = result.filter(
+        (s) =>
+          !s.name.toLowerCase().includes(lower) &&
+          !(s.file_path?.toLowerCase().includes(lower) ?? false)
+      )
+    }
+    if (symbolSearch.trim()) {
+      const lower = symbolSearch.trim().toLowerCase()
+      result = result.filter((s) => s.name.toLowerCase().includes(lower))
+    }
+    return result
+  }, [kindSymbols, selectedLanguage, filterText, excludeText, symbolSearch])
+
+  // Summary stats reflecting current filtered view
+  const summaryStats = useMemo(() => {
+    if (activeKind) {
+      // Kind mode: just show count of filtered symbols
+      return { files: 0, kinds: { [activeKind]: filteredKindSymbols.length } }
+    }
+    // Outline mode: aggregate kind_counts from filtered files
+    const kinds: Record<string, number> = {}
+    for (const f of filteredFiles) {
+      for (const [kind, count] of Object.entries(f.kind_counts)) {
+        kinds[kind] = (kinds[kind] ?? 0) + count
+      }
+    }
+    return { files: filteredFiles.length, kinds }
+  }, [activeKind, filteredFiles, filteredKindSymbols])
+
   // Restore scroll position after filter/search changes re-render the list
   useLayoutEffect(() => {
     if (scrollRef.current && savedScrollTop.current > 0) {
@@ -562,46 +751,6 @@ export default function LogicalView(): React.ReactElement {
       savedScrollTop.current = scrollRef.current.scrollTop
     }
   }, [])
-
-  // Pre-fetch symbols for all files when switching to names mode
-  useEffect(() => {
-    if (kindChipMode !== 'names' || !repoName || files.length === 0) return
-
-    const missing = files.filter((f) => !fetchedFileIds.current.has(f.file_id))
-    if (missing.length === 0) return
-
-    for (const f of missing) fetchedFileIds.current.add(f.file_id)
-
-    let cancelled = false
-    const fetchMissing = async () => {
-      const results = await Promise.allSettled(
-        missing.map(async (f) => {
-          const result = await getSymbolTree(repoName, {
-            branch: branch ?? undefined,
-            commit: commit ?? undefined,
-            file_id: f.file_id,
-          })
-          return { fileId: f.file_id, symbols: result.symbols }
-        })
-      )
-
-      if (cancelled) return
-
-      const newSymbols: Record<number, SymbolTreeSymbol[]> = {}
-      for (const r of results) {
-        if (r.status === 'fulfilled' && r.value.symbols) {
-          newSymbols[r.value.fileId] = r.value.symbols
-        }
-      }
-      if (Object.keys(newSymbols).length > 0) {
-        setFileSymbols((prev) => ({ ...prev, ...newSymbols }))
-      }
-    }
-    fetchMissing()
-    return () => {
-      cancelled = true
-    }
-  }, [kindChipMode, repoName, branch, commit, files])
 
   const fileName = (path: string) => {
     const parts = path.split('/')
@@ -673,7 +822,7 @@ export default function LogicalView(): React.ReactElement {
             />
             <TextField
               size="small"
-              placeholder="Include..."
+              placeholder="Include files..."
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
               InputProps={{
@@ -694,7 +843,7 @@ export default function LogicalView(): React.ReactElement {
             />
             <TextField
               size="small"
-              placeholder="Exclude..."
+              placeholder="Exclude files..."
               value={excludeText}
               onChange={(e) => setExcludeText(e.target.value)}
               InputProps={{
@@ -739,17 +888,51 @@ export default function LogicalView(): React.ReactElement {
                 ))}
               </Box>
             )}
+            <Tooltip title="Reset all filters" arrow>
+              <span>
+                <IconButton
+                  size="small"
+                  disabled={
+                    !symbolSearch &&
+                    !filterText &&
+                    !excludeText &&
+                    !selectedLanguage &&
+                    !activeKind &&
+                    expanded.files.size === 0
+                  }
+                  onClick={() => {
+                    setSymbolSearch('')
+                    setFilterText('')
+                    setExcludeText('')
+                    setSelectedLanguage(null)
+                    setActiveKind(null)
+                    setShowKindCounts(false)
+                    setExpanded({ files: new Set(), symbols: new Set() })
+                    updateUrlState({ file: null, kind: null })
+                    savedScrollTop.current = 0
+                    if (scrollRef.current) scrollRef.current.scrollTop = 0
+                  }}
+                  color="warning"
+                >
+                  <RestartAltIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
             {availableKinds.length > 0 && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
-                  Kind:
+                  View:
                 </Typography>
                 <Chip
-                  label="All"
+                  label="Outline"
                   size="small"
-                  variant={selectedKinds.size === 0 ? 'filled' : 'outlined'}
-                  color={selectedKinds.size === 0 ? 'primary' : 'default'}
-                  onClick={() => setSelectedKinds(new Set())}
+                  icon={<AccountTreeIcon sx={{ fontSize: 14 }} />}
+                  variant={activeKind === null ? 'filled' : 'outlined'}
+                  color={activeKind === null ? 'primary' : 'default'}
+                  onClick={() => {
+                    setActiveKind(null)
+                    updateUrlState({ kind: null })
+                  }}
                   sx={{ height: 24 }}
                 />
                 {availableKinds.map((kind) => (
@@ -758,50 +941,73 @@ export default function LogicalView(): React.ReactElement {
                     label={getKindLabel(kind)}
                     size="small"
                     icon={<>{getKindIcon(kind)}</>}
-                    variant={selectedKinds.has(kind) ? 'filled' : 'outlined'}
-                    color={selectedKinds.has(kind) ? 'primary' : 'default'}
+                    variant={activeKind === kind ? 'filled' : 'outlined'}
+                    color={activeKind === kind ? 'primary' : 'default'}
                     onClick={() => {
-                      const next = new Set(selectedKinds)
-                      if (next.has(kind)) {
-                        next.delete(kind)
-                      } else {
-                        next.add(kind)
-                      }
-                      setSelectedKinds(next)
+                      const newKind = activeKind === kind ? null : kind
+                      setActiveKind(newKind)
+                      updateUrlState({ kind: newKind })
                     }}
                     sx={{ height: 24 }}
                   />
                 ))}
-                <Tooltip
-                  title={
-                    kindChipMode === 'counts'
-                      ? 'Show symbol names'
-                      : kindChipMode === 'names'
-                        ? 'Hide chips'
-                        : 'Show kind counts'
-                  }
-                  arrow
-                >
-                  <IconButton
-                    size="small"
-                    onClick={() =>
-                      setKindChipMode((prev) =>
-                        prev === 'counts' ? 'names' : prev === 'names' ? 'off' : 'counts'
-                      )
-                    }
-                    sx={{ ml: 0.5 }}
-                  >
-                    {kindChipMode === 'counts' ? (
-                      <TagIcon fontSize="small" />
-                    ) : kindChipMode === 'names' ? (
-                      <AbcIcon fontSize="small" />
-                    ) : (
-                      <VisibilityOffIcon fontSize="small" />
-                    )}
-                  </IconButton>
-                </Tooltip>
+                {activeKind === null && (
+                  <Tooltip title={showKindCounts ? 'Hide kind counts' : 'Show kind counts'} arrow>
+                    <IconButton
+                      size="small"
+                      onClick={() => setShowKindCounts((prev) => !prev)}
+                      sx={{ ml: 0.5 }}
+                    >
+                      {showKindCounts ? (
+                        <TagIcon fontSize="small" />
+                      ) : (
+                        <VisibilityOffIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                  </Tooltip>
+                )}
               </Box>
             )}
+          </Box>
+        )}
+
+        {/* Summary stats */}
+        {repoName && !loading && !error && (summaryStats.files > 0 || activeKind) && (
+          <Box
+            sx={{
+              px: 2,
+              py: 0.5,
+              borderBottom: 1,
+              borderColor: 'divider',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              bgcolor: 'action.hover',
+            }}
+          >
+            {summaryStats.files > 0 && (
+              <Typography variant="caption" color="text.secondary">
+                <strong>{summaryStats.files}</strong> files
+              </Typography>
+            )}
+            {Object.entries(summaryStats.kinds)
+              .sort(([, a], [, b]) => b - a)
+              .map(([kind, count]) => (
+                <Typography
+                  key={kind}
+                  variant="caption"
+                  sx={{
+                    color: getKindColor(kind),
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.3,
+                  }}
+                >
+                  {getKindIcon(kind)}
+                  <strong>{count}</strong> {getKindLabel(kind)}
+                  {count !== 1 ? 's' : ''}
+                </Typography>
+              ))}
           </Box>
         )}
 
@@ -854,7 +1060,57 @@ export default function LogicalView(): React.ReactElement {
             </Box>
           )}
 
-          {filteredFiles.length > 0 && (
+          {/* Kind mode view */}
+          {activeKind && !loading && !error && (
+            <>
+              {kindSymbolsLoading && (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: 4 }}>
+                  <CircularProgress size={24} />
+                  <Typography color="text.secondary" sx={{ ml: 1 }}>
+                    Loading {getKindLabel(activeKind)} symbols...
+                  </Typography>
+                </Box>
+              )}
+              {!kindSymbolsLoading && filteredKindSymbols.length === 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: 4 }}>
+                  <Typography color="text.secondary">
+                    No {getKindLabel(activeKind)} symbols found
+                  </Typography>
+                </Box>
+              )}
+              {!kindSymbolsLoading && filteredKindSymbols.length > 0 && (
+                <List dense disablePadding>
+                  <Box sx={{ px: 2, py: 0.5 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      {filteredKindSymbols.length} {getKindLabel(activeKind)}
+                      {filteredKindSymbols.length !== 1 ? 's' : ''}
+                    </Typography>
+                  </Box>
+                  {filteredKindSymbols.map((sym) => (
+                    <KindSymbolNode
+                      key={sym.id}
+                      symbol={sym}
+                      isExpanded={kindExpandedSymbols.has(sym.id)}
+                      isExpanding={kindExpandingSymbol === sym.id}
+                      children={kindSymbolChildren[sym.id]}
+                      symbolChildren={kindSymbolChildren}
+                      expandedSymbols={kindExpandedSymbols}
+                      expandingSymbol={kindExpandingSymbol}
+                      onToggle={toggleKindSymbol}
+                      onSymbolClick={handleSymbolClick}
+                      onInheritanceClick={handleInheritanceClick}
+                      onSwitchToOutline={switchToOutline}
+                      fileName={fileName}
+                      fileDir={fileDir}
+                    />
+                  ))}
+                </List>
+              )}
+            </>
+          )}
+
+          {/* Outline mode view */}
+          {!activeKind && filteredFiles.length > 0 && (
             <List dense disablePadding>
               {filteredFiles.map((file) => (
                 <FileNode
@@ -863,8 +1119,7 @@ export default function LogicalView(): React.ReactElement {
                   isExpanded={expanded.files.has(file.file_id)}
                   isExpanding={expandingFile === file.file_id}
                   symbols={fileSymbols[file.file_id]}
-                  selectedKinds={selectedKinds}
-                  kindChipMode={kindChipMode}
+                  showKindCounts={showKindCounts}
                   highlightedSymbolIds={symbolSearchMatchIds}
                   symbolChildren={symbolChildren}
                   expandedSymbols={expanded.symbols}
@@ -892,8 +1147,7 @@ interface FileNodeProps {
   isExpanded: boolean
   isExpanding: boolean
   symbols: SymbolTreeSymbol[] | undefined
-  selectedKinds: Set<string>
-  kindChipMode: 'counts' | 'names' | 'off'
+  showKindCounts: boolean
   highlightedSymbolIds: Set<number>
   symbolChildren: SymbolChildren
   expandedSymbols: Set<number>
@@ -911,8 +1165,7 @@ function FileNode({
   isExpanded,
   isExpanding,
   symbols,
-  selectedKinds,
-  kindChipMode,
+  showKindCounts,
   highlightedSymbolIds,
   symbolChildren,
   expandedSymbols,
@@ -970,9 +1223,8 @@ function FileNode({
                 variant="outlined"
                 sx={{ height: 18, fontSize: '0.7rem' }}
               />
-              {kindChipMode === 'counts' &&
+              {showKindCounts &&
                 Object.entries(file.kind_counts)
-                  .filter(([kind]) => selectedKinds.size === 0 || selectedKinds.has(kind))
                   .sort(([, a], [, b]) => b - a)
                   .map(([kind, count]) => (
                     <Chip
@@ -989,51 +1241,27 @@ function FileNode({
                       }}
                     />
                   ))}
-              {kindChipMode === 'names' &&
-                symbols
-                  ?.filter((s) => selectedKinds.size === 0 || selectedKinds.has(s.kind))
-                  .map((s) => (
-                    <Chip
-                      key={s.id}
-                      label={s.name}
-                      size="small"
-                      sx={{
-                        height: 18,
-                        fontSize: '0.65rem',
-                        backgroundColor: getKindColor(s.kind) + '22',
-                        color: getKindColor(s.kind),
-                        borderColor: getKindColor(s.kind) + '44',
-                        border: '1px solid',
-                      }}
-                    />
-                  ))}
             </Box>
           }
         />
       </ListItemButton>
 
       <Collapse in={isExpanded} timeout="auto">
-        {symbols
-          ?.filter(
-            (s) =>
-              (selectedKinds.size === 0 || selectedKinds.has(s.kind)) &&
-              (highlightedSymbolIds.size === 0 || highlightedSymbolIds.has(s.id))
-          )
-          .map((symbol) => (
-            <SymbolNode
-              key={symbol.id}
-              symbol={symbol}
-              level={1}
-              children={symbolChildren[symbol.id]}
-              expandedSymbols={expandedSymbols}
-              expandingSymbol={expandingSymbol}
-              symbolChildren={symbolChildren}
-              highlightedSymbolIds={highlightedSymbolIds}
-              onToggle={onToggleSymbol}
-              onClick={onSymbolClick}
-              onInheritanceClick={onInheritanceClick}
-            />
-          ))}
+        {symbols?.map((symbol) => (
+          <SymbolNode
+            key={symbol.id}
+            symbol={symbol}
+            level={1}
+            children={symbolChildren[symbol.id]}
+            expandedSymbols={expandedSymbols}
+            expandingSymbol={expandingSymbol}
+            symbolChildren={symbolChildren}
+            highlightedSymbolIds={highlightedSymbolIds}
+            onToggle={onToggleSymbol}
+            onClick={onSymbolClick}
+            onInheritanceClick={onInheritanceClick}
+          />
+        ))}
       </Collapse>
     </>
   )
@@ -1193,6 +1421,164 @@ function SymbolNode({
               highlightedSymbolIds={highlightedSymbolIds}
               onToggle={onToggle}
               onClick={onClick}
+              onInheritanceClick={onInheritanceClick}
+            />
+          ))}
+        </Collapse>
+      )}
+    </>
+  )
+}
+
+// --- Kind mode symbol node ---
+
+interface KindSymbolNodeProps {
+  symbol: ApiSymbol
+  isExpanded: boolean
+  isExpanding: boolean
+  children: SymbolTreeSymbol[] | undefined
+  symbolChildren: SymbolChildren
+  expandedSymbols: Set<number>
+  expandingSymbol: number | null
+  onToggle: (symbolId: number) => void
+  onSymbolClick: (symbol: SymbolTreeSymbol) => void
+  onInheritanceClick: (inh: SymbolTreeInheritance, e: React.MouseEvent) => void
+  onSwitchToOutline: (filePath: string) => void
+  fileName: (path: string) => string
+  fileDir: (path: string) => string
+}
+
+function KindSymbolNode({
+  symbol,
+  isExpanded,
+  isExpanding,
+  children,
+  symbolChildren,
+  expandedSymbols,
+  expandingSymbol,
+  onToggle,
+  onSymbolClick,
+  onInheritanceClick,
+  onSwitchToOutline,
+  fileName,
+  fileDir,
+}: KindSymbolNodeProps): React.ReactElement {
+  const isCallable =
+    symbol.kind === 'function' ||
+    symbol.kind === 'method' ||
+    symbol.kind === 'constructor' ||
+    symbol.kind === 'staticmethod' ||
+    symbol.kind === 'classmethod'
+
+  const isContainer =
+    symbol.kind === 'class' ||
+    symbol.kind === 'interface' ||
+    symbol.kind === 'struct' ||
+    symbol.kind === 'record' ||
+    symbol.kind === 'enum' ||
+    symbol.kind === 'namespace'
+
+  // Convert ApiSymbol to SymbolTreeSymbol shape for navigation
+  const asTreeSymbol: SymbolTreeSymbol = useMemo(
+    () => ({
+      id: symbol.id,
+      name: symbol.name,
+      kind: symbol.kind,
+      start_line: symbol.start_line,
+      end_line: symbol.end_line,
+      file_path: symbol.file_path,
+      has_children: isContainer,
+      signature: symbol.signature,
+      inheritance: [],
+    }),
+    [symbol, isContainer]
+  )
+
+  return (
+    <>
+      <ListItemButton
+        onClick={isContainer ? () => onToggle(symbol.id) : () => onSymbolClick(asTreeSymbol)}
+        sx={{ py: 0.5 }}
+      >
+        {isContainer && (
+          <ListItemIcon sx={{ minWidth: 28 }}>
+            {isExpanding ? (
+              <CircularProgress size={16} />
+            ) : isExpanded ? (
+              <ExpandMoreIcon fontSize="small" />
+            ) : (
+              <ChevronRightIcon fontSize="small" />
+            )}
+          </ListItemIcon>
+        )}
+        {!isContainer && <Box sx={{ width: 28 }} />}
+        <ListItemIcon sx={{ minWidth: 24 }}>{getKindIcon(symbol.kind)}</ListItemIcon>
+        <ListItemText
+          primary={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+              <Typography
+                variant="body2"
+                component="span"
+                sx={{
+                  fontFamily: 'monospace',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  '&:hover': { textDecoration: 'underline' },
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onSymbolClick(asTreeSymbol)
+                }}
+              >
+                {symbol.name}
+                {isCallable ? '()' : ''}
+              </Typography>
+              {symbol.file_path && (
+                <Tooltip title="View in Outline mode" arrow>
+                  <Typography
+                    variant="caption"
+                    component="span"
+                    sx={{
+                      fontFamily: 'monospace',
+                      color: 'text.secondary',
+                      cursor: 'pointer',
+                      '&:hover': { color: 'primary.main', textDecoration: 'underline' },
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onSwitchToOutline(symbol.file_path!)
+                    }}
+                  >
+                    {fileDir(symbol.file_path)}
+                    <Typography
+                      variant="caption"
+                      component="span"
+                      sx={{ fontFamily: 'monospace', color: 'text.primary' }}
+                    >
+                      {fileName(symbol.file_path)}
+                    </Typography>
+                  </Typography>
+                </Tooltip>
+              )}
+            </Box>
+          }
+        />
+      </ListItemButton>
+
+      {isContainer && (
+        <Collapse in={isExpanded} timeout="auto">
+          {children?.map((child) => (
+            <SymbolNode
+              key={child.id}
+              symbol={child}
+              level={1}
+              children={symbolChildren[child.id]}
+              expandedSymbols={expandedSymbols}
+              expandingSymbol={expandingSymbol}
+              symbolChildren={symbolChildren}
+              highlightedSymbolIds={new Set()}
+              onToggle={onToggle}
+              onClick={onSymbolClick}
               onInheritanceClick={onInheritanceClick}
             />
           ))}
