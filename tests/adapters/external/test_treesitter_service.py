@@ -1717,6 +1717,118 @@ const X = class extends Base {};
         assert "Base" in inherit_names
 
 
+class TestPythonInheritanceReferences:
+    """Tests for Python superclass inheritance reference extraction."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_single_base_class(self, parser_service: TreeSitterService) -> None:
+        """Test that `class Child(Parent)` creates an inheritance reference."""
+        code = """
+class Parent:
+    pass
+
+class Child(Parent):
+    pass
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "Parent" in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_multiple_base_classes(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `class C(A, B)` creates inheritance references for both."""
+        code = """
+class C(A, B):
+    pass
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "A" in inherit_names
+        assert "B" in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_dotted_base_class(self, parser_service: TreeSitterService) -> None:
+        """Test that `class C(module.Base)` creates an inheritance reference."""
+        code = """
+class C(abc.ABC):
+    pass
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "abc.ABC" in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_builtin_type_base_excluded(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that inheriting from type builtins like `object` doesn't create a ref."""
+        code = """
+class MyClass(object):
+    pass
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        # `object` is in PYTHON_TYPE_BUILTINS, so should be excluded
+        assert "object" not in inherit_names
+
+    @pytest.mark.asyncio
+    async def test_inheritance_scope_is_class_name(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that inheritance reference has scope = child class name."""
+        code = """
+class Child(Parent):
+    pass
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        parent_ref = next(r for r in inherit_refs if r["text"] == "Parent")
+        assert parent_ref["scope"] == "Child"
+
+    @pytest.mark.asyncio
+    async def test_metaclass_keyword_arg_excluded(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Test that `metaclass=ABCMeta` is not treated as inheritance."""
+        code = """
+class MyClass(metaclass=ABCMeta):
+    pass
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_names = [r["text"] for r in inherit_refs]
+        assert "ABCMeta" not in inherit_names
+
+
 class TestClassExpressionSymbols:
     """Tests for class expression symbol extraction (issue #190).
 

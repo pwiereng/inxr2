@@ -299,6 +299,89 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         """List all symbols in a file."""
         return [s for s in self._symbols.values() if s.file_id == file_id]
 
+    async def list_by_file_and_parent(
+        self,
+        file_id: int,
+        parent_symbol_id: int | None,
+    ) -> list[Symbol]:
+        """List symbols in a file filtered by parent."""
+        results = [
+            s
+            for s in self._symbols.values()
+            if s.file_id == file_id and s.parent_symbol_id == parent_symbol_id
+        ]
+        results.sort(key=lambda s: (s.kind.value, s.name))
+        return results
+
+    async def list_files_with_symbols(
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+    ) -> list[tuple[int, str, str | None, int]]:
+        """List files that contain symbols, with counts."""
+        # Determine which file IDs are valid for this scope
+        valid_file_ids: set[int] | None = None
+        if commit_id is not None and self._file_repo is not None:
+            valid_file_ids = {
+                fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+            }
+        elif self._file_repo is not None:
+            valid_file_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=branch
+            )
+
+        # Count symbols per file
+        file_counts: dict[int, int] = {}
+        for s in self._symbols.values():
+            if s.repository_id != repository_id:
+                continue
+            if valid_file_ids is not None and s.file_id not in valid_file_ids:
+                continue
+            file_counts[s.file_id] = file_counts.get(s.file_id, 0) + 1
+
+        # Build result with file info
+        results: list[tuple[int, str, str | None, int]] = []
+        if self._file_repo is not None:
+            for file_id, count in file_counts.items():
+                file = self._file_repo._files.get(file_id)
+                if file is None:
+                    continue
+                if language is not None and file.language != language:
+                    continue
+                results.append((file_id, file.path, file.language, count))
+        results.sort(key=lambda r: r[1])  # Sort by path
+        return results
+
+    async def update_parent_symbol_ids(self, updates: dict[int, int]) -> int:
+        """Bulk update parent_symbol_id for multiple symbols."""
+        count = 0
+        for symbol_id, parent_id in updates.items():
+            symbol = self._symbols.get(symbol_id)
+            if symbol is not None:
+                # Symbol is frozen, so replace it
+                self._symbols[symbol_id] = Symbol(
+                    id=symbol.id,
+                    file_id=symbol.file_id,
+                    repository_id=symbol.repository_id,
+                    name=symbol.name,
+                    kind=symbol.kind,
+                    start_line=symbol.start_line,
+                    start_column=symbol.start_column,
+                    end_line=symbol.end_line,
+                    end_column=symbol.end_column,
+                    qualified_name=symbol.qualified_name,
+                    parent_symbol_id=parent_id,
+                    scope=symbol.scope,
+                    signature=symbol.signature,
+                    docstring=symbol.docstring,
+                    metadata=symbol.metadata,
+                    indexed_at=symbol.indexed_at,
+                )
+                count += 1
+        return count
+
     async def find_by_exact_name(
         self,
         name: str,

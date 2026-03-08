@@ -1,6 +1,6 @@
 """PostgreSQL symbol repository adapter."""
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import SymbolRepositoryPort
@@ -167,6 +167,78 @@ class PostgresSymbolRepository(
         )
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
+
+    async def list_by_file_and_parent(
+        self,
+        file_id: int,
+        parent_symbol_id: int | None,
+    ) -> list[Symbol]:
+        """List symbols in a file filtered by parent."""
+        query = select(SymbolModel).where(SymbolModel.file_id == file_id)
+        if parent_symbol_id is None:
+            query = query.where(SymbolModel.parent_symbol_id.is_(None))
+        else:
+            query = query.where(SymbolModel.parent_symbol_id == parent_symbol_id)
+        query = query.order_by(SymbolModel.kind, SymbolModel.name)
+        result = await self.session.execute(query)
+        return [self.mapper.to_domain(m) for m in result.scalars().all()]
+
+    async def list_files_with_symbols(
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+    ) -> list[tuple[int, str, str | None, int]]:
+        """List files that contain symbols, with counts."""
+        query = (
+            select(
+                FileModel.id,
+                FileModel.path,
+                FileModel.language,
+                func.count(SymbolModel.id).label("symbol_count"),
+            )
+            .join(SymbolModel, SymbolModel.file_id == FileModel.id)
+            .where(FileModel.repository_id == repository_id)
+            .group_by(FileModel.id, FileModel.path, FileModel.language)
+        )
+
+        if commit_id is not None:
+            query = query.where(
+                FileModel.id.in_(
+                    select(CommitFileModel.file_id).where(
+                        CommitFileModel.commit_id == commit_id
+                    )
+                )
+            )
+        else:
+            latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+            query = query.where(FileModel.id.in_(select(latest_sq.c.max_id)))
+
+        if language is not None:
+            query = query.where(FileModel.language == language)
+
+        query = query.order_by(FileModel.path)
+        result = await self.session.execute(query)
+        return [(row[0], row[1], row[2], row[3]) for row in result.all()]
+
+    async def update_parent_symbol_ids(self, updates: dict[int, int]) -> int:
+        """Bulk update parent_symbol_id for multiple symbols."""
+        if not updates:
+            return 0
+        # Use a CASE expression for efficient single-query bulk update
+        stmt = (
+            update(SymbolModel)
+            .where(SymbolModel.id.in_(updates.keys()))
+            .values(
+                parent_symbol_id=case(
+                    *[(SymbolModel.id == sid, pid) for sid, pid in updates.items()],
+                )
+            )
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.rowcount or 0  # type: ignore[attr-defined]
 
     async def list_by_file(self, file_id: int) -> list[Symbol]:
         """List all symbols in a file."""

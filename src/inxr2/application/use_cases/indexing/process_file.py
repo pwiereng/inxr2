@@ -303,13 +303,16 @@ class ProcessFileUseCase:
                     end_line=symbol_data["end_line"],
                     end_column=symbol_data["end_column"],
                     parent_symbol_id=symbol_data.get("parent_symbol_id"),
+                    scope=symbol_data.get("scope"),
+                    qualified_name=symbol_data.get("qualified_name"),
                     signature=symbol_data.get("signature"),
                     metadata=symbol_data.get("metadata", {}),
                 )
                 for symbol_data in valid_symbols_data
             ]
             if symbols:
-                await self._symbol_repo.save_many(symbols)
+                saved_symbols = await self._symbol_repo.save_many(symbols)
+                await self._resolve_parent_symbol_ids(saved_symbols)
             symbols_found = len(symbols)
 
             # Save references (batch)
@@ -459,6 +462,43 @@ class ProcessFileUseCase:
                 e,
             )
             return 0
+
+    async def _resolve_parent_symbol_ids(self, saved_symbols: list[Symbol]) -> None:
+        """Resolve scope strings to parent_symbol_id after save.
+
+        Parsers set a ``scope`` string (e.g., "ClassName") on child symbols
+        but cannot set ``parent_symbol_id`` because DB IDs are not available
+        during parsing. This method matches each symbol's ``scope`` to the
+        parent symbol's name or qualified_name within the same file and
+        updates the FK in a single bulk query.
+        """
+        # Build lookup: name/qualified_name → symbol_id for potential parents
+        name_to_id: dict[str, int] = {}
+        for s in saved_symbols:
+            assert s.id is not None
+            # Top-level symbols (no scope) are reachable by name
+            if s.scope is None:
+                name_to_id[s.name] = s.id
+            # All symbols with a qualified_name are reachable by it
+            if s.qualified_name:
+                name_to_id[s.qualified_name] = s.id
+
+        # Match children: scope → parent_id
+        updates: dict[int, int] = {}
+        for s in saved_symbols:
+            if s.scope and s.parent_symbol_id is None:
+                parent_id = name_to_id.get(s.scope)
+                if parent_id is not None:
+                    assert s.id is not None
+                    updates[s.id] = parent_id
+
+        if updates:
+            updated = await self._symbol_repo.update_parent_symbol_ids(updates)
+            logger.debug(
+                "Resolved %d parent_symbol_id links (%d attempted)",
+                updated,
+                len(updates),
+            )
 
     async def _extract_and_save_comments(
         self,

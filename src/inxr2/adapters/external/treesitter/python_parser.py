@@ -95,6 +95,35 @@ class PythonParser(BaseLanguageParser):
             class_name = get_text(name_node)
             symbols.append(self._make_symbol(class_name, "class", node, scope))
 
+            # Extract superclass references (inheritance)
+            for child in node.children:
+                if child.type == "argument_list":
+                    for arg in child.children:
+                        if arg.type == "identifier":
+                            base_name = get_text(arg)
+                            if base_name not in PYTHON_TYPE_BUILTINS:
+                                add_reference(
+                                    self._make_reference(
+                                        base_name, "inheritance", arg, class_name
+                                    )
+                                )
+                        elif arg.type == "attribute":
+                            # e.g., module.ClassName
+                            attr_parts = []
+                            for sub in arg.children:
+                                if sub.type == "identifier":
+                                    attr_parts.append(get_text(sub))
+                            if attr_parts:
+                                full_name = ".".join(attr_parts)
+                                add_reference(
+                                    self._make_reference(
+                                        full_name, "inheritance", arg, class_name
+                                    )
+                                )
+                        elif arg.type == "keyword_argument":
+                            # e.g., metaclass=ABCMeta — skip
+                            pass
+
             # Process class body
             for child in node.children:
                 if child.type == "block":

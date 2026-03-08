@@ -271,6 +271,65 @@ export async function getRepositoryTreeByName(
   )
 }
 
+// Symbol Tree (Logical View)
+export interface SymbolTreeFile {
+  file_id: number
+  path: string
+  language: string | null
+  symbol_count: number
+}
+
+export interface SymbolTreeInheritance {
+  reference_text: string
+  target_symbol_id: number | null
+  target_file_id: number | null
+  target_file_path: string | null
+  target_line: number | null
+}
+
+export interface SymbolTreeSymbol {
+  id: number
+  name: string
+  kind: string
+  start_line: number
+  end_line: number
+  file_path: string | null
+  has_children: boolean
+  signature: string | null
+  inheritance: SymbolTreeInheritance[]
+}
+
+export interface SymbolTreeResponse {
+  repository_id: number
+  files: SymbolTreeFile[] | null
+  symbols: SymbolTreeSymbol[] | null
+}
+
+export async function getSymbolTree(
+  repoName: string,
+  params?: {
+    branch?: string
+    commit?: string
+    file_id?: number
+    parent_symbol_id?: number
+    language?: string
+    kind?: string
+  }
+): Promise<SymbolTreeResponse> {
+  const searchParams = new URLSearchParams()
+  if (params?.branch) searchParams.set('branch', params.branch)
+  if (params?.commit) searchParams.set('commit', params.commit)
+  if (params?.file_id != null) searchParams.set('file_id', params.file_id.toString())
+  if (params?.parent_symbol_id != null)
+    searchParams.set('parent_symbol_id', params.parent_symbol_id.toString())
+  if (params?.language) searchParams.set('language', params.language)
+  if (params?.kind) searchParams.set('kind', params.kind)
+  const query = searchParams.toString()
+  return fetchApi<SymbolTreeResponse>(
+    `/repositories/by-name/${encodeURIComponent(repoName)}/symbol-tree${query ? `?${query}` : ''}`
+  )
+}
+
 // Symbols
 export async function searchSymbols(params: {
   q?: string

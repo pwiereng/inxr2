@@ -88,6 +88,61 @@ class SymbolRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def list_by_file_and_parent(
+        self,
+        file_id: int,
+        parent_symbol_id: int | None,
+    ) -> list[Symbol]:
+        """List symbols in a file filtered by parent.
+
+        Args:
+            file_id: The file to list symbols from
+            parent_symbol_id: Parent symbol ID. None returns top-level symbols
+                (those with no parent). An integer returns children of that symbol.
+
+        Returns:
+            Symbols ordered by kind grouping then name.
+        """
+        pass
+
+    @abstractmethod
+    async def list_files_with_symbols(
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+    ) -> list[tuple[int, str, str | None, int]]:
+        """List files that contain symbols, with counts.
+
+        Returns only files that have at least one symbol, scoped to the
+        given branch or commit for temporal consistency.
+
+        Args:
+            repository_id: Repository to query
+            branch: Branch name for latest-file scoping (optional)
+            commit_id: Specific commit for time travel (optional, overrides branch)
+            language: Filter by programming language (optional)
+
+        Returns:
+            List of (file_id, path, language, symbol_count) tuples,
+            ordered by path.
+        """
+        pass
+
+    @abstractmethod
+    async def update_parent_symbol_ids(self, updates: dict[int, int]) -> int:
+        """Bulk update parent_symbol_id for multiple symbols.
+
+        Args:
+            updates: Mapping of {symbol_id: parent_symbol_id} to set.
+
+        Returns:
+            Number of symbols updated.
+        """
+        pass
+
+    @abstractmethod
     async def count_by_repository(self, repository_id: int) -> int:
         """Count total symbols in a repository."""
         pass
