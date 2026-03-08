@@ -82,6 +82,14 @@ export function useBrowseData({
   const [fileLoading, setFileLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Track previous selectedCommit to detect commit-sync transitions (null → hash)
+  // that should NOT trigger a re-fetch.
+  const prevCommitRef = useRef<string | null | undefined>(undefined)
+  // Track which file + commit the current content was fetched with, so we only
+  // skip re-fetch when the same file is already loaded from the implicit HEAD.
+  const loadedFileKeyRef = useRef<string | null>(null)
+  const loadedCommitRef = useRef<string | null | undefined>(undefined)
+
   // Compute treeCommit using shared helper (same logic as orchestrator's computedState)
   const treeCommit = computeTreeCommit(urlState, fileVersions, diffFileVersions, latestBranchCommit)
 
@@ -259,8 +267,36 @@ export function useBrowseData({
       setFileContent(null)
       setFileSymbols([])
       setFileReferences([])
+      prevCommitRef.current = urlState.selectedCommit
+      loadedFileKeyRef.current = null
+      loadedCommitRef.current = undefined
       return
     }
+
+    const fileKey = `${urlState.repoName}:${urlState.filePath}:${urlState.selectedBranch}`
+
+    // Skip redundant re-fetch when commit-sync resolves HEAD hash.
+    // The commit-sync effect writes the resolved HEAD hash to the URL, changing
+    // selectedCommit from null → hash.  Since null already meant "branch HEAD",
+    // the API would return the same file.  Skip the re-fetch to prevent a
+    // second load+scroll cycle.  We additionally verify that the loaded content
+    // was fetched with null (implicit HEAD), not a different explicit commit.
+    const prevCommit = prevCommitRef.current
+    prevCommitRef.current = urlState.selectedCommit
+    if (
+      prevCommit === null &&
+      typeof urlState.selectedCommit === 'string' &&
+      loadedCommitRef.current === null &&
+      loadedFileKeyRef.current === fileKey
+    ) {
+      return
+    }
+
+    // Set refs optimistically so the skip guard works even while the request
+    // is in-flight (prevents a second request if commit-sync fires before the
+    // initial fetch completes).  Reset on failure so a retry isn't blocked.
+    loadedFileKeyRef.current = fileKey
+    loadedCommitRef.current = urlState.selectedCommit
 
     const loadFile = async () => {
       setFileLoading(true)
@@ -291,6 +327,9 @@ export function useBrowseData({
         setFileReferences(references.references)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load file')
+        // Reset refs so a retry isn't blocked by the skip guard
+        loadedFileKeyRef.current = null
+        loadedCommitRef.current = undefined
       } finally {
         setFileLoading(false)
       }
