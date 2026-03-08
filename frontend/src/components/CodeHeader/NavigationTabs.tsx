@@ -65,7 +65,7 @@ export function NavigationTabs({
           iconPosition="start"
         />
         <Tab
-          value="mcp-help"
+          value="help"
           label="Help"
           icon={<HelpOutlineIcon fontSize="small" />}
           iconPosition="start"

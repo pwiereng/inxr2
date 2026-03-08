@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Box, CircularProgress } from '@mui/material'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { CodeHeader } from '@/components/CodeHeader/CodeHeader'
-import type { TabValue } from '@/components/CodeHeader/CodeHeader'
+import { CodeHeader } from '@/components/CodeHeader'
+import type { TabValue } from '@/components/CodeHeader'
 import { MarkdownViewer } from '@/components/MarkdownViewer'
 
 export default function Help(): React.ReactElement {
@@ -16,8 +16,17 @@ export default function Help(): React.ReactElement {
 
   useEffect(() => {
     fetch('/HELP.md')
-      .then((res) => res.text())
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Failed to load help content: ${res.status} ${res.statusText}`)
+        }
+        return res.text()
+      })
       .then(setContent)
+      .catch((error) => {
+        console.error('Error loading help content:', error)
+        setContent('# Help\n\nUnable to load help content. Please try again later.')
+      })
   }, [])
 
   const handleRepoChange = (newRepo: string) => {
@@ -67,7 +76,7 @@ export default function Help(): React.ReactElement {
       case 'dependencies':
         navigate(`/dependencies?${params.toString()}`)
         break
-      case 'mcp-help':
+      case 'help':
         // Already on help
         break
     }
@@ -76,7 +85,7 @@ export default function Help(): React.ReactElement {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <CodeHeader
-        currentTab="mcp-help"
+        currentTab="help"
         repoName={repoName}
         branch={branch}
         commit={commit}

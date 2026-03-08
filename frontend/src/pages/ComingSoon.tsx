@@ -1,7 +1,7 @@
 import { Box, Typography } from '@mui/material'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { CodeHeader } from '@/components/CodeHeader/CodeHeader'
-import type { TabValue } from '@/components/CodeHeader/CodeHeader'
+import { CodeHeader } from '@/components/CodeHeader'
+import type { TabValue } from '@/components/CodeHeader'
 
 interface ComingSoonProps {
   title: string
@@ -63,7 +63,7 @@ export default function ComingSoon({ title, tab }: ComingSoonProps): React.React
       case 'dependencies':
         navigate(`/dependencies?${params.toString()}`)
         break
-      case 'mcp-help':
+      case 'help':
         navigate(`/help?${params.toString()}`)
         break
     }

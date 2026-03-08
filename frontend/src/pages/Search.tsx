@@ -394,7 +394,7 @@ export default function Search(): React.ReactElement {
       case 'dependencies':
         navigate(`/dependencies?${params.toString()}`)
         break
-      case 'mcp-help':
+      case 'help':
         navigate(`/help?${params.toString()}`)
         break
     }

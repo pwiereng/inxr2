@@ -188,7 +188,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
       case 'dependencies':
         navigate(`/dependencies?${params.toString()}`)
         break
-      case 'mcp-help':
+      case 'help':
         navigate(`/help?${params.toString()}`)
         break
     }

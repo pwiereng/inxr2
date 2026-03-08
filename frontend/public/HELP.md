@@ -104,7 +104,7 @@ List all indexed repositories with their branches and statistics.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `detail` | boolean | no | Include branches and commit counts (default: false) |
+| `repository` | string | no | Filter to a specific repository to show its branches and statistics |
 
 **Example use:** "What repositories are indexed in INXR2?"
 
@@ -175,6 +175,8 @@ Find symbol definitions that have zero references anywhere in the repository. Us
 | `repository` | string | yes | Repository name to analyze |
 | `kind` | string | no | Filter by kind: `function`, `class`, `method`, `variable`, etc. |
 | `limit` | integer | no | Max results (default: 20, max: 100) |
+| `branch` | string | no | Branch to analyze (defaults to latest indexed) |
+| `commit` | string | no | Specific commit hash (overrides branch) |
 
 **Example use:** "Find unused functions in the backend repo."
 
