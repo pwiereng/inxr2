@@ -179,6 +179,12 @@ pytest>=8.0
         deps = parser.parse(content, "requirements-dev.txt")
         assert all(d["dependency_type"] == "dev" for d in deps)
 
+    def test_underscore_dev_requirements(self, parser: PythonDependencyParser) -> None:
+        content = "pytest>=8.0\nblack\n"
+        deps = parser.parse(content, "requirements_dev.txt")
+        assert len(deps) == 2
+        assert all(d["dependency_type"] == "dev" for d in deps)
+
 
 class TestPoetryLock:
     def test_basic(self, parser: PythonDependencyParser) -> None:

@@ -49,7 +49,12 @@ class PythonDependencyParser(BaseDependencyParser):
         if basename == "pyproject.toml":
             return self._parse_pyproject_toml(content)
         elif basename.endswith("requirements.txt") or basename.startswith(
-            ("dev-requirements", "test-requirements")
+            (
+                "dev-requirements",
+                "test-requirements",
+                "requirements_dev",
+                "requirements-dev",
+            )
         ):
             dep_type = "dev" if "dev" in basename or "test" in basename else "runtime"
             return self._parse_requirements_txt(content, dep_type)
