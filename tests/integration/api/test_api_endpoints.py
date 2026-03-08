@@ -860,6 +860,101 @@ class TestSymbolsAPI:
         assert data["items"][0]["name"] == "test_function"
         assert data["items"][0]["kind"] == "function"
 
+    async def test_search_symbols_top_level_only(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
+        """Test searching symbols with top_level_only filter."""
+        from inxr2.adapters.persistence.repositories.symbol_adapter import (
+            PostgresSymbolRepository,
+        )
+        from inxr2.domain.entities import Symbol
+        from inxr2.domain.value_objects import SymbolKind
+
+        # Arrange
+        saved_repo, saved_commit, saved_file = await self._create_test_data(db_session)
+        assert saved_repo.id is not None
+        assert saved_commit.id is not None
+        assert saved_file.id is not None
+
+        symbol_adapter = PostgresSymbolRepository(db_session)
+
+        # Create a top-level class
+        class_symbols = await symbol_adapter.save_many(
+            [
+                Symbol(
+                    file_id=saved_file.id,
+                    repository_id=saved_repo.id,
+                    name="TopClass",
+                    kind=SymbolKind.CLASS,
+                    start_line=1,
+                    start_column=0,
+                    end_line=30,
+                    end_column=0,
+                ),
+                Symbol(
+                    file_id=saved_file.id,
+                    repository_id=saved_repo.id,
+                    name="top_func",
+                    kind=SymbolKind.FUNCTION,
+                    start_line=40,
+                    start_column=0,
+                    end_line=50,
+                    end_column=0,
+                ),
+            ]
+        )
+        parent_id = class_symbols[0].id
+        assert parent_id is not None
+
+        # Create a nested method inside the class
+        await symbol_adapter.save_many(
+            [
+                Symbol(
+                    file_id=saved_file.id,
+                    repository_id=saved_repo.id,
+                    name="nested_method",
+                    kind=SymbolKind.METHOD,
+                    start_line=5,
+                    start_column=4,
+                    end_line=15,
+                    end_column=0,
+                    parent_symbol_id=parent_id,
+                ),
+            ]
+        )
+
+        # Act - search with top_level_only=true
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                f"/api/symbols?q=&top_level_only=true&repository_id={saved_repo.id}"
+            )
+
+        # Assert - nested_method should be excluded
+        assert response.status_code == 200
+        data = response.json()
+        names = {s["name"] for s in data["items"]}
+        assert "TopClass" in names
+        assert "top_func" in names
+        assert "nested_method" not in names
+
+        # Act - search without top_level_only (default=false)
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                f"/api/symbols?q=&repository_id={saved_repo.id}"
+            )
+
+        # Assert - all symbols should be returned
+        assert response.status_code == 200
+        data = response.json()
+        names = {s["name"] for s in data["items"]}
+        assert "TopClass" in names
+        assert "top_func" in names
+        assert "nested_method" in names
+
     async def test_get_symbol_by_id(
         self, test_app: FastAPI, db_session: AsyncSession
     ) -> None:

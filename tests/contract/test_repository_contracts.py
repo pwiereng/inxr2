@@ -348,6 +348,155 @@ async def _setup_two_commits_head_first(repos: Repos) -> dict[str, int]:
     }
 
 
+class TestSearchByNameTopLevelOnly:
+    """Contract tests for top_level_only filtering in search_by_name."""
+
+    async def _setup_nested_symbols(self, repos: Repos) -> dict[str, int]:
+        """Create a repo with top-level and nested symbols.
+
+        Creates:
+        - top_level_func: a function with no parent (top-level)
+        - nested_method: a function inside MyClass (has parent)
+        - ns_func: a function inside a namespace (effectively top-level)
+        """
+        from inxr2.domain.entities import Symbol
+        from inxr2.domain.value_objects import SymbolKind
+
+        repo_id = await create_test_repo(repos)
+        commit_id = await create_test_commit(
+            repos, repo_id, "a" * 40, date_offset_days=0
+        )
+        file_id = await create_test_file(
+            repos, repo_id, commit_id, "src/main.py", "c" * 40
+        )
+
+        # Top-level function (no parent)
+        top_func = await repos.symbol.save(
+            Symbol(
+                file_id=file_id,
+                repository_id=repo_id,
+                name="top_level_func",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        assert top_func.id is not None
+
+        # A class (top-level, no parent)
+        my_class = await repos.symbol.save(
+            Symbol(
+                file_id=file_id,
+                repository_id=repo_id,
+                name="MyClass",
+                kind=SymbolKind.CLASS,
+                start_line=10,
+                start_column=0,
+                end_line=30,
+                end_column=0,
+            )
+        )
+        assert my_class.id is not None
+
+        # A method nested inside MyClass
+        nested_method = await repos.symbol.save(
+            Symbol(
+                file_id=file_id,
+                repository_id=repo_id,
+                name="nested_method",
+                kind=SymbolKind.METHOD,
+                start_line=12,
+                start_column=4,
+                end_line=15,
+                end_column=0,
+                parent_symbol_id=my_class.id,
+            )
+        )
+        assert nested_method.id is not None
+
+        # A namespace (top-level container)
+        namespace = await repos.symbol.save(
+            Symbol(
+                file_id=file_id,
+                repository_id=repo_id,
+                name="myns",
+                kind=SymbolKind.NAMESPACE,
+                start_line=40,
+                start_column=0,
+                end_line=60,
+                end_column=0,
+            )
+        )
+        assert namespace.id is not None
+
+        # A function inside the namespace (effectively top-level)
+        ns_func = await repos.symbol.save(
+            Symbol(
+                file_id=file_id,
+                repository_id=repo_id,
+                name="ns_func",
+                kind=SymbolKind.FUNCTION,
+                start_line=42,
+                start_column=4,
+                end_line=50,
+                end_column=0,
+                parent_symbol_id=namespace.id,
+            )
+        )
+        assert ns_func.id is not None
+
+        return {
+            "repo_id": repo_id,
+            "top_func_id": top_func.id,
+            "my_class_id": my_class.id,
+            "nested_method_id": nested_method.id,
+            "namespace_id": namespace.id,
+            "ns_func_id": ns_func.id,
+        }
+
+    async def test_excludes_nested_symbols(self, repos: Repos) -> None:
+        """top_level_only=True should exclude symbols nested inside non-namespace parents."""
+        data = await self._setup_nested_symbols(repos)
+
+        results = await repos.symbol.search_by_name(
+            "", repository_id=data["repo_id"], top_level_only=True
+        )
+
+        result_ids = {s.id for s in results}
+        # nested_method is inside MyClass, should be excluded
+        assert data["nested_method_id"] not in result_ids
+        # top_level_func, MyClass, namespace, ns_func should be included
+        assert data["top_func_id"] in result_ids
+        assert data["my_class_id"] in result_ids
+
+    async def test_includes_namespace_children(self, repos: Repos) -> None:
+        """top_level_only=True should include symbols whose parent is a namespace."""
+        data = await self._setup_nested_symbols(repos)
+
+        results = await repos.symbol.search_by_name(
+            "", repository_id=data["repo_id"], top_level_only=True
+        )
+
+        result_ids = {s.id for s in results}
+        assert data["ns_func_id"] in result_ids
+
+    async def test_default_returns_all(self, repos: Repos) -> None:
+        """top_level_only=False (default) should return all symbols including nested."""
+        data = await self._setup_nested_symbols(repos)
+
+        results = await repos.symbol.search_by_name(
+            "", repository_id=data["repo_id"], top_level_only=False
+        )
+
+        result_ids = {s.id for s in results}
+        assert data["top_func_id"] in result_ids
+        assert data["my_class_id"] in result_ids
+        assert data["nested_method_id"] in result_ids
+        assert data["ns_func_id"] in result_ids
+
+
 class TestSearchByNameHeadFirst:
     async def test_returns_symbol_from_newer_commit(self, repos: Repos) -> None:
         """search_by_name should return symbol from newer commit even if it has lower ID."""
