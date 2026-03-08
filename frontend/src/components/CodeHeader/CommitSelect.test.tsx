@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '@/test/utils'
 import { CommitSelect } from './CommitSelect'
 import type { CommitInfo } from '@/lib/api'
@@ -31,9 +31,13 @@ const mockCommits: CommitInfo[] = [
 ]
 
 describe('CommitSelect', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('should not produce MUI out-of-range warning when commit is not in options', () => {
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
 
     render(
       <CommitSelect
@@ -48,14 +52,13 @@ describe('CommitSelect', () => {
     expect(screen.getByText('latest')).toBeInTheDocument()
 
     // Should NOT have any MUI out-of-range warnings
-    const allCalls = [...consoleWarnSpy.mock.calls, ...consoleErrorSpy.mock.calls]
+    const warnCalls = vi.mocked(console.warn).mock.calls
+    const errorCalls = vi.mocked(console.error).mock.calls
+    const allCalls = [...warnCalls, ...errorCalls]
     const outOfRangeCalls = allCalls.filter((args) =>
       args.some((arg) => typeof arg === 'string' && arg.includes('out-of-range'))
     )
     expect(outOfRangeCalls).toHaveLength(0)
-
-    consoleWarnSpy.mockRestore()
-    consoleErrorSpy.mockRestore()
   })
 
   it('should display the correct hash when commit is in options', () => {
