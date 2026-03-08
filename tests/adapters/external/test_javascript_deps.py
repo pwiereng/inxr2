@@ -135,6 +135,11 @@ class TestPackageLockJson:
         assert len(deps) == 1
         assert deps[0]["package_name"] == "@scope/pkg"
 
+    def test_null_packages(self, parser: JavaScriptDependencyParser) -> None:
+        content = '{"lockfileVersion": 3, "packages": null}'
+        deps = parser.parse(content, "package-lock.json")
+        assert deps == []
+
 
 class TestYarnLock:
     def test_basic(self, parser: JavaScriptDependencyParser) -> None:
@@ -200,6 +205,11 @@ packages:
         content = "lockfileVersion: '6.0'\npackages: {}\n"
         deps = parser.parse(content, "pnpm-lock.yaml")
         assert len(deps) == 0
+
+    def test_null_packages(self, parser: JavaScriptDependencyParser) -> None:
+        content = "lockfileVersion: '6.0'\npackages:\n"
+        deps = parser.parse(content, "pnpm-lock.yaml")
+        assert deps == []
 
     def test_invalid_yaml(self, parser: JavaScriptDependencyParser) -> None:
         deps = parser.parse("{{invalid", "pnpm-lock.yaml")

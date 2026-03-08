@@ -81,7 +81,7 @@ class JavaScriptDependencyParser(BaseDependencyParser):
             return []
 
         deps: list[dict[str, Any]] = []
-        packages = data.get("packages", {})
+        packages = data.get("packages") or {}
 
         for pkg_path, info in packages.items():
             # Skip root package (empty key)
@@ -251,7 +251,7 @@ class JavaScriptDependencyParser(BaseDependencyParser):
         deps: list[dict[str, Any]] = []
 
         # pnpm v6+ format: packages key
-        packages = data.get("packages", {})
+        packages = data.get("packages") or {}
         for pkg_key, info in packages.items():
             if not isinstance(info, dict):
                 continue
