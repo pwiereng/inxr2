@@ -431,6 +431,99 @@ describe('ReferencesPanel', () => {
     })
   })
 
+  describe('View in Logical View link', () => {
+    it('should show link when repoName and symbol.file_path are provided', async () => {
+      mockGetSymbolReferences.mockResolvedValue({
+        items: [],
+        total: 0,
+        symbol_name: 'TestClass',
+      })
+
+      render(<ReferencesPanel symbol={mockSymbol} isDirectDefinition={true} repoName="test-repo" />)
+
+      await waitFor(() => {
+        const link = screen.getByText('View in Logical View').closest('a')
+        expect(link).toBeInTheDocument()
+        expect(link).toHaveAttribute('href', '/logical-view?repo=test-repo&file=src%2Ftest.py')
+      })
+    })
+
+    it('should include branch and commit in URL when provided', async () => {
+      mockGetSymbolReferences.mockResolvedValue({
+        items: [],
+        total: 0,
+        symbol_name: 'TestClass',
+      })
+
+      render(
+        <ReferencesPanel
+          symbol={mockSymbol}
+          isDirectDefinition={true}
+          repoName="test-repo"
+          selectedBranch="feature"
+          selectedCommit="abc123"
+        />
+      )
+
+      await waitFor(() => {
+        const link = screen.getByText('View in Logical View').closest('a')
+        expect(link).toBeInTheDocument()
+        expect(link).toHaveAttribute(
+          'href',
+          '/logical-view?repo=test-repo&branch=feature&commit=abc123&file=src%2Ftest.py'
+        )
+      })
+    })
+
+    it('should not show link when repoName is not provided', async () => {
+      mockGetSymbolReferences.mockResolvedValue({
+        items: [],
+        total: 0,
+        symbol_name: 'TestClass',
+      })
+
+      render(<ReferencesPanel symbol={mockSymbol} isDirectDefinition={true} />)
+
+      await waitFor(() => {
+        expect(screen.queryByText('View in Logical View')).not.toBeInTheDocument()
+      })
+    })
+
+    it('should use allDefinitions file_path when symbol has no file_path', async () => {
+      const symbolNoPath: api.Symbol = {
+        ...mockSymbol,
+        file_path: null,
+      }
+      const definitionWithPath: api.Symbol = {
+        ...mockSymbol,
+        id: 5,
+        file_path: 'src/resolved.py',
+      }
+
+      mockGetSymbolReferences.mockResolvedValue({
+        items: [],
+        total: 0,
+        symbol_name: 'TestClass',
+      })
+      mockGetSymbolsByName.mockResolvedValue({
+        items: [definitionWithPath],
+        total: 1,
+        limit: 20,
+        offset: 0,
+      })
+
+      render(
+        <ReferencesPanel symbol={symbolNoPath} isDirectDefinition={false} repoName="test-repo" />
+      )
+
+      await waitFor(() => {
+        const link = screen.getByText('View in Logical View').closest('a')
+        expect(link).toBeInTheDocument()
+        expect(link).toHaveAttribute('href', '/logical-view?repo=test-repo&file=src%2Fresolved.py')
+      })
+    })
+  })
+
   describe('empty state', () => {
     it('should show prompt when no symbol or searchByName provided', () => {
       render(<ReferencesPanel symbol={null} />)

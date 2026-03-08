@@ -21,6 +21,7 @@ import DataObjectIcon from '@mui/icons-material/DataObject'
 import PushPinIcon from '@mui/icons-material/PushPin'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import SearchIcon from '@mui/icons-material/Search'
+import AccountTreeIcon from '@mui/icons-material/AccountTree'
 
 import { Link } from 'react-router-dom'
 
@@ -91,6 +92,8 @@ interface ReferencesPanelProps {
   selectedCommit?: string | null
   /** Selected branch name (filters references to this branch only) */
   selectedBranch?: string | null
+  /** Repository name for cross-view links (e.g., logical view) */
+  repoName?: string | null
   onReferenceClick?: (reference: Reference) => void
   onDefinitionClick?: (symbol: Symbol) => void
   onClose?: () => void
@@ -102,6 +105,7 @@ export function ReferencesPanel({
   searchByName = null,
   selectedCommit = null,
   selectedBranch = null,
+  repoName = null,
   onReferenceClick,
   onDefinitionClick,
   onClose,
@@ -528,7 +532,7 @@ export function ReferencesPanel({
         )}
       </Box>
 
-      {/* Search globally link */}
+      {/* Logical view & search links */}
       {displayName && (
         <Box
           sx={{
@@ -536,8 +540,39 @@ export function ReferencesPanel({
             py: 1,
             borderTop: 1,
             borderColor: 'divider',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0.5,
           }}
         >
+          {repoName && (symbol?.file_path || allDefinitions[0]?.file_path) && (
+            <Link
+              to={(() => {
+                const filePath = symbol?.file_path || allDefinitions[0]?.file_path
+                const params = new URLSearchParams()
+                params.set('repo', repoName)
+                if (selectedBranch) params.set('branch', selectedBranch)
+                if (selectedCommit) params.set('commit', selectedCommit)
+                if (filePath) params.set('file', filePath)
+                return `/logical-view?${params.toString()}`
+              })()}
+              style={{ textDecoration: 'none' }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  color: 'primary.main',
+                  '&:hover': { textDecoration: 'underline' },
+                }}
+              >
+                <AccountTreeIcon sx={{ fontSize: 14 }} />
+                View in Logical View
+              </Typography>
+            </Link>
+          )}
           <Link
             to={`/search?query=${encodeURIComponent(displayName)}&types=symbol,reference`}
             style={{ textDecoration: 'none' }}

@@ -925,3 +925,235 @@ class TestGetSymbolTreeCommitScoped:
                     commit_hash="nonexistent",
                 )
             )
+
+
+class TestGetSymbolTreeKindCounts:
+    """Tier 1: kind_counts populated per file."""
+
+    @pytest.fixture
+    def repo_adapter(self) -> InMemoryRepositoryRepository:
+        adapter = InMemoryRepositoryRepository()
+        adapter.add(Repository(id=1, name="test-repo", url="/repos/test-repo"))
+        return adapter
+
+    @pytest.fixture
+    def commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        repo._commits[1] = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("abc123"),
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+        )
+        repo._branch_commits[(1, "main", 1)] = True
+        return repo
+
+    @pytest.fixture
+    def file_repo(
+        self, commit_repo: InMemoryCommitRepository
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/models.py",
+                content_hash="h1",
+                size_bytes=500,
+                language="python",
+            )
+        )
+        repo.add(
+            File(
+                id=2,
+                repository_id=1,
+                path="src/utils.py",
+                content_hash="h2",
+                size_bytes=200,
+                language="python",
+            )
+        )
+        repo._commit_files.add((1, 1))
+        repo._commit_files.add((1, 2))
+        return repo
+
+    @pytest.fixture
+    def symbol_repo(
+        self, file_repo: InMemoryFileRepository
+    ) -> InMemorySymbolRepository:
+        repo = InMemorySymbolRepository(file_repo=file_repo)
+        # models.py: 2 classes + 1 function
+        repo.add(
+            Symbol(
+                id=1,
+                repository_id=1,
+                file_id=1,
+                name="User",
+                kind=SymbolKind.CLASS,
+                start_line=1,
+                start_column=0,
+                end_line=20,
+                end_column=0,
+            )
+        )
+        repo.add(
+            Symbol(
+                id=2,
+                repository_id=1,
+                file_id=1,
+                name="Role",
+                kind=SymbolKind.CLASS,
+                start_line=25,
+                start_column=0,
+                end_line=40,
+                end_column=0,
+            )
+        )
+        repo.add(
+            Symbol(
+                id=3,
+                repository_id=1,
+                file_id=1,
+                name="create_user",
+                kind=SymbolKind.FUNCTION,
+                start_line=45,
+                start_column=0,
+                end_line=50,
+                end_column=0,
+            )
+        )
+        # utils.py: 1 function
+        repo.add(
+            Symbol(
+                id=4,
+                repository_id=1,
+                file_id=2,
+                name="helper",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    def reference_repo(self) -> InMemoryReferenceRepository:
+        return InMemoryReferenceRepository()
+
+    @pytest.fixture
+    def use_case(
+        self,
+        repo_adapter: InMemoryRepositoryRepository,
+        symbol_repo: InMemorySymbolRepository,
+        file_repo: InMemoryFileRepository,
+        reference_repo: InMemoryReferenceRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> GetSymbolTreeUseCase:
+        return GetSymbolTreeUseCase(
+            repository_repo=repo_adapter,
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            reference_repo=reference_repo,
+            commit_repo=commit_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_tier1_includes_kind_counts(
+        self, use_case: GetSymbolTreeUseCase
+    ) -> None:
+        """Tier 1 files include kind_counts dict with per-kind symbol counts."""
+        result = await use_case.execute(
+            GetSymbolTreeRequest(repository_name="test-repo", branch="main")
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        kind_counts_by_path = {f.path: f.kind_counts for f in result.files}
+
+        # models.py: 2 classes, 1 function
+        assert kind_counts_by_path["src/models.py"] == {"class": 2, "function": 1}
+        # utils.py: 1 function
+        assert kind_counts_by_path["src/utils.py"] == {"function": 1}
+
+    @pytest.mark.asyncio
+    async def test_tier1_kind_counts_exclude_children(
+        self,
+        use_case: GetSymbolTreeUseCase,
+        symbol_repo: InMemorySymbolRepository,
+    ) -> None:
+        """kind_counts only count top-level symbols, not children (methods)."""
+        # Add a method as child of User class (id=1)
+        symbol_repo.add(
+            Symbol(
+                id=10,
+                repository_id=1,
+                file_id=1,
+                name="save",
+                kind=SymbolKind.METHOD,
+                start_line=5,
+                start_column=4,
+                end_line=8,
+                end_column=0,
+                parent_symbol_id=1,
+            )
+        )
+
+        result = await use_case.execute(
+            GetSymbolTreeRequest(repository_name="test-repo", branch="main")
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        models_file = next(f for f in result.files if f.path == "src/models.py")
+        # Method should NOT appear in kind_counts (it's a child)
+        assert "method" not in models_file.kind_counts
+        assert models_file.kind_counts == {"class": 2, "function": 1}
+
+    @pytest.mark.asyncio
+    async def test_tier1_kind_counts_namespace_transparency(
+        self,
+        use_case: GetSymbolTreeUseCase,
+        symbol_repo: InMemorySymbolRepository,
+    ) -> None:
+        """Symbols under namespaces are treated as effectively top-level."""
+        # Add a namespace to utils.py
+        symbol_repo.add(
+            Symbol(
+                id=20,
+                repository_id=1,
+                file_id=2,
+                name="MyNamespace",
+                kind=SymbolKind.NAMESPACE,
+                start_line=1,
+                start_column=0,
+                end_line=30,
+                end_column=0,
+            )
+        )
+        # Add a class inside the namespace
+        symbol_repo.add(
+            Symbol(
+                id=21,
+                repository_id=1,
+                file_id=2,
+                name="NamespacedClass",
+                kind=SymbolKind.CLASS,
+                start_line=2,
+                start_column=0,
+                end_line=15,
+                end_column=0,
+                parent_symbol_id=20,
+            )
+        )
+
+        result = await use_case.execute(
+            GetSymbolTreeRequest(repository_name="test-repo", branch="main")
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        utils_file = next(f for f in result.files if f.path == "src/utils.py")
+        # NamespacedClass should count as top-level (namespace transparent)
+        # Namespace itself should count too
+        assert "class" in utils_file.kind_counts
+        assert utils_file.kind_counts["class"] == 1

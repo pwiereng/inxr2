@@ -97,6 +97,7 @@ export default function LogicalView(): React.ReactElement {
   const repoName = searchParams.get('repo')
   const branch = searchParams.get('branch')
   const commit = searchParams.get('commit')
+  const fileParam = searchParams.get('file')
 
   // Data state
   const [files, setFiles] = useState<SymbolTreeFile[]>([])
@@ -126,6 +127,7 @@ export default function LogicalView(): React.ReactElement {
   const fetchedFileIds = useRef(new Set<number>())
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScrollTop = useRef(0)
+  const initialFileExpanded = useRef(false)
 
   // Derive available languages from loaded files
   const availableLanguages = useMemo(() => {
@@ -156,6 +158,7 @@ export default function LogicalView(): React.ReactElement {
       setSymbolChildren({})
       setExpanded({ files: new Set(), symbols: new Set() })
       fetchedFileIds.current = new Set()
+      initialFileExpanded.current = false
 
       try {
         const result = await getSymbolTree(repoName, {
@@ -222,6 +225,20 @@ export default function LogicalView(): React.ReactElement {
     }
   }, [symbolSearch, repositoryId, branch, commit, selectedKinds])
 
+  // Update URL with the most recently expanded file path
+  const updateFileParam = useCallback(
+    (filePath: string | null) => {
+      const params = new URLSearchParams(searchParams)
+      if (filePath !== null) {
+        params.set('file', filePath)
+      } else {
+        params.delete('file')
+      }
+      navigate(`/logical-view?${params.toString()}`, { replace: true })
+    },
+    [searchParams, navigate]
+  )
+
   // Expand/collapse a file (tier 2)
   const toggleFile = useCallback(
     async (fileId: number) => {
@@ -286,8 +303,11 @@ export default function LogicalView(): React.ReactElement {
         for (const id of autoExpandIds) newSyms.add(id)
         return { files: newFiles, symbols: newSyms }
       })
+
+      const file = files.find((f) => f.file_id === fileId)
+      if (file) updateFileParam(file.path)
     },
-    [expanded.files, fileSymbols, symbolChildren, repoName, branch, commit]
+    [expanded.files, fileSymbols, symbolChildren, repoName, branch, commit, updateFileParam, files]
   )
 
   // Expand/collapse a symbol (tier 3)
@@ -329,6 +349,81 @@ export default function LogicalView(): React.ReactElement {
     },
     [expanded.symbols, symbolChildren, repoName, branch, commit]
   )
+
+  // Auto-expand file from URL param on initial load / bookmark navigation
+  useEffect(() => {
+    if (initialFileExpanded.current || !fileParam || !repoName || files.length === 0) return
+    const file = files.find((f) => f.path === fileParam)
+    if (!file) return
+    initialFileExpanded.current = true
+
+    let cancelled = false
+    const expandFromUrl = async () => {
+      const fileId = file.file_id
+
+      // Fetch tier 2 symbols
+      let symbols: SymbolTreeSymbol[] | undefined
+      try {
+        const result = await getSymbolTree(repoName, {
+          branch: branch ?? undefined,
+          commit: commit ?? undefined,
+          file_id: fileId,
+        })
+        if (cancelled) return
+        if (result.symbols) {
+          symbols = result.symbols
+          setFileSymbols((prev) => ({ ...prev, [fileId]: result.symbols! }))
+        }
+      } catch {
+        return
+      }
+
+      if (!symbols || cancelled) return
+
+      // Fetch tier 3 children for symbols that have them
+      const autoExpandIds: number[] = []
+      for (const s of symbols) {
+        if (s.has_children) {
+          try {
+            const childResult = await getSymbolTree(repoName, {
+              branch: branch ?? undefined,
+              commit: commit ?? undefined,
+              parent_symbol_id: s.id,
+            })
+            if (cancelled) return
+            if (childResult.symbols) {
+              setSymbolChildren((prev) => ({ ...prev, [s.id]: childResult.symbols! }))
+            }
+          } catch {
+            // continue with other symbols
+          }
+          autoExpandIds.push(s.id)
+        }
+      }
+
+      if (cancelled) return
+
+      setExpanded((prev) => {
+        const newFiles = new Set(prev.files)
+        newFiles.add(fileId)
+        const newSyms = new Set(prev.symbols)
+        for (const id of autoExpandIds) newSyms.add(id)
+        return { files: newFiles, symbols: newSyms }
+      })
+
+      // Scroll into view after render
+      setTimeout(() => {
+        const el = document.querySelector(`[data-file-id="${fileId}"]`)
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 300)
+    }
+
+    expandFromUrl()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileParam, files.length, repoName, branch, commit])
 
   // Navigate to symbol in browse view
   const handleSymbolClick = useCallback(

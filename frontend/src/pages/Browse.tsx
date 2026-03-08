@@ -959,6 +959,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                           : selectedBranch
                         : selectedBranch
                     }
+                    repoName={repoName}
                     onReferenceClick={actions.handleRefPanelClick}
                     onDefinitionClick={actions.handleDefinitionClick}
                     onClose={actions.closeRefsPanel}
