@@ -681,7 +681,6 @@ function FileNode({
               symbol={symbol}
               level={1}
               children={symbolChildren[symbol.id]}
-              selectedKinds={selectedKinds}
               expandedSymbols={expandedSymbols}
               expandingSymbol={expandingSymbol}
               symbolChildren={symbolChildren}
@@ -699,7 +698,6 @@ interface SymbolNodeProps {
   symbol: SymbolTreeSymbol
   level: number
   children: SymbolTreeSymbol[] | undefined
-  selectedKinds: Set<string>
   expandedSymbols: Set<number>
   expandingSymbol: number | null
   symbolChildren: SymbolChildren
@@ -712,7 +710,6 @@ function SymbolNode({
   symbol,
   level,
   children,
-  selectedKinds,
   expandedSymbols,
   expandingSymbol,
   symbolChildren,
@@ -830,23 +827,20 @@ function SymbolNode({
 
       {symbol.has_children && (
         <Collapse in={isExpanded} timeout="auto">
-          {children
-            ?.filter((c) => selectedKinds.size === 0 || selectedKinds.has(c.kind))
-            .map((child) => (
-              <SymbolNode
-                key={child.id}
-                symbol={child}
-                level={level + 1}
-                children={symbolChildren[child.id]}
-                selectedKinds={selectedKinds}
-                expandedSymbols={expandedSymbols}
-                expandingSymbol={expandingSymbol}
-                symbolChildren={symbolChildren}
-                onToggle={onToggle}
-                onClick={onClick}
-                onInheritanceClick={onInheritanceClick}
-              />
-            ))}
+          {children?.map((child) => (
+            <SymbolNode
+              key={child.id}
+              symbol={child}
+              level={level + 1}
+              children={symbolChildren[child.id]}
+              expandedSymbols={expandedSymbols}
+              expandingSymbol={expandingSymbol}
+              symbolChildren={symbolChildren}
+              onToggle={onToggle}
+              onClick={onClick}
+              onInheritanceClick={onInheritanceClick}
+            />
+          ))}
         </Collapse>
       )}
     </>
