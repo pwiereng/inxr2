@@ -45,7 +45,7 @@ Search across all indexed repositories with multiple modes and filters.
 - **Regex** — full regular expression pattern matching
 - **File** — search by file name or path
 
-**Source type filters** narrow results by content type. You can enable multiple filters simultaneously:
+**Source type filters** narrow results by content type. Check the types you want to include:
 
 - **Definitions** — symbol definitions (functions, classes, methods, variables). These come from the semantic index.
 - **References** — symbol usages (calls, imports, type annotations). Also from the semantic index.
@@ -54,11 +54,50 @@ Search across all indexed repositories with multiple modes and filters.
 - **Commit Messages** — git commit messages
 - **File Content** — raw file content (full-text search)
 
-By default, all source types except Definitions and References are selected. Enable Definitions to include semantic symbol search results alongside text results.
+By default, all source types are shown. When navigating from another feature (e.g., "find references"), only the relevant types are pre-selected. Check or uncheck types to refine your results.
 
-**Extension filter** — filter results by file extension using the dropdown. You can hide specific extensions to reduce noise, or use "Hide all" / "Show all" to quickly toggle.
+**Extension filter** — filter results by file extension. Check the extensions you want to include. Use "All" to show everything or "None" to start fresh and pick specific extensions.
 
 **Clicking results** — file-based results navigate to the Browse tab at the matching line. Commit message results navigate to the History tab.
+
+## Logical View
+
+Browse the codebase by its logical structure — classes, functions, methods, and their relationships — rather than by file/directory layout.
+
+**Hierarchy** — symbols are organized in a 3-tier tree:
+
+1. **Files** — each file acts as a container (like a module or namespace)
+2. **Types** — classes, interfaces, structs, enums, and top-level functions sit at the first indent level
+3. **Members** — methods, properties, fields, and nested functions sit under their parent type
+
+**Inheritance** — classes that extend or implement other types show the relationship inline (e.g., "extends SymbolRepositoryPort"). If the parent type is defined in the same repository, it appears as a clickable link that navigates to its definition.
+
+**Filters:**
+
+- **Language** — filter by programming language when a repository contains multiple languages
+- **Kind** — show or hide specific symbol kinds (classes, functions, interfaces, etc.)
+- **Text filter** — type to filter symbols by name
+- **Depth** — control how many levels of the hierarchy to display
+
+**Clicking a symbol** navigates to its definition in the Browse tab at the correct file and line.
+
+## Dependencies
+
+View the third-party package dependencies for the selected repository at any commit.
+
+**Supported languages:** Python, JavaScript/TypeScript, Java, and C#. Dependencies are extracted from manifest and lock files during indexing.
+
+**Tree view** — dependencies are grouped by manifest file (e.g., `pyproject.toml`, `package.json`), then by type (runtime vs dev). Lock files provide the full transitive dependency tree — expand a direct dependency to see what it pulls in.
+
+**Filters:**
+
+- **Language** — filter by language when a repo has multiple manifest files
+- **Type** — show All, Runtime only, or Dev only dependencies
+- **Text filter** — search by package name
+
+**Commit-aware** — dependencies reflect exactly what was declared at the selected commit. Switch commits to see how dependencies changed over time.
+
+If dependency data is not available, re-index the repository with dependency parsing enabled (on by default, disable with `--no-deps`).
 
 ## History
 

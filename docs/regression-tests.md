@@ -801,6 +801,184 @@ curl "http://localhost:9222/text?selector=h1,h2,h3"
 
 ---
 
+## RT-24: Logical View Loads Symbol Tree
+
+**Steps:**
+```bash
+# DISCOVER: Get a repo with indexed symbols
+REPO=$(docker exec inxr2-dev bash -c "curl -s http://localhost:8000/api/repositories | python3 -c 'import json,sys; repos=json.load(sys.stdin); print(repos[0][\"name\"])'")
+# Get the symbol tree via API to know what to expect
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/$REPO/symbol-tree?limit=10' | python3 -m json.tool | head -30"
+# NAVIGATE
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/logical-view?repo=$REPO"
+curl "http://localhost:9222/wait?selector=[class*=tree],[class*=Tree]&timeout=10000"
+# VERIFY: Check that files appear in the tree
+curl "http://localhost:9222/elements?selector=[class*=file],[class*=File]&limit=10"
+```
+
+**Pass criteria:**
+- Logical View page loads without errors
+- File entries appear in the tree matching API response
+- No "Coming Soon" placeholder visible
+
+---
+
+## RT-25: Logical View Expand File Shows Symbols
+
+**Steps:**
+```bash
+# DISCOVER: Get symbols for a specific file from the API
+REPO=$(docker exec inxr2-dev bash -c "curl -s http://localhost:8000/api/repositories | python3 -c 'import json,sys; repos=json.load(sys.stdin); print(repos[0][\"name\"])'")
+FILE_DATA=$(docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/$REPO/symbol-tree?limit=5' | python3 -c 'import json,sys; d=json.load(sys.stdin); files=d.get(\"files\",[]); print(files[0][\"path\"] if files else \"\")'")
+# NAVIGATE to logical view
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/logical-view?repo=$REPO"
+curl "http://localhost:9222/wait?selector=[class*=tree],[class*=Tree]&timeout=10000"
+# VERIFY: Click a file to expand it and see symbols
+curl "http://localhost:9222/click?selector=[class*=file]:first-child,[class*=File]:first-child"
+curl "http://localhost:9222/wait?timeout=2000"
+curl "http://localhost:9222/elements?selector=[class*=symbol],[class*=Symbol]&limit=10"
+```
+
+**Pass criteria:**
+- Expanding a file shows its symbols (classes, functions, etc.)
+- Symbol names match what the API returns for that file
+
+---
+
+## RT-26: Logical View Symbol Click Navigates to Browse
+
+**Steps:**
+```bash
+# NAVIGATE to logical view with a repo
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/logical-view?repo=$REPO"
+curl "http://localhost:9222/wait?selector=[class*=tree],[class*=Tree]&timeout=10000"
+# Expand a file, then click a symbol
+curl "http://localhost:9222/click?selector=[class*=file]:first-child,[class*=File]:first-child"
+curl "http://localhost:9222/wait?timeout=2000"
+curl "http://localhost:9222/click?selector=[class*=symbol]:first-child,[class*=Symbol]:first-child"
+curl "http://localhost:9222/wait?timeout=3000"
+# VERIFY: URL changed to /browse with file path and line
+curl "http://localhost:9222/url"
+```
+
+**Pass criteria:**
+- URL now contains `/browse/` with a file path
+- URL contains a `line=` parameter pointing to the symbol's definition line
+- Browse page displays the correct file content
+
+---
+
+## RT-27: Logical View Language and Kind Filters
+
+**Steps:**
+```bash
+# NAVIGATE to logical view
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/logical-view?repo=$REPO"
+curl "http://localhost:9222/wait?selector=[class*=tree],[class*=Tree]&timeout=10000"
+# Count initial items
+curl "http://localhost:9222/eval?script=document.querySelectorAll('[class*=file],[class*=File]').length"
+# Apply a language filter (e.g., Python)
+curl "http://localhost:9222/click?selector=[class*=language],[class*=Language]"
+curl "http://localhost:9222/wait?timeout=1000"
+# Count filtered items
+curl "http://localhost:9222/eval?script=document.querySelectorAll('[class*=file],[class*=File]').length"
+```
+
+**Pass criteria:**
+- Applying a language filter reduces the number of visible files
+- Only files of the selected language remain visible
+
+---
+
+## RT-28: Dependencies Tab Shows Packages
+
+**Steps:**
+```bash
+# DISCOVER: Get dependencies from API
+REPO=$(docker exec inxr2-dev bash -c "curl -s http://localhost:8000/api/repositories | python3 -c 'import json,sys; repos=json.load(sys.stdin); print(repos[0][\"name\"])'")
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/$REPO/dependencies' | python3 -c 'import json,sys; d=json.load(sys.stdin); print(f\"Total: {d.get(\"total\",0)} dependencies\")'"
+# NAVIGATE
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/dependencies?repo=$REPO"
+curl "http://localhost:9222/wait?selector=[class*=dependency],[class*=Dependency],[class*=package],[class*=Package]&timeout=10000"
+# VERIFY
+curl "http://localhost:9222/elements?selector=[class*=dependency],[class*=Dependency],[class*=package],[class*=Package]&limit=10"
+```
+
+**Pass criteria:**
+- Dependencies page loads without errors
+- Package names are visible matching API response
+- No "Coming Soon" placeholder visible
+
+---
+
+## RT-29: Dependencies Tab Respects Commit Picker
+
+**Steps:**
+```bash
+# DISCOVER: Get two different commits
+REPO=$(docker exec inxr2-dev bash -c "curl -s http://localhost:8000/api/repositories | python3 -c 'import json,sys; repos=json.load(sys.stdin); print(repos[0][\"name\"])'")
+COMMITS=$(docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/$REPO/commits?limit=2' | python3 -c 'import json,sys; cs=json.load(sys.stdin); print(cs[0][\"hash\"][:7],cs[1][\"hash\"][:7])'")
+# NAVIGATE to dependencies with specific commit
+COMMIT1=$(echo $COMMITS | cut -d' ' -f1)
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/dependencies?repo=$REPO&commit=$COMMIT1"
+curl "http://localhost:9222/wait?selector=[class*=dependency],[class*=Dependency],[class*=package],[class*=Package]&timeout=10000"
+# VERIFY: Page loaded with commit context
+curl "http://localhost:9222/url"
+```
+
+**Pass criteria:**
+- Dependencies page loads with the specified commit
+- URL contains the commit parameter
+- Dependency data reflects the selected commit
+
+---
+
+## RT-30: Dependencies Empty State When Not Indexed
+
+**Steps:**
+```bash
+# NAVIGATE to dependencies for a repo that might not have deps indexed
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/dependencies?repo=nonexistent-repo"
+curl "http://localhost:9222/wait?timeout=5000"
+# VERIFY: Empty state message shown
+curl "http://localhost:9222/text?selector=[class*=empty],[class*=Empty],p"
+```
+
+**Pass criteria:**
+- An appropriate empty state message is displayed
+- No errors or crashes
+
+---
+
+## RT-31: References Panel "View in Logical View" Link
+
+**Steps:**
+```bash
+# NAVIGATE to browse and click a symbol to open references panel
+REPO=$(docker exec inxr2-dev bash -c "curl -s http://localhost:8000/api/repositories | python3 -c 'import json,sys; repos=json.load(sys.stdin); print(repos[0][\"name\"])'")
+# Find a file with symbols
+FILE=$(docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/$REPO/symbol-tree?limit=1' | python3 -c 'import json,sys; d=json.load(sys.stdin); files=d.get(\"files\",[]); print(files[0][\"path\"] if files else \"\")'")
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/$REPO/$FILE"
+curl "http://localhost:9222/wait?selector=[class*=code],[class*=Code]&timeout=10000"
+# Click a symbol in the code to open references panel
+curl "http://localhost:9222/click?selector=[data-symbol],[class*=symbol-link]:first-child"
+curl "http://localhost:9222/wait?selector=[class*=reference],[class*=Reference]&timeout=5000"
+# Look for "View in Logical View" link
+curl "http://localhost:9222/elements?selector=a[href*=logical-view],button:has-text('Logical View')"
+# Click the link
+curl "http://localhost:9222/click?selector=a[href*=logical-view],button:has-text('Logical View')"
+curl "http://localhost:9222/wait?timeout=3000"
+# VERIFY: Navigated to logical view
+curl "http://localhost:9222/url"
+```
+
+**Pass criteria:**
+- References panel contains a link/button to view the symbol in Logical View
+- Clicking it navigates to `/logical-view` with the correct repository context
+- The symbol is visible or highlighted in the logical view
+
+---
+
 # Phase 3: MCP Server Regression
 
 Verify that the MCP server correctly exposes INXR2 code intelligence via its tool handlers.
@@ -1552,7 +1730,7 @@ asyncio.run(main())
 | IX-04b | Verify ES6 export/re-export references | Export/re-export reference patterns |
 | IX-05 | Compare indexing performance vs history | No timing/count regressions |
 
-### Phase 2: QA Browser (29 tests)
+### Phase 2: QA Browser (37 tests)
 
 | ID | Test | Validates Against |
 |----|------|-------------------|
@@ -1584,6 +1762,14 @@ asyncio.run(main())
 | RT-22 | Theme toggle | Background color change |
 | RT-22a | Diff colors in both themes | Theme-adapted diff colors |
 | RT-23 | Markdown rendering matches file | `grep '^#'` heading |
+| RT-24 | Logical View loads symbol tree | Symbol tree API |
+| RT-25 | Logical View expand shows symbols | Symbol tree API children |
+| RT-26 | Logical View symbol click → Browse | URL navigation |
+| RT-27 | Logical View language/kind filters | Filtered item count |
+| RT-28 | Dependencies tab shows packages | Dependencies API |
+| RT-29 | Dependencies respects commit picker | URL commit param |
+| RT-30 | Dependencies empty state | Empty state message |
+| RT-31 | References panel → Logical View link | URL navigation |
 
 ### Phase 3: MCP Server (18 tests)
 
@@ -1608,4 +1794,4 @@ asyncio.run(main())
 | MCP-17 | Staleness warning when index behind | Git HEAD vs last indexed commit |
 | MCP-18 | Browse URLs in find_dead_code and review_helper | URL presence with frontend_url |
 
-**Total: 54 test cases** (7 indexing + 29 browser + 18 MCP) — all verified against git/API, no hardcoded data.
+**Total: 62 test cases** (7 indexing + 37 browser + 18 MCP) — all verified against git/API, no hardcoded data.
