@@ -298,7 +298,7 @@ describe('Search', () => {
     })
   })
 
-  it('should have all source type checkboxes unchecked by default (nothing excluded)', async () => {
+  it('should have all source type checkboxes checked by default (all included)', async () => {
     render(<Search />)
 
     await waitFor(() => {
@@ -309,12 +309,12 @@ describe('Search', () => {
       const commitMsgsCheckbox = screen.getByLabelText('Commit Messages') as HTMLInputElement
       const fileContentCheckbox = screen.getByLabelText('File Content') as HTMLInputElement
 
-      expect(symbolsCheckbox.checked).toBe(false)
-      expect(referencesCheckbox.checked).toBe(false)
-      expect(commentsCheckbox.checked).toBe(false)
-      expect(docstringsCheckbox.checked).toBe(false)
-      expect(commitMsgsCheckbox.checked).toBe(false)
-      expect(fileContentCheckbox.checked).toBe(false)
+      expect(symbolsCheckbox.checked).toBe(true)
+      expect(referencesCheckbox.checked).toBe(true)
+      expect(commentsCheckbox.checked).toBe(true)
+      expect(docstringsCheckbox.checked).toBe(true)
+      expect(commitMsgsCheckbox.checked).toBe(true)
+      expect(fileContentCheckbox.checked).toBe(true)
     })
   })
 
@@ -334,15 +334,19 @@ describe('Search', () => {
     })
   })
 
-  it('should exclude checked source types from results', async () => {
-    // URL excludes symbol type (checked = excluded)
-    window.history.pushState({}, '', '?query=test&exclude_types=symbol')
+  it('should exclude unchecked source types from results', async () => {
+    // URL includes only non-symbol types (symbol is not in types list = excluded)
+    window.history.pushState(
+      {},
+      '',
+      '?query=test&types=reference,comment,docstring,commit_message,file_content'
+    )
     render(<Search />)
 
     await waitFor(() => {
       // searchText should be called (other text types still active)
       expect(mockSearchText).toHaveBeenCalled()
-      // searchSymbols should NOT be called since symbol is excluded
+      // searchSymbols should NOT be called since symbol is not included
       expect(mockSearchSymbols).not.toHaveBeenCalled()
     })
   })
@@ -355,7 +359,7 @@ describe('Search', () => {
     })
   })
 
-  it('should call searchSymbols when Definitions source type is selected', async () => {
+  it('should call searchSymbols when only Definitions source type is selected', async () => {
     mockSearchSymbols.mockResolvedValue({
       items: [
         {
@@ -380,11 +384,8 @@ describe('Search', () => {
       offset: 0,
     })
 
-    window.history.pushState(
-      {},
-      '',
-      '?query=get_file_symbols_by_path&exclude_types=reference,comment,docstring,commit_message,file_content'
-    )
+    // Only symbol type included
+    window.history.pushState({}, '', '?query=get_file_symbols_by_path&types=symbol')
     render(<Search />)
 
     await waitFor(() => {
@@ -395,7 +396,7 @@ describe('Search', () => {
       )
     })
 
-    // Should NOT call searchText when everything except symbol is excluded
+    // Should NOT call searchText when only symbol is included
     expect(mockSearchText).not.toHaveBeenCalled()
   })
 
@@ -424,11 +425,8 @@ describe('Search', () => {
       offset: 0,
     })
 
-    window.history.pushState(
-      {},
-      '',
-      '?query=MyClass&exclude_types=reference,comment,docstring,commit_message,file_content'
-    )
+    // Only symbol type included
+    window.history.pushState({}, '', '?query=MyClass&types=symbol')
     render(<Search />)
 
     await waitFor(() => {
@@ -463,11 +461,8 @@ describe('Search', () => {
       offset: 0,
     })
 
-    window.history.pushState(
-      {},
-      '',
-      '?query=my_function&exclude_types=reference,comment,docstring,commit_message,file_content'
-    )
+    // Only symbol type included
+    window.history.pushState({}, '', '?query=my_function&types=symbol')
     render(<Search />)
 
     await waitFor(() => {
@@ -490,11 +485,8 @@ describe('Search', () => {
       offset: 0,
     })
 
-    window.history.pushState(
-      {},
-      '',
-      '?query=test&exclude_types=reference,docstring,commit_message,file_content'
-    )
+    // symbol and comment included
+    window.history.pushState({}, '', '?query=test&types=symbol,comment')
     render(<Search />)
 
     await waitFor(() => {
@@ -588,23 +580,23 @@ describe('Search', () => {
 
   describe('Extension filter', () => {
     /**
-     * Helper to find and open the MUI "Hide Extensions" multi-select dropdown.
+     * Helper to find and open the MUI "Extensions" multi-select dropdown.
      * MUI InputLabel renders the label text twice (label element + notched outline),
      * so we find the label, navigate to the FormControl, then find the select trigger.
      */
     async function openExtensionDropdown() {
       await waitFor(() => {
-        const labels = screen.getAllByText('Hide Extensions')
+        const labels = screen.getAllByText('Extensions')
         expect(labels.length).toBeGreaterThan(0)
       })
       // Find the MUI Select trigger (div with role="combobox" or class MuiSelect-select)
-      const labels = screen.getAllByText('Hide Extensions')
+      const labels = screen.getAllByText('Extensions')
       const formControl = labels[0]!.closest('.MuiFormControl-root')!
       const trigger = formControl.querySelector('.MuiSelect-select') as HTMLElement
       fireEvent.mouseDown(trigger)
     }
 
-    it('should render Hide Extensions dropdown', async () => {
+    it('should render Extensions dropdown', async () => {
       mockGetFileExtensions.mockResolvedValue({
         extensions: ['.py', '.ts', '.tsx', '.js'],
       })
@@ -613,12 +605,12 @@ describe('Search', () => {
       render(<Search />)
 
       await waitFor(() => {
-        const labels = screen.getAllByText('Hide Extensions')
+        const labels = screen.getAllByText('Extensions')
         expect(labels.length).toBeGreaterThan(0)
       })
     })
 
-    it('should set exclude_ext to all extensions when clicking "Hide all extensions"', async () => {
+    it('should set ext to empty when clicking "Select none"', async () => {
       mockGetFileExtensions.mockResolvedValue({
         extensions: ['.py', '.ts', '.tsx'],
       })
@@ -632,25 +624,21 @@ describe('Search', () => {
       await waitFor(() => {
         expect(screen.getByText('.py')).toBeInTheDocument()
       })
-      fireEvent.click(screen.getByText('Hide all extensions'))
+      fireEvent.click(screen.getByText('Select none'))
 
       await waitFor(() => {
         const params = new URLSearchParams(window.location.search)
-        const excludeExt = params.get('exclude_ext')
-        expect(excludeExt).toBeTruthy()
-        const excluded = excludeExt!.split(',')
-        expect(excluded).toContain('.py')
-        expect(excluded).toContain('.ts')
-        expect(excluded).toContain('.tsx')
+        const ext = params.get('ext')
+        expect(ext).toBe('')
       })
     })
 
-    it('should clear exclude_ext when clicking "Show all extensions"', async () => {
+    it('should clear ext param when clicking "Show all extensions"', async () => {
       mockGetFileExtensions.mockResolvedValue({
         extensions: ['.py', '.ts', '.tsx'],
       })
 
-      window.history.pushState({}, '', '?query=test&exclude_ext=.py,.ts,.tsx')
+      window.history.pushState({}, '', '?query=test&ext=.py')
       render(<Search />)
 
       await openExtensionDropdown()
@@ -663,7 +651,7 @@ describe('Search', () => {
 
       await waitFor(() => {
         const params = new URLSearchParams(window.location.search)
-        expect(params.get('exclude_ext')).toBeNull()
+        expect(params.get('ext')).toBeNull()
       })
     })
 
@@ -683,12 +671,12 @@ describe('Search', () => {
       })
     })
 
-    it('should render (none) sentinel as "(no extension)" in chip display when excluded', async () => {
+    it('should render (none) sentinel as "(no extension)" in chip display when included', async () => {
       mockGetFileExtensions.mockResolvedValue({
         extensions: ['.py', '(none)', '.ts'],
       })
 
-      window.history.pushState({}, '', '?query=test&exclude_ext=(none)')
+      window.history.pushState({}, '', '?query=test&ext=(none)')
       render(<Search />)
 
       // The chip in the select's renderValue should display "(no extension)"
@@ -698,12 +686,13 @@ describe('Search', () => {
       })
     })
 
-    it('should persist (none) in exclude_ext URL param when selected', async () => {
+    it('should include (none) in ext URL param when selecting from empty state', async () => {
       mockGetFileExtensions.mockResolvedValue({
         extensions: ['.py', '(none)', '.ts'],
       })
 
-      window.history.pushState({}, '', '?query=test')
+      // Start with no extensions selected
+      window.history.pushState({}, '', '?query=test&ext=')
       render(<Search />)
 
       await openExtensionDropdown()
@@ -716,12 +705,12 @@ describe('Search', () => {
 
       await waitFor(() => {
         const params = new URLSearchParams(window.location.search)
-        const excludeExt = params.get('exclude_ext')
-        expect(excludeExt).toContain('(none)')
+        const ext = params.get('ext')
+        expect(ext).toContain('(none)')
       })
     })
 
-    it('should set exclude_ext correctly on individual extension filter change', async () => {
+    it('should uncheck extension when clicking it from default (all selected) state', async () => {
       mockGetFileExtensions.mockResolvedValue({
         extensions: ['.py', '.ts', '.tsx'],
       })
@@ -731,7 +720,7 @@ describe('Search', () => {
 
       await openExtensionDropdown()
 
-      // Wait for extension options to render, then click .py
+      // Wait for extension options to render, then click .py to uncheck it
       await waitFor(() => {
         expect(screen.getByRole('listbox')).toBeInTheDocument()
       })
@@ -741,19 +730,20 @@ describe('Search', () => {
       })
       fireEvent.click(within(listbox).getByText('.py'))
 
+      // .py unchecked → only .ts and .tsx remain
       await waitFor(() => {
         const params = new URLSearchParams(window.location.search)
-        expect(params.get('exclude_ext')).toBe('.py')
+        expect(params.get('ext')).toBe('.ts,.tsx')
       })
     })
 
-    it('should skip search when all extensions are excluded', async () => {
+    it('should skip search when ext param is empty (no extensions selected)', async () => {
       mockGetFileExtensions.mockResolvedValue({
         extensions: ['.py', '.ts'],
       })
 
-      // All extensions excluded
-      window.history.pushState({}, '', '?query=test&exclude_ext=.py,.ts')
+      // Empty ext param = no extensions selected
+      window.history.pushState({}, '', '?query=test&ext=')
       render(<Search />)
 
       await waitFor(() => {
@@ -769,11 +759,11 @@ describe('Search', () => {
         extensions: ['.py', '.ts', '.tsx'],
       })
 
-      // Mount with exclude_ext already in URL (simulates page reload)
-      window.history.pushState({}, '', '?query=test&exclude_ext=.py,.tsx')
+      // Mount with ext already in URL (simulates page reload)
+      window.history.pushState({}, '', '?query=test&ext=.py,.tsx')
       render(<Search />)
 
-      // The chips should show the excluded extensions in the select's renderValue
+      // The chips should show the included extensions in the select's renderValue
       await waitFor(() => {
         const pyChips = screen.getAllByText('.py')
         expect(pyChips.length).toBeGreaterThanOrEqual(1)
@@ -787,15 +777,15 @@ describe('Search', () => {
         extensions: ['.py', '.ts', '.tsx'],
       })
 
-      // Exclude .py — so .ts and .tsx should be passed as extensions
-      window.history.pushState({}, '', '?query=test&exclude_ext=.py')
+      // Include only .py — only .py should be passed as extensions
+      window.history.pushState({}, '', '?query=test&ext=.py')
       render(<Search />)
 
       await waitFor(() => {
         expect(mockSearchText).toHaveBeenCalledWith(
           expect.objectContaining({
             q: 'test',
-            extensions: ['.ts', '.tsx'],
+            extensions: ['.py'],
           })
         )
       })
