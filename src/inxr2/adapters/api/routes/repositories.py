@@ -3,6 +3,9 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from ....application.use_cases.dependencies import (
+    GetRepositoryDependenciesRequest,
+)
 from ....application.use_cases.repositories import (
     GetRepositoryBranchesRequest,
     GetRepositoryStatsRequest,
@@ -11,9 +14,6 @@ from ....application.use_cases.repositories.get_repository_files import (
     GetRepositoryFilesRequest,
 )
 from ....application.use_cases.repositories.get_repository_stats import RepositoryStats
-from ....application.use_cases.dependencies import (
-    GetRepositoryDependenciesRequest,
-)
 from ....application.use_cases.repositories.get_repository_tree import (
     GetRepositoryTreeRequest,
     TreeNode,
@@ -408,9 +408,7 @@ class DependenciesListResponse(BaseModel):
     total: int
 
 
-@router.get(
-    "/by-name/{name}/dependencies", response_model=DependenciesListResponse
-)
+@router.get("/by-name/{name}/dependencies", response_model=DependenciesListResponse)
 async def get_repository_dependencies_by_name(
     name: str,
     use_case: GetRepositoryDependenciesUseCaseDep,

@@ -12,6 +12,7 @@ import Browse from '@/pages/Browse'
 import Search from '@/pages/Search'
 import History from '@/pages/History'
 import ComingSoon from '@/pages/ComingSoon'
+import Dependencies from '@/pages/Dependencies'
 import Help from '@/pages/Help'
 
 /**
@@ -89,7 +90,7 @@ function AppContent() {
             path="/dependencies"
             element={
               <ErrorBoundary>
-                <ComingSoon title="Dependencies" tab="dependencies" />
+                <Dependencies />
               </ErrorBoundary>
             }
           />
