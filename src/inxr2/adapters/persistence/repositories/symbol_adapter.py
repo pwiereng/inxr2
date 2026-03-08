@@ -2,6 +2,7 @@
 
 from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from ....application.ports.repositories import SymbolRepositoryPort
 from ....domain.entities import Symbol
@@ -189,6 +190,7 @@ class PostgresSymbolRepository(
         branch: str | None = None,
         commit_id: int | None = None,
         language: str | None = None,
+        kinds: list[str] | None = None,
     ) -> list[tuple[int, str, str | None, int]]:
         """List files that contain symbols, with counts."""
         query = (
@@ -218,9 +220,77 @@ class PostgresSymbolRepository(
         if language is not None:
             query = query.where(FileModel.language == language)
 
+        if kinds:
+            # Only include files that have at least one "effectively top-level"
+            # symbol of the requested kind(s). A symbol is effectively top-level
+            # if it has no parent OR its parent is a namespace (transparent).
+            sym2 = aliased(SymbolModel, flat=True)
+            parent_sym = aliased(SymbolModel, flat=True)
+            kinds_subq = (
+                select(sym2.file_id)
+                .outerjoin(parent_sym, sym2.parent_symbol_id == parent_sym.id)
+                .where(
+                    or_(
+                        sym2.parent_symbol_id.is_(None),
+                        parent_sym.kind == "namespace",
+                    ),
+                    sym2.kind.in_(kinds),
+                )
+                .distinct()
+            )
+            query = query.where(FileModel.id.in_(kinds_subq))
+
         query = query.order_by(FileModel.path)
         result = await self.session.execute(query)
         return [(row[0], row[1], row[2], row[3]) for row in result.all()]
+
+    async def list_distinct_top_level_kinds(
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+    ) -> list[str]:
+        """List distinct symbol kinds for effectively top-level symbols.
+
+        A symbol is effectively top-level if it has no parent or its
+        parent is a namespace (namespaces are transparent containers).
+        Namespace itself is excluded from the returned kinds.
+        """
+        parent_sym = aliased(SymbolModel, flat=True)
+        query = (
+            select(SymbolModel.kind)
+            .join(FileModel, SymbolModel.file_id == FileModel.id)
+            .outerjoin(parent_sym, SymbolModel.parent_symbol_id == parent_sym.id)
+            .where(
+                FileModel.repository_id == repository_id,
+                or_(
+                    SymbolModel.parent_symbol_id.is_(None),
+                    parent_sym.kind == "namespace",
+                ),
+                SymbolModel.kind != "namespace",
+            )
+            .distinct()
+        )
+
+        if commit_id is not None:
+            query = query.where(
+                FileModel.id.in_(
+                    select(CommitFileModel.file_id).where(
+                        CommitFileModel.commit_id == commit_id
+                    )
+                )
+            )
+        else:
+            latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+            query = query.where(FileModel.id.in_(select(latest_sq.c.max_id)))
+
+        if language is not None:
+            query = query.where(FileModel.language == language)
+
+        query = query.order_by(SymbolModel.kind)
+        result = await self.session.execute(query)
+        return [row[0] for row in result.all()]
 
     async def update_parent_symbol_ids(self, updates: dict[int, int]) -> int:
         """Bulk update parent_symbol_id for multiple symbols."""

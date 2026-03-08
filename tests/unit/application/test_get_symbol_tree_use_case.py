@@ -180,6 +180,71 @@ class TestGetSymbolTreeTier1:
         assert paths == sorted(paths)
 
     @pytest.mark.asyncio
+    async def test_tier1_returns_available_kinds(
+        self, use_case: GetSymbolTreeUseCase
+    ) -> None:
+        """Tier 1 response includes available top-level symbol kinds."""
+        result = await use_case.execute(
+            GetSymbolTreeRequest(repository_name="test-repo", branch="main")
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        assert "function" in result.available_kinds
+
+    @pytest.mark.asyncio
+    async def test_tier1_kinds_filter_narrows_files(
+        self,
+        use_case: GetSymbolTreeUseCase,
+        symbol_repo: InMemorySymbolRepository,
+        file_repo: InMemoryFileRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> None:
+        """Kinds filter returns only files with matching top-level symbols."""
+        # Add a class symbol to file 1 (main.py already has a function)
+        file_repo.add(
+            File(
+                id=4,
+                repository_id=1,
+                path="src/models.py",
+                content_hash="h4",
+                size_bytes=300,
+                language="python",
+            )
+        )
+        file_repo._commit_files.add((1, 4))
+        commit_repo._branch_commits[(1, "main", 1)] = True
+        symbol_repo.add(
+            Symbol(
+                id=10,
+                repository_id=1,
+                file_id=4,
+                name="MyClass",
+                kind=SymbolKind.CLASS,
+                start_line=1,
+                start_column=0,
+                end_line=20,
+                end_column=0,
+            )
+        )
+
+        # Filter to only class → should return only models.py
+        result = await use_case.execute(
+            GetSymbolTreeRequest(
+                repository_name="test-repo", branch="main", kinds=["class"]
+            )
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        paths = {f.path for f in result.files}
+        assert "src/models.py" in paths
+        assert "src/main.py" not in paths
+        assert "src/utils.py" not in paths
+
+        # available_kinds should still show all kinds (not filtered)
+        assert "class" in result.available_kinds
+        assert "function" in result.available_kinds
+
+    @pytest.mark.asyncio
     async def test_tier1_unknown_repo_raises(
         self, use_case: GetSymbolTreeUseCase
     ) -> None:

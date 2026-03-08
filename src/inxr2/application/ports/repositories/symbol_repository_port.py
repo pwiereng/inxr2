@@ -112,6 +112,7 @@ class SymbolRepositoryPort(ABC):
         branch: str | None = None,
         commit_id: int | None = None,
         language: str | None = None,
+        kinds: list[str] | None = None,
     ) -> list[tuple[int, str, str | None, int]]:
         """List files that contain symbols, with counts.
 
@@ -123,10 +124,37 @@ class SymbolRepositoryPort(ABC):
             branch: Branch name for latest-file scoping (optional)
             commit_id: Specific commit for time travel (optional, overrides branch)
             language: Filter by programming language (optional)
+            kinds: Filter to files containing symbols of these kinds (optional).
+                When set, only files with at least one top-level symbol of the
+                given kind(s) are returned.
 
         Returns:
             List of (file_id, path, language, symbol_count) tuples,
             ordered by path.
+        """
+        pass
+
+    @abstractmethod
+    async def list_distinct_top_level_kinds(
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+    ) -> list[str]:
+        """List distinct symbol kinds for top-level symbols.
+
+        Returns the set of distinct kind values for symbols that have
+        no parent (top-level), scoped to the given branch/commit.
+
+        Args:
+            repository_id: Repository to query
+            branch: Branch name for latest-file scoping (optional)
+            commit_id: Specific commit for time travel (optional, overrides branch)
+            language: Filter by programming language (optional)
+
+        Returns:
+            Sorted list of distinct kind strings.
         """
         pass
 

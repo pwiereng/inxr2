@@ -77,6 +77,7 @@ class GetSymbolTreeRequest:
     parent_symbol_id: int | None = None
     language: str | None = None
     kind: str | None = None
+    kinds: list[str] | None = None
 
 
 @dataclass
@@ -85,6 +86,7 @@ class GetSymbolTreeFilesResponse:
 
     files: list[SymbolTreeFile]
     repository_id: int
+    available_kinds: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -153,6 +155,7 @@ class GetSymbolTreeUseCase:
                 request.branch,
                 commit_id,
                 request.language,
+                request.kinds,
             )
 
     async def _resolve_commit_id(
@@ -174,6 +177,7 @@ class GetSymbolTreeUseCase:
         branch: str | None,
         commit_id: int | None,
         language: str | None,
+        kinds: list[str] | None = None,
     ) -> GetSymbolTreeFilesResponse:
         """Tier 1: list files that contain symbols."""
         rows = await self._symbol_repo.list_files_with_symbols(
@@ -181,6 +185,7 @@ class GetSymbolTreeUseCase:
             branch=branch,
             commit_id=commit_id,
             language=language,
+            kinds=kinds,
         )
         files = [
             SymbolTreeFile(
@@ -191,7 +196,18 @@ class GetSymbolTreeUseCase:
             )
             for file_id, path, lang, count in rows
         ]
-        return GetSymbolTreeFilesResponse(files=files, repository_id=repository_id)
+        # Fetch available kinds (unfiltered by kinds param)
+        available_kinds = await self._symbol_repo.list_distinct_top_level_kinds(
+            repository_id=repository_id,
+            branch=branch,
+            commit_id=commit_id,
+            language=language,
+        )
+        return GetSymbolTreeFilesResponse(
+            files=files,
+            repository_id=repository_id,
+            available_kinds=available_kinds,
+        )
 
     async def _get_file_symbols(
         self,

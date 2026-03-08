@@ -303,6 +303,7 @@ export interface SymbolTreeResponse {
   repository_id: number
   files: SymbolTreeFile[] | null
   symbols: SymbolTreeSymbol[] | null
+  available_kinds: string[] | null
 }
 
 export async function getSymbolTree(
@@ -314,6 +315,7 @@ export async function getSymbolTree(
     parent_symbol_id?: number
     language?: string
     kind?: string
+    kinds?: string[]
   }
 ): Promise<SymbolTreeResponse> {
   const searchParams = new URLSearchParams()
@@ -324,6 +326,7 @@ export async function getSymbolTree(
     searchParams.set('parent_symbol_id', params.parent_symbol_id.toString())
   if (params?.language) searchParams.set('language', params.language)
   if (params?.kind) searchParams.set('kind', params.kind)
+  if (params?.kinds && params.kinds.length > 0) searchParams.set('kinds', params.kinds.join(','))
   const query = searchParams.toString()
   return fetchApi<SymbolTreeResponse>(
     `/repositories/by-name/${encodeURIComponent(repoName)}/symbol-tree${query ? `?${query}` : ''}`

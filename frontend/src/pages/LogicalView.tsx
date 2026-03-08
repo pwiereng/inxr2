@@ -103,21 +103,14 @@ export default function LogicalView(): React.ReactElement {
     return [...langs].sort()
   }, [files])
 
-  // Derive available kinds from loaded symbols
-  const availableKinds = useMemo(() => {
-    const kinds = new Set<string>()
-    for (const syms of Object.values(fileSymbols)) {
-      for (const s of syms) {
-        kinds.add(s.kind)
-      }
-    }
-    return [...kinds].sort()
-  }, [fileSymbols])
+  // Available kinds from backend (tier 1 response)
+  const [availableKinds, setAvailableKinds] = useState<string[]>([])
 
-  // Load tier 1 (files) when repo/branch/commit changes
+  // Load tier 1 (files) when repo/branch/commit/kinds changes
   useEffect(() => {
     if (!repoName) {
       setFiles([])
+      setAvailableKinds([])
       return
     }
 
@@ -134,9 +127,11 @@ export default function LogicalView(): React.ReactElement {
         const result = await getSymbolTree(repoName, {
           branch: branch ?? undefined,
           commit: commit ?? undefined,
+          kinds: selectedKinds.size > 0 ? [...selectedKinds] : undefined,
         })
-        if (!cancelled && result.files) {
-          setFiles(result.files)
+        if (!cancelled) {
+          if (result.files) setFiles(result.files)
+          if (result.available_kinds) setAvailableKinds(result.available_kinds)
         }
       } catch (err) {
         if (!cancelled) {
@@ -150,7 +145,7 @@ export default function LogicalView(): React.ReactElement {
     return () => {
       cancelled = true
     }
-  }, [repoName, branch, commit])
+  }, [repoName, branch, commit, selectedKinds])
 
   // Expand/collapse a file (tier 2)
   const toggleFile = useCallback(
@@ -165,7 +160,8 @@ export default function LogicalView(): React.ReactElement {
       }
 
       // Fetch symbols if not cached
-      if (!fileSymbols[fileId] && repoName) {
+      let symbols = fileSymbols[fileId]
+      if (!symbols && repoName) {
         setExpandingFile(fileId)
         try {
           const result: SymbolTreeResponse = await getSymbolTree(repoName, {
@@ -174,6 +170,7 @@ export default function LogicalView(): React.ReactElement {
             file_id: fileId,
           })
           if (result.symbols) {
+            symbols = result.symbols
             setFileSymbols((prev) => ({ ...prev, [fileId]: result.symbols! }))
           }
         } catch {
@@ -183,10 +180,36 @@ export default function LogicalView(): React.ReactElement {
         }
       }
 
+      // Auto-expand all symbols with children under this file
+      const autoExpandIds: number[] = []
+      if (symbols && repoName) {
+        for (const s of symbols) {
+          if (s.has_children) {
+            if (!symbolChildren[s.id]) {
+              try {
+                const childResult = await getSymbolTree(repoName, {
+                  branch: branch ?? undefined,
+                  commit: commit ?? undefined,
+                  parent_symbol_id: s.id,
+                })
+                if (childResult.symbols) {
+                  setSymbolChildren((prev) => ({ ...prev, [s.id]: childResult.symbols! }))
+                }
+              } catch {
+                // Silently fail
+              }
+            }
+            autoExpandIds.push(s.id)
+          }
+        }
+      }
+
       newFiles.add(fileId)
-      setExpanded({ ...newExpanded, files: newFiles })
+      const newSyms = new Set(newExpanded.symbols)
+      for (const id of autoExpandIds) newSyms.add(id)
+      setExpanded({ ...newExpanded, files: newFiles, symbols: newSyms })
     },
-    [expanded, fileSymbols, repoName, branch, commit]
+    [expanded, fileSymbols, symbolChildren, repoName, branch, commit]
   )
 
   // Expand/collapse a symbol (tier 3)
@@ -440,7 +463,7 @@ export default function LogicalView(): React.ReactElement {
                 ))}
               </Box>
             )}
-            {availableKinds.length > 1 && (
+            {availableKinds.length > 0 && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
                   Kind:

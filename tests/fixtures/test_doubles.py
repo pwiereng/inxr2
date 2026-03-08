@@ -319,6 +319,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         branch: str | None = None,
         commit_id: int | None = None,
         language: str | None = None,
+        kinds: list[str] | None = None,
     ) -> list[tuple[int, str, str | None, int]]:
         """List files that contain symbols, with counts."""
         # Determine which file IDs are valid for this scope
@@ -331,6 +332,19 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
             valid_file_ids = self._file_repo._compute_latest_file_ids(
                 repository_id, branch=branch
             )
+
+        # If kinds filter active, find which files have matching
+        # effectively top-level symbols (no parent or parent is namespace)
+        files_with_matching_kinds: set[int] | None = None
+        if kinds:
+            files_with_matching_kinds = set()
+            for s in self._symbols.values():
+                if s.repository_id != repository_id:
+                    continue
+                if valid_file_ids is not None and s.file_id not in valid_file_ids:
+                    continue
+                if s.kind.value in kinds and self._is_effectively_top_level(s):
+                    files_with_matching_kinds.add(s.file_id)
 
         # Count symbols per file
         file_counts: dict[int, int] = {}
@@ -350,9 +364,66 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                     continue
                 if language is not None and file.language != language:
                     continue
+                if (
+                    files_with_matching_kinds is not None
+                    and file_id not in files_with_matching_kinds
+                ):
+                    continue
                 results.append((file_id, file.path, file.language, count))
         results.sort(key=lambda r: r[1])  # Sort by path
         return results
+
+    def _is_effectively_top_level(self, symbol: Symbol) -> bool:
+        """Check if a symbol is effectively top-level.
+
+        A symbol is effectively top-level if it has no parent or its
+        parent is a namespace (namespaces are transparent containers).
+        """
+        if symbol.parent_symbol_id is None:
+            return True
+        parent = self._symbols.get(symbol.parent_symbol_id)
+        return parent is not None and parent.kind.value == "namespace"
+
+    async def list_distinct_top_level_kinds(
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+    ) -> list[str]:
+        """List distinct symbol kinds for effectively top-level symbols.
+
+        Excludes 'namespace' from the returned kinds (namespaces are
+        transparent containers).
+        """
+        valid_file_ids: set[int] | None = None
+        if commit_id is not None and self._file_repo is not None:
+            valid_file_ids = {
+                fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+            }
+        elif self._file_repo is not None:
+            valid_file_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=branch
+            )
+
+        kinds: set[str] = set()
+        for s in self._symbols.values():
+            if s.repository_id != repository_id:
+                continue
+            if valid_file_ids is not None and s.file_id not in valid_file_ids:
+                continue
+            if s.kind.value == "namespace":
+                continue
+            if not self._is_effectively_top_level(s):
+                continue
+            # Language filter
+            if language is not None and self._file_repo is not None:
+                file = self._file_repo._files.get(s.file_id)
+                if file is None or file.language != language:
+                    continue
+            kinds.add(s.kind.value)
+
+        return sorted(kinds)
 
     async def update_parent_symbol_ids(self, updates: dict[int, int]) -> int:
         """Bulk update parent_symbol_id for multiple symbols."""

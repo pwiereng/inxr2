@@ -512,6 +512,7 @@ class SymbolTreeResponse(BaseModel):
     repository_id: int
     files: list[SymbolTreeFileResponse] | None = None
     symbols: list[SymbolTreeSymbolResponse] | None = None
+    available_kinds: list[str] | None = None
 
 
 @router.get("/by-name/{name}/symbol-tree", response_model=SymbolTreeResponse)
@@ -530,6 +531,10 @@ async def get_symbol_tree(
     kind: str | None = Query(
         default=None, description="Filter by symbol kind (tier 2/3)"
     ),
+    kinds: str | None = Query(
+        default=None,
+        description="Comma-separated symbol kinds to filter files (tier 1)",
+    ),
 ) -> SymbolTreeResponse:
     """Get the symbol tree for logical view browsing.
 
@@ -542,6 +547,9 @@ async def get_symbol_tree(
     consistency with the file browser.
     """
     try:
+        kinds_list = (
+            [k.strip() for k in kinds.split(",") if k.strip()] if kinds else None
+        )
         result = await use_case.execute(
             GetSymbolTreeRequest(
                 repository_name=name,
@@ -551,6 +559,7 @@ async def get_symbol_tree(
                 parent_symbol_id=parent_symbol_id,
                 language=language,
                 kind=kind,
+                kinds=kinds_list,
             )
         )
     except ValueError as e:
@@ -568,6 +577,7 @@ async def get_symbol_tree(
                 )
                 for f in result.files
             ],
+            available_kinds=result.available_kinds or None,
         )
     else:
         return SymbolTreeResponse(
