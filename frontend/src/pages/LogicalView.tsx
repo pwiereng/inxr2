@@ -92,6 +92,7 @@ export default function LogicalView(): React.ReactElement {
   const [filterText, setFilterText] = useState('')
   const [excludeText, setExcludeText] = useState('')
   const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null)
+  const [selectedKinds, setSelectedKinds] = useState<Set<string>>(new Set())
 
   // Derive available languages from loaded files
   const availableLanguages = useMemo(() => {
@@ -101,6 +102,17 @@ export default function LogicalView(): React.ReactElement {
     }
     return [...langs].sort()
   }, [files])
+
+  // Derive available kinds from loaded symbols
+  const availableKinds = useMemo(() => {
+    const kinds = new Set<string>()
+    for (const syms of Object.values(fileSymbols)) {
+      for (const s of syms) {
+        kinds.add(s.kind)
+      }
+    }
+    return [...kinds].sort()
+  }, [fileSymbols])
 
   // Load tier 1 (files) when repo/branch/commit changes
   useEffect(() => {
@@ -428,6 +440,41 @@ export default function LogicalView(): React.ReactElement {
                 ))}
               </Box>
             )}
+            {availableKinds.length > 1 && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+                  Kind:
+                </Typography>
+                <Chip
+                  label="All"
+                  size="small"
+                  variant={selectedKinds.size === 0 ? 'filled' : 'outlined'}
+                  color={selectedKinds.size === 0 ? 'primary' : 'default'}
+                  onClick={() => setSelectedKinds(new Set())}
+                  sx={{ height: 24 }}
+                />
+                {availableKinds.map((kind) => (
+                  <Chip
+                    key={kind}
+                    label={getKindLabel(kind)}
+                    size="small"
+                    icon={<>{getKindIcon(kind)}</>}
+                    variant={selectedKinds.has(kind) ? 'filled' : 'outlined'}
+                    color={selectedKinds.has(kind) ? 'primary' : 'default'}
+                    onClick={() => {
+                      const next = new Set(selectedKinds)
+                      if (next.has(kind)) {
+                        next.delete(kind)
+                      } else {
+                        next.add(kind)
+                      }
+                      setSelectedKinds(next)
+                    }}
+                    sx={{ height: 24 }}
+                  />
+                ))}
+              </Box>
+            )}
           </Box>
         )}
 
@@ -489,6 +536,7 @@ export default function LogicalView(): React.ReactElement {
                   isExpanded={expanded.files.has(file.file_id)}
                   isExpanding={expandingFile === file.file_id}
                   symbols={fileSymbols[file.file_id]}
+                  selectedKinds={selectedKinds}
                   symbolChildren={symbolChildren}
                   expandedSymbols={expanded.symbols}
                   expandingSymbol={expandingSymbol}
@@ -515,6 +563,7 @@ interface FileNodeProps {
   isExpanded: boolean
   isExpanding: boolean
   symbols: SymbolTreeSymbol[] | undefined
+  selectedKinds: Set<string>
   symbolChildren: SymbolChildren
   expandedSymbols: Set<number>
   expandingSymbol: number | null
@@ -531,6 +580,7 @@ function FileNode({
   isExpanded,
   isExpanding,
   symbols,
+  selectedKinds,
   symbolChildren,
   expandedSymbols,
   expandingSymbol,
@@ -593,20 +643,23 @@ function FileNode({
       </ListItemButton>
 
       <Collapse in={isExpanded} timeout="auto">
-        {symbols?.map((symbol) => (
-          <SymbolNode
-            key={symbol.id}
-            symbol={symbol}
-            level={1}
-            children={symbolChildren[symbol.id]}
-            expandedSymbols={expandedSymbols}
-            expandingSymbol={expandingSymbol}
-            symbolChildren={symbolChildren}
-            onToggle={onToggleSymbol}
-            onClick={onSymbolClick}
-            onInheritanceClick={onInheritanceClick}
-          />
-        ))}
+        {symbols
+          ?.filter((s) => selectedKinds.size === 0 || selectedKinds.has(s.kind))
+          .map((symbol) => (
+            <SymbolNode
+              key={symbol.id}
+              symbol={symbol}
+              level={1}
+              children={symbolChildren[symbol.id]}
+              selectedKinds={selectedKinds}
+              expandedSymbols={expandedSymbols}
+              expandingSymbol={expandingSymbol}
+              symbolChildren={symbolChildren}
+              onToggle={onToggleSymbol}
+              onClick={onSymbolClick}
+              onInheritanceClick={onInheritanceClick}
+            />
+          ))}
       </Collapse>
     </>
   )
@@ -616,6 +669,7 @@ interface SymbolNodeProps {
   symbol: SymbolTreeSymbol
   level: number
   children: SymbolTreeSymbol[] | undefined
+  selectedKinds: Set<string>
   expandedSymbols: Set<number>
   expandingSymbol: number | null
   symbolChildren: SymbolChildren
@@ -628,6 +682,7 @@ function SymbolNode({
   symbol,
   level,
   children,
+  selectedKinds,
   expandedSymbols,
   expandingSymbol,
   symbolChildren,
@@ -745,20 +800,23 @@ function SymbolNode({
 
       {symbol.has_children && (
         <Collapse in={isExpanded} timeout="auto">
-          {children?.map((child) => (
-            <SymbolNode
-              key={child.id}
-              symbol={child}
-              level={level + 1}
-              children={symbolChildren[child.id]}
-              expandedSymbols={expandedSymbols}
-              expandingSymbol={expandingSymbol}
-              symbolChildren={symbolChildren}
-              onToggle={onToggle}
-              onClick={onClick}
-              onInheritanceClick={onInheritanceClick}
-            />
-          ))}
+          {children
+            ?.filter((c) => selectedKinds.size === 0 || selectedKinds.has(c.kind))
+            .map((child) => (
+              <SymbolNode
+                key={child.id}
+                symbol={child}
+                level={level + 1}
+                children={symbolChildren[child.id]}
+                selectedKinds={selectedKinds}
+                expandedSymbols={expandedSymbols}
+                expandingSymbol={expandingSymbol}
+                symbolChildren={symbolChildren}
+                onToggle={onToggle}
+                onClick={onClick}
+                onInheritanceClick={onInheritanceClick}
+              />
+            ))}
         </Collapse>
       )}
     </>
