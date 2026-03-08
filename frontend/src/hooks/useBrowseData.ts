@@ -63,7 +63,7 @@ export function useBrowseData({
   const [rawContent, setRawContent] = useState<RawFileContent | null>(null)
 
   // Latest commit hash for the current branch (HEAD fallback for changedOnly).
-  // We track which repo/branch the resolved commit belongs to so that stale
+  // We track which repository the resolved commit belongs to so that stale
   // data from a previous repo is never exposed to consumers.
   const [rawLatestBranchCommit, setRawLatestBranchCommit] = useState<string | null | undefined>(
     undefined
@@ -115,7 +115,10 @@ export function useBrowseData({
   useEffect(() => {
     if (!urlState.repoName) return
 
-    const branch = urlState.selectedBranch || repository?.default_branch
+    // Only use repository.default_branch if it belongs to the current repo
+    const repoDefaultBranch =
+      repository?.name === urlState.repoName ? repository.default_branch : undefined
+    const branch = urlState.selectedBranch || repoDefaultBranch
     if (!branch) return // Wait for repository to load so we know the default branch
 
     const requestId = ++commitRequestIdRef.current
@@ -143,7 +146,7 @@ export function useBrowseData({
         setRawLatestBranchCommit(null)
         setCommitDateMap(new Map())
       })
-  }, [urlState.repoName, urlState.selectedBranch, repository?.default_branch])
+  }, [urlState.repoName, urlState.selectedBranch, repository?.default_branch, repository?.name])
 
   // Load tree
   useEffect(() => {
