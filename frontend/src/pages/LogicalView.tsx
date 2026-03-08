@@ -1201,7 +1201,8 @@ export default function LogicalView(): React.ReactElement {
                 <List dense disablePadding>
                   <Box sx={{ px: 2, py: 0.5 }}>
                     <Typography variant="caption" color="text.secondary">
-                      {filteredKindSymbols.length}{kindSymbolsHasMore ? '+' : ''}{' '}
+                      {filteredKindSymbols.length}
+                      {kindSymbolsHasMore ? '+' : ''}{' '}
                       {getKindLabel(activeKind, filteredKindSymbols.length !== 1)}
                     </Typography>
                   </Box>
@@ -1212,9 +1213,7 @@ export default function LogicalView(): React.ReactElement {
                           sx={{ pl: 2, py: 0.25, opacity: 0.8, cursor: 'default' }}
                           disableRipple
                         >
-                          <ListItemIcon sx={{ minWidth: 28 }}>
-                            {getKindIcon('class')}
-                          </ListItemIcon>
+                          <ListItemIcon sx={{ minWidth: 28 }}>{getKindIcon('class')}</ListItemIcon>
                           <ListItemText
                             primary={
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1225,7 +1224,9 @@ export default function LogicalView(): React.ReactElement {
                                   {group.className}
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                  {group.filePath ? fileDir(group.filePath) + fileName(group.filePath) : ''}
+                                  {group.filePath
+                                    ? fileDir(group.filePath) + fileName(group.filePath)
+                                    : ''}
                                 </Typography>
                                 <Chip
                                   label={group.symbols.length}

@@ -196,9 +196,7 @@ class GetSymbolTreeUseCase:
         kind_counts_by_file = await self._symbol_repo.count_top_level_kinds_by_file(
             file_ids
         )
-        all_kind_counts_by_file = await self._symbol_repo.count_kinds_by_file(
-            file_ids
-        )
+        all_kind_counts_by_file = await self._symbol_repo.count_kinds_by_file(file_ids)
 
         # Aggregate total kind counts across all files
         total_kind_counts: dict[str, int] = {}

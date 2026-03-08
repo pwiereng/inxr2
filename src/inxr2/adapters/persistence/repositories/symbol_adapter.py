@@ -93,12 +93,8 @@ class PostgresSymbolRepository(
             # to avoid an expensive unscoped ROW_NUMBER() query.
             effective_branch = branch
             if effective_branch is None:
-                effective_branch = await self._resolve_default_branch(
-                    repository_id
-                )
-            latest_sq = latest_file_ids_subquery(
-                repository_id, branch=effective_branch
-            )
+                effective_branch = await self._resolve_default_branch(repository_id)
+            latest_sq = latest_file_ids_subquery(repository_id, branch=effective_branch)
             query = query.where(SymbolModel.file_id.in_(select(latest_sq.c.max_id)))
 
         if kind is not None:
