@@ -159,6 +159,25 @@ class SymbolRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def count_top_level_kinds_by_file(
+        self,
+        file_ids: list[int],
+    ) -> dict[int, dict[str, int]]:
+        """Count effectively top-level symbols by kind for each file.
+
+        A symbol is effectively top-level if it has no parent or its
+        parent is a namespace.
+
+        Args:
+            file_ids: File IDs to query.
+
+        Returns:
+            Mapping of file_id → {kind: count}. Files with no symbols
+            are omitted.
+        """
+        pass
+
+    @abstractmethod
     async def update_parent_symbol_ids(self, updates: dict[int, int]) -> int:
         """Bulk update parent_symbol_id for multiple symbols.
 

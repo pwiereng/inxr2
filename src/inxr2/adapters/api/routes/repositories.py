@@ -480,6 +480,7 @@ class SymbolTreeFileResponse(BaseModel):
     path: str
     language: str | None
     symbol_count: int
+    kind_counts: dict[str, int] = {}
 
 
 class SymbolTreeInheritanceResponse(BaseModel):
@@ -574,6 +575,7 @@ async def get_symbol_tree(
                     path=f.path,
                     language=f.language,
                     symbol_count=f.symbol_count,
+                    kind_counts=f.kind_counts,
                 )
                 for f in result.files
             ],

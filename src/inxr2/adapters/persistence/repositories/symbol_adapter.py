@@ -309,6 +309,39 @@ class PostgresSymbolRepository(
         result = await self.session.execute(query)
         return [row[0] for row in result.all()]
 
+    async def count_top_level_kinds_by_file(
+        self,
+        file_ids: list[int],
+    ) -> dict[int, dict[str, int]]:
+        """Count effectively top-level symbols by kind for each file."""
+        if not file_ids:
+            return {}
+
+        parent_sym = aliased(SymbolModel, flat=True)
+        query = (
+            select(
+                SymbolModel.file_id,
+                SymbolModel.kind,
+                func.count(SymbolModel.id).label("cnt"),
+            )
+            .outerjoin(parent_sym, SymbolModel.parent_symbol_id == parent_sym.id)
+            .where(
+                SymbolModel.file_id.in_(file_ids),
+                or_(
+                    SymbolModel.parent_symbol_id.is_(None),
+                    parent_sym.kind == "namespace",
+                ),
+                SymbolModel.kind != "namespace",
+            )
+            .group_by(SymbolModel.file_id, SymbolModel.kind)
+        )
+        result = await self.session.execute(query)
+
+        counts: dict[int, dict[str, int]] = {}
+        for file_id, kind, cnt in result.all():
+            counts.setdefault(file_id, {})[kind] = cnt
+        return counts
+
     async def update_parent_symbol_ids(self, updates: dict[int, int]) -> int:
         """Bulk update parent_symbol_id for multiple symbols."""
         if not updates:

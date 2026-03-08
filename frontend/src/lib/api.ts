@@ -277,6 +277,7 @@ export interface SymbolTreeFile {
   path: string
   language: string | null
   symbol_count: number
+  kind_counts: Record<string, number>
 }
 
 export interface SymbolTreeInheritance {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
@@ -24,10 +24,16 @@ import FunctionIcon from '@mui/icons-material/Functions'
 import FieldIcon from '@mui/icons-material/DataObject'
 import SearchIcon from '@mui/icons-material/Search'
 import BlockIcon from '@mui/icons-material/Block'
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
+import TagIcon from '@mui/icons-material/Tag'
+import AbcIcon from '@mui/icons-material/Abc'
+import ClearIcon from '@mui/icons-material/Clear'
+import IconButton from '@mui/material/IconButton'
 import { CodeHeader } from '@/components/CodeHeader'
 import type { TabValue } from '@/components/CodeHeader'
 import {
   getSymbolTree,
+  searchSymbols,
   type SymbolTreeFile,
   type SymbolTreeSymbol,
   type SymbolTreeInheritance,
@@ -48,6 +54,23 @@ const KIND_ICONS: Record<string, React.ReactNode> = {
   constructor: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
   getter: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
   setter: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
+}
+
+const KIND_COLORS: Record<string, string> = {
+  class: '#e5c07b',
+  interface: '#56b6c2',
+  struct: '#d19a66',
+  record: '#d19a66',
+  enum: '#c678dd',
+  function: '#61afef',
+  method: '#61afef',
+  constant: '#d19a66',
+  field: '#abb2bf',
+  property: '#abb2bf',
+}
+
+function getKindColor(kind: string): string {
+  return KIND_COLORS[kind] ?? '#abb2bf'
 }
 
 function getKindIcon(kind: string): React.ReactNode {
@@ -93,6 +116,16 @@ export default function LogicalView(): React.ReactElement {
   const [excludeText, setExcludeText] = useState('')
   const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null)
   const [selectedKinds, setSelectedKinds] = useState<Set<string>>(new Set())
+  const [kindChipMode, setKindChipMode] = useState<'counts' | 'names' | 'off'>('off')
+  const [symbolSearch, setSymbolSearch] = useState('')
+  const [symbolSearchMatchFileIds, setSymbolSearchMatchFileIds] = useState<Set<number> | null>(null)
+  const [symbolSearchMatchIds, setSymbolSearchMatchIds] = useState<Set<number>>(new Set())
+  const [symbolSearchLoading, setSymbolSearchLoading] = useState(false)
+  const [repositoryId, setRepositoryId] = useState<number | null>(null)
+  const symbolSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fetchedFileIds = useRef(new Set<number>())
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const savedScrollTop = useRef(0)
 
   // Derive available languages from loaded files
   const availableLanguages = useMemo(() => {
@@ -122,6 +155,7 @@ export default function LogicalView(): React.ReactElement {
       setFileSymbols({})
       setSymbolChildren({})
       setExpanded({ files: new Set(), symbols: new Set() })
+      fetchedFileIds.current = new Set()
 
       try {
         const result = await getSymbolTree(repoName, {
@@ -132,6 +166,7 @@ export default function LogicalView(): React.ReactElement {
         if (!cancelled) {
           if (result.files) setFiles(result.files)
           if (result.available_kinds) setAvailableKinds(result.available_kinds)
+          setRepositoryId(result.repository_id)
         }
       } catch (err) {
         if (!cancelled) {
@@ -146,6 +181,46 @@ export default function LogicalView(): React.ReactElement {
       cancelled = true
     }
   }, [repoName, branch, commit, selectedKinds])
+
+  // Debounced symbol search
+  useEffect(() => {
+    if (symbolSearchTimer.current) clearTimeout(symbolSearchTimer.current)
+
+    if (!symbolSearch.trim() || !repositoryId) {
+      setSymbolSearchMatchFileIds(null)
+      setSymbolSearchMatchIds(new Set())
+      setSymbolSearchLoading(false)
+      return
+    }
+
+    setSymbolSearchLoading(true)
+    symbolSearchTimer.current = setTimeout(async () => {
+      try {
+        const result = await searchSymbols({
+          q: symbolSearch.trim(),
+          repository_id: repositoryId,
+          branch: branch ?? undefined,
+          commit: commit ?? undefined,
+          case_sensitive: false,
+          kind: selectedKinds.size === 1 ? [...selectedKinds][0] : undefined,
+          limit: 200,
+        })
+        const fileIds = new Set(result.items.map((s) => s.file_id))
+        const ids = new Set(result.items.map((s) => s.id))
+        setSymbolSearchMatchFileIds(fileIds)
+        setSymbolSearchMatchIds(ids)
+      } catch {
+        setSymbolSearchMatchFileIds(null)
+        setSymbolSearchMatchIds(new Set())
+      } finally {
+        setSymbolSearchLoading(false)
+      }
+    }, 300)
+
+    return () => {
+      if (symbolSearchTimer.current) clearTimeout(symbolSearchTimer.current)
+    }
+  }, [symbolSearch, repositoryId, branch, commit, selectedKinds])
 
   // Expand/collapse a file (tier 2)
   const toggleFile = useCallback(
@@ -374,8 +449,64 @@ export default function LogicalView(): React.ReactElement {
           !(fileSymbols[f.file_id] ?? []).some((s) => s.name.toLowerCase().includes(lower))
       )
     }
+    if (symbolSearchMatchFileIds) {
+      result = result.filter((f) => symbolSearchMatchFileIds.has(f.file_id))
+    }
     return result
-  }, [files, selectedLanguage, filterText, excludeText, fileSymbols])
+  }, [files, selectedLanguage, filterText, excludeText, fileSymbols, symbolSearchMatchFileIds])
+
+  // Restore scroll position after filter/search changes re-render the list
+  useLayoutEffect(() => {
+    if (scrollRef.current && savedScrollTop.current > 0) {
+      scrollRef.current.scrollTop = savedScrollTop.current
+    }
+  }, [filteredFiles])
+
+  const handleScroll = useCallback(() => {
+    if (scrollRef.current) {
+      savedScrollTop.current = scrollRef.current.scrollTop
+    }
+  }, [])
+
+  // Pre-fetch symbols for all files when switching to names mode
+  useEffect(() => {
+    if (kindChipMode !== 'names' || !repoName || files.length === 0) return
+
+    const missing = files.filter((f) => !fetchedFileIds.current.has(f.file_id))
+    if (missing.length === 0) return
+
+    for (const f of missing) fetchedFileIds.current.add(f.file_id)
+
+    let cancelled = false
+    const fetchMissing = async () => {
+      const results = await Promise.allSettled(
+        missing.map(async (f) => {
+          const result = await getSymbolTree(repoName, {
+            branch: branch ?? undefined,
+            commit: commit ?? undefined,
+            file_id: f.file_id,
+          })
+          return { fileId: f.file_id, symbols: result.symbols }
+        })
+      )
+
+      if (cancelled) return
+
+      const newSymbols: Record<number, SymbolTreeSymbol[]> = {}
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value.symbols) {
+          newSymbols[r.value.fileId] = r.value.symbols
+        }
+      }
+      if (Object.keys(newSymbols).length > 0) {
+        setFileSymbols((prev) => ({ ...prev, ...newSymbols }))
+      }
+    }
+    fetchMissing()
+    return () => {
+      cancelled = true
+    }
+  }, [kindChipMode, repoName, branch, commit, files])
 
   const fileName = (path: string) => {
     const parts = path.split('/')
@@ -418,6 +549,35 @@ export default function LogicalView(): React.ReactElement {
           >
             <TextField
               size="small"
+              placeholder="Find symbol..."
+              value={symbolSearch}
+              onChange={(e) => setSymbolSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" color="primary" />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end" sx={{ gap: 0.5 }}>
+                    {symbolSearchLoading && <CircularProgress size={14} />}
+                    {!symbolSearchLoading && symbolSearch && symbolSearchMatchFileIds && (
+                      <Typography variant="caption" color="text.secondary">
+                        {symbolSearchMatchFileIds.size}
+                      </Typography>
+                    )}
+                    {symbolSearch && (
+                      <IconButton size="small" onClick={() => setSymbolSearch('')} edge="end">
+                        <ClearIcon sx={{ fontSize: 14 }} />
+                      </IconButton>
+                    )}
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ maxWidth: 250 }}
+            />
+            <TextField
+              size="small"
               placeholder="Include..."
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
@@ -427,6 +587,13 @@ export default function LogicalView(): React.ReactElement {
                     <SearchIcon fontSize="small" />
                   </InputAdornment>
                 ),
+                endAdornment: filterText ? (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setFilterText('')} edge="end">
+                      <ClearIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  </InputAdornment>
+                ) : undefined,
               }}
               sx={{ maxWidth: 250 }}
             />
@@ -441,6 +608,13 @@ export default function LogicalView(): React.ReactElement {
                     <BlockIcon fontSize="small" color="error" />
                   </InputAdornment>
                 ),
+                endAdornment: excludeText ? (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setExcludeText('')} edge="end">
+                      <ClearIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  </InputAdornment>
+                ) : undefined,
               }}
               sx={{ maxWidth: 250 }}
             />
@@ -503,13 +677,41 @@ export default function LogicalView(): React.ReactElement {
                     sx={{ height: 24 }}
                   />
                 ))}
+                <Tooltip
+                  title={
+                    kindChipMode === 'counts'
+                      ? 'Show symbol names'
+                      : kindChipMode === 'names'
+                        ? 'Hide chips'
+                        : 'Show kind counts'
+                  }
+                  arrow
+                >
+                  <IconButton
+                    size="small"
+                    onClick={() =>
+                      setKindChipMode((prev) =>
+                        prev === 'counts' ? 'names' : prev === 'names' ? 'off' : 'counts'
+                      )
+                    }
+                    sx={{ ml: 0.5 }}
+                  >
+                    {kindChipMode === 'counts' ? (
+                      <TagIcon fontSize="small" />
+                    ) : kindChipMode === 'names' ? (
+                      <AbcIcon fontSize="small" />
+                    ) : (
+                      <VisibilityOffIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
               </Box>
             )}
           </Box>
         )}
 
         {/* Content */}
-        <Box sx={{ flex: 1, overflow: 'auto' }}>
+        <Box ref={scrollRef} onScroll={handleScroll} sx={{ flex: 1, overflow: 'auto' }}>
           {!repoName && (
             <Box
               sx={{
@@ -567,6 +769,8 @@ export default function LogicalView(): React.ReactElement {
                   isExpanding={expandingFile === file.file_id}
                   symbols={fileSymbols[file.file_id]}
                   selectedKinds={selectedKinds}
+                  kindChipMode={kindChipMode}
+                  highlightedSymbolIds={symbolSearchMatchIds}
                   symbolChildren={symbolChildren}
                   expandedSymbols={expanded.symbols}
                   expandingSymbol={expandingSymbol}
@@ -594,6 +798,8 @@ interface FileNodeProps {
   isExpanding: boolean
   symbols: SymbolTreeSymbol[] | undefined
   selectedKinds: Set<string>
+  kindChipMode: 'counts' | 'names' | 'off'
+  highlightedSymbolIds: Set<number>
   symbolChildren: SymbolChildren
   expandedSymbols: Set<number>
   expandingSymbol: number | null
@@ -611,6 +817,8 @@ function FileNode({
   isExpanding,
   symbols,
   selectedKinds,
+  kindChipMode,
+  highlightedSymbolIds,
   symbolChildren,
   expandedSymbols,
   expandingSymbol,
@@ -667,6 +875,43 @@ function FileNode({
                 variant="outlined"
                 sx={{ height: 18, fontSize: '0.7rem' }}
               />
+              {kindChipMode === 'counts' &&
+                Object.entries(file.kind_counts)
+                  .filter(([kind]) => selectedKinds.size === 0 || selectedKinds.has(kind))
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([kind, count]) => (
+                    <Chip
+                      key={kind}
+                      label={`${count} ${getKindLabel(kind)}`}
+                      size="small"
+                      sx={{
+                        height: 18,
+                        fontSize: '0.65rem',
+                        backgroundColor: getKindColor(kind) + '22',
+                        color: getKindColor(kind),
+                        borderColor: getKindColor(kind) + '44',
+                        border: '1px solid',
+                      }}
+                    />
+                  ))}
+              {kindChipMode === 'names' &&
+                symbols
+                  ?.filter((s) => selectedKinds.size === 0 || selectedKinds.has(s.kind))
+                  .map((s) => (
+                    <Chip
+                      key={s.id}
+                      label={s.name}
+                      size="small"
+                      sx={{
+                        height: 18,
+                        fontSize: '0.65rem',
+                        backgroundColor: getKindColor(s.kind) + '22',
+                        color: getKindColor(s.kind),
+                        borderColor: getKindColor(s.kind) + '44',
+                        border: '1px solid',
+                      }}
+                    />
+                  ))}
             </Box>
           }
         />
@@ -674,7 +919,11 @@ function FileNode({
 
       <Collapse in={isExpanded} timeout="auto">
         {symbols
-          ?.filter((s) => selectedKinds.size === 0 || selectedKinds.has(s.kind))
+          ?.filter(
+            (s) =>
+              (selectedKinds.size === 0 || selectedKinds.has(s.kind)) &&
+              (highlightedSymbolIds.size === 0 || highlightedSymbolIds.has(s.id))
+          )
           .map((symbol) => (
             <SymbolNode
               key={symbol.id}
@@ -684,6 +933,7 @@ function FileNode({
               expandedSymbols={expandedSymbols}
               expandingSymbol={expandingSymbol}
               symbolChildren={symbolChildren}
+              highlightedSymbolIds={highlightedSymbolIds}
               onToggle={onToggleSymbol}
               onClick={onSymbolClick}
               onInheritanceClick={onInheritanceClick}
@@ -701,6 +951,7 @@ interface SymbolNodeProps {
   expandedSymbols: Set<number>
   expandingSymbol: number | null
   symbolChildren: SymbolChildren
+  highlightedSymbolIds: Set<number>
   onToggle: (symbolId: number) => void
   onClick: (symbol: SymbolTreeSymbol) => void
   onInheritanceClick: (inh: SymbolTreeInheritance, e: React.MouseEvent) => void
@@ -713,6 +964,7 @@ function SymbolNode({
   expandedSymbols,
   expandingSymbol,
   symbolChildren,
+  highlightedSymbolIds,
   onToggle,
   onClick,
   onInheritanceClick,
@@ -720,6 +972,7 @@ function SymbolNode({
   const isExpanded = expandedSymbols.has(symbol.id)
   const isExpanding = expandingSymbol === symbol.id
   const indent = level * 24
+  const isHighlighted = highlightedSymbolIds.size > 0 && highlightedSymbolIds.has(symbol.id)
 
   const handleClick = () => {
     if (symbol.has_children) {
@@ -742,6 +995,9 @@ function SymbolNode({
         sx={{
           pl: `${indent + 16}px`,
           py: 0.25,
+          ...(isHighlighted && {
+            backgroundColor: 'rgba(97, 175, 239, 0.12)',
+          }),
         }}
       >
         {symbol.has_children && (
@@ -768,9 +1024,12 @@ function SymbolNode({
                   component="span"
                   sx={{
                     fontFamily: 'monospace',
-                    fontWeight: symbol.has_children ? 500 : 400,
+                    fontWeight: symbol.has_children || isHighlighted ? 500 : 400,
                     cursor: 'pointer',
                     '&:hover': { textDecoration: 'underline' },
+                    ...(isHighlighted && {
+                      color: '#61afef',
+                    }),
                   }}
                   onClick={handleNavigate}
                 >
@@ -836,6 +1095,7 @@ function SymbolNode({
               expandedSymbols={expandedSymbols}
               expandingSymbol={expandingSymbol}
               symbolChildren={symbolChildren}
+              highlightedSymbolIds={highlightedSymbolIds}
               onToggle={onToggle}
               onClick={onClick}
               onInheritanceClick={onInheritanceClick}

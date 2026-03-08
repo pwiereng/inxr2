@@ -425,6 +425,24 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
 
         return sorted(kinds)
 
+    async def count_top_level_kinds_by_file(
+        self,
+        file_ids: list[int],
+    ) -> dict[int, dict[str, int]]:
+        """Count effectively top-level symbols by kind for each file."""
+        counts: dict[int, dict[str, int]] = {}
+        for s in self._symbols.values():
+            if s.file_id not in file_ids:
+                continue
+            if s.kind.value == "namespace":
+                continue
+            if not self._is_effectively_top_level(s):
+                continue
+            counts.setdefault(s.file_id, {})
+            kind_str = s.kind.value
+            counts[s.file_id][kind_str] = counts[s.file_id].get(kind_str, 0) + 1
+        return counts
+
     async def update_parent_symbol_ids(self, updates: dict[int, int]) -> int:
         """Bulk update parent_symbol_id for multiple symbols."""
         count = 0

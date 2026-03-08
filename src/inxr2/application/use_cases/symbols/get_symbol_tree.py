@@ -28,6 +28,7 @@ class SymbolTreeFile:
     path: str
     language: str | None
     symbol_count: int
+    kind_counts: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -187,12 +188,20 @@ class GetSymbolTreeUseCase:
             language=language,
             kinds=kinds,
         )
+        file_ids = [file_id for file_id, _, _, _ in rows]
+
+        # Batch-fetch kind counts for all files
+        kind_counts_by_file = await self._symbol_repo.count_top_level_kinds_by_file(
+            file_ids
+        )
+
         files = [
             SymbolTreeFile(
                 file_id=file_id,
                 path=path,
                 language=lang,
                 symbol_count=count,
+                kind_counts=kind_counts_by_file.get(file_id, {}),
             )
             for file_id, path, lang, count in rows
         ]
