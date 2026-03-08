@@ -150,12 +150,12 @@ export default function LogicalView(): React.ReactElement {
   // Expand/collapse a file (tier 2)
   const toggleFile = useCallback(
     async (fileId: number) => {
-      const newExpanded = { ...expanded }
-      const newFiles = new Set(expanded.files)
-
-      if (newFiles.has(fileId)) {
-        newFiles.delete(fileId)
-        setExpanded({ ...newExpanded, files: newFiles })
+      if (expanded.files.has(fileId)) {
+        setExpanded((prev) => {
+          const newFiles = new Set(prev.files)
+          newFiles.delete(fileId)
+          return { ...prev, files: newFiles }
+        })
         return
       }
 
@@ -204,22 +204,26 @@ export default function LogicalView(): React.ReactElement {
         }
       }
 
-      newFiles.add(fileId)
-      const newSyms = new Set(newExpanded.symbols)
-      for (const id of autoExpandIds) newSyms.add(id)
-      setExpanded({ ...newExpanded, files: newFiles, symbols: newSyms })
+      setExpanded((prev) => {
+        const newFiles = new Set(prev.files)
+        newFiles.add(fileId)
+        const newSyms = new Set(prev.symbols)
+        for (const id of autoExpandIds) newSyms.add(id)
+        return { files: newFiles, symbols: newSyms }
+      })
     },
-    [expanded, fileSymbols, symbolChildren, repoName, branch, commit]
+    [expanded.files, fileSymbols, symbolChildren, repoName, branch, commit]
   )
 
   // Expand/collapse a symbol (tier 3)
   const toggleSymbol = useCallback(
     async (symbolId: number) => {
-      const newSymbols = new Set(expanded.symbols)
-
-      if (newSymbols.has(symbolId)) {
-        newSymbols.delete(symbolId)
-        setExpanded({ ...expanded, symbols: newSymbols })
+      if (expanded.symbols.has(symbolId)) {
+        setExpanded((prev) => {
+          const newSymbols = new Set(prev.symbols)
+          newSymbols.delete(symbolId)
+          return { ...prev, symbols: newSymbols }
+        })
         return
       }
 
@@ -242,10 +246,13 @@ export default function LogicalView(): React.ReactElement {
         }
       }
 
-      newSymbols.add(symbolId)
-      setExpanded({ ...expanded, symbols: newSymbols })
+      setExpanded((prev) => {
+        const newSymbols = new Set(prev.symbols)
+        newSymbols.add(symbolId)
+        return { ...prev, symbols: newSymbols }
+      })
     },
-    [expanded, symbolChildren, repoName, branch, commit]
+    [expanded.symbols, symbolChildren, repoName, branch, commit]
   )
 
   // Navigate to symbol in browse view

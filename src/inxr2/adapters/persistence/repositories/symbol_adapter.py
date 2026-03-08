@@ -226,10 +226,13 @@ class PostgresSymbolRepository(
             # if it has no parent OR its parent is a namespace (transparent).
             sym2 = aliased(SymbolModel, flat=True)
             parent_sym = aliased(SymbolModel, flat=True)
+            sym2_file = aliased(FileModel, flat=True)
             kinds_subq = (
                 select(sym2.file_id)
+                .join(sym2_file, sym2.file_id == sym2_file.id)
                 .outerjoin(parent_sym, sym2.parent_symbol_id == parent_sym.id)
                 .where(
+                    sym2_file.repository_id == repository_id,
                     or_(
                         sym2.parent_symbol_id.is_(None),
                         parent_sym.kind == "namespace",

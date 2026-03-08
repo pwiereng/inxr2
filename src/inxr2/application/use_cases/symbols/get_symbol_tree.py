@@ -141,12 +141,12 @@ class GetSymbolTreeUseCase:
         if request.parent_symbol_id is not None:
             # Tier 3: children of a symbol
             return await self._get_symbol_children(
-                repository_id, request.parent_symbol_id, request.kind
+                repository_id, request.parent_symbol_id, request.kind, commit_id
             )
         elif request.file_id is not None:
             # Tier 2: top-level symbols in a file
             return await self._get_file_symbols(
-                repository_id, request.file_id, request.kind
+                repository_id, request.file_id, request.kind, commit_id
             )
         else:
             # Tier 1: files with symbols
@@ -214,18 +214,22 @@ class GetSymbolTreeUseCase:
         repository_id: int,
         file_id: int,
         kind: str | None,
+        commit_id: int | None = None,
     ) -> GetSymbolTreeSymbolsResponse:
         """Tier 2: top-level symbols in a file."""
         symbols = await self._symbol_repo.list_by_file_and_parent(
             file_id=file_id, parent_symbol_id=None
         )
-        return await self._build_symbol_response(repository_id, symbols, file_id, kind)
+        return await self._build_symbol_response(
+            repository_id, symbols, file_id, kind, commit_id
+        )
 
     async def _get_symbol_children(
         self,
         repository_id: int,
         parent_symbol_id: int,
         kind: str | None,
+        commit_id: int | None = None,
     ) -> GetSymbolTreeSymbolsResponse:
         """Tier 3: children of a symbol."""
         # Look up parent to get its file_id
@@ -237,7 +241,7 @@ class GetSymbolTreeUseCase:
             file_id=parent.file_id, parent_symbol_id=parent_symbol_id
         )
         return await self._build_symbol_response(
-            repository_id, symbols, parent.file_id, kind
+            repository_id, symbols, parent.file_id, kind, commit_id
         )
 
     async def _build_symbol_response(
@@ -246,6 +250,7 @@ class GetSymbolTreeUseCase:
         symbols: list[Symbol],
         file_id: int,
         kind: str | None,
+        commit_id: int | None = None,
     ) -> GetSymbolTreeSymbolsResponse:
         """Build symbol response with has_children and inheritance info."""
         if kind is not None:
@@ -285,7 +290,7 @@ class GetSymbolTreeUseCase:
             resolved_targets: dict[str, Symbol] = {}
             for name in base_names:
                 matches = await self._symbol_repo.find_by_exact_name(
-                    name, repository_id=repository_id
+                    name, repository_id=repository_id, commit_id=commit_id
                 )
                 # Prefer class-like symbols
                 for m in matches:
