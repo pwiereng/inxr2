@@ -292,6 +292,12 @@ export function useBrowseData({
       return
     }
 
+    // Set refs optimistically so the skip guard works even while the request
+    // is in-flight (prevents a second request if commit-sync fires before the
+    // initial fetch completes).  Reset on failure so a retry isn't blocked.
+    loadedFileKeyRef.current = fileKey
+    loadedCommitRef.current = urlState.selectedCommit
+
     const loadFile = async () => {
       setFileLoading(true)
       try {
@@ -319,10 +325,11 @@ export function useBrowseData({
         setFileContent(content)
         setFileSymbols(symbols.symbols)
         setFileReferences(references.references)
-        loadedFileKeyRef.current = fileKey
-        loadedCommitRef.current = urlState.selectedCommit
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load file')
+        // Reset refs so a retry isn't blocked by the skip guard
+        loadedFileKeyRef.current = null
+        loadedCommitRef.current = undefined
       } finally {
         setFileLoading(false)
       }

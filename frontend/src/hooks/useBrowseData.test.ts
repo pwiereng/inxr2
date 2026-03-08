@@ -251,5 +251,54 @@ describe('useBrowseData', () => {
 
       expect(mockGetFileContentByPathAtCommit).toHaveBeenCalledTimes(2)
     })
+
+    it('should skip re-fetch even when commit-sync fires while initial load is in-flight', async () => {
+      // Race condition: commit-sync resolves before the initial file fetch
+      // completes.  The optimistic ref update should prevent a second request.
+      const fileContentObj = {
+        id: 42,
+        path: 'src/main.py',
+        content: 'print("hello")',
+        language: 'python',
+        line_count: 1,
+        size_bytes: 15,
+      }
+
+      // Make file content resolve slowly (after commit-sync would fire)
+      let resolveContent!: (value: typeof fileContentObj) => void
+      mockGetFileContentByPathAtCommit.mockReturnValue(
+        new Promise((resolve) => {
+          resolveContent = resolve
+        })
+      )
+
+      // Initial render: selectedCommit=null (implicit HEAD)
+      const initialUrlState = makeUrlState({ selectedCommit: null })
+      let hookResult: Awaited<ReturnType<typeof renderBrowseDataHook>>
+
+      // Render without waiting for content to settle
+      await act(async () => {
+        hookResult = await renderBrowseDataHook(makeParams(initialUrlState))
+      })
+
+      // Content still loading — commit-sync fires while in-flight
+      const headHash = 'abc123abc123abc123abc123abc123abc123abc1'
+      const updatedUrlState = makeUrlState({ selectedCommit: headHash })
+
+      await act(async () => {
+        hookResult!.rerender(makeParams(updatedUrlState))
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      })
+
+      // Now let the original fetch complete
+      await act(async () => {
+        resolveContent(fileContentObj)
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      })
+
+      // Key assertion: only ONE fetch should have been made (the initial one)
+      expect(mockGetFileContentByPathAtCommit).toHaveBeenCalledTimes(1)
+      expect(hookResult!.result.current.fileContent).toBe(fileContentObj)
+    })
   })
 })
