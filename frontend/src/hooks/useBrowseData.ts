@@ -85,11 +85,10 @@ export function useBrowseData({
   // Track previous selectedCommit to detect commit-sync transitions (null → hash)
   // that should NOT trigger a re-fetch.
   const prevCommitRef = useRef<string | null | undefined>(undefined)
-  // Track which file the current content belongs to, so we only skip re-fetch
-  // when the file hasn't changed.
+  // Track which file + commit the current content was fetched with, so we only
+  // skip re-fetch when the same file is already loaded from the implicit HEAD.
   const loadedFileKeyRef = useRef<string | null>(null)
-  // Whether we have file content loaded (ref to avoid circular effect dep)
-  const hasContentRef = useRef(false)
+  const loadedCommitRef = useRef<string | null | undefined>(undefined)
 
   // Compute treeCommit using shared helper (same logic as orchestrator's computedState)
   const treeCommit = computeTreeCommit(urlState, fileVersions, diffFileVersions, latestBranchCommit)
@@ -270,7 +269,7 @@ export function useBrowseData({
       setFileReferences([])
       prevCommitRef.current = urlState.selectedCommit
       loadedFileKeyRef.current = null
-      hasContentRef.current = false
+      loadedCommitRef.current = undefined
       return
     }
 
@@ -280,13 +279,14 @@ export function useBrowseData({
     // The commit-sync effect writes the resolved HEAD hash to the URL, changing
     // selectedCommit from null → hash.  Since null already meant "branch HEAD",
     // the API would return the same file.  Skip the re-fetch to prevent a
-    // second load+scroll cycle.
+    // second load+scroll cycle.  We additionally verify that the loaded content
+    // was fetched with null (implicit HEAD), not a different explicit commit.
     const prevCommit = prevCommitRef.current
     prevCommitRef.current = urlState.selectedCommit
     if (
       prevCommit === null &&
       typeof urlState.selectedCommit === 'string' &&
-      hasContentRef.current &&
+      loadedCommitRef.current === null &&
       loadedFileKeyRef.current === fileKey
     ) {
       return
@@ -320,7 +320,7 @@ export function useBrowseData({
         setFileSymbols(symbols.symbols)
         setFileReferences(references.references)
         loadedFileKeyRef.current = fileKey
-        hasContentRef.current = true
+        loadedCommitRef.current = urlState.selectedCommit
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load file')
       } finally {

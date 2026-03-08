@@ -1,9 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, type RenderHookResult } from '@testing-library/react'
 import { useBrowseData } from './useBrowseData'
-import type { UseBrowseDataParams } from './useBrowseData'
+import type { UseBrowseDataParams, UseBrowseDataResult } from './useBrowseData'
 import type { BrowseUrlState } from './useBrowseTypes'
 import * as api from '@/lib/api'
+
+/**
+ * Render useBrowseData wrapped in act() so all async mount effects settle
+ * without "not wrapped in act" warnings.
+ */
+async function renderBrowseDataHook(
+  initialProps: UseBrowseDataParams
+): Promise<RenderHookResult<UseBrowseDataResult, UseBrowseDataParams>> {
+  let result: RenderHookResult<UseBrowseDataResult, UseBrowseDataParams>
+  await act(async () => {
+    result = renderHook((props: UseBrowseDataParams) => useBrowseData(props), { initialProps })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  })
+  return result!
+}
 
 // Mock the API module
 vi.mock('@/lib/api', () => ({
@@ -125,16 +140,9 @@ describe('useBrowseData', () => {
 
       // Initial render: no commit param (selectedCommit=null)
       const initialUrlState = makeUrlState({ selectedCommit: null })
-      const { result, rerender } = renderHook(
-        (props: UseBrowseDataParams) => useBrowseData(props),
-        { initialProps: makeParams(initialUrlState) }
-      )
+      const { result, rerender } = await renderBrowseDataHook(makeParams(initialUrlState))
 
-      // Wait for initial file load
-      await vi.waitFor(() => {
-        expect(result.current.fileContent).not.toBeNull()
-      })
-
+      expect(result.current.fileContent).not.toBeNull()
       expect(mockGetFileContentByPathAtCommit).toHaveBeenCalledTimes(1)
 
       // Simulate commit-sync: selectedCommit changes from null to HEAD hash
@@ -178,14 +186,7 @@ describe('useBrowseData', () => {
 
       // Start with an explicit commit
       const initialUrlState = makeUrlState({ selectedCommit: 'commit-aaa' })
-      const { result, rerender } = renderHook(
-        (props: UseBrowseDataParams) => useBrowseData(props),
-        { initialProps: makeParams(initialUrlState) }
-      )
-
-      await vi.waitFor(() => {
-        expect(result.current.fileContent).not.toBeNull()
-      })
+      const { result, rerender } = await renderBrowseDataHook(makeParams(initialUrlState))
 
       expect(result.current.fileContent?.id).toBe(42)
 
@@ -229,14 +230,9 @@ describe('useBrowseData', () => {
         .mockResolvedValueOnce(secondContent)
 
       const initialUrlState = makeUrlState({ selectedCommit: null, filePath: 'src/main.py' })
-      const { result, rerender } = renderHook(
-        (props: UseBrowseDataParams) => useBrowseData(props),
-        { initialProps: makeParams(initialUrlState) }
-      )
+      const { result, rerender } = await renderBrowseDataHook(makeParams(initialUrlState))
 
-      await vi.waitFor(() => {
-        expect(result.current.fileContent).not.toBeNull()
-      })
+      expect(result.current.fileContent).not.toBeNull()
 
       // Navigate to different file AND commit syncs at same time
       const updatedUrlState = makeUrlState({
