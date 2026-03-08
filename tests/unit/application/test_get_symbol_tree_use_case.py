@@ -1154,6 +1154,6 @@ class TestGetSymbolTreeKindCounts:
         assert isinstance(result, GetSymbolTreeFilesResponse)
         utils_file = next(f for f in result.files if f.path == "src/utils.py")
         # NamespacedClass should count as top-level (namespace transparent)
-        # Namespace itself should count too
+        # Namespace itself is transparent and NOT counted as a kind
         assert "class" in utils_file.kind_counts
         assert utils_file.kind_counts["class"] == 1

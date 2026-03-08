@@ -120,6 +120,11 @@ export default function LogicalView(): React.ReactElement {
   const [excludeText, setExcludeText] = useState('')
   const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null)
   const [activeKind, setActiveKind] = useState<string | null>(kindParam)
+
+  // Sync activeKind with URL on browser back/forward navigation
+  useEffect(() => {
+    setActiveKind(kindParam ?? null)
+  }, [kindParam])
   const [showKindCounts, setShowKindCounts] = useState(false)
   const [symbolSearch, setSymbolSearch] = useState('')
   const [symbolSearchMatchFileIds, setSymbolSearchMatchFileIds] = useState<Set<number> | null>(null)
