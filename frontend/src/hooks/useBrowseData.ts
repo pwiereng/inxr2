@@ -82,6 +82,15 @@ export function useBrowseData({
   const [fileLoading, setFileLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Track previous selectedCommit to detect commit-sync transitions (null → hash)
+  // that should NOT trigger a re-fetch.
+  const prevCommitRef = useRef<string | null | undefined>(undefined)
+  // Track which file the current content belongs to, so we only skip re-fetch
+  // when the file hasn't changed.
+  const loadedFileKeyRef = useRef<string | null>(null)
+  // Whether we have file content loaded (ref to avoid circular effect dep)
+  const hasContentRef = useRef(false)
+
   // Compute treeCommit using shared helper (same logic as orchestrator's computedState)
   const treeCommit = computeTreeCommit(urlState, fileVersions, diffFileVersions, latestBranchCommit)
 
@@ -259,6 +268,27 @@ export function useBrowseData({
       setFileContent(null)
       setFileSymbols([])
       setFileReferences([])
+      prevCommitRef.current = urlState.selectedCommit
+      loadedFileKeyRef.current = null
+      hasContentRef.current = false
+      return
+    }
+
+    const fileKey = `${urlState.repoName}:${urlState.filePath}:${urlState.selectedBranch}`
+
+    // Skip redundant re-fetch when commit-sync resolves HEAD hash.
+    // The commit-sync effect writes the resolved HEAD hash to the URL, changing
+    // selectedCommit from null → hash.  Since null already meant "branch HEAD",
+    // the API would return the same file.  Skip the re-fetch to prevent a
+    // second load+scroll cycle.
+    const prevCommit = prevCommitRef.current
+    prevCommitRef.current = urlState.selectedCommit
+    if (
+      prevCommit === null &&
+      typeof urlState.selectedCommit === 'string' &&
+      hasContentRef.current &&
+      loadedFileKeyRef.current === fileKey
+    ) {
       return
     }
 
@@ -289,6 +319,8 @@ export function useBrowseData({
         setFileContent(content)
         setFileSymbols(symbols.symbols)
         setFileReferences(references.references)
+        loadedFileKeyRef.current = fileKey
+        hasContentRef.current = true
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load file')
       } finally {
