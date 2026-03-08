@@ -778,7 +778,7 @@ export default function LogicalView(): React.ReactElement {
           cs: 'csharp',
           cpp: 'cpp',
           c: 'c',
-          h: 'c',
+          h: 'cpp',
           sh: 'bash',
           bash: 'bash',
         }
