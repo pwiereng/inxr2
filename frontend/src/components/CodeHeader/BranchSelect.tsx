@@ -27,10 +27,16 @@ export function BranchSelect({
     return null
   }
 
+  // Guard against out-of-range value when the current branch
+  // is not in the available branches (e.g. switching repos)
+  const branchValue = branch || defaultBranch
+  const isValueInOptions = branches.some((b) => b.name === branchValue)
+  const selectValue = isValueInOptions ? branchValue : ''
+
   return (
     <FormControl size="small" sx={{ minWidth: 120 }}>
       <Select
-        value={branch || defaultBranch}
+        value={selectValue}
         onChange={(e) => onBranchChange(e.target.value as string)}
         displayEmpty
         MenuProps={MENU_PROPS}
