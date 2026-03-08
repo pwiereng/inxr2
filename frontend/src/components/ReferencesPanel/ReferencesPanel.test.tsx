@@ -393,10 +393,7 @@ describe('ReferencesPanel', () => {
       await waitFor(() => {
         const link = screen.getByText(/Search globally for/).closest('a')
         expect(link).toBeInTheDocument()
-        expect(link).toHaveAttribute(
-          'href',
-          '/search?query=TestClass&exclude_types=comment,docstring,commit_message,file_content'
-        )
+        expect(link).toHaveAttribute('href', '/search?query=TestClass&types=symbol,reference')
       })
     })
 
@@ -423,10 +420,7 @@ describe('ReferencesPanel', () => {
       await waitFor(() => {
         const link = screen.getByText(/Search globally for/).closest('a')
         expect(link).toBeInTheDocument()
-        expect(link).toHaveAttribute(
-          'href',
-          '/search?query=myFunction&exclude_types=comment,docstring,commit_message,file_content'
-        )
+        expect(link).toHaveAttribute('href', '/search?query=myFunction&types=symbol,reference')
       })
     })
 

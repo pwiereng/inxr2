@@ -71,7 +71,7 @@ const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => !NON_TEXT_TYPES.has(t.va
 const RESULTS_PER_PAGE = 20
 
 // Sentinel values for extension dropdown actions
-const EXT_HIDE_ALL = '__hide_all__'
+const EXT_SELECT_NONE = '__select_none__'
 const EXT_SHOW_ALL = '__show_all__'
 
 export default function Search(): React.ReactElement {
@@ -91,16 +91,14 @@ export default function Search(): React.ReactElement {
   const page = parseInt(searchParams.get('page') || '1')
   const offset = (page - 1) * RESULTS_PER_PAGE
 
-  // Parse exclusion params
-  // No param = nothing excluded = all shown. Param present = those types are hidden.
-  const excludeTypesParam = searchParams.get('exclude_types')
-  const excludeExtParam = searchParams.get('exclude_ext')
-  const excludedSourceTypes = excludeTypesParam ? excludeTypesParam.split(',') : []
-  const excludedExtensions = excludeExtParam ? excludeExtParam.split(',') : []
-  // Active types = everything not excluded
-  const activeSourceTypes = ALL_SOURCE_TYPE_VALUES.filter((t) => !excludedSourceTypes.includes(t))
-  const excludeTypesKey = excludedSourceTypes.join(',')
-  const excludeExtKey = excludedExtensions.join(',')
+  // Parse inclusive filter params (types derived here, extensions derived after state declarations)
+  const typesParam = searchParams.get('types')
+  const extParam = searchParams.get('ext')
+  const activeSourceTypes =
+    typesParam !== null
+      ? typesParam.split(',').filter((t) => ALL_SOURCE_TYPE_VALUES.includes(t))
+      : [...ALL_SOURCE_TYPE_VALUES]
+  const typesKey = activeSourceTypes.join(',')
 
   // Local state for input (debouncing)
   const [inputQuery, setInputQuery] = useState(query)
@@ -109,14 +107,19 @@ export default function Search(): React.ReactElement {
   const [repositories, setRepositories] = useState<Repository[]>([])
   const [reposLoading, setReposLoading] = useState(true)
   const [availableExtensions, setAvailableExtensions] = useState<string[]>([])
+
+  // No ext param = all extensions included. Empty string = none selected. Otherwise, explicit list.
+  const includedExtensions =
+    extParam !== null ? (extParam ? extParam.split(',') : []) : [...availableExtensions]
+  // Use a stable sentinel when extParam is null (all extensions) to avoid
+  // re-triggering the search effect when availableExtensions loads asynchronously.
+  const extKey = extParam !== null ? includedExtensions.join(',') : '__all__'
   const [results, setResults] = useState<UnifiedResult[]>([])
   const [fileResults, setFileResults] = useState<FileSearchResult[]>([])
   const [totalResults, setTotalResults] = useState(0)
   const [paginationTotal, setPaginationTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const availableExtKey = availableExtensions.join(',')
 
   // Look up repo ID from repoName param
   const selectedRepoId = repoNameParam
@@ -194,13 +197,10 @@ export default function Search(): React.ReactElement {
         // scope is only passed when no repository is selected (global search)
         const scope = selectedRepoId ? undefined : 'latest'
 
-        // Compute inclusion extensions from exclusions (send remaining to backend)
-        const apiExtensions =
-          excludedExtensions.length > 0
-            ? availableExtensions.filter((ext) => !excludedExtensions.includes(ext))
-            : undefined
+        // When ext param is set, pass those extensions to backend; otherwise undefined (all)
+        const apiExtensions = extParam !== null ? includedExtensions : undefined
 
-        // All extensions excluded — no results possible, skip search entirely
+        // No extensions selected — no results possible, skip search entirely
         if (apiExtensions !== undefined && apiExtensions.length === 0) {
           setResults([])
           setFileResults([])
@@ -333,9 +333,8 @@ export default function Search(): React.ReactElement {
     reposLoading,
     branchParam,
     commitParam,
-    excludeTypesKey,
-    excludeExtKey,
-    availableExtKey,
+    typesKey,
+    extKey,
     offset,
   ])
 
@@ -405,9 +404,9 @@ export default function Search(): React.ReactElement {
     const newParams = new URLSearchParams(searchParams)
     newParams.set('mode', newMode)
     newParams.delete('page')
-    // Clear exclude_types when switching to file mode (they don't apply)
+    // Clear types when switching to file mode (they don't apply)
     if (newMode === 'file') {
-      newParams.delete('exclude_types')
+      newParams.delete('types')
     }
     setSearchParams(newParams, { replace: true })
   }
@@ -425,25 +424,35 @@ export default function Search(): React.ReactElement {
 
   const handleSourceTypeToggle = (type: string) => {
     const newParams = new URLSearchParams(searchParams)
-    const current = excludedSourceTypes
+    const current = activeSourceTypes
     const updated = current.includes(type) ? current.filter((t) => t !== type) : [...current, type]
 
-    // If nothing excluded, remove param (back to default)
-    if (updated.length === 0) {
-      newParams.delete('exclude_types')
+    // If all types selected, remove param (back to default = all shown)
+    if (updated.length === ALL_SOURCE_TYPE_VALUES.length) {
+      newParams.delete('types')
     } else {
-      newParams.set('exclude_types', updated.join(','))
+      newParams.set('types', updated.join(','))
     }
     newParams.delete('page')
     setSearchParams(newParams, { replace: true })
   }
 
-  const handleExcludeExtensionChange = (excluded: string[]) => {
+  const handleIncludeExtensionChange = (included: string[]) => {
     const newParams = new URLSearchParams(searchParams)
-    if (excluded.length > 0) {
-      newParams.set('exclude_ext', excluded.join(','))
+    // If all extensions are selected, remove param (back to default = all shown).
+    // Guard with length > 0 so an empty availableExtensions list (not loaded yet)
+    // doesn't falsely match 0 === 0.
+    if (
+      availableExtensions.length > 0 &&
+      included.length === availableExtensions.length &&
+      availableExtensions.every((ext) => included.includes(ext))
+    ) {
+      newParams.delete('ext')
+    } else if (included.length > 0) {
+      newParams.set('ext', included.join(','))
     } else {
-      newParams.delete('exclude_ext')
+      // Empty array = nothing selected (no results)
+      newParams.set('ext', '')
     }
     newParams.delete('page')
     setSearchParams(newParams, { replace: true })
@@ -529,20 +538,16 @@ export default function Search(): React.ReactElement {
 
   const handleClearFilters = () => {
     const newParams = new URLSearchParams(searchParams)
-    newParams.delete('exclude_types')
-    newParams.delete('exclude_ext')
+    newParams.delete('types')
+    newParams.delete('ext')
     newParams.delete('page')
     setSearchParams(newParams, { replace: true })
   }
 
-  const extensionsLoaded = availableExtensions.length > 0
-
-  const handleHideAll = () => {
+  const handleSelectNone = () => {
     const newParams = new URLSearchParams(searchParams)
-    newParams.set('exclude_types', ALL_SOURCE_TYPE_VALUES.join(','))
-    if (extensionsLoaded) {
-      newParams.set('exclude_ext', availableExtensions.join(','))
-    }
+    newParams.set('types', '')
+    newParams.set('ext', '')
     newParams.delete('page')
     setSearchParams(newParams, { replace: true })
   }
@@ -573,7 +578,7 @@ export default function Search(): React.ReactElement {
   }
 
   const totalPages = Math.ceil(paginationTotal / RESULTS_PER_PAGE)
-  const hasFilters = excludedSourceTypes.length > 0 || excludedExtensions.length > 0
+  const hasFilters = typesParam !== null || extParam !== null
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -746,7 +751,7 @@ export default function Search(): React.ReactElement {
                   Filters
                 </Typography>
                 <Tooltip
-                  title="Check items to hide them from results. Unchecked items are shown."
+                  title="Check items to include them in results. When no filters are set, everything is shown."
                   arrow
                   placement="right"
                 >
@@ -763,28 +768,36 @@ export default function Search(): React.ReactElement {
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 <FormControl size="small" sx={{ minWidth: 180 }}>
-                  <InputLabel>Hide Extensions</InputLabel>
+                  <InputLabel>Extensions</InputLabel>
                   <Select
                     multiple
-                    value={excludedExtensions}
-                    label="Hide Extensions"
+                    value={includedExtensions}
+                    label="Extensions"
                     MenuProps={MENU_PROPS}
                     onChange={(e) => {
                       const value = e.target.value
                       const arr = typeof value === 'string' ? value.split(',') : value
-                      if (arr.includes(EXT_HIDE_ALL)) {
-                        handleExcludeExtensionChange([...availableExtensions])
+                      if (arr.includes(EXT_SELECT_NONE)) {
+                        handleIncludeExtensionChange([])
                         return
                       }
                       if (arr.includes(EXT_SHOW_ALL)) {
-                        handleExcludeExtensionChange([])
+                        // Clear ext param = show all
+                        const newParams = new URLSearchParams(searchParams)
+                        newParams.delete('ext')
+                        newParams.delete('page')
+                        setSearchParams(newParams, { replace: true })
                         return
                       }
-                      handleExcludeExtensionChange(arr)
+                      handleIncludeExtensionChange(arr)
                     }}
                     renderValue={(selected) =>
-                      selected.length === 0 ? (
-                        <em>None hidden</em>
+                      extParam === null ? (
+                        <em>All</em>
+                      ) : selected.length === 0 ? (
+                        <em>None selected</em>
+                      ) : selected.length === availableExtensions.length ? (
+                        <em>All</em>
                       ) : (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                           {selected.map((ext) => (
@@ -792,36 +805,33 @@ export default function Search(): React.ReactElement {
                               key={ext}
                               label={ext === '(none)' ? '(no extension)' : ext}
                               size="small"
-                              color="default"
-                              sx={{ textDecoration: 'line-through' }}
+                              color="primary"
                             />
                           ))}
                         </Box>
                       )
                     }
                   >
-                    <MenuItem value={EXT_HIDE_ALL}>
-                      <Typography variant="body2" sx={{ fontWeight: 500, fontStyle: 'italic' }}>
-                        Hide all extensions
-                      </Typography>
-                    </MenuItem>
                     <MenuItem value={EXT_SHOW_ALL}>
                       <Typography variant="body2" sx={{ fontWeight: 500, fontStyle: 'italic' }}>
                         Show all extensions
                       </Typography>
                     </MenuItem>
+                    <MenuItem value={EXT_SELECT_NONE}>
+                      <Typography variant="body2" sx={{ fontWeight: 500, fontStyle: 'italic' }}>
+                        Select none
+                      </Typography>
+                    </MenuItem>
                     <Divider />
                     {availableExtensions.map((ext) => (
                       <MenuItem key={ext} value={ext}>
-                        <Checkbox checked={excludedExtensions.includes(ext)} size="small" />
+                        <Checkbox checked={includedExtensions.includes(ext)} size="small" />
                         <Typography
                           sx={{
-                            textDecoration: excludedExtensions.includes(ext)
-                              ? 'line-through'
-                              : 'none',
-                            color: excludedExtensions.includes(ext)
-                              ? 'text.disabled'
-                              : 'text.primary',
+                            color: includedExtensions.includes(ext)
+                              ? 'text.primary'
+                              : 'text.secondary',
+                            fontWeight: includedExtensions.includes(ext) ? 500 : 400,
                             fontStyle: ext === '(none)' ? 'italic' : 'normal',
                           }}
                         >
@@ -837,7 +847,7 @@ export default function Search(): React.ReactElement {
                       key={type.value}
                       control={
                         <Checkbox
-                          checked={excludedSourceTypes.includes(type.value)}
+                          checked={activeSourceTypes.includes(type.value)}
                           onChange={() => handleSourceTypeToggle(type.value)}
                           size="small"
                           disabled={isFileMode}
@@ -847,12 +857,10 @@ export default function Search(): React.ReactElement {
                         <Typography
                           variant="body2"
                           sx={{
-                            textDecoration: excludedSourceTypes.includes(type.value)
-                              ? 'line-through'
-                              : 'none',
-                            color: excludedSourceTypes.includes(type.value)
-                              ? 'text.disabled'
-                              : 'text.primary',
+                            color: activeSourceTypes.includes(type.value)
+                              ? 'text.primary'
+                              : 'text.disabled',
+                            fontWeight: activeSourceTypes.includes(type.value) ? 500 : 400,
                           }}
                         >
                           {type.label}
@@ -863,12 +871,12 @@ export default function Search(): React.ReactElement {
                   ))}
                 </FormGroup>
                 <Button
-                  onClick={handleHideAll}
+                  onClick={handleSelectNone}
                   variant="outlined"
                   size="small"
-                  disabled={isFileMode || !extensionsLoaded}
+                  disabled={isFileMode}
                 >
-                  Hide All
+                  Select None
                 </Button>
                 <Button
                   onClick={handleClearFilters}
@@ -876,7 +884,7 @@ export default function Search(): React.ReactElement {
                   size="small"
                   disabled={!hasFilters}
                 >
-                  Clear Filters
+                  Show All
                 </Button>
               </Box>
             </Box>
