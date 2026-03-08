@@ -15,6 +15,7 @@ from inxr2.domain.entities import IndexStatus
 
 from ...ports.repositories import (
     CommitRepositoryPort,
+    DependencyRepositoryPort,
     FileRepositoryPort,
     IndexStatusRepositoryPort,
     ReferenceRepositoryPort,
@@ -24,6 +25,7 @@ from ...ports.repositories import (
 )
 from ...ports.services import (
     CommitInfo,
+    DependencyParserServicePort,
     GitServicePort,
     IndexingOrchestratorPort,
     ParserServicePort,
@@ -96,6 +98,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         plaintext_parser: PlaintextParserPort,
         pre_resolve_callback: Callable[[], Awaitable[None]] | None = None,
         post_commit_callback: Callable[[], Awaitable[None]] | None = None,
+        dependency_parser: DependencyParserServicePort | None = None,
+        dependency_repo: DependencyRepositoryPort | None = None,
     ) -> None:
         self._repository_repo = repository_repo
         self._index_status_repo = index_status_repo
@@ -113,6 +117,8 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             text_content_repo=text_content_repo,
             parser_service=parser_service,
             plaintext_parser=plaintext_parser,
+            dependency_parser=dependency_parser,
+            dependency_repo=dependency_repo,
         )
         self._process_commit_use_case = ProcessCommitUseCase(
             commit_repo=commit_repo,
@@ -350,6 +356,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             docstrings_indexed=agg.docstrings_indexed,
             commit_messages_indexed=agg.commit_messages_indexed,
             non_code_files_indexed=agg.non_code_files_indexed,
+            dependencies_found=agg.dependencies_found,
             errors=all_errors,
             elapsed_seconds=time.monotonic() - start_time,
             indexing_seconds=indexing_seconds,
@@ -465,6 +472,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         agg.comments_indexed += cr.comments_indexed
         agg.docstrings_indexed += cr.docstrings_indexed
         agg.commit_messages_indexed += cr.commit_messages_indexed
+        agg.dependencies_found += cr.dependencies_found
         agg.non_code_files_indexed += cr.non_code_files_indexed
 
     async def _update_index_status(

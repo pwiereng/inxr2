@@ -274,6 +274,12 @@ class IndexingProgressRenderer:
                 f"[cyan]{stats.references_resolved}[/cyan]",
             )
 
+        if stats.dependencies_found > 0:
+            table.add_row(
+                "Dependencies Found",
+                f"[cyan]{stats.dependencies_found:,}[/cyan]",
+            )
+
         if stats.text_contents_total > 0:
             table.add_row("", "")
             table.add_row(

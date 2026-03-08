@@ -2,6 +2,7 @@
 
 from .base_repository import BaseSQLAlchemyRepository, MapperProtocol
 from .commit_adapter import PostgresCommitRepository
+from .dependency_adapter import PostgresDependencyRepository
 from .file_adapter import PostgresFileRepository
 from .file_search_adapter import PostgresFileSearchRepository
 from .file_version_adapter import PostgresFileVersionRepository
@@ -16,6 +17,7 @@ __all__ = [
     "BaseSQLAlchemyRepository",
     "MapperProtocol",
     "PostgresCommitRepository",
+    "PostgresDependencyRepository",
     "PostgresFileRepository",
     "PostgresFileSearchRepository",
     "PostgresFileVersionRepository",

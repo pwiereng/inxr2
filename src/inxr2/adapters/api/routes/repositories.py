@@ -11,6 +11,9 @@ from ....application.use_cases.repositories.get_repository_files import (
     GetRepositoryFilesRequest,
 )
 from ....application.use_cases.repositories.get_repository_stats import RepositoryStats
+from ....application.use_cases.dependencies import (
+    GetRepositoryDependenciesRequest,
+)
 from ....application.use_cases.repositories.get_repository_tree import (
     GetRepositoryTreeRequest,
     TreeNode,
@@ -19,6 +22,7 @@ from ....domain.exceptions import RepositoryNotFound
 from ....infrastructure.dependencies import (
     GetAllRepositoryStatsUseCaseDep,
     GetRepositoryBranchesUseCaseDep,
+    GetRepositoryDependenciesUseCaseDep,
     GetRepositoryFilesUseCaseDep,
     GetRepositoryStatsUseCaseDep,
     GetRepositoryTreeUseCaseDep,
@@ -372,4 +376,92 @@ async def get_repository_branches(
             )
             for b in response.branches
         ]
+    )
+
+
+# ---------- Dependencies ----------
+
+
+class DependencyResponse(BaseModel):
+    """Single dependency item."""
+
+    id: int
+    package_name: str
+    language: str
+    version_spec: str | None = None
+    resolved_version: str | None = None
+    dependency_type: str
+    is_direct: bool
+    file_id: int
+    file_path: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DependenciesListResponse(BaseModel):
+    """List of dependencies for a repository."""
+
+    repository_id: int
+    repository_name: str
+    commit_hash: str | None = None
+    items: list[DependencyResponse]
+    total: int
+
+
+@router.get(
+    "/by-name/{name}/dependencies", response_model=DependenciesListResponse
+)
+async def get_repository_dependencies_by_name(
+    name: str,
+    use_case: GetRepositoryDependenciesUseCaseDep,
+    commit: str | None = None,
+    branch: str | None = None,
+    language: str | None = None,
+    dependency_type: str | None = None,
+    is_direct: bool | None = None,
+) -> DependenciesListResponse:
+    """Get dependencies for a repository by name.
+
+    Query parameters:
+    - commit: Commit hash for time travel (optional)
+    - branch: Branch name (optional, resolves to latest indexed commit)
+    - language: Filter by ecosystem (python, javascript, java, csharp)
+    - dependency_type: Filter by type (runtime, dev, optional, build, peer)
+    - is_direct: Filter by direct (true) or transitive (false)
+
+    Priority: commit > branch > default branch
+    """
+    try:
+        response = await use_case.execute(
+            GetRepositoryDependenciesRequest(
+                repository_name=name,
+                commit_hash=commit,
+                branch=branch,
+                language=language,
+                dependency_type=dependency_type,
+                is_direct=is_direct,
+            )
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    return DependenciesListResponse(
+        repository_id=response.repository_id,
+        repository_name=response.repository_name,
+        commit_hash=response.commit_hash,
+        items=[
+            DependencyResponse(
+                id=item.id,
+                package_name=item.package_name,
+                language=item.language,
+                version_spec=item.version_spec,
+                resolved_version=item.resolved_version,
+                dependency_type=item.dependency_type,
+                is_direct=item.is_direct,
+                file_id=item.file_id,
+                file_path=item.file_path,
+            )
+            for item in response.items
+        ],
+        total=response.total,
     )

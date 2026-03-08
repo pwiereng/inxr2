@@ -1,9 +1,9 @@
 """
 Process file use case.
 
-Extracts symbols, references, comments, and text content from a single file
-during indexing. Uses content-addressable file versioning: if a file version
-(repo, path, content_hash) already exists, skips parsing entirely.
+Extracts symbols, references, comments, dependencies, and text content from
+a single file during indexing. Uses content-addressable file versioning: if a
+file version (repo, path, content_hash) already exists, skips parsing entirely.
 """
 
 import hashlib
@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from inxr2.domain.entities import (
+    Dependency,
     Reference,
     Symbol,
     TextContent,
@@ -24,12 +25,18 @@ from inxr2.domain.value_objects import (
 )
 
 from ...ports.repositories import (
+    DependencyRepositoryPort,
     FileRepositoryPort,
     ReferenceRepositoryPort,
     SymbolRepositoryPort,
     TextContentRepositoryPort,
 )
-from ...ports.services import GitServicePort, ParserServicePort, PlaintextParserPort
+from ...ports.services import (
+    DependencyParserServicePort,
+    GitServicePort,
+    ParserServicePort,
+    PlaintextParserPort,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +94,27 @@ class ProcessFileResult:
     lines_indexed: int
     comments_indexed: int
     docstrings_indexed: int
+    dependencies_found: int
     non_code_file_indexed: bool
     error: str | None = None
+
+
+def _cached_result(file_id: int) -> ProcessFileResult:
+    """Return a result for a cached (already-existing) file version."""
+    return ProcessFileResult(
+        processed=True,
+        skipped=False,
+        failed=False,
+        file_id=file_id,
+        file_version_created=False,
+        symbols_found=0,
+        references_found=0,
+        lines_indexed=0,
+        comments_indexed=0,
+        docstrings_indexed=0,
+        dependencies_found=0,
+        non_code_file_indexed=False,
+    )
 
 
 class ProcessFileUseCase:
@@ -111,6 +137,8 @@ class ProcessFileUseCase:
         text_content_repo: TextContentRepositoryPort,
         parser_service: ParserServicePort,
         plaintext_parser: PlaintextParserPort,
+        dependency_parser: DependencyParserServicePort | None = None,
+        dependency_repo: DependencyRepositoryPort | None = None,
     ) -> None:
         self._git_service = git_service
         self._file_repo = file_repo
@@ -119,6 +147,8 @@ class ProcessFileUseCase:
         self._text_content_repo = text_content_repo
         self._parser_service = parser_service
         self._plaintext_parser = plaintext_parser
+        self._dependency_parser = dependency_parser
+        self._dependency_repo = dependency_repo
 
     async def execute(self, request: ProcessFileRequest) -> ProcessFileResult:
         """Process a single file: find or create version, parse if new."""
@@ -136,6 +166,7 @@ class ProcessFileUseCase:
                 lines_indexed=0,
                 comments_indexed=0,
                 docstrings_indexed=0,
+                dependencies_found=0,
                 non_code_file_indexed=False,
                 error=f"Failed to process {request.file_path}: {e}",
             )
@@ -152,19 +183,7 @@ class ProcessFileUseCase:
             if fvi is not None:
                 cached_id = fvi.get((request.file_path, known_content_hash))
                 if cached_id is not None:
-                    return ProcessFileResult(
-                        processed=True,
-                        skipped=False,
-                        failed=False,
-                        file_id=cached_id,
-                        file_version_created=False,
-                        symbols_found=0,
-                        references_found=0,
-                        lines_indexed=0,
-                        comments_indexed=0,
-                        docstrings_indexed=0,
-                        non_code_file_indexed=False,
-                    )
+                    return _cached_result(cached_id)
             # Fallback to DB query
             existing_files = await self._file_repo.find_by_content_hash(
                 known_content_hash,
@@ -173,19 +192,7 @@ class ProcessFileUseCase:
             )
             existing_version = existing_files[0] if existing_files else None
             if existing_version is not None:
-                return ProcessFileResult(
-                    processed=True,
-                    skipped=False,
-                    failed=False,
-                    file_id=existing_version.id,
-                    file_version_created=False,
-                    symbols_found=0,
-                    references_found=0,
-                    lines_indexed=0,
-                    comments_indexed=0,
-                    docstrings_indexed=0,
-                    non_code_file_indexed=False,
-                )
+                return _cached_result(existing_version.id)  # type: ignore[arg-type]
             # Not found — fall through to full processing (read content, create properly)
 
         # Read file content from git
@@ -207,19 +214,7 @@ class ProcessFileUseCase:
         if fvi is not None:
             cached_id = fvi.get((request.file_path, content_hash))
             if cached_id is not None:
-                return ProcessFileResult(
-                    processed=True,
-                    skipped=False,
-                    failed=False,
-                    file_id=cached_id,
-                    file_version_created=False,
-                    symbols_found=0,
-                    references_found=0,
-                    lines_indexed=0,
-                    comments_indexed=0,
-                    docstrings_indexed=0,
-                    non_code_file_indexed=False,
-                )
+                return _cached_result(cached_id)
 
         # Detect language using full LanguageDetector (60+ extensions, fixes #35)
         language = LanguageDetector.detect(request.file_path)
@@ -253,19 +248,15 @@ class ProcessFileUseCase:
 
         if not created:
             # File version already exists — symbols/references already saved
-            return ProcessFileResult(
-                processed=True,
-                skipped=False,
-                failed=False,
-                file_id=file_id,
-                file_version_created=False,
-                symbols_found=0,
-                references_found=0,
-                lines_indexed=0,
-                comments_indexed=0,
-                docstrings_indexed=0,
-                non_code_file_indexed=False,
-            )
+            return _cached_result(file_id)
+
+        # New file version — parse dependencies if this is a manifest/lock file
+        dependencies_found = await self._extract_and_save_dependencies(
+            content=content,
+            file_path_str=request.file_path,
+            repository_id=request.repository_id,
+            file_id=file_id,
+        )
 
         # New file version — parse and save symbols/references
         if language and self._parser_service.supports_language(language):
@@ -364,6 +355,7 @@ class ProcessFileUseCase:
                 lines_indexed=line_count,
                 comments_indexed=comments_indexed,
                 docstrings_indexed=docstrings_indexed,
+                dependencies_found=dependencies_found,
                 non_code_file_indexed=False,
                 error=comment_errors,
             )
@@ -388,13 +380,16 @@ class ProcessFileUseCase:
                 lines_indexed=line_count,
                 comments_indexed=0,
                 docstrings_indexed=0,
+                dependencies_found=dependencies_found,
                 non_code_file_indexed=True,
                 error=indexed_as_plaintext.error,
             )
 
+        # File wasn't code and wasn't plaintext-indexed, but may still
+        # have been a manifest file (e.g. pom.xml is XML, not "code")
         return ProcessFileResult(
-            processed=False,
-            skipped=True,
+            processed=dependencies_found > 0,
+            skipped=dependencies_found == 0,
             failed=False,
             file_id=file_id,
             file_version_created=True,
@@ -403,6 +398,7 @@ class ProcessFileUseCase:
             lines_indexed=0,
             comments_indexed=0,
             docstrings_indexed=0,
+            dependencies_found=dependencies_found,
             non_code_file_indexed=False,
         )
 
@@ -416,6 +412,53 @@ class ProcessFileUseCase:
         ):
             return request.blob_to_content_hash[request.blob_hash]
         return None
+
+    async def _extract_and_save_dependencies(
+        self,
+        content: str,
+        file_path_str: str,
+        repository_id: int,
+        file_id: int,
+    ) -> int:
+        """Extract dependencies from manifest/lock files and save to database.
+
+        Returns the number of dependencies found and saved.
+        """
+        if self._dependency_parser is None or self._dependency_repo is None:
+            return 0
+
+        if not self._dependency_parser.supports_file(file_path_str):
+            return 0
+
+        try:
+            dep_dicts = self._dependency_parser.parse(content, file_path_str)
+            if not dep_dicts:
+                return 0
+
+            entities = [
+                Dependency(
+                    file_id=file_id,
+                    repository_id=repository_id,
+                    package_name=d["package_name"],
+                    language=d["language"],
+                    version_spec=d.get("version_spec"),
+                    resolved_version=d.get("resolved_version"),
+                    dependency_type=d.get("dependency_type", "runtime"),
+                    is_direct=d.get("is_direct", True),
+                    extras=d.get("extras"),
+                )
+                for d in dep_dicts
+            ]
+            await self._dependency_repo.save_many(entities)
+            return len(entities)
+
+        except Exception as e:
+            logger.warning(
+                "Failed to extract dependencies from %s: %s",
+                file_path_str,
+                e,
+            )
+            return 0
 
     async def _extract_and_save_comments(
         self,

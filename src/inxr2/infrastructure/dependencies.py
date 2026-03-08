@@ -27,6 +27,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..adapters.external.git_service import GitService
 from ..adapters.external.local_filesystem import LocalFileSystem
 from ..adapters.persistence.repositories.commit_adapter import PostgresCommitRepository
+from ..adapters.persistence.repositories.dependency_adapter import (
+    PostgresDependencyRepository,
+)
 from ..adapters.persistence.repositories.file_adapter import PostgresFileRepository
 from ..adapters.persistence.repositories.file_search_adapter import (
     PostgresFileSearchRepository,
@@ -50,6 +53,7 @@ from ..adapters.persistence.repositories.text_content_adapter import (
 )
 from ..application.ports.repositories import (
     CommitRepositoryPort,
+    DependencyRepositoryPort,
     FileRepositoryPort,
     FileSearchPort,
     FileVersionPort,
@@ -61,6 +65,7 @@ from ..application.ports.repositories import (
 )
 from ..application.ports.services import FileSystemPort, GitServicePort, TextSearchPort
 from ..application.use_cases.commits import ListCommitsUseCase
+from ..application.use_cases.dependencies import GetRepositoryDependenciesUseCase
 from ..application.use_cases.files import (
     GetFileContentUseCase,
     GetFileHistoryUseCase,
@@ -113,6 +118,11 @@ def get_commit_adapter(session: DbSession) -> CommitRepositoryPort:
     return PostgresCommitRepository(session)
 
 
+def get_dependency_adapter(session: DbSession) -> DependencyRepositoryPort:
+    """Provide dependency repository adapter."""
+    return PostgresDependencyRepository(session)
+
+
 def get_file_adapter(session: DbSession) -> FileRepositoryPort:
     """Provide file repository adapter."""
     return PostgresFileRepository(session)
@@ -156,6 +166,7 @@ def get_text_search(session: DbSession) -> TextSearchPort:
 # Type aliases for injected adapters
 RepositoryAdapter = Annotated[RepositoryPort, Depends(get_repository_adapter)]
 CommitAdapter = Annotated[CommitRepositoryPort, Depends(get_commit_adapter)]
+DependencyAdapter = Annotated[DependencyRepositoryPort, Depends(get_dependency_adapter)]
 FileAdapter = Annotated[FileRepositoryPort, Depends(get_file_adapter)]
 FileSearchAdapter = Annotated[FileSearchPort, Depends(get_file_search_adapter)]
 FileVersionAdapter = Annotated[FileVersionPort, Depends(get_file_version_adapter)]
@@ -485,4 +496,26 @@ def get_search_files_use_case(
 
 SearchFilesUseCaseDep = Annotated[
     SearchFilesUseCase, Depends(get_search_files_use_case)
+]
+
+
+# Dependency use case providers
+def get_repository_dependencies_use_case(
+    repository_adapter: RepositoryAdapter,
+    dependency_adapter: DependencyAdapter,
+    commit_adapter: CommitAdapter,
+    file_adapter: FileAdapter,
+) -> GetRepositoryDependenciesUseCase:
+    """Provide GetRepositoryDependenciesUseCase with dependencies."""
+    return GetRepositoryDependenciesUseCase(
+        repository_repo=repository_adapter,
+        dependency_repo=dependency_adapter,
+        commit_repo=commit_adapter,
+        file_repo=file_adapter,
+    )
+
+
+GetRepositoryDependenciesUseCaseDep = Annotated[
+    GetRepositoryDependenciesUseCase,
+    Depends(get_repository_dependencies_use_case),
 ]

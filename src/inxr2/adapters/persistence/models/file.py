@@ -20,6 +20,7 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .commit_file import CommitFileModel
+    from .dependency import DependencyModel
     from .reference import ReferenceModel
     from .repository import RepositoryModel
     from .symbol import SymbolModel
@@ -81,6 +82,9 @@ class FileModel(Base):
     )
     text_contents: Mapped[list["TextContentModel"]] = relationship(
         "TextContentModel", back_populates="source_file", cascade="all, delete-orphan"
+    )
+    dependencies: Mapped[list["DependencyModel"]] = relationship(
+        "DependencyModel", back_populates="file", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

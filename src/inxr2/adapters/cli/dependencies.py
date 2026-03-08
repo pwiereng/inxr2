@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
+    DependencyRepositoryPort,
     FileRepositoryPort,
     IndexStatusRepositoryPort,
     ReferenceRepositoryPort,
@@ -33,6 +34,7 @@ class CLIRepositories:
     reference_repo: ReferenceRepositoryPort
     index_status_repo: IndexStatusRepositoryPort
     text_content_repo: TextContentRepositoryPort
+    dependency_repo: DependencyRepositoryPort
 
 
 @asynccontextmanager
@@ -68,6 +70,7 @@ async def cli_repositories() -> AsyncGenerator[CLIRepositories, None]:
     """
     from inxr2.adapters.persistence.repositories import (
         PostgresCommitRepository,
+        PostgresDependencyRepository,
         PostgresFileRepository,
         PostgresIndexStatusRepository,
         PostgresReferenceRepository,
@@ -89,6 +92,7 @@ async def cli_repositories() -> AsyncGenerator[CLIRepositories, None]:
                 reference_repo=PostgresReferenceRepository(session),
                 index_status_repo=PostgresIndexStatusRepository(session),
                 text_content_repo=PostgresTextContentRepository(session),
+                dependency_repo=PostgresDependencyRepository(session),
             )
     finally:
         await db.close()

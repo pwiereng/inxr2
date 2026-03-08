@@ -10,6 +10,7 @@ Each port is defined in its own module for easier navigation:
 """
 
 from .config_service import ConfigServicePort
+from .dependency_parser_service import DependencyParserServicePort
 from .filesystem_service import FileStat, FileSystemPort
 from .git_service import (
     BlameLineInfo,
@@ -27,6 +28,7 @@ __all__ = [
     "ChangedFiles",
     "CommitInfo",
     "ConfigServicePort",
+    "DependencyParserServicePort",
     "FileStat",
     "FileSystemPort",
     "GitServicePort",
