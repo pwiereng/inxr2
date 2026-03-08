@@ -6,9 +6,11 @@ from typing import Any
 from ....application.ports.services import DependencyParserServicePort
 from .base import BaseDependencyParser
 from .csharp_deps import CSharpDependencyParser
+from .go_deps import GoDependencyParser
 from .java_deps import JavaDependencyParser
 from .javascript_deps import JavaScriptDependencyParser
 from .python_deps import PythonDependencyParser
+from .ruby_deps import RubyDependencyParser
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,8 @@ class DependencyParserService(DependencyParserServicePort):
                 JavaScriptDependencyParser(),
                 JavaDependencyParser(),
                 CSharpDependencyParser(),
+                GoDependencyParser(),
+                RubyDependencyParser(),
             ]
         return self._parsers
 
