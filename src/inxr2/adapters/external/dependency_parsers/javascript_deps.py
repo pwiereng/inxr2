@@ -61,7 +61,7 @@ class JavaScriptDependencyParser(BaseDependencyParser):
         }
 
         for section, dep_type in section_map.items():
-            for name, version in data.get(section, {}).items():
+            for name, version in (data.get(section) or {}).items():
                 deps.append(
                     self._make_dep(
                         package_name=name,
