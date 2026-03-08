@@ -11,6 +11,8 @@ import Files from '@/pages/Files'
 import Browse from '@/pages/Browse'
 import Search from '@/pages/Search'
 import History from '@/pages/History'
+import ComingSoon from '@/pages/ComingSoon'
+import Help from '@/pages/Help'
 
 /**
  * App content with routing
@@ -72,6 +74,30 @@ function AppContent() {
             element={
               <ErrorBoundary>
                 <History />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/logical-view"
+            element={
+              <ErrorBoundary>
+                <ComingSoon title="Logical View" tab="logical-view" />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/dependencies"
+            element={
+              <ErrorBoundary>
+                <ComingSoon title="Dependencies" tab="dependencies" />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/help"
+            element={
+              <ErrorBoundary>
+                <Help />
               </ErrorBoundary>
             }
           />

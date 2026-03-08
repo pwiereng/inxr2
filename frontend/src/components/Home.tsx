@@ -134,7 +134,7 @@ export function Home(): React.ReactElement {
           />
         </a>
         <Typography variant="h3" component="h1" gutterBottom>
-          INXR2
+          INXR<sup>2</sup>
         </Typography>
         <Typography variant="h6" component="h2" color="text.secondary" gutterBottom>
           Cross-Reference Code Browser

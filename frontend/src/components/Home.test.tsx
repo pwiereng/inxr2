@@ -126,7 +126,7 @@ describe('Home', () => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
     })
 
-    expect(screen.getByRole('heading', { name: /INXR2/i, level: 1 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /INXR/i, level: 1 })).toBeInTheDocument()
     expect(screen.getByText(/Cross-Reference Code Browser/i)).toBeInTheDocument()
   })
 

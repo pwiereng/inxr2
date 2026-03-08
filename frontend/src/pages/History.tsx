@@ -88,6 +88,15 @@ export function History(): React.ReactElement {
       case 'history':
         // Already on history
         break
+      case 'logical-view':
+        navigate(`/logical-view?${params.toString()}`)
+        break
+      case 'dependencies':
+        navigate(`/dependencies?${params.toString()}`)
+        break
+      case 'help':
+        navigate(`/help?${params.toString()}`)
+        break
     }
   }
 
