@@ -27,10 +27,18 @@ export function BranchSelect({
     return null
   }
 
+  // Guard against out-of-range value when the current branch
+  // is not in the available branches (e.g. switching repos).
+  // Prefer branch if valid, then defaultBranch, then ''.
+  const branchValue = branch || defaultBranch
+  const hasBranch = branches.some((b) => b.name === branchValue)
+  const hasDefault = branches.some((b) => b.name === defaultBranch)
+  const selectValue = hasBranch ? branchValue : hasDefault ? defaultBranch : ''
+
   return (
     <FormControl size="small" sx={{ minWidth: 120 }}>
       <Select
-        value={branch || defaultBranch}
+        value={selectValue}
         onChange={(e) => onBranchChange(e.target.value as string)}
         displayEmpty
         MenuProps={MENU_PROPS}
@@ -46,7 +54,7 @@ export function BranchSelect({
         renderValue={(selected) => (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <AccountTreeIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-            {selected}
+            {selected || defaultBranch}
           </Box>
         )}
       >

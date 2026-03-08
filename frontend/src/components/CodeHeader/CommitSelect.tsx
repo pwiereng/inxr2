@@ -36,10 +36,15 @@ export function CommitSelect({
     return null
   }
 
+  // Guard against out-of-range value warning when the commit hash
+  // (e.g. HEAD) is not in the list of indexed commits
+  const isValueInOptions = commits.some((c) => c.hash === commitDisplayValue)
+  const selectValue = isValueInOptions ? commitDisplayValue : ''
+
   return (
     <FormControl size="small" sx={{ minWidth: 140 }}>
       <Select
-        value={commitDisplayValue}
+        value={selectValue}
         onChange={(e) => onCommitChange(e.target.value as string)}
         displayEmpty
         MenuProps={MENU_PROPS}
