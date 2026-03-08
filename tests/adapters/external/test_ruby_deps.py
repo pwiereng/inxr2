@@ -63,6 +63,35 @@ gem 'sidekiq', '~> 7.0'
         assert deps[2]["dependency_type"] == "dev"
         assert deps[3]["dependency_type"] == "runtime"
 
+    def test_nested_groups(self, parser: RubyDependencyParser) -> None:
+        content = """\
+gem 'rails'
+
+group :development do
+  gem 'pry'
+  group :test do
+    gem 'rspec'
+  end
+  gem 'rubocop'
+end
+
+gem 'sidekiq'
+"""
+        deps = parser.parse(content, "Gemfile")
+        assert len(deps) == 5
+
+        assert deps[0]["package_name"] == "rails"
+        assert deps[0]["dependency_type"] == "runtime"
+        assert deps[1]["package_name"] == "pry"
+        assert deps[1]["dependency_type"] == "dev"
+        assert deps[2]["package_name"] == "rspec"
+        assert deps[2]["dependency_type"] == "dev"
+        # rubocop is still inside the outer :development group
+        assert deps[3]["package_name"] == "rubocop"
+        assert deps[3]["dependency_type"] == "dev"
+        assert deps[4]["package_name"] == "sidekiq"
+        assert deps[4]["dependency_type"] == "runtime"
+
     def test_double_quotes(self, parser: RubyDependencyParser) -> None:
         content = 'gem "nokogiri", "~> 1.15"\n'
         deps = parser.parse(content, "Gemfile")

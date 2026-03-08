@@ -78,7 +78,6 @@ class GoDependencyParser(BaseDependencyParser):
         return self._make_dep(
             package_name=module,
             version_spec=version,
-            resolved_version=version.lstrip("v"),
             dependency_type="runtime",
             is_direct=not is_indirect,
         )

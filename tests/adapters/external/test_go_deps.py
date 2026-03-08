@@ -39,7 +39,7 @@ require (
         gin = deps[0]
         assert gin["package_name"] == "github.com/gin-gonic/gin"
         assert gin["version_spec"] == "v1.9.1"
-        assert gin["resolved_version"] == "1.9.1"
+        assert gin["resolved_version"] is None
         assert gin["language"] == "go"
         assert gin["is_direct"] is True
 
@@ -87,7 +87,7 @@ require github.com/foo/bar v0.0.0-20231201000000-abcdef123456
         deps = parser.parse(content, "go.mod")
         assert len(deps) == 1
         assert deps[0]["version_spec"] == "v0.0.0-20231201000000-abcdef123456"
-        assert deps[0]["resolved_version"] == "0.0.0-20231201000000-abcdef123456"
+        assert deps[0]["resolved_version"] is None
 
 
 class TestEdgeCases:

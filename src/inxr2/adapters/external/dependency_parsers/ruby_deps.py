@@ -11,7 +11,7 @@ from .base import BaseDependencyParser
 
 logger = logging.getLogger(__name__)
 
-# Gemfile: gem 'name', '~> 1.0'  or  gem "name", ">= 1.0", "< 2.0"
+# Gemfile: gem 'name', '~> 1.0' (captures first version constraint only)
 _GEMFILE_RE = re.compile(
     r"^\s*gem\s+['\"](?P<name>[^'\"]+)['\"]"
     r"(?:\s*,\s*['\"](?P<version>[^'\"]+)['\"])?"
@@ -52,19 +52,19 @@ class RubyDependencyParser(BaseDependencyParser):
     def _parse_gemfile(self, content: str) -> list[dict[str, Any]]:
         """Parse Gemfile gem declarations."""
         deps: list[dict[str, Any]] = []
-        group_stack: list[str] = []
+        group_stack: list[list[str]] = []
 
         for line in content.splitlines():
             stripped = line.strip()
 
-            # Track group blocks
+            # Track group blocks as a proper stack for nesting
             if stripped.startswith("group "):
                 # Extract group names: group :development, :test do
                 groups = re.findall(r":(\w+)", stripped)
-                group_stack.extend(groups)
+                group_stack.append(groups)
                 continue
             if stripped == "end" and group_stack:
-                group_stack.clear()
+                group_stack.pop()
                 continue
 
             match = _GEMFILE_RE.match(line)
@@ -75,8 +75,9 @@ class RubyDependencyParser(BaseDependencyParser):
             version = match.group("version")
 
             dep_type = "runtime"
-            if group_stack:
-                if any(g in ("development", "test") for g in group_stack):
+            all_groups = [g for groups in group_stack for g in groups]
+            if all_groups:
+                if any(g in ("development", "test") for g in all_groups):
                     dep_type = "dev"
 
             deps.append(
