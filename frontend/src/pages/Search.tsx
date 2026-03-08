@@ -111,7 +111,9 @@ export default function Search(): React.ReactElement {
   // No ext param = all extensions included. Empty string = none selected. Otherwise, explicit list.
   const includedExtensions =
     extParam !== null ? (extParam ? extParam.split(',') : []) : [...availableExtensions]
-  const extKey = includedExtensions.join(',')
+  // Use a stable sentinel when extParam is null (all extensions) to avoid
+  // re-triggering the search effect when availableExtensions loads asynchronously.
+  const extKey = extParam !== null ? includedExtensions.join(',') : '__all__'
   const [results, setResults] = useState<UnifiedResult[]>([])
   const [fileResults, setFileResults] = useState<FileSearchResult[]>([])
   const [totalResults, setTotalResults] = useState(0)
@@ -437,8 +439,11 @@ export default function Search(): React.ReactElement {
 
   const handleIncludeExtensionChange = (included: string[]) => {
     const newParams = new URLSearchParams(searchParams)
-    // If all extensions are selected, remove param (back to default = all shown)
+    // If all extensions are selected, remove param (back to default = all shown).
+    // Guard with length > 0 so an empty availableExtensions list (not loaded yet)
+    // doesn't falsely match 0 === 0.
     if (
+      availableExtensions.length > 0 &&
       included.length === availableExtensions.length &&
       availableExtensions.every((ext) => included.includes(ext))
     ) {
@@ -787,9 +792,11 @@ export default function Search(): React.ReactElement {
                       handleIncludeExtensionChange(arr)
                     }}
                     renderValue={(selected) =>
-                      selected.length === 0 ? (
+                      extParam === null ? (
+                        <em>All</em>
+                      ) : selected.length === 0 ? (
                         <em>None selected</em>
-                      ) : extParam === null || selected.length === availableExtensions.length ? (
+                      ) : selected.length === availableExtensions.length ? (
                         <em>All</em>
                       ) : (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
