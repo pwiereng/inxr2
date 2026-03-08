@@ -168,6 +168,44 @@ typescript@^5.0.0:
         assert deps[0]["resolved_version"] == "5.15.0"
 
 
+class TestPnpmLock:
+    def test_basic(self, parser: JavaScriptDependencyParser) -> None:
+        content = """\
+lockfileVersion: '6.0'
+packages:
+  /react@18.2.0:
+    dev: false
+  /typescript@5.3.3:
+    dev: true
+  /@scope/pkg@1.0.0:
+    optional: true
+"""
+        deps = parser.parse(content, "pnpm-lock.yaml")
+        assert len(deps) == 3
+
+        react = next(d for d in deps if d["package_name"] == "react")
+        assert react["resolved_version"] == "18.2.0"
+        assert react["dependency_type"] == "runtime"
+        assert react["is_direct"] is False
+        assert react["language"] == "javascript"
+
+        ts = next(d for d in deps if d["package_name"] == "typescript")
+        assert ts["dependency_type"] == "dev"
+
+        scoped = next(d for d in deps if d["package_name"] == "@scope/pkg")
+        assert scoped["dependency_type"] == "optional"
+        assert scoped["resolved_version"] == "1.0.0"
+
+    def test_empty_packages(self, parser: JavaScriptDependencyParser) -> None:
+        content = "lockfileVersion: '6.0'\npackages: {}\n"
+        deps = parser.parse(content, "pnpm-lock.yaml")
+        assert len(deps) == 0
+
+    def test_invalid_yaml(self, parser: JavaScriptDependencyParser) -> None:
+        deps = parser.parse("{{invalid", "pnpm-lock.yaml")
+        assert deps == []
+
+
 class TestEdgeCases:
     def test_empty(self, parser: JavaScriptDependencyParser) -> None:
         assert parser.parse("", "package.json") == []
