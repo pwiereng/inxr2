@@ -138,17 +138,17 @@ class SymbolRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    async def list_distinct_top_level_kinds(
+    async def list_distinct_kinds(
         self,
         repository_id: int,
         branch: str | None = None,
         commit_id: int | None = None,
         language: str | None = None,
     ) -> list[str]:
-        """List distinct symbol kinds for top-level symbols.
+        """List all distinct symbol kinds in a repository.
 
-        Returns the set of distinct kind values for symbols that have
-        no parent (top-level), scoped to the given branch/commit.
+        Returns every kind value present (including nested symbols),
+        scoped to the given branch/commit.
 
         Args:
             repository_id: Repository to query
@@ -170,6 +170,25 @@ class SymbolRepositoryPort(ABC):
 
         A symbol is effectively top-level if it has no parent or its
         parent is a namespace.
+
+        Args:
+            file_ids: File IDs to query.
+
+        Returns:
+            Mapping of file_id → {kind: count}. Files with no symbols
+            are omitted.
+        """
+        pass
+
+    @abstractmethod
+    async def count_kinds_by_file(
+        self,
+        file_ids: list[int],
+    ) -> dict[int, dict[str, int]]:
+        """Count all symbols by kind for each file.
+
+        Includes all symbols regardless of nesting level.
+        Excludes namespace kind.
 
         Args:
             file_ids: File IDs to query.

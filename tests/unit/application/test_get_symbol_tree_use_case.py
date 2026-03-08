@@ -1157,3 +1157,312 @@ class TestGetSymbolTreeKindCounts:
         # Namespace itself is transparent and NOT counted as a kind
         assert "class" in utils_file.kind_counts
         assert utils_file.kind_counts["class"] == 1
+
+
+class TestGetSymbolTreeAllKindCounts:
+    """Tier 1: all_kind_counts and total_kind_counts include nested symbols."""
+
+    @pytest.fixture
+    def repo_adapter(self) -> InMemoryRepositoryRepository:
+        adapter = InMemoryRepositoryRepository()
+        adapter.add(Repository(id=1, name="test-repo", url="/repos/test-repo"))
+        return adapter
+
+    @pytest.fixture
+    def commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        repo._commits[1] = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("abc123"),
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+        )
+        repo._branch_commits[(1, "main", 1)] = True
+        return repo
+
+    @pytest.fixture
+    def file_repo(
+        self, commit_repo: InMemoryCommitRepository
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/models.py",
+                content_hash="h1",
+                size_bytes=500,
+                language="python",
+            )
+        )
+        repo.add(
+            File(
+                id=2,
+                repository_id=1,
+                path="src/utils.py",
+                content_hash="h2",
+                size_bytes=200,
+                language="python",
+            )
+        )
+        repo._commit_files.add((1, 1))
+        repo._commit_files.add((1, 2))
+        return repo
+
+    @pytest.fixture
+    def symbol_repo(
+        self, file_repo: InMemoryFileRepository
+    ) -> InMemorySymbolRepository:
+        repo = InMemorySymbolRepository(file_repo=file_repo)
+        # models.py: top-level class
+        repo.add(
+            Symbol(
+                id=1,
+                repository_id=1,
+                file_id=1,
+                name="User",
+                kind=SymbolKind.CLASS,
+                start_line=1,
+                start_column=0,
+                end_line=30,
+                end_column=0,
+            )
+        )
+        # models.py: method nested inside User class
+        repo.add(
+            Symbol(
+                id=2,
+                repository_id=1,
+                file_id=1,
+                name="save",
+                kind=SymbolKind.METHOD,
+                start_line=5,
+                start_column=4,
+                end_line=10,
+                end_column=0,
+                parent_symbol_id=1,
+            )
+        )
+        # models.py: another method nested inside User class
+        repo.add(
+            Symbol(
+                id=3,
+                repository_id=1,
+                file_id=1,
+                name="delete",
+                kind=SymbolKind.METHOD,
+                start_line=12,
+                start_column=4,
+                end_line=15,
+                end_column=0,
+                parent_symbol_id=1,
+            )
+        )
+        # models.py: top-level function
+        repo.add(
+            Symbol(
+                id=4,
+                repository_id=1,
+                file_id=1,
+                name="create_user",
+                kind=SymbolKind.FUNCTION,
+                start_line=35,
+                start_column=0,
+                end_line=40,
+                end_column=0,
+            )
+        )
+        # utils.py: top-level function
+        repo.add(
+            Symbol(
+                id=5,
+                repository_id=1,
+                file_id=2,
+                name="helper",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    def reference_repo(self) -> InMemoryReferenceRepository:
+        return InMemoryReferenceRepository()
+
+    @pytest.fixture
+    def use_case(
+        self,
+        repo_adapter: InMemoryRepositoryRepository,
+        symbol_repo: InMemorySymbolRepository,
+        file_repo: InMemoryFileRepository,
+        reference_repo: InMemoryReferenceRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> GetSymbolTreeUseCase:
+        return GetSymbolTreeUseCase(
+            repository_repo=repo_adapter,
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            reference_repo=reference_repo,
+            commit_repo=commit_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_tier1_all_kind_counts_includes_nested(
+        self, use_case: GetSymbolTreeUseCase
+    ) -> None:
+        """all_kind_counts includes nested symbols like methods."""
+        result = await use_case.execute(
+            GetSymbolTreeRequest(repository_name="test-repo", branch="main")
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        all_counts_by_path = {f.path: f.all_kind_counts for f in result.files}
+
+        # models.py: 1 class, 2 methods, 1 function (all counted)
+        assert all_counts_by_path["src/models.py"] == {
+            "class": 1,
+            "method": 2,
+            "function": 1,
+        }
+        # utils.py: 1 function
+        assert all_counts_by_path["src/utils.py"] == {"function": 1}
+
+    @pytest.mark.asyncio
+    async def test_tier1_all_kind_counts_differs_from_kind_counts(
+        self, use_case: GetSymbolTreeUseCase
+    ) -> None:
+        """all_kind_counts includes methods while kind_counts (top-level) does not."""
+        result = await use_case.execute(
+            GetSymbolTreeRequest(repository_name="test-repo", branch="main")
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        models_file = next(f for f in result.files if f.path == "src/models.py")
+
+        # kind_counts (top-level only) should NOT include methods
+        assert "method" not in models_file.kind_counts
+        # all_kind_counts should include methods
+        assert "method" in models_file.all_kind_counts
+        assert models_file.all_kind_counts["method"] == 2
+
+    @pytest.mark.asyncio
+    async def test_tier1_total_kind_counts_aggregated(
+        self, use_case: GetSymbolTreeUseCase
+    ) -> None:
+        """total_kind_counts aggregates all_kind_counts across all files."""
+        result = await use_case.execute(
+            GetSymbolTreeRequest(repository_name="test-repo", branch="main")
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        # models.py: class=1, method=2, function=1
+        # utils.py: function=1
+        # total: class=1, method=2, function=2
+        assert result.total_kind_counts == {
+            "class": 1,
+            "method": 2,
+            "function": 2,
+        }
+
+    @pytest.mark.asyncio
+    async def test_tier1_total_kind_counts_empty_when_no_files(
+        self,
+        repo_adapter: InMemoryRepositoryRepository,
+        reference_repo: InMemoryReferenceRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> None:
+        """total_kind_counts is empty when no files have symbols."""
+        empty_file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        empty_symbol_repo = InMemorySymbolRepository(file_repo=empty_file_repo)
+        use_case = GetSymbolTreeUseCase(
+            repository_repo=repo_adapter,
+            symbol_repo=empty_symbol_repo,
+            file_repo=empty_file_repo,
+            reference_repo=reference_repo,
+            commit_repo=commit_repo,
+        )
+
+        result = await use_case.execute(
+            GetSymbolTreeRequest(repository_name="test-repo", branch="main")
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        assert result.total_kind_counts == {}
+
+    @pytest.mark.asyncio
+    async def test_tier1_all_kind_counts_excludes_namespace(
+        self,
+        use_case: GetSymbolTreeUseCase,
+        symbol_repo: InMemorySymbolRepository,
+    ) -> None:
+        """all_kind_counts excludes namespace kind."""
+        # Add a namespace to utils.py
+        symbol_repo.add(
+            Symbol(
+                id=20,
+                repository_id=1,
+                file_id=2,
+                name="MyNamespace",
+                kind=SymbolKind.NAMESPACE,
+                start_line=10,
+                start_column=0,
+                end_line=30,
+                end_column=0,
+            )
+        )
+
+        result = await use_case.execute(
+            GetSymbolTreeRequest(repository_name="test-repo", branch="main")
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        utils_file = next(f for f in result.files if f.path == "src/utils.py")
+        # Namespace should NOT appear in all_kind_counts
+        assert "namespace" not in utils_file.all_kind_counts
+
+    @pytest.mark.asyncio
+    async def test_tier1_available_kinds_includes_nested(
+        self, use_case: GetSymbolTreeUseCase
+    ) -> None:
+        """available_kinds includes nested kinds like method."""
+        result = await use_case.execute(
+            GetSymbolTreeRequest(repository_name="test-repo", branch="main")
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        # list_distinct_kinds now returns all kinds including nested
+        assert "method" in result.available_kinds
+        assert "class" in result.available_kinds
+        assert "function" in result.available_kinds
+
+    @pytest.mark.asyncio
+    async def test_tier1_available_kinds_excludes_namespace(
+        self,
+        use_case: GetSymbolTreeUseCase,
+        symbol_repo: InMemorySymbolRepository,
+    ) -> None:
+        """available_kinds excludes namespace kind."""
+        symbol_repo.add(
+            Symbol(
+                id=30,
+                repository_id=1,
+                file_id=2,
+                name="SomeNamespace",
+                kind=SymbolKind.NAMESPACE,
+                start_line=10,
+                start_column=0,
+                end_line=30,
+                end_column=0,
+            )
+        )
+
+        result = await use_case.execute(
+            GetSymbolTreeRequest(repository_name="test-repo", branch="main")
+        )
+
+        assert isinstance(result, GetSymbolTreeFilesResponse)
+        assert "namespace" not in result.available_kinds

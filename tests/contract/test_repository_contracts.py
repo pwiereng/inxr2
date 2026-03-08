@@ -589,3 +589,166 @@ class TestFindReferencesByTextHeadFirst:
 
         assert len(results) == 1
         assert results[0].source_file_id == data["file2_id"]
+
+
+# ---- count_kinds_by_file contracts ----
+
+
+class TestCountKindsByFileContract:
+    """Contract tests for count_kinds_by_file: counts ALL symbols including nested."""
+
+    async def _setup_nested_symbols(self, repos: Repos) -> dict[str, int]:
+        """Create a repo with top-level and nested symbols for kind counting.
+
+        Creates in file "src/main.py":
+        - MyClass (class, top-level)
+        - save (method, child of MyClass)
+        - delete (method, child of MyClass)
+        - helper (function, top-level)
+        - myns (namespace, top-level)
+        - ns_func (function, child of namespace)
+        """
+        from inxr2.domain.entities import Symbol
+        from inxr2.domain.value_objects import SymbolKind
+
+        repo_id = await create_test_repo(repos)
+        commit_id = await create_test_commit(
+            repos, repo_id, "a" * 40, date_offset_days=0
+        )
+        file_id = await create_test_file(
+            repos, repo_id, commit_id, "src/main.py", "c" * 40
+        )
+
+        # Top-level class
+        my_class = await repos.symbol.save(
+            Symbol(
+                file_id=file_id,
+                repository_id=repo_id,
+                name="MyClass",
+                kind=SymbolKind.CLASS,
+                start_line=1,
+                start_column=0,
+                end_line=30,
+                end_column=0,
+            )
+        )
+        assert my_class.id is not None
+
+        # Method nested inside MyClass
+        save_method = await repos.symbol.save(
+            Symbol(
+                file_id=file_id,
+                repository_id=repo_id,
+                name="save",
+                kind=SymbolKind.METHOD,
+                start_line=5,
+                start_column=4,
+                end_line=10,
+                end_column=0,
+                parent_symbol_id=my_class.id,
+            )
+        )
+        assert save_method.id is not None
+
+        # Another method nested inside MyClass
+        delete_method = await repos.symbol.save(
+            Symbol(
+                file_id=file_id,
+                repository_id=repo_id,
+                name="delete",
+                kind=SymbolKind.METHOD,
+                start_line=12,
+                start_column=4,
+                end_line=15,
+                end_column=0,
+                parent_symbol_id=my_class.id,
+            )
+        )
+        assert delete_method.id is not None
+
+        # Top-level function
+        helper = await repos.symbol.save(
+            Symbol(
+                file_id=file_id,
+                repository_id=repo_id,
+                name="helper",
+                kind=SymbolKind.FUNCTION,
+                start_line=35,
+                start_column=0,
+                end_line=40,
+                end_column=0,
+            )
+        )
+        assert helper.id is not None
+
+        # A namespace (should be excluded from counts)
+        namespace = await repos.symbol.save(
+            Symbol(
+                file_id=file_id,
+                repository_id=repo_id,
+                name="myns",
+                kind=SymbolKind.NAMESPACE,
+                start_line=50,
+                start_column=0,
+                end_line=70,
+                end_column=0,
+            )
+        )
+        assert namespace.id is not None
+
+        # A function inside the namespace
+        ns_func = await repos.symbol.save(
+            Symbol(
+                file_id=file_id,
+                repository_id=repo_id,
+                name="ns_func",
+                kind=SymbolKind.FUNCTION,
+                start_line=52,
+                start_column=4,
+                end_line=58,
+                end_column=0,
+                parent_symbol_id=namespace.id,
+            )
+        )
+        assert ns_func.id is not None
+
+        return {
+            "repo_id": repo_id,
+            "file_id": file_id,
+        }
+
+    async def test_counts_all_symbols_including_nested(self, repos: Repos) -> None:
+        """count_kinds_by_file counts all symbols including methods under classes."""
+        data = await self._setup_nested_symbols(repos)
+        file_id = data["file_id"]
+
+        result = await repos.symbol.count_kinds_by_file([file_id])
+
+        assert file_id in result
+        counts = result[file_id]
+        # 1 class, 2 methods, 2 functions (helper + ns_func)
+        assert counts["class"] == 1
+        assert counts["method"] == 2
+        assert counts["function"] == 2
+
+    async def test_excludes_namespace_kind(self, repos: Repos) -> None:
+        """count_kinds_by_file excludes namespace from the kind counts."""
+        data = await self._setup_nested_symbols(repos)
+        file_id = data["file_id"]
+
+        result = await repos.symbol.count_kinds_by_file([file_id])
+
+        assert file_id in result
+        assert "namespace" not in result[file_id]
+
+    async def test_empty_file_ids_returns_empty(self, repos: Repos) -> None:
+        """count_kinds_by_file with empty file_ids returns empty dict."""
+        result = await repos.symbol.count_kinds_by_file([])
+
+        assert result == {}
+
+    async def test_nonexistent_file_ids_returns_empty(self, repos: Repos) -> None:
+        """count_kinds_by_file with nonexistent file IDs returns empty dict."""
+        result = await repos.symbol.count_kinds_by_file([99999])
+
+        assert result == {}

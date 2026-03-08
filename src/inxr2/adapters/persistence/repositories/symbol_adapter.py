@@ -9,6 +9,7 @@ from ....domain.entities import Symbol
 from ..mappers import SymbolMapper
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
+from ..models.repository import RepositoryModel
 from ..models.symbol import SymbolModel
 from .base_repository import BaseSQLAlchemyRepository
 from .query_utils import build_text_match_filter, split_extension_filter
@@ -26,6 +27,15 @@ class PostgresSymbolRepository(
     def __init__(self, session: AsyncSession):
         super().__init__(session)
         self.mapper = SymbolMapper()
+
+    async def _resolve_default_branch(self, repository_id: int) -> str | None:
+        """Look up a repository's default branch."""
+        result = await self.session.execute(
+            select(RepositoryModel.default_branch).where(
+                RepositoryModel.id == repository_id
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def search_by_name(
         self,
@@ -79,7 +89,16 @@ class PostgresSymbolRepository(
             query = query.where(SymbolModel.repository_id == repository_id)
             # Deduplicate: only symbols from latest file version per path.
             # When branch is set, dedup is scoped to that branch.
-            latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+            # When branch is not set, fall back to the repo's default branch
+            # to avoid an expensive unscoped ROW_NUMBER() query.
+            effective_branch = branch
+            if effective_branch is None:
+                effective_branch = await self._resolve_default_branch(
+                    repository_id
+                )
+            latest_sq = latest_file_ids_subquery(
+                repository_id, branch=effective_branch
+            )
             query = query.where(SymbolModel.file_id.in_(select(latest_sq.c.max_id)))
 
         if kind is not None:
@@ -273,30 +292,24 @@ class PostgresSymbolRepository(
         result = await self.session.execute(query)
         return [(row[0], row[1], row[2], row[3]) for row in result.all()]
 
-    async def list_distinct_top_level_kinds(
+    async def list_distinct_kinds(
         self,
         repository_id: int,
         branch: str | None = None,
         commit_id: int | None = None,
         language: str | None = None,
     ) -> list[str]:
-        """List distinct symbol kinds for effectively top-level symbols.
+        """List all distinct symbol kinds in a repository.
 
-        A symbol is effectively top-level if it has no parent or its
-        parent is a namespace (namespaces are transparent containers).
-        Namespace itself is excluded from the returned kinds.
+        Returns every kind value present (including nested symbols like
+        method, staticmethod, classmethod, instance_variable, etc.).
+        Namespace kind is excluded as it is a transparent container.
         """
-        parent_sym = aliased(SymbolModel, flat=True)
         query = (
             select(SymbolModel.kind)
             .join(FileModel, SymbolModel.file_id == FileModel.id)
-            .outerjoin(parent_sym, SymbolModel.parent_symbol_id == parent_sym.id)
             .where(
                 FileModel.repository_id == repository_id,
-                or_(
-                    SymbolModel.parent_symbol_id.is_(None),
-                    parent_sym.kind == "namespace",
-                ),
                 SymbolModel.kind != "namespace",
             )
             .distinct()
@@ -343,6 +356,33 @@ class PostgresSymbolRepository(
                     SymbolModel.parent_symbol_id.is_(None),
                     parent_sym.kind == "namespace",
                 ),
+                SymbolModel.kind != "namespace",
+            )
+            .group_by(SymbolModel.file_id, SymbolModel.kind)
+        )
+        result = await self.session.execute(query)
+
+        counts: dict[int, dict[str, int]] = {}
+        for file_id, kind, cnt in result.all():
+            counts.setdefault(file_id, {})[kind] = cnt
+        return counts
+
+    async def count_kinds_by_file(
+        self,
+        file_ids: list[int],
+    ) -> dict[int, dict[str, int]]:
+        """Count all symbols by kind for each file (excluding namespace)."""
+        if not file_ids:
+            return {}
+
+        query = (
+            select(
+                SymbolModel.file_id,
+                SymbolModel.kind,
+                func.count(SymbolModel.id).label("cnt"),
+            )
+            .where(
+                SymbolModel.file_id.in_(file_ids),
                 SymbolModel.kind != "namespace",
             )
             .group_by(SymbolModel.file_id, SymbolModel.kind)

@@ -35,6 +35,8 @@ import type { TabValue } from '@/components/CodeHeader'
 import {
   getSymbolTree,
   searchSymbols,
+  getRepositoryByName,
+  getCommits,
   type Symbol as ApiSymbol,
   type SymbolTreeFile,
   type SymbolTreeSymbol,
@@ -56,6 +58,10 @@ const KIND_ICONS: Record<string, React.ReactNode> = {
   constructor: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
   getter: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
   setter: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
+  variable: <FieldIcon fontSize="small" sx={{ color: '#abb2bf' }} />,
+  class_variable: <FieldIcon fontSize="small" sx={{ color: '#d19a66' }} />,
+  instance_variable: <FieldIcon fontSize="small" sx={{ color: '#abb2bf' }} />,
+  constant: <FieldIcon fontSize="small" sx={{ color: '#d19a66' }} />,
 }
 
 const KIND_COLORS: Record<string, string> = {
@@ -66,7 +72,12 @@ const KIND_COLORS: Record<string, string> = {
   enum: '#c678dd',
   function: '#61afef',
   method: '#61afef',
+  staticmethod: '#61afef',
+  classmethod: '#61afef',
   constant: '#d19a66',
+  variable: '#abb2bf',
+  class_variable: '#d19a66',
+  instance_variable: '#abb2bf',
   field: '#abb2bf',
   property: '#abb2bf',
 }
@@ -79,9 +90,15 @@ function getKindIcon(kind: string): React.ReactNode {
   return KIND_ICONS[kind] ?? <FieldIcon fontSize="small" sx={{ color: '#abb2bf' }} />
 }
 
-function getKindLabel(kind: string): string {
-  return kind.replace(/_/g, ' ')
+function getKindLabel(kind: string, plural = false): string {
+  const label = kind.replace(/_/g, ' ')
+  if (!plural) return label
+  if (label.endsWith('y') && !label.endsWith('ay')) return label.slice(0, -1) + 'ies'
+  if (label.endsWith('s')) return label + 'es'
+  return label + 's'
 }
+
+const KIND_PAGE_SIZE = 100
 
 interface ExpandedState {
   files: Set<number>
@@ -101,6 +118,38 @@ export default function LogicalView(): React.ReactElement {
   const commit = searchParams.get('commit')
   const fileParam = searchParams.get('file')
   const kindParam = searchParams.get('kind')
+
+  // Resolve default branch and latest commit when missing from URL
+  useEffect(() => {
+    if (!repoName || (branch && commit)) return
+    let cancelled = false
+    const resolve = async () => {
+      try {
+        const repo = await getRepositoryByName(repoName)
+        if (cancelled) return
+        const effectiveBranch = branch ?? repo.default_branch
+        let effectiveCommit = commit
+        if (!effectiveCommit) {
+          const commits = await getCommits(repoName, effectiveBranch, 1)
+          if (cancelled) return
+          if (commits.commits.length > 0) {
+            effectiveCommit = commits.commits[0]!.hash
+          }
+        }
+        if (cancelled) return
+        const params = new URLSearchParams(searchParams)
+        if (!branch) params.set('branch', effectiveBranch)
+        if (!commit && effectiveCommit) params.set('commit', effectiveCommit)
+        navigate(`/logical-view?${params.toString()}`, { replace: true })
+      } catch {
+        // Silently fail — page will work without defaults, just slower
+      }
+    }
+    resolve()
+    return () => {
+      cancelled = true
+    }
+  }, [repoName, branch, commit, searchParams, navigate])
 
   // Data state
   const [files, setFiles] = useState<SymbolTreeFile[]>([])
@@ -135,6 +184,8 @@ export default function LogicalView(): React.ReactElement {
   // Kind mode state
   const [kindSymbols, setKindSymbols] = useState<ApiSymbol[]>([])
   const [kindSymbolsLoading, setKindSymbolsLoading] = useState(false)
+  const [kindSymbolsHasMore, setKindSymbolsHasMore] = useState(false)
+  const [kindSymbolsOffset, setKindSymbolsOffset] = useState(0)
   const [kindExpandedSymbols, setKindExpandedSymbols] = useState<Set<number>>(new Set())
   const [kindSymbolChildren, setKindSymbolChildren] = useState<SymbolChildren>({})
   const [kindExpandingSymbol, setKindExpandingSymbol] = useState<number | null>(null)
@@ -153,14 +204,16 @@ export default function LogicalView(): React.ReactElement {
     return [...langs].sort()
   }, [files])
 
-  // Available kinds from backend (tier 1 response)
+  // Available kinds and total counts from backend (tier 1 response)
   const [availableKinds, setAvailableKinds] = useState<string[]>([])
+  const [totalKindCounts, setTotalKindCounts] = useState<Record<string, number>>({})
 
   // Load tier 1 (files) when repo/branch/commit changes
   useEffect(() => {
-    if (!repoName) {
+    if (!repoName || !branch) {
       setFiles([])
       setAvailableKinds([])
+      setTotalKindCounts({})
       return
     }
 
@@ -182,6 +235,7 @@ export default function LogicalView(): React.ReactElement {
         if (!cancelled) {
           if (result.files) setFiles(result.files)
           if (result.available_kinds) setAvailableKinds(result.available_kinds)
+          if (result.total_kind_counts) setTotalKindCounts(result.total_kind_counts)
           setRepositoryId(result.repository_id)
         }
       } catch (err) {
@@ -374,7 +428,7 @@ export default function LogicalView(): React.ReactElement {
 
   // Fetch symbols when entering kind mode
   useEffect(() => {
-    if (!activeKind || !repositoryId) {
+    if (!activeKind || !repositoryId || !branch) {
       setKindSymbols([])
       setKindExpandedSymbols(new Set())
       setKindSymbolChildren({})
@@ -385,37 +439,25 @@ export default function LogicalView(): React.ReactElement {
     const loadKindSymbols = async () => {
       setKindSymbolsLoading(true)
       setKindSymbols([])
+      setKindSymbolsHasMore(false)
+      setKindSymbolsOffset(0)
       setKindExpandedSymbols(new Set())
       setKindSymbolChildren({})
 
       try {
-        // Fetch all symbols of this kind (paginate if needed)
-        const allSymbols: ApiSymbol[] = []
-        let offset = 0
-        const limit = 200
-        let hasMore = true
-
-        while (hasMore) {
-          const result = await searchSymbols({
-            kind: activeKind,
-            repository_id: repositoryId,
-            branch: branch ?? undefined,
-            commit: commit ?? undefined,
-            top_level_only: true,
-            limit,
-            offset,
-          })
-          if (cancelled) return
-          allSymbols.push(...result.items)
-          hasMore = result.items.length === limit
-          offset += limit
-        }
-
-        if (!cancelled) {
-          // Sort alphabetically by name
-          allSymbols.sort((a, b) => a.name.localeCompare(b.name))
-          setKindSymbols(allSymbols)
-        }
+        const result = await searchSymbols({
+          kind: activeKind,
+          repository_id: repositoryId,
+          branch: branch ?? undefined,
+          commit: commit ?? undefined,
+          top_level_only: false,
+          limit: KIND_PAGE_SIZE,
+          offset: 0,
+        })
+        if (cancelled) return
+        setKindSymbols(result.items)
+        setKindSymbolsHasMore(result.items.length === KIND_PAGE_SIZE)
+        setKindSymbolsOffset(KIND_PAGE_SIZE)
       } catch {
         // Silently fail
       } finally {
@@ -427,6 +469,30 @@ export default function LogicalView(): React.ReactElement {
       cancelled = true
     }
   }, [activeKind, repositoryId, branch, commit])
+
+  // Load more symbols in kind mode
+  const loadMoreKindSymbols = useCallback(async () => {
+    if (!activeKind || !repositoryId || kindSymbolsLoading) return
+    setKindSymbolsLoading(true)
+    try {
+      const result = await searchSymbols({
+        kind: activeKind,
+        repository_id: repositoryId,
+        branch: branch ?? undefined,
+        commit: commit ?? undefined,
+        top_level_only: false,
+        limit: KIND_PAGE_SIZE,
+        offset: kindSymbolsOffset,
+      })
+      setKindSymbols((prev) => [...prev, ...result.items])
+      setKindSymbolsHasMore(result.items.length === KIND_PAGE_SIZE)
+      setKindSymbolsOffset((prev) => prev + KIND_PAGE_SIZE)
+    } catch {
+      // Silently fail
+    } finally {
+      setKindSymbolsLoading(false)
+    }
+  }, [activeKind, repositoryId, branch, commit, kindSymbolsOffset, kindSymbolsLoading])
 
   // Expand/collapse a symbol in kind mode (fetch children via symbol tree)
   const toggleKindSymbol = useCallback(
@@ -480,7 +546,8 @@ export default function LogicalView(): React.ReactElement {
 
   // Auto-expand file from URL param on initial load / bookmark navigation
   useEffect(() => {
-    if (initialFileExpanded.current || !fileParam || !repoName || files.length === 0) return
+    if (initialFileExpanded.current || !fileParam || !repoName || files.length === 0 || activeKind)
+      return
     const file = files.find((f) => f.path === fileParam)
     if (!file) return
     initialFileExpanded.current = true
@@ -600,6 +667,19 @@ export default function LogicalView(): React.ReactElement {
 
   // Header handlers
   const handleRepoChange = (newRepo: string) => {
+    // Reset all UI state when switching repos
+    setSymbolSearch('')
+    setFilterText('')
+    setExcludeText('')
+    setSelectedLanguage(null)
+    setActiveKind(null)
+    setShowKindCounts(false)
+    setExpanded({ files: new Set(), symbols: new Set() })
+    setKindExpandedSymbols(new Set())
+    setKindSymbolChildren({})
+    setKindSymbols([])
+    savedScrollTop.current = 0
+    initialFileExpanded.current = false
     const params = new URLSearchParams()
     params.set('repo', newRepo)
     navigate(`/logical-view?${params.toString()}`)
@@ -728,21 +808,62 @@ export default function LogicalView(): React.ReactElement {
     return result
   }, [kindSymbols, selectedLanguage, filterText, excludeText, symbolSearch])
 
-  // Summary stats reflecting current filtered view
-  const summaryStats = useMemo(() => {
-    if (activeKind) {
-      // Kind mode: just show count of filtered symbols
-      return { files: 0, kinds: { [activeKind]: filteredKindSymbols.length } }
-    }
-    // Outline mode: aggregate kind_counts from filtered files
-    const kinds: Record<string, number> = {}
-    for (const f of filteredFiles) {
-      for (const [kind, count] of Object.entries(f.kind_counts)) {
-        kinds[kind] = (kinds[kind] ?? 0) + count
+  // Group kind mode symbols by parent class (from qualified_name)
+  const groupedKindSymbols = useMemo(() => {
+    const groups: {
+      groupKey: string
+      className: string | null
+      filePath: string | null
+      symbols: ApiSymbol[]
+    }[] = []
+    const groupMap = new Map<string, { filePath: string | null; symbols: ApiSymbol[] }>()
+    const ungrouped: ApiSymbol[] = []
+
+    for (const sym of filteredKindSymbols) {
+      // Extract parent class from qualified_name (e.g., "ClassName.method" -> "ClassName")
+      const qn = sym.qualified_name
+      const dotIdx = qn ? qn.lastIndexOf('.') : -1
+      const parentName = dotIdx > 0 ? qn!.slice(0, dotIdx) : null
+
+      if (parentName) {
+        const key = `${parentName}::${sym.file_path ?? ''}`
+        const existing = groupMap.get(key)
+        if (existing) {
+          existing.symbols.push(sym)
+        } else {
+          const group = { filePath: sym.file_path, symbols: [sym] }
+          groupMap.set(key, group)
+        }
+      } else {
+        ungrouped.push(sym)
       }
     }
-    return { files: filteredFiles.length, kinds }
-  }, [activeKind, filteredFiles, filteredKindSymbols])
+
+    // Sort groups by class name, ungrouped items first
+    if (ungrouped.length > 0) {
+      groups.push({ groupKey: '__ungrouped', className: null, filePath: null, symbols: ungrouped })
+    }
+    const sortedEntries = [...groupMap.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    for (const [key, group] of sortedEntries) {
+      groups.push({
+        groupKey: key,
+        className: key.split('::')[0]!,
+        filePath: group.filePath,
+        symbols: group.symbols,
+      })
+    }
+
+    return groups
+  }, [filteredKindSymbols])
+
+  // Summary stats — always total counts, but filter to active kind when in kind mode
+  const summaryStats = useMemo(() => {
+    if (activeKind) {
+      const count = totalKindCounts[activeKind] ?? 0
+      return { files: files.length, kinds: count > 0 ? { [activeKind]: count } : {} }
+    }
+    return { files: files.length, kinds: totalKindCounts }
+  }, [activeKind, files, totalKindCounts])
 
   // Restore scroll position after filter/search changes re-render the list
   useLayoutEffect(() => {
@@ -893,38 +1014,30 @@ export default function LogicalView(): React.ReactElement {
                 ))}
               </Box>
             )}
-            <Tooltip title="Reset all filters" arrow>
-              <span>
-                <IconButton
-                  size="small"
-                  disabled={
-                    !symbolSearch &&
-                    !filterText &&
-                    !excludeText &&
-                    !selectedLanguage &&
-                    !activeKind &&
-                    expanded.files.size === 0
-                  }
-                  onClick={() => {
-                    setSymbolSearch('')
-                    setFilterText('')
-                    setExcludeText('')
-                    setSelectedLanguage(null)
-                    setActiveKind(null)
-                    setShowKindCounts(false)
-                    setExpanded({ files: new Set(), symbols: new Set() })
-                    updateUrlState({ file: null, kind: null })
-                    savedScrollTop.current = 0
-                    if (scrollRef.current) scrollRef.current.scrollTop = 0
-                  }}
-                  color="warning"
-                >
-                  <RestartAltIcon fontSize="small" />
-                </IconButton>
-              </span>
+            <Tooltip title="Reset view" arrow>
+              <IconButton
+                size="small"
+                onClick={() => {
+                  setSymbolSearch('')
+                  setFilterText('')
+                  setExcludeText('')
+                  setSelectedLanguage(null)
+                  setActiveKind(null)
+                  setShowKindCounts(false)
+                  setExpanded({ files: new Set(), symbols: new Set() })
+                  setKindExpandedSymbols(new Set())
+                  setKindSymbolChildren({})
+                  updateUrlState({ file: null, kind: null })
+                  savedScrollTop.current = 0
+                  if (scrollRef.current) scrollRef.current.scrollTop = 0
+                }}
+                color="warning"
+              >
+                <RestartAltIcon fontSize="small" />
+              </IconButton>
             </Tooltip>
             {availableKinds.length > 0 && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                 <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
                   View:
                 </Typography>
@@ -977,7 +1090,7 @@ export default function LogicalView(): React.ReactElement {
         )}
 
         {/* Summary stats */}
-        {repoName && !loading && !error && (summaryStats.files > 0 || activeKind) && (
+        {repoName && !loading && !error && summaryStats.files > 0 && (
           <Box
             sx={{
               px: 2,
@@ -986,7 +1099,9 @@ export default function LogicalView(): React.ReactElement {
               borderColor: 'divider',
               display: 'flex',
               alignItems: 'center',
+              flexWrap: 'wrap',
               gap: 1.5,
+              rowGap: 0.25,
               bgcolor: 'action.hover',
             }}
           >
@@ -1009,8 +1124,7 @@ export default function LogicalView(): React.ReactElement {
                   }}
                 >
                   {getKindIcon(kind)}
-                  <strong>{count}</strong> {getKindLabel(kind)}
-                  {count !== 1 ? 's' : ''}
+                  <strong>{count}</strong> {getKindLabel(kind, count !== 1)}
                 </Typography>
               ))}
           </Box>
@@ -1087,28 +1201,74 @@ export default function LogicalView(): React.ReactElement {
                 <List dense disablePadding>
                   <Box sx={{ px: 2, py: 0.5 }}>
                     <Typography variant="caption" color="text.secondary">
-                      {filteredKindSymbols.length} {getKindLabel(activeKind)}
-                      {filteredKindSymbols.length !== 1 ? 's' : ''}
+                      {filteredKindSymbols.length}{kindSymbolsHasMore ? '+' : ''}{' '}
+                      {getKindLabel(activeKind, filteredKindSymbols.length !== 1)}
                     </Typography>
                   </Box>
-                  {filteredKindSymbols.map((sym) => (
-                    <KindSymbolNode
-                      key={sym.id}
-                      symbol={sym}
-                      isExpanded={kindExpandedSymbols.has(sym.id)}
-                      isExpanding={kindExpandingSymbol === sym.id}
-                      children={kindSymbolChildren[sym.id]}
-                      symbolChildren={kindSymbolChildren}
-                      expandedSymbols={kindExpandedSymbols}
-                      expandingSymbol={kindExpandingSymbol}
-                      onToggle={toggleKindSymbol}
-                      onSymbolClick={handleSymbolClick}
-                      onInheritanceClick={handleInheritanceClick}
-                      onSwitchToOutline={switchToOutline}
-                      fileName={fileName}
-                      fileDir={fileDir}
-                    />
+                  {groupedKindSymbols.map((group) => (
+                    <Box key={group.groupKey}>
+                      {group.className && (
+                        <ListItemButton
+                          sx={{ pl: 2, py: 0.25, opacity: 0.8, cursor: 'default' }}
+                          disableRipple
+                        >
+                          <ListItemIcon sx={{ minWidth: 28 }}>
+                            {getKindIcon('class')}
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography
+                                  variant="body2"
+                                  sx={{ fontWeight: 600, fontFamily: 'monospace' }}
+                                >
+                                  {group.className}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {group.filePath ? fileDir(group.filePath) + fileName(group.filePath) : ''}
+                                </Typography>
+                                <Chip
+                                  label={group.symbols.length}
+                                  size="small"
+                                  sx={{ height: 18, fontSize: '0.7rem' }}
+                                />
+                              </Box>
+                            }
+                          />
+                        </ListItemButton>
+                      )}
+                      {group.symbols.map((sym) => (
+                        <KindSymbolNode
+                          key={sym.id}
+                          symbol={sym}
+                          isExpanded={kindExpandedSymbols.has(sym.id)}
+                          isExpanding={kindExpandingSymbol === sym.id}
+                          children={kindSymbolChildren[sym.id]}
+                          symbolChildren={kindSymbolChildren}
+                          expandedSymbols={kindExpandedSymbols}
+                          expandingSymbol={kindExpandingSymbol}
+                          onToggle={toggleKindSymbol}
+                          onSymbolClick={handleSymbolClick}
+                          onInheritanceClick={handleInheritanceClick}
+                          onSwitchToOutline={switchToOutline}
+                          fileName={fileName}
+                          fileDir={fileDir}
+                          indent={group.className ? 1 : 0}
+                        />
+                      ))}
+                    </Box>
                   ))}
+                  {kindSymbolsHasMore && (
+                    <Box sx={{ px: 2, py: 1, textAlign: 'center' }}>
+                      <Chip
+                        label={kindSymbolsLoading ? 'Loading...' : 'Load more'}
+                        onClick={kindSymbolsLoading ? undefined : loadMoreKindSymbols}
+                        variant="outlined"
+                        size="small"
+                        disabled={kindSymbolsLoading}
+                      />
+                    </Box>
+                  )}
                 </List>
               )}
             </>
@@ -1229,12 +1389,12 @@ function FileNode({
                 sx={{ height: 18, fontSize: '0.7rem' }}
               />
               {showKindCounts &&
-                Object.entries(file.kind_counts)
+                Object.entries(file.all_kind_counts)
                   .sort(([, a], [, b]) => b - a)
                   .map(([kind, count]) => (
                     <Chip
                       key={kind}
-                      label={`${count} ${getKindLabel(kind)}`}
+                      label={`${count} ${getKindLabel(kind, count !== 1)}`}
                       size="small"
                       sx={{
                         height: 18,
@@ -1451,6 +1611,7 @@ interface KindSymbolNodeProps {
   onSwitchToOutline: (filePath: string) => void
   fileName: (path: string) => string
   fileDir: (path: string) => string
+  indent?: number
 }
 
 function KindSymbolNode({
@@ -1467,6 +1628,7 @@ function KindSymbolNode({
   onSwitchToOutline,
   fileName,
   fileDir,
+  indent = 0,
 }: KindSymbolNodeProps): React.ReactElement {
   const isCallable =
     symbol.kind === 'function' ||
@@ -1503,7 +1665,7 @@ function KindSymbolNode({
     <>
       <ListItemButton
         onClick={isContainer ? () => onToggle(symbol.id) : () => onSymbolClick(asTreeSymbol)}
-        sx={{ py: 0.5 }}
+        sx={{ py: 0.5, pl: 2 + indent * 3 }}
       >
         {isContainer && (
           <ListItemIcon sx={{ minWidth: 28 }}>

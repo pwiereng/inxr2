@@ -278,6 +278,7 @@ export interface SymbolTreeFile {
   language: string | null
   symbol_count: number
   kind_counts: Record<string, number>
+  all_kind_counts: Record<string, number>
 }
 
 export interface SymbolTreeInheritance {
@@ -305,6 +306,7 @@ export interface SymbolTreeResponse {
   files: SymbolTreeFile[] | null
   symbols: SymbolTreeSymbol[] | null
   available_kinds: string[] | null
+  total_kind_counts: Record<string, number> | null
 }
 
 export async function getSymbolTree(

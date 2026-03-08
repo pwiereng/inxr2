@@ -481,6 +481,7 @@ class SymbolTreeFileResponse(BaseModel):
     language: str | None
     symbol_count: int
     kind_counts: dict[str, int] = {}
+    all_kind_counts: dict[str, int] = {}
 
 
 class SymbolTreeInheritanceResponse(BaseModel):
@@ -514,6 +515,7 @@ class SymbolTreeResponse(BaseModel):
     files: list[SymbolTreeFileResponse] | None = None
     symbols: list[SymbolTreeSymbolResponse] | None = None
     available_kinds: list[str] | None = None
+    total_kind_counts: dict[str, int] | None = None
 
 
 @router.get("/by-name/{name}/symbol-tree", response_model=SymbolTreeResponse)
@@ -576,10 +578,12 @@ async def get_symbol_tree(
                     language=f.language,
                     symbol_count=f.symbol_count,
                     kind_counts=f.kind_counts,
+                    all_kind_counts=f.all_kind_counts,
                 )
                 for f in result.files
             ],
             available_kinds=result.available_kinds or None,
+            total_kind_counts=result.total_kind_counts or None,
         )
     else:
         return SymbolTreeResponse(

@@ -210,14 +210,21 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
 
         # Compute latest file IDs for filtering (matches Postgres behavior).
         # When branch is set, dedup is scoped to that branch.
+        # When branch is not set, fall back to the repo's default branch
+        # to match the Postgres adapter's _resolve_default_branch behavior.
         latest_file_ids: set[int] | None = None
         if (
             commit_id is None
             and repository_id is not None
             and self._file_repo is not None
         ):
+            effective_branch = branch
+            if effective_branch is None:
+                effective_branch = self._file_repo._get_default_branch_for_repo(
+                    repository_id
+                )
             latest_file_ids = self._file_repo._compute_latest_file_ids(
-                repository_id, branch=branch
+                repository_id, branch=effective_branch
             )
 
         # Compute language file IDs if language filter is set
@@ -387,17 +394,17 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         parent = self._symbols.get(symbol.parent_symbol_id)
         return parent is not None and parent.kind.value == "namespace"
 
-    async def list_distinct_top_level_kinds(
+    async def list_distinct_kinds(
         self,
         repository_id: int,
         branch: str | None = None,
         commit_id: int | None = None,
         language: str | None = None,
     ) -> list[str]:
-        """List distinct symbol kinds for effectively top-level symbols.
+        """List all distinct symbol kinds in a repository.
 
-        Excludes 'namespace' from the returned kinds (namespaces are
-        transparent containers).
+        Includes nested symbols (methods, class_variables, etc.).
+        Excludes 'namespace' from the returned kinds.
         """
         valid_file_ids: set[int] | None = None
         if commit_id is not None and self._file_repo is not None:
@@ -416,8 +423,6 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
             if valid_file_ids is not None and s.file_id not in valid_file_ids:
                 continue
             if s.kind.value == "namespace":
-                continue
-            if not self._is_effectively_top_level(s):
                 continue
             # Language filter
             if language is not None and self._file_repo is not None:
@@ -440,6 +445,22 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
             if s.kind.value == "namespace":
                 continue
             if not self._is_effectively_top_level(s):
+                continue
+            counts.setdefault(s.file_id, {})
+            kind_str = s.kind.value
+            counts[s.file_id][kind_str] = counts[s.file_id].get(kind_str, 0) + 1
+        return counts
+
+    async def count_kinds_by_file(
+        self,
+        file_ids: list[int],
+    ) -> dict[int, dict[str, int]]:
+        """Count all symbols by kind for each file (excluding namespace)."""
+        counts: dict[int, dict[str, int]] = {}
+        for s in self._symbols.values():
+            if s.file_id not in file_ids:
+                continue
+            if s.kind.value == "namespace":
                 continue
             counts.setdefault(s.file_id, {})
             kind_str = s.kind.value

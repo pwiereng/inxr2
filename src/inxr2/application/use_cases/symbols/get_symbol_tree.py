@@ -29,6 +29,7 @@ class SymbolTreeFile:
     language: str | None
     symbol_count: int
     kind_counts: dict[str, int] = field(default_factory=dict)
+    all_kind_counts: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -88,6 +89,7 @@ class GetSymbolTreeFilesResponse:
     files: list[SymbolTreeFile]
     repository_id: int
     available_kinds: list[str] = field(default_factory=list)
+    total_kind_counts: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -190,10 +192,19 @@ class GetSymbolTreeUseCase:
         )
         file_ids = [file_id for file_id, _, _, _ in rows]
 
-        # Batch-fetch kind counts for all files
+        # Batch-fetch kind counts for all files (top-level and all)
         kind_counts_by_file = await self._symbol_repo.count_top_level_kinds_by_file(
             file_ids
         )
+        all_kind_counts_by_file = await self._symbol_repo.count_kinds_by_file(
+            file_ids
+        )
+
+        # Aggregate total kind counts across all files
+        total_kind_counts: dict[str, int] = {}
+        for file_kinds in all_kind_counts_by_file.values():
+            for kind, cnt in file_kinds.items():
+                total_kind_counts[kind] = total_kind_counts.get(kind, 0) + cnt
 
         files = [
             SymbolTreeFile(
@@ -202,11 +213,12 @@ class GetSymbolTreeUseCase:
                 language=lang,
                 symbol_count=count,
                 kind_counts=kind_counts_by_file.get(file_id, {}),
+                all_kind_counts=all_kind_counts_by_file.get(file_id, {}),
             )
             for file_id, path, lang, count in rows
         ]
         # Fetch available kinds (unfiltered by kinds param)
-        available_kinds = await self._symbol_repo.list_distinct_top_level_kinds(
+        available_kinds = await self._symbol_repo.list_distinct_kinds(
             repository_id=repository_id,
             branch=branch,
             commit_id=commit_id,
@@ -216,6 +228,7 @@ class GetSymbolTreeUseCase:
             files=files,
             repository_id=repository_id,
             available_kinds=available_kinds,
+            total_kind_counts=total_kind_counts,
         )
 
     async def _get_file_symbols(
