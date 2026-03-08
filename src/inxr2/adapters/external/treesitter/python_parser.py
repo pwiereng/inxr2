@@ -108,18 +108,13 @@ class PythonParser(BaseLanguageParser):
                                     )
                                 )
                         elif arg.type == "attribute":
-                            # e.g., module.ClassName
-                            attr_parts = []
-                            for sub in arg.children:
-                                if sub.type == "identifier":
-                                    attr_parts.append(get_text(sub))
-                            if attr_parts:
-                                full_name = ".".join(attr_parts)
-                                add_reference(
-                                    self._make_reference(
-                                        full_name, "inheritance", arg, class_name
-                                    )
+                            # e.g., module.ClassName or pkg.module.ClassName
+                            full_name = get_text(arg)
+                            add_reference(
+                                self._make_reference(
+                                    full_name, "inheritance", arg, class_name
                                 )
+                            )
                         elif arg.type == "keyword_argument":
                             # e.g., metaclass=ABCMeta — skip
                             pass

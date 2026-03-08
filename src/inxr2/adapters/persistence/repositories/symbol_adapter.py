@@ -224,6 +224,7 @@ class PostgresSymbolRepository(
             # Only include files that have at least one "effectively top-level"
             # symbol of the requested kind(s). A symbol is effectively top-level
             # if it has no parent OR its parent is a namespace (transparent).
+            # Scoped to the same commit/latest-file snapshot as the outer query.
             sym2 = aliased(SymbolModel, flat=True)
             parent_sym = aliased(SymbolModel, flat=True)
             sym2_file = aliased(FileModel, flat=True)
@@ -241,6 +242,19 @@ class PostgresSymbolRepository(
                 )
                 .distinct()
             )
+            if commit_id is not None:
+                kinds_subq = kinds_subq.where(
+                    sym2_file.id.in_(
+                        select(CommitFileModel.file_id).where(
+                            CommitFileModel.commit_id == commit_id
+                        )
+                    )
+                )
+            else:
+                latest_sq_kinds = latest_file_ids_subquery(repository_id, branch=branch)
+                kinds_subq = kinds_subq.where(
+                    sym2_file.id.in_(select(latest_sq_kinds.c.max_id))
+                )
             query = query.where(FileModel.id.in_(kinds_subq))
 
         query = query.order_by(FileModel.path)
