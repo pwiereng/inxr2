@@ -154,7 +154,7 @@ export default function Dependencies(): React.ReactElement {
       let group = groupMap.get(item.file_id)
       if (!group) {
         group = {
-          filePath: item.file_path ?? `file:${item.file_id}`,
+          filePath: item.file_path ?? '',
           fileId: item.file_id,
           language: item.language,
           items: [],
@@ -486,8 +486,8 @@ function FileGroupNode({
     return parts.slice(0, -1).join('/') + '/'
   }
 
-  const dir = fileDir(group.filePath)
-  const name = fileName(group.filePath)
+  const dir = group.filePath ? fileDir(group.filePath) : ''
+  const name = group.filePath ? fileName(group.filePath) : `(file #${group.fileId})`
 
   return (
     <>
@@ -505,19 +505,23 @@ function FileGroupNode({
         <ListItemText
           primary={
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Tooltip title="Open in Browse view" arrow>
+              <Tooltip title={group.filePath ? 'Open in Browse view' : ''} arrow>
                 <Typography
                   variant="body2"
                   component="span"
                   sx={{
                     fontFamily: 'monospace',
-                    cursor: 'pointer',
-                    '&:hover': { textDecoration: 'underline' },
+                    cursor: group.filePath ? 'pointer' : 'default',
+                    '&:hover': group.filePath ? { textDecoration: 'underline' } : {},
                   }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onFileClick(group.filePath)
-                  }}
+                  onClick={
+                    group.filePath
+                      ? (e: React.MouseEvent) => {
+                          e.stopPropagation()
+                          onFileClick(group.filePath)
+                        }
+                      : undefined
+                  }
                 >
                   <Typography
                     variant="body2"
