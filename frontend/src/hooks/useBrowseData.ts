@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { NavigateFunction } from 'react-router-dom'
 import {
   getRepositories,
@@ -62,8 +62,17 @@ export function useBrowseData({
   const [fileVersions, setFileVersions] = useState<FileVersion[]>([])
   const [rawContent, setRawContent] = useState<RawFileContent | null>(null)
 
-  // Latest commit hash for the current branch (HEAD fallback for changedOnly)
-  const [latestBranchCommit, setLatestBranchCommit] = useState<string | null | undefined>(undefined)
+  // Latest commit hash for the current branch (HEAD fallback for changedOnly).
+  // We track which repo/branch the resolved commit belongs to so that stale
+  // data from a previous repo is never exposed to consumers.
+  const [rawLatestBranchCommit, setRawLatestBranchCommit] = useState<string | null | undefined>(
+    undefined
+  )
+  const commitRepoRef = useRef<string | undefined>(undefined)
+  const commitRequestIdRef = useRef(0)
+  // Safe value: undefined if the resolved commit doesn't belong to current repo
+  const latestBranchCommit =
+    commitRepoRef.current === urlState.repoName ? rawLatestBranchCommit : undefined
   // Map of commit hash → commit date for temporal comparison (populated from getCommits)
   const [commitDateMap, setCommitDateMap] = useState<Map<string, string>>(new Map())
 
@@ -106,15 +115,22 @@ export function useBrowseData({
   useEffect(() => {
     if (!urlState.repoName) return
 
-    // Reset to pending so the tree-loading guard knows we're fetching
-    setLatestBranchCommit(undefined)
-
     const branch = urlState.selectedBranch || repository?.default_branch
-    getCommits(urlState.repoName, branch || undefined, 500)
+    if (!branch) return // Wait for repository to load so we know the default branch
+
+    const requestId = ++commitRequestIdRef.current
+    const effectRepoName = urlState.repoName
+
+    // Reset to pending so the tree-loading guard knows we're fetching
+    commitRepoRef.current = effectRepoName
+    setRawLatestBranchCommit(undefined)
+
+    getCommits(effectRepoName, branch || undefined, 500)
       .then((res) => {
+        if (requestId !== commitRequestIdRef.current) return // stale response
         // Find the newest indexed commit (commits are newest-first)
         const latest = res.commits.find((c) => c.is_indexed)
-        setLatestBranchCommit(latest?.hash ?? null)
+        setRawLatestBranchCommit(latest?.hash ?? null)
         // Build hash→date map for temporal comparison
         const dateMap = new Map<string, string>()
         for (const c of res.commits) {
@@ -123,7 +139,8 @@ export function useBrowseData({
         setCommitDateMap(dateMap)
       })
       .catch(() => {
-        setLatestBranchCommit(null)
+        if (requestId !== commitRequestIdRef.current) return // stale response
+        setRawLatestBranchCommit(null)
         setCommitDateMap(new Map())
       })
   }, [urlState.repoName, urlState.selectedBranch, repository?.default_branch])
