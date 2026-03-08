@@ -183,7 +183,12 @@ export default function Dependencies(): React.ReactElement {
     const params = new URLSearchParams()
     if (branch) params.set('branch', branch)
     if (commit) params.set('commit', commit)
-    navigate(`/browse/${repoName}/${filePath}?${params.toString()}`)
+    const encodedRepoName = encodeURIComponent(repoName)
+    const encodedFilePath = filePath
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')
+    navigate(`/browse/${encodedRepoName}/${encodedFilePath}?${params.toString()}`)
   }
 
   // Header handlers

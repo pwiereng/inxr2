@@ -128,10 +128,8 @@ class GetRepositoryDependenciesUseCase:
         file_ids = list({d.file_id for d in deps})
         file_path_map: dict[int, str] = {}
         if file_ids:
-            for fid in file_ids:
-                file_entity = await self._file_repo.find_by_id(fid)
-                if file_entity:
-                    file_path_map[fid] = file_entity.path
+            file_entities = await self._file_repo.find_by_ids(file_ids)
+            file_path_map = {fid: f.path for fid, f in file_entities.items()}
 
         # Build response items
         items = [
