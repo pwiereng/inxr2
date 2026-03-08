@@ -1,6 +1,6 @@
 """Repository API endpoints."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 from ....application.use_cases.dependencies import (
@@ -18,6 +18,10 @@ from ....application.use_cases.repositories.get_repository_tree import (
     GetRepositoryTreeRequest,
     TreeNode,
 )
+from ....application.use_cases.symbols import (
+    GetSymbolTreeFilesResponse,
+    GetSymbolTreeRequest,
+)
 from ....domain.exceptions import RepositoryNotFound
 from ....infrastructure.dependencies import (
     GetAllRepositoryStatsUseCaseDep,
@@ -26,6 +30,7 @@ from ....infrastructure.dependencies import (
     GetRepositoryFilesUseCaseDep,
     GetRepositoryStatsUseCaseDep,
     GetRepositoryTreeUseCaseDep,
+    GetSymbolTreeUseCaseDep,
     ListRepositoriesUseCaseDep,
     RepositoryAdapter,
 )
@@ -463,3 +468,147 @@ async def get_repository_dependencies_by_name(
         ],
         total=response.total,
     )
+
+
+# Symbol tree response models
+
+
+class SymbolTreeFileResponse(BaseModel):
+    """A file entry in the symbol tree."""
+
+    file_id: int
+    path: str
+    language: str | None
+    symbol_count: int
+    kind_counts: dict[str, int] = {}
+    all_kind_counts: dict[str, int] = {}
+
+
+class SymbolTreeInheritanceResponse(BaseModel):
+    """Inheritance reference for a class symbol."""
+
+    reference_text: str
+    target_symbol_id: int | None
+    target_file_id: int | None = None
+    target_file_path: str | None = None
+    target_line: int | None = None
+
+
+class SymbolTreeSymbolResponse(BaseModel):
+    """A symbol entry in the symbol tree."""
+
+    id: int
+    name: str
+    kind: str
+    start_line: int
+    end_line: int
+    file_path: str | None
+    has_children: bool
+    signature: str | None = None
+    inheritance: list[SymbolTreeInheritanceResponse] = []
+
+
+class SymbolTreeResponse(BaseModel):
+    """Symbol tree response — either files (tier 1) or symbols (tier 2/3)."""
+
+    repository_id: int
+    files: list[SymbolTreeFileResponse] | None = None
+    symbols: list[SymbolTreeSymbolResponse] | None = None
+    available_kinds: list[str] | None = None
+    total_kind_counts: dict[str, int] | None = None
+
+
+@router.get("/by-name/{name}/symbol-tree", response_model=SymbolTreeResponse)
+async def get_symbol_tree(
+    name: str,
+    use_case: GetSymbolTreeUseCaseDep,
+    branch: str | None = Query(default=None, description="Branch name"),
+    commit: str | None = Query(default=None, description="Commit hash"),
+    file_id: int | None = Query(default=None, description="File ID to expand (tier 2)"),
+    parent_symbol_id: int | None = Query(
+        default=None, description="Symbol ID to expand (tier 3)"
+    ),
+    language: str | None = Query(
+        default=None, description="Filter by language (tier 1)"
+    ),
+    kind: str | None = Query(
+        default=None, description="Filter by symbol kind (tier 2/3)"
+    ),
+    kinds: str | None = Query(
+        default=None,
+        description="Comma-separated symbol kinds to filter files (tier 1)",
+    ),
+) -> SymbolTreeResponse:
+    """Get the symbol tree for logical view browsing.
+
+    Supports lazy loading in 3 tiers:
+    - No file_id or parent_symbol_id: returns files with symbol counts
+    - file_id set: returns top-level symbols in that file
+    - parent_symbol_id set: returns children of that symbol
+
+    The response is scoped to the given branch/commit for temporal
+    consistency with the file browser.
+    """
+    try:
+        kinds_list = (
+            [k.strip() for k in kinds.split(",") if k.strip()] if kinds else None
+        )
+        result = await use_case.execute(
+            GetSymbolTreeRequest(
+                repository_name=name,
+                branch=branch,
+                commit_hash=commit,
+                file_id=file_id,
+                parent_symbol_id=parent_symbol_id,
+                language=language,
+                kind=kind,
+                kinds=kinds_list,
+            )
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    if isinstance(result, GetSymbolTreeFilesResponse):
+        return SymbolTreeResponse(
+            repository_id=result.repository_id,
+            files=[
+                SymbolTreeFileResponse(
+                    file_id=f.file_id,
+                    path=f.path,
+                    language=f.language,
+                    symbol_count=f.symbol_count,
+                    kind_counts=f.kind_counts,
+                    all_kind_counts=f.all_kind_counts,
+                )
+                for f in result.files
+            ],
+            available_kinds=result.available_kinds or None,
+            total_kind_counts=result.total_kind_counts or None,
+        )
+    else:
+        return SymbolTreeResponse(
+            repository_id=result.repository_id,
+            symbols=[
+                SymbolTreeSymbolResponse(
+                    id=n.symbol.id or 0,
+                    name=n.symbol.name,
+                    kind=n.symbol.kind.value,
+                    start_line=n.symbol.start_line,
+                    end_line=n.symbol.end_line,
+                    file_path=n.file_path,
+                    has_children=n.has_children,
+                    signature=n.symbol.signature,
+                    inheritance=[
+                        SymbolTreeInheritanceResponse(
+                            reference_text=inh.reference_text,
+                            target_symbol_id=inh.target_symbol_id,
+                            target_file_id=inh.target_file_id,
+                            target_file_path=inh.target_file_path,
+                            target_line=inh.target_line,
+                        )
+                        for inh in n.inheritance
+                    ],
+                )
+                for n in result.symbols
+            ],
+        )

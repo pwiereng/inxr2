@@ -61,6 +61,7 @@ class SearchSymbolsRequest:
     scope: str = "latest"
     mode: str | None = None
     case_sensitive: bool = True
+    top_level_only: bool = False
 
 
 @dataclass
@@ -160,6 +161,7 @@ class SearchSymbolsUseCase:
                 mode=request.mode,
                 case_sensitive=request.case_sensitive,
                 commit_id=commit_id,
+                top_level_only=request.top_level_only,
             )
 
         # Apply offset for pagination

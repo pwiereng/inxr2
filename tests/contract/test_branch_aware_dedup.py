@@ -49,12 +49,12 @@ async def _setup_two_branches(repos: Repos) -> dict[str, int]:
     repo_id = await create_test_repo(repos)
 
     # Create commits on different branches
-    commit1_id = await create_test_commit(repos, repo_id, "a" * 40, date_offset_days=0)
-    commit2_id = await create_test_commit(repos, repo_id, "b" * 40, date_offset_days=2)
-
-    # Link commits to their respective branches
-    await repos.commit.link_commit_to_branch(repo_id, commit1_id, "main")
-    await repos.commit.link_commit_to_branch(repo_id, commit2_id, "feature")
+    commit1_id = await create_test_commit(
+        repos, repo_id, "a" * 40, date_offset_days=0, branch="main"
+    )
+    commit2_id = await create_test_commit(
+        repos, repo_id, "b" * 40, date_offset_days=2, branch="feature"
+    )
 
     # Same path, different content (file changed between branches)
     file1_id = await create_test_file(
@@ -126,8 +126,10 @@ class TestSearchByNameBranchDedup:
         assert len(results) == 1
         assert results[0].file_id == data["file2_id"]
 
-    async def test_search_without_branch_returns_latest(self, repos: Repos) -> None:
-        """Without branch filter, search should return latest (feature's version)."""
+    async def test_search_without_branch_returns_default_branch(
+        self, repos: Repos
+    ) -> None:
+        """Without branch filter, search falls back to default branch (main)."""
         data = await _setup_two_branches(repos)
 
         results = await repos.symbol.search_by_name(
@@ -136,7 +138,7 @@ class TestSearchByNameBranchDedup:
         )
 
         assert len(results) == 1
-        assert results[0].file_id == data["file2_id"]
+        assert results[0].file_id == data["file1_id"]
 
 
 # ---- Issue #47: References return wrong line numbers on branch filter ----

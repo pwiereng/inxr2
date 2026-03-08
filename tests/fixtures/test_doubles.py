@@ -172,6 +172,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         mode: str | None = None,
         case_sensitive: bool = True,
         commit_id: int | None = None,
+        top_level_only: bool = False,
     ) -> list[Symbol]:
         """Search symbols by name with optional filters.
 
@@ -209,14 +210,21 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
 
         # Compute latest file IDs for filtering (matches Postgres behavior).
         # When branch is set, dedup is scoped to that branch.
+        # When branch is not set, fall back to the repo's default branch
+        # to match the Postgres adapter's _resolve_default_branch behavior.
         latest_file_ids: set[int] | None = None
         if (
             commit_id is None
             and repository_id is not None
             and self._file_repo is not None
         ):
+            effective_branch = branch
+            if effective_branch is None:
+                effective_branch = self._file_repo._get_default_branch_for_repo(
+                    repository_id
+                )
             latest_file_ids = self._file_repo._compute_latest_file_ids(
-                repository_id, branch=branch
+                repository_id, branch=effective_branch
             )
 
         # Compute language file IDs if language filter is set
@@ -271,6 +279,8 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 and symbol.file_id not in extension_file_ids
             ):
                 continue
+            if top_level_only and not self._is_effectively_top_level(symbol):
+                continue
             results.append(symbol)
         results.sort(key=lambda s: s.name)
         return results[:limit]
@@ -298,6 +308,192 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
     async def list_by_file(self, file_id: int) -> list[Symbol]:
         """List all symbols in a file."""
         return [s for s in self._symbols.values() if s.file_id == file_id]
+
+    async def list_by_file_and_parent(
+        self,
+        file_id: int,
+        parent_symbol_id: int | None,
+    ) -> list[Symbol]:
+        """List symbols in a file filtered by parent."""
+        results = [
+            s
+            for s in self._symbols.values()
+            if s.file_id == file_id and s.parent_symbol_id == parent_symbol_id
+        ]
+        results.sort(key=lambda s: (s.kind.value, s.name))
+        return results
+
+    async def list_files_with_symbols(
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+        kinds: list[str] | None = None,
+    ) -> list[tuple[int, str, str | None, int]]:
+        """List files that contain symbols, with counts."""
+        # Determine which file IDs are valid for this scope
+        valid_file_ids: set[int] | None = None
+        if commit_id is not None and self._file_repo is not None:
+            valid_file_ids = {
+                fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+            }
+        elif self._file_repo is not None:
+            valid_file_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=branch
+            )
+
+        # If kinds filter active, find which files have matching
+        # effectively top-level symbols (no parent or parent is namespace)
+        files_with_matching_kinds: set[int] | None = None
+        if kinds:
+            files_with_matching_kinds = set()
+            for s in self._symbols.values():
+                if s.repository_id != repository_id:
+                    continue
+                if valid_file_ids is not None and s.file_id not in valid_file_ids:
+                    continue
+                if s.kind.value in kinds and self._is_effectively_top_level(s):
+                    files_with_matching_kinds.add(s.file_id)
+
+        # Count symbols per file
+        file_counts: dict[int, int] = {}
+        for s in self._symbols.values():
+            if s.repository_id != repository_id:
+                continue
+            if valid_file_ids is not None and s.file_id not in valid_file_ids:
+                continue
+            file_counts[s.file_id] = file_counts.get(s.file_id, 0) + 1
+
+        # Build result with file info
+        results: list[tuple[int, str, str | None, int]] = []
+        if self._file_repo is not None:
+            for file_id, count in file_counts.items():
+                file = self._file_repo._files.get(file_id)
+                if file is None:
+                    continue
+                if language is not None and file.language != language:
+                    continue
+                if (
+                    files_with_matching_kinds is not None
+                    and file_id not in files_with_matching_kinds
+                ):
+                    continue
+                results.append((file_id, file.path, file.language, count))
+        results.sort(key=lambda r: r[1])  # Sort by path
+        return results
+
+    def _is_effectively_top_level(self, symbol: Symbol) -> bool:
+        """Check if a symbol is effectively top-level.
+
+        A symbol is effectively top-level if it has no parent or its
+        parent is a namespace (namespaces are transparent containers).
+        """
+        if symbol.parent_symbol_id is None:
+            return True
+        parent = self._symbols.get(symbol.parent_symbol_id)
+        return parent is not None and parent.kind.value == "namespace"
+
+    async def list_distinct_kinds(
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+    ) -> list[str]:
+        """List all distinct symbol kinds in a repository.
+
+        Includes nested symbols (methods, class_variables, etc.).
+        Excludes 'namespace' from the returned kinds.
+        """
+        valid_file_ids: set[int] | None = None
+        if commit_id is not None and self._file_repo is not None:
+            valid_file_ids = {
+                fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+            }
+        elif self._file_repo is not None:
+            valid_file_ids = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=branch
+            )
+
+        kinds: set[str] = set()
+        for s in self._symbols.values():
+            if s.repository_id != repository_id:
+                continue
+            if valid_file_ids is not None and s.file_id not in valid_file_ids:
+                continue
+            if s.kind.value == "namespace":
+                continue
+            # Language filter
+            if language is not None and self._file_repo is not None:
+                file = self._file_repo._files.get(s.file_id)
+                if file is None or file.language != language:
+                    continue
+            kinds.add(s.kind.value)
+
+        return sorted(kinds)
+
+    async def count_top_level_kinds_by_file(
+        self,
+        file_ids: list[int],
+    ) -> dict[int, dict[str, int]]:
+        """Count effectively top-level symbols by kind for each file."""
+        counts: dict[int, dict[str, int]] = {}
+        for s in self._symbols.values():
+            if s.file_id not in file_ids:
+                continue
+            if s.kind.value == "namespace":
+                continue
+            if not self._is_effectively_top_level(s):
+                continue
+            counts.setdefault(s.file_id, {})
+            kind_str = s.kind.value
+            counts[s.file_id][kind_str] = counts[s.file_id].get(kind_str, 0) + 1
+        return counts
+
+    async def count_kinds_by_file(
+        self,
+        file_ids: list[int],
+    ) -> dict[int, dict[str, int]]:
+        """Count all symbols by kind for each file (excluding namespace)."""
+        counts: dict[int, dict[str, int]] = {}
+        for s in self._symbols.values():
+            if s.file_id not in file_ids:
+                continue
+            if s.kind.value == "namespace":
+                continue
+            counts.setdefault(s.file_id, {})
+            kind_str = s.kind.value
+            counts[s.file_id][kind_str] = counts[s.file_id].get(kind_str, 0) + 1
+        return counts
+
+    async def update_parent_symbol_ids(self, updates: dict[int, int]) -> int:
+        """Bulk update parent_symbol_id for multiple symbols."""
+        count = 0
+        for symbol_id, parent_id in updates.items():
+            symbol = self._symbols.get(symbol_id)
+            if symbol is not None:
+                # Symbol is frozen, so replace it
+                self._symbols[symbol_id] = Symbol(
+                    id=symbol.id,
+                    file_id=symbol.file_id,
+                    repository_id=symbol.repository_id,
+                    name=symbol.name,
+                    kind=symbol.kind,
+                    start_line=symbol.start_line,
+                    start_column=symbol.start_column,
+                    end_line=symbol.end_line,
+                    end_column=symbol.end_column,
+                    qualified_name=symbol.qualified_name,
+                    parent_symbol_id=parent_id,
+                    scope=symbol.scope,
+                    signature=symbol.signature,
+                    docstring=symbol.docstring,
+                    metadata=symbol.metadata,
+                    indexed_at=symbol.indexed_at,
+                )
+                count += 1
+        return count
 
     async def find_by_exact_name(
         self,

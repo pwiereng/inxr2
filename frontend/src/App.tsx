@@ -11,8 +11,8 @@ import Files from '@/pages/Files'
 import Browse from '@/pages/Browse'
 import Search from '@/pages/Search'
 import History from '@/pages/History'
-import ComingSoon from '@/pages/ComingSoon'
 import Dependencies from '@/pages/Dependencies'
+import LogicalView from '@/pages/LogicalView'
 import Help from '@/pages/Help'
 
 /**
@@ -82,7 +82,7 @@ function AppContent() {
             path="/logical-view"
             element={
               <ErrorBoundary>
-                <ComingSoon title="Logical View" tab="logical-view" />
+                <LogicalView />
               </ErrorBoundary>
             }
           />

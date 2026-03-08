@@ -1,13 +1,15 @@
 """PostgreSQL symbol repository adapter."""
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from ....application.ports.repositories import SymbolRepositoryPort
 from ....domain.entities import Symbol
 from ..mappers import SymbolMapper
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
+from ..models.repository import RepositoryModel
 from ..models.symbol import SymbolModel
 from .base_repository import BaseSQLAlchemyRepository
 from .query_utils import build_text_match_filter, split_extension_filter
@@ -26,6 +28,15 @@ class PostgresSymbolRepository(
         super().__init__(session)
         self.mapper = SymbolMapper()
 
+    async def _resolve_default_branch(self, repository_id: int) -> str | None:
+        """Look up a repository's default branch."""
+        result = await self.session.execute(
+            select(RepositoryModel.default_branch).where(
+                RepositoryModel.id == repository_id
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def search_by_name(
         self,
         name: str,
@@ -39,6 +50,7 @@ class PostgresSymbolRepository(
         mode: str | None = None,
         case_sensitive: bool = True,
         commit_id: int | None = None,
+        top_level_only: bool = False,
     ) -> list[Symbol]:
         """Search symbols by name (supports autocomplete).
 
@@ -77,11 +89,31 @@ class PostgresSymbolRepository(
             query = query.where(SymbolModel.repository_id == repository_id)
             # Deduplicate: only symbols from latest file version per path.
             # When branch is set, dedup is scoped to that branch.
-            latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+            # When branch is not set, fall back to the repo's default branch
+            # to avoid an expensive unscoped ROW_NUMBER() query.
+            effective_branch = branch
+            if effective_branch is None:
+                effective_branch = await self._resolve_default_branch(
+                    repository_id
+                )
+            latest_sq = latest_file_ids_subquery(
+                repository_id, branch=effective_branch
+            )
             query = query.where(SymbolModel.file_id.in_(select(latest_sq.c.max_id)))
 
         if kind is not None:
             query = query.where(SymbolModel.kind == kind)
+
+        if top_level_only:
+            parent_sym = aliased(SymbolModel, flat=True)
+            query = query.outerjoin(
+                parent_sym, SymbolModel.parent_symbol_id == parent_sym.id
+            ).where(
+                or_(
+                    SymbolModel.parent_symbol_id.is_(None),
+                    parent_sym.kind == "namespace",
+                )
+            )
 
         if language is not None:
             query = query.where(
@@ -167,6 +199,218 @@ class PostgresSymbolRepository(
         )
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
+
+    async def list_by_file_and_parent(
+        self,
+        file_id: int,
+        parent_symbol_id: int | None,
+    ) -> list[Symbol]:
+        """List symbols in a file filtered by parent."""
+        query = select(SymbolModel).where(SymbolModel.file_id == file_id)
+        if parent_symbol_id is None:
+            query = query.where(SymbolModel.parent_symbol_id.is_(None))
+        else:
+            query = query.where(SymbolModel.parent_symbol_id == parent_symbol_id)
+        query = query.order_by(SymbolModel.kind, SymbolModel.name)
+        result = await self.session.execute(query)
+        return [self.mapper.to_domain(m) for m in result.scalars().all()]
+
+    async def list_files_with_symbols(
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+        kinds: list[str] | None = None,
+    ) -> list[tuple[int, str, str | None, int]]:
+        """List files that contain symbols, with counts."""
+        query = (
+            select(
+                FileModel.id,
+                FileModel.path,
+                FileModel.language,
+                func.count(SymbolModel.id).label("symbol_count"),
+            )
+            .join(SymbolModel, SymbolModel.file_id == FileModel.id)
+            .where(FileModel.repository_id == repository_id)
+            .group_by(FileModel.id, FileModel.path, FileModel.language)
+        )
+
+        if commit_id is not None:
+            query = query.where(
+                FileModel.id.in_(
+                    select(CommitFileModel.file_id).where(
+                        CommitFileModel.commit_id == commit_id
+                    )
+                )
+            )
+        else:
+            latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+            query = query.where(FileModel.id.in_(select(latest_sq.c.max_id)))
+
+        if language is not None:
+            query = query.where(FileModel.language == language)
+
+        if kinds:
+            # Only include files that have at least one "effectively top-level"
+            # symbol of the requested kind(s). A symbol is effectively top-level
+            # if it has no parent OR its parent is a namespace (transparent).
+            # Scoped to the same commit/latest-file snapshot as the outer query.
+            sym2 = aliased(SymbolModel, flat=True)
+            parent_sym = aliased(SymbolModel, flat=True)
+            sym2_file = aliased(FileModel, flat=True)
+            kinds_subq = (
+                select(sym2.file_id)
+                .join(sym2_file, sym2.file_id == sym2_file.id)
+                .outerjoin(parent_sym, sym2.parent_symbol_id == parent_sym.id)
+                .where(
+                    sym2_file.repository_id == repository_id,
+                    or_(
+                        sym2.parent_symbol_id.is_(None),
+                        parent_sym.kind == "namespace",
+                    ),
+                    sym2.kind.in_(kinds),
+                )
+                .distinct()
+            )
+            if commit_id is not None:
+                kinds_subq = kinds_subq.where(
+                    sym2_file.id.in_(
+                        select(CommitFileModel.file_id).where(
+                            CommitFileModel.commit_id == commit_id
+                        )
+                    )
+                )
+            else:
+                latest_sq_kinds = latest_file_ids_subquery(repository_id, branch=branch)
+                kinds_subq = kinds_subq.where(
+                    sym2_file.id.in_(select(latest_sq_kinds.c.max_id))
+                )
+            query = query.where(FileModel.id.in_(kinds_subq))
+
+        query = query.order_by(FileModel.path)
+        result = await self.session.execute(query)
+        return [(row[0], row[1], row[2], row[3]) for row in result.all()]
+
+    async def list_distinct_kinds(
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        language: str | None = None,
+    ) -> list[str]:
+        """List all distinct symbol kinds in a repository.
+
+        Returns every kind value present (including nested symbols like
+        method, staticmethod, classmethod, instance_variable, etc.).
+        Namespace kind is excluded as it is a transparent container.
+        """
+        query = (
+            select(SymbolModel.kind)
+            .join(FileModel, SymbolModel.file_id == FileModel.id)
+            .where(
+                FileModel.repository_id == repository_id,
+                SymbolModel.kind != "namespace",
+            )
+            .distinct()
+        )
+
+        if commit_id is not None:
+            query = query.where(
+                FileModel.id.in_(
+                    select(CommitFileModel.file_id).where(
+                        CommitFileModel.commit_id == commit_id
+                    )
+                )
+            )
+        else:
+            latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+            query = query.where(FileModel.id.in_(select(latest_sq.c.max_id)))
+
+        if language is not None:
+            query = query.where(FileModel.language == language)
+
+        query = query.order_by(SymbolModel.kind)
+        result = await self.session.execute(query)
+        return [row[0] for row in result.all()]
+
+    async def count_top_level_kinds_by_file(
+        self,
+        file_ids: list[int],
+    ) -> dict[int, dict[str, int]]:
+        """Count effectively top-level symbols by kind for each file."""
+        if not file_ids:
+            return {}
+
+        parent_sym = aliased(SymbolModel, flat=True)
+        query = (
+            select(
+                SymbolModel.file_id,
+                SymbolModel.kind,
+                func.count(SymbolModel.id).label("cnt"),
+            )
+            .outerjoin(parent_sym, SymbolModel.parent_symbol_id == parent_sym.id)
+            .where(
+                SymbolModel.file_id.in_(file_ids),
+                or_(
+                    SymbolModel.parent_symbol_id.is_(None),
+                    parent_sym.kind == "namespace",
+                ),
+                SymbolModel.kind != "namespace",
+            )
+            .group_by(SymbolModel.file_id, SymbolModel.kind)
+        )
+        result = await self.session.execute(query)
+
+        counts: dict[int, dict[str, int]] = {}
+        for file_id, kind, cnt in result.all():
+            counts.setdefault(file_id, {})[kind] = cnt
+        return counts
+
+    async def count_kinds_by_file(
+        self,
+        file_ids: list[int],
+    ) -> dict[int, dict[str, int]]:
+        """Count all symbols by kind for each file (excluding namespace)."""
+        if not file_ids:
+            return {}
+
+        query = (
+            select(
+                SymbolModel.file_id,
+                SymbolModel.kind,
+                func.count(SymbolModel.id).label("cnt"),
+            )
+            .where(
+                SymbolModel.file_id.in_(file_ids),
+                SymbolModel.kind != "namespace",
+            )
+            .group_by(SymbolModel.file_id, SymbolModel.kind)
+        )
+        result = await self.session.execute(query)
+
+        counts: dict[int, dict[str, int]] = {}
+        for file_id, kind, cnt in result.all():
+            counts.setdefault(file_id, {})[kind] = cnt
+        return counts
+
+    async def update_parent_symbol_ids(self, updates: dict[int, int]) -> int:
+        """Bulk update parent_symbol_id for multiple symbols."""
+        if not updates:
+            return 0
+        # Use a CASE expression for efficient single-query bulk update
+        stmt = (
+            update(SymbolModel)
+            .where(SymbolModel.id.in_(updates.keys()))
+            .values(
+                parent_symbol_id=case(
+                    *[(SymbolModel.id == sid, pid) for sid, pid in updates.items()],
+                )
+            )
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.rowcount or 0  # type: ignore[attr-defined]
 
     async def list_by_file(self, file_id: int) -> list[Symbol]:
         """List all symbols in a file."""

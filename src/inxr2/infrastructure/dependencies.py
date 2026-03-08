@@ -95,6 +95,7 @@ from ..application.use_cases.repositories.list_repositories import (
 from ..application.use_cases.search import SearchFilesUseCase, SearchTextUseCase
 from ..application.use_cases.symbols import (
     GetSymbolReferencesUseCase,
+    GetSymbolTreeUseCase,
     SearchSymbolsUseCase,
 )
 from .database import get_db_session
@@ -433,11 +434,31 @@ def get_symbol_references_use_case(
     )
 
 
+def get_symbol_tree_use_case(
+    repository_adapter: RepositoryAdapter,
+    symbol_adapter: SymbolAdapter,
+    file_adapter: FileAdapter,
+    reference_adapter: ReferenceAdapter,
+    commit_adapter: CommitAdapter,
+) -> GetSymbolTreeUseCase:
+    """Provide GetSymbolTreeUseCase with dependencies."""
+    return GetSymbolTreeUseCase(
+        repository_repo=repository_adapter,
+        symbol_repo=symbol_adapter,
+        file_repo=file_adapter,
+        reference_repo=reference_adapter,
+        commit_repo=commit_adapter,
+    )
+
+
 SearchSymbolsUseCaseDep = Annotated[
     SearchSymbolsUseCase, Depends(get_search_symbols_use_case)
 ]
 GetSymbolReferencesUseCaseDep = Annotated[
     GetSymbolReferencesUseCase, Depends(get_symbol_references_use_case)
+]
+GetSymbolTreeUseCaseDep = Annotated[
+    GetSymbolTreeUseCase, Depends(get_symbol_tree_use_case)
 ]
 
 

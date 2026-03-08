@@ -496,6 +496,215 @@ class TestProcessFileUseCase:
         assert result2.file_id == result1.file_id
 
 
+class TestParentSymbolIdResolution:
+    """Tests for scope → parent_symbol_id resolution during indexing."""
+
+    @pytest.mark.asyncio
+    async def test_method_gets_parent_symbol_id_from_class(
+        self,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        text_content_repo: InMemoryTextContentRepository,
+    ) -> None:
+        """Methods with scope='ClassName' get parent_symbol_id set to class ID."""
+
+        class ClassMethodParserService(FakeParserService):
+            async def parse_file(
+                self, content: str, language: str, file_path: str
+            ) -> tuple[list[dict], list[dict]]:
+                symbols = [
+                    {
+                        "name": "MyClass",
+                        "kind": "class",
+                        "start_line": 1,
+                        "start_column": 0,
+                        "end_line": 20,
+                        "end_column": 0,
+                        "scope": None,
+                    },
+                    {
+                        "name": "do_thing",
+                        "kind": "method",
+                        "start_line": 3,
+                        "start_column": 4,
+                        "end_line": 10,
+                        "end_column": 0,
+                        "scope": "MyClass",
+                        "qualified_name": "MyClass.do_thing",
+                    },
+                    {
+                        "name": "value",
+                        "kind": "class_variable",
+                        "start_line": 2,
+                        "start_column": 4,
+                        "end_line": 2,
+                        "end_column": 14,
+                        "scope": "MyClass",
+                        "qualified_name": "MyClass.value",
+                    },
+                ]
+                return symbols, []
+
+        git_service = FakeGitService()
+        use_case = ProcessFileUseCase(
+            git_service=git_service,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            text_content_repo=text_content_repo,
+            parser_service=ClassMethodParserService(),
+            plaintext_parser=FakePlaintextParser(),
+        )
+
+        request = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/example.py",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+        )
+        result = await use_case.execute(request)
+        assert result.symbols_found == 3
+
+        # Find the saved symbols
+        all_symbols = list(symbol_repo._symbols.values())
+        class_sym = next(s for s in all_symbols if s.name == "MyClass")
+        method_sym = next(s for s in all_symbols if s.name == "do_thing")
+        var_sym = next(s for s in all_symbols if s.name == "value")
+
+        # Class has no parent
+        assert class_sym.parent_symbol_id is None
+        # Method and class_variable point to the class
+        assert method_sym.parent_symbol_id == class_sym.id
+        assert var_sym.parent_symbol_id == class_sym.id
+
+    @pytest.mark.asyncio
+    async def test_nested_function_gets_parent_from_qualified_name(
+        self,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        text_content_repo: InMemoryTextContentRepository,
+    ) -> None:
+        """Nested functions with scope='Class.method' resolve via qualified_name."""
+
+        class NestedParserService(FakeParserService):
+            async def parse_file(
+                self, content: str, language: str, file_path: str
+            ) -> tuple[list[dict], list[dict]]:
+                symbols = [
+                    {
+                        "name": "MyClass",
+                        "kind": "class",
+                        "start_line": 1,
+                        "start_column": 0,
+                        "end_line": 30,
+                        "end_column": 0,
+                        "scope": None,
+                    },
+                    {
+                        "name": "do_thing",
+                        "kind": "method",
+                        "start_line": 3,
+                        "start_column": 4,
+                        "end_line": 20,
+                        "end_column": 0,
+                        "scope": "MyClass",
+                        "qualified_name": "MyClass.do_thing",
+                    },
+                    {
+                        "name": "helper",
+                        "kind": "function",
+                        "start_line": 10,
+                        "start_column": 8,
+                        "end_line": 15,
+                        "end_column": 0,
+                        "scope": "MyClass.do_thing",
+                        "qualified_name": "MyClass.do_thing.helper",
+                    },
+                ]
+                return symbols, []
+
+        git_service = FakeGitService()
+        use_case = ProcessFileUseCase(
+            git_service=git_service,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            text_content_repo=text_content_repo,
+            parser_service=NestedParserService(),
+            plaintext_parser=FakePlaintextParser(),
+        )
+
+        request = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/nested.py",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+        )
+        result = await use_case.execute(request)
+        assert result.symbols_found == 3
+
+        all_symbols = list(symbol_repo._symbols.values())
+        class_sym = next(s for s in all_symbols if s.name == "MyClass")
+        method_sym = next(s for s in all_symbols if s.name == "do_thing")
+        helper_sym = next(s for s in all_symbols if s.name == "helper")
+
+        assert class_sym.parent_symbol_id is None
+        assert method_sym.parent_symbol_id == class_sym.id
+        assert helper_sym.parent_symbol_id == method_sym.id
+
+    @pytest.mark.asyncio
+    async def test_top_level_function_has_no_parent(
+        self,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        text_content_repo: InMemoryTextContentRepository,
+    ) -> None:
+        """Top-level symbols with no scope stay with parent_symbol_id=None."""
+
+        class TopLevelParserService(FakeParserService):
+            async def parse_file(
+                self, content: str, language: str, file_path: str
+            ) -> tuple[list[dict], list[dict]]:
+                symbols = [
+                    {
+                        "name": "standalone_func",
+                        "kind": "function",
+                        "start_line": 1,
+                        "start_column": 0,
+                        "end_line": 5,
+                        "end_column": 0,
+                        "scope": None,
+                    },
+                ]
+                return symbols, []
+
+        git_service = FakeGitService()
+        use_case = ProcessFileUseCase(
+            git_service=git_service,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            text_content_repo=text_content_repo,
+            parser_service=TopLevelParserService(),
+            plaintext_parser=FakePlaintextParser(),
+        )
+
+        request = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/top.py",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+        )
+        result = await use_case.execute(request)
+        assert result.symbols_found == 1
+
+        func_sym = list(symbol_repo._symbols.values())[0]
+        assert func_sym.parent_symbol_id is None
+
+
 class TestTruncateForTsvector:
     """Tests for the truncate_for_tsvector utility function."""
 

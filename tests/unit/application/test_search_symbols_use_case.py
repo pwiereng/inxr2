@@ -753,3 +753,117 @@ class TestSearchSymbolsCommitScoped:
         )
         with pytest.raises(ValueError, match="requires repository_id"):
             await use_case.execute(request)
+
+
+class TestSearchSymbolsTopLevelOnly:
+    """Tests for top_level_only filter in SearchSymbolsUseCase."""
+
+    @pytest.fixture
+    def commit_repo(self) -> InMemoryCommitRepository:
+        return InMemoryCommitRepository()
+
+    @pytest.fixture
+    def file_repo(
+        self, commit_repo: InMemoryCommitRepository
+    ) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository(commit_repo=commit_repo)
+        repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/main.py",
+                content_hash="hash1",
+                size_bytes=100,
+                language="Python",
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    def symbol_repo(self) -> InMemorySymbolRepository:
+        repo = InMemorySymbolRepository()
+        # Top-level function
+        repo.add(
+            Symbol(
+                id=1,
+                repository_id=1,
+                file_id=1,
+                name="top_func",
+                kind=SymbolKind.FUNCTION,
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
+        )
+        # Top-level class
+        repo.add(
+            Symbol(
+                id=2,
+                repository_id=1,
+                file_id=1,
+                name="MyClass",
+                kind=SymbolKind.CLASS,
+                start_line=10,
+                start_column=0,
+                end_line=30,
+                end_column=0,
+            )
+        )
+        # Method nested inside MyClass
+        repo.add(
+            Symbol(
+                id=3,
+                repository_id=1,
+                file_id=1,
+                name="nested_method",
+                kind=SymbolKind.METHOD,
+                start_line=12,
+                start_column=4,
+                end_line=20,
+                end_column=0,
+                parent_symbol_id=2,
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    def use_case(
+        self,
+        symbol_repo: InMemorySymbolRepository,
+        file_repo: InMemoryFileRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> SearchSymbolsUseCase:
+        return SearchSymbolsUseCase(
+            symbol_repo=symbol_repo,
+            file_repo=file_repo,
+            commit_repo=commit_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_top_level_only_excludes_nested(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """top_level_only=True should exclude symbols with non-namespace parents."""
+        request = SearchSymbolsRequest(query="", top_level_only=True, limit=50)
+
+        result = await use_case.execute(request)
+
+        names = {s.symbol.name for s in result.symbols}
+        assert "top_func" in names
+        assert "MyClass" in names
+        assert "nested_method" not in names
+
+    @pytest.mark.asyncio
+    async def test_top_level_only_false_returns_all(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """top_level_only=False should return all symbols including nested."""
+        request = SearchSymbolsRequest(query="", top_level_only=False, limit=50)
+
+        result = await use_case.execute(request)
+
+        names = {s.symbol.name for s in result.symbols}
+        assert "top_func" in names
+        assert "MyClass" in names
+        assert "nested_method" in names

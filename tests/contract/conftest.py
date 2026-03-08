@@ -189,9 +189,13 @@ async def create_test_repo(repos: Repos) -> int:
 
 
 async def create_test_commit(
-    repos: Repos, repo_id: int, hash_str: str, date_offset_days: int = 0
+    repos: Repos,
+    repo_id: int,
+    hash_str: str,
+    date_offset_days: int = 0,
+    branch: str = "main",
 ) -> int:
-    """Create a test commit and return its ID."""
+    """Create a test commit, link it to a branch, and return its ID."""
     from inxr2.domain.entities import Commit
     from inxr2.domain.value_objects import CommitHash
 
@@ -204,6 +208,7 @@ async def create_test_commit(
         )
     )
     assert commit.id is not None
+    await repos.commit.link_commit_to_branch(repo_id, commit.id, branch)
     return commit.id
 
 
