@@ -58,6 +58,7 @@ echo ""
 # Track overall status
 BACKEND_STATUS=0
 FRONTEND_STATUS=0
+MCP_STATUS=0
 LINT_STATUS=0
 
 echo "📦 Step 1: Backend Tests (Python)"
@@ -80,7 +81,17 @@ else
 fi
 
 echo ""
-echo "📦 Step 3: Code Quality Checks"
+echo "📦 Step 3: MCP Server Tests (Python)"
+echo "====================================="
+if run_cmd "cd mcp-server && pytest -v"; then
+    echo "✅ MCP server tests PASSED"
+else
+    echo "❌ MCP server tests FAILED"
+    MCP_STATUS=1
+fi
+
+echo ""
+echo "📦 Step 4: Code Quality Checks"
 echo "==============================="
 echo ""
 echo "🔍 Python: Black, isort, ruff, mypy..."
@@ -114,7 +125,7 @@ else
 fi
 
 echo ""
-echo "📦 Step 4: Security Audit"
+echo "📦 Step 5: Security Audit"
 echo "========================="
 run_cmd "cd frontend && npm audit" || true
 
@@ -136,6 +147,12 @@ else
     echo "❌ Frontend tests: FAILED"
 fi
 
+if [ $MCP_STATUS -eq 0 ]; then
+    echo "✅ MCP server tests: PASSED"
+else
+    echo "❌ MCP server tests: FAILED"
+fi
+
 if [ $LINT_STATUS -eq 0 ]; then
     echo "✅ Code quality: PASSED"
 else
@@ -145,7 +162,7 @@ fi
 echo ""
 
 # Exit with error if any tests failed
-if [ $BACKEND_STATUS -ne 0 ] || [ $FRONTEND_STATUS -ne 0 ] || [ $LINT_STATUS -ne 0 ]; then
+if [ $BACKEND_STATUS -ne 0 ] || [ $FRONTEND_STATUS -ne 0 ] || [ $MCP_STATUS -ne 0 ] || [ $LINT_STATUS -ne 0 ]; then
     echo "❌ Some tests FAILED"
     exit 1
 else

@@ -165,6 +165,7 @@ Add to `.mcp.json` in your project root:
 | `INXR2_API_URL` | `http://localhost:8000` | INXR2 API base URL |
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` or `sse` |
 | `MCP_PORT` | `3000` | Port for SSE transport |
+| `INXR2_FRONTEND_URL` | _(unset)_ | Frontend URL for browse links (e.g., `http://localhost:5173`) |
 
 ## Development
 

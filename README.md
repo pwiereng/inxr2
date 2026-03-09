@@ -25,6 +25,8 @@ INXR2 is similar to LXR (Linux Cross Reference) but built specifically for git-b
 - **Side-by-Side Diff View**: Compare file versions across time
 - **Incremental Indexing**: Fast updates without full re-indexing
 - **Shareable Links**: Permanent URLs for lines, ranges, symbols, and diffs
+- **Logical View**: Hierarchical symbol browser with language and kind filters
+- **Dependency Inventory**: Manifest/lock file parsing across 6 language ecosystems
 - **MCP Server**: AI assistant integration via Model Context Protocol (Claude, Cursor)
 
 ### Supported Languages
@@ -37,6 +39,14 @@ INXR2 is similar to LXR (Linux Cross Reference) but built specifically for git-b
 - C#
 - Go
 - Ruby
+
+**With Dependency Parsing:**
+- Python (pyproject.toml, requirements.txt, setup.py)
+- JavaScript/TypeScript (package.json, package-lock.json)
+- Java (pom.xml, build.gradle)
+- C# (*.csproj)
+- Go (go.mod, go.sum)
+- Ruby (Gemfile, Gemfile.lock)
 
 **All Other Languages:**
 - Displayed with syntax highlighting
@@ -570,7 +580,7 @@ See `config.example.yaml` for a complete example.
 
 **Current Phase**: Active development — all core features implemented
 
-INXR2 has completed all core phases (1.1–1.11) including multi-branch support, temporal navigation, full-text search, and URL state management. Current work focuses on bug fixes, search improvements, and UI polish.
+INXR2 has completed all core phases (1.1–1.11) plus Logical View, Dependency Inventory, and MCP server integration. 771 commits across 53 active days, with 1,727 backend tests passing and a 62-test regression suite.
 
 ### Completed Features
 - Project setup, React frontend, and development infrastructure
@@ -585,6 +595,9 @@ INXR2 has completed all core phases (1.1–1.11) including multi-branch support,
 - Full-text search (keyword, phrase, regex) across all files
 - Git blame integration
 - Light and dark theme support
+- Logical View (hierarchical symbol browser with language/kind filters)
+- Dependency inventory (manifest/lock file parsing for Python, JS/TS, Java, C#, Go, Ruby)
+- MCP server with 7 tools for AI assistant integration
 
 ## Contributing
 

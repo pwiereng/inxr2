@@ -1,7 +1,7 @@
 # INXR2 Database Schema Design
 
-**Version:** 4.0
-**Date:** 2026-03-01
+**Version:** 5.0
+**Date:** 2026-03-08
 **Status:** Implemented
 
 ## Overview
@@ -13,6 +13,7 @@ This document defines the PostgreSQL database schema for INXR2, a cross-referenc
 - Incremental indexing
 - Efficient search queries
 - Multi-branch support (commits can exist on multiple branches)
+- Dependency tracking (manifest/lock file parsing)
 
 ## Design Principles
 
@@ -484,6 +485,71 @@ CREATE INDEX idx_text_contents_language ON text_contents(language);
 
 ---
 
+### 10. dependencies
+
+Stores parsed package dependencies from manifest files (package.json, pyproject.toml, pom.xml, etc.) and lock files (package-lock.json, Gemfile.lock, etc.). Linked to file versions for commit-aware dependency tracking.
+
+```sql
+CREATE TABLE dependencies (
+    id                      SERIAL PRIMARY KEY,
+    file_id                 BIGINT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    repository_id           INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+
+    -- Package identification
+    package_name            TEXT NOT NULL,               -- Package/library name
+    version_spec            TEXT,                        -- Version constraint from manifest (e.g., "^2.5.0")
+    resolved_version        TEXT,                        -- Exact version from lock file (e.g., "2.5.3")
+
+    -- Classification
+    language                VARCHAR(50) NOT NULL,        -- Language ecosystem (python, javascript, java, etc.)
+    dependency_type         VARCHAR(50) NOT NULL DEFAULT 'runtime',  -- runtime, dev, optional, build, peer
+    is_direct               BOOLEAN NOT NULL DEFAULT TRUE,           -- Direct vs transitive dependency
+
+    -- Dependency tree
+    parent_dependency_id    INTEGER REFERENCES dependencies(id) ON DELETE CASCADE,  -- For transitive deps
+
+    -- Metadata
+    extras                  JSONB,                       -- Language-specific metadata
+    indexed_at              TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_dependencies_package ON dependencies(package_name, language);
+CREATE INDEX idx_dependencies_file ON dependencies(file_id);
+CREATE INDEX idx_dependencies_repo ON dependencies(repository_id);
+CREATE INDEX idx_dependencies_repo_file_package ON dependencies(repository_id, file_id, package_name);
+CREATE INDEX ix_dependencies_parent_dependency_id ON dependencies(parent_dependency_id);
+```
+
+**Fields:**
+- `file_id`: FK to the manifest/lock file version in `files` table
+- `package_name`: Package name (e.g., "react", "fastapi", "spring-boot-starter")
+- `version_spec`: Version constraint from manifest (e.g., `^2.5.0`, `>=3.0,<4.0`)
+- `resolved_version`: Exact resolved version from lock file (e.g., `2.5.3`)
+- `language`: Language ecosystem — `python`, `javascript`, `java`, `csharp`, `go`, `ruby`
+- `dependency_type`: Classification — `runtime`, `dev`, `optional`, `build`, `peer`
+- `is_direct`: `true` for direct dependencies, `false` for transitive
+- `parent_dependency_id`: Self-referencing FK for modeling transitive dependency trees
+- `extras`: JSONB for language-specific metadata (e.g., npm peer dependency ranges)
+
+**Supported Manifest/Lock Files:**
+
+| Language | Manifest | Lock File |
+|----------|----------|-----------|
+| Python | `pyproject.toml`, `setup.py`, `requirements.txt` | — |
+| JavaScript/TypeScript | `package.json` | `package-lock.json` |
+| Java | `pom.xml`, `build.gradle` | — |
+| C# | `*.csproj` | — |
+| Go | `go.mod` | `go.sum` |
+| Ruby | `Gemfile` | `Gemfile.lock` |
+
+**Design Notes:**
+- Content-addressable: dependencies belong to a file version (manifest/lock file), not directly to commits. Commit context provided via `commit_files` junction table.
+- Self-referencing FK (`parent_dependency_id`) enables transitive dependency tree modeling.
+- Lock files provide `resolved_version`; manifests provide `version_spec`.
+- Parsing is handled by language-specific parsers in `adapters/external/dependency_parsers/`.
+
+---
+
 ## Relationships Diagram
 
 ```
@@ -504,7 +570,11 @@ repositories (1) ──────< (N) commits
                                                            │       └──> symbols (target)
                                                            │       └──> repositories (cross-repo)
                                                            │
-                                                           └──< text_contents (source_file)
+                                                           ├──< text_contents (source_file)
+                                                           │
+                                                           └──< dependencies (file)
+                                                                    │
+                                                                    └──> dependencies (parent, self-ref)
 
 index_status (N) ────> (1) repositories
 ```
@@ -588,11 +658,13 @@ For a medium-sized repository (100k LOC):
 
 For 10 repositories: ~10 GB database size
 
-**Observed data (2026-03-01):**
-Indexing 11 repos across 17 branches (10 days) produced:
-- inxr2 main: 40K symbols, 123K references, 67K resolved (55%)
-- Java master: 26K symbols, 186K references, 104K resolved (56%)
+**Observed data (2026-03-08):**
+Indexing 12 repos across 17 branches (10 days) produced:
+- 123,834 files, 698,121 lines, 55.4% reference resolution
+- inxr2 main: 24,159 symbols, 58.0% resolution
+- Java master: 11,540 symbols, 60.5% resolution
 - Content-hash reuse across branches: 96-100% for feature branches sharing history with main
+- Dependencies: 665 packages across 5 manifest files (for inxr2 repo)
 
 ---
 
@@ -611,6 +683,7 @@ Indexing 11 repos across 17 branches (10 days) produced:
 | `add_file_repo_content_hash_index` | Add (repository_id, content_hash) index on files |
 | `add_resolution_performance_indexes` | Add indexes for reference resolution performance |
 | `8c8caa7883cc` | Add indexes to foreign key columns |
+| `add_dependencies_001` | Add dependencies table for manifest/lock file parsing |
 
 ---
 
@@ -653,3 +726,4 @@ The schema uses PostgreSQL-native features for optimal performance:
 | 2.0 | 2026-01-26 | Claude + User | Normalized branches, removed redundant commit columns, added time-travel support |
 | 3.0 | 2026-02-09 | Claude + User | Added text_contents table, expanded symbol kinds (C/Java), updated migration history, added observed data volumes |
 | 4.0 | 2026-03-01 | Claude + User | Content-addressable file versions: removed commit_id from files/symbols/references, added commit_files junction table, added extension column, updated indexes, added 5 new migrations |
+| 5.0 | 2026-03-08 | Claude + User | Added dependencies table for manifest/lock file parsing (Python, JS/TS, Java, C#, Go, Ruby), updated relationships diagram, added dependency migration |
