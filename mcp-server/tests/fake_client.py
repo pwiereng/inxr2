@@ -196,10 +196,25 @@ class FakeInxr2Client(Inxr2Client):
             return {"commits": commits[:limit], "total": len(commits)}
 
         # GET /api/repositories/by-name/{name}/tree
-        if "/tree" in path and "/repositories/by-name/" in path:
+        # GET /api/repositories/{id}/tree
+        if "/tree" in path and "/repositories/" in path:
             parts = path.split("/")
-            # /api/repositories/by-name/{name}/tree
-            repo_name = parts[4]
+            if "by-name" in parts:
+                # /api/repositories/by-name/{name}/tree
+                repo_name = parts[4]
+                repo_id = 1
+                for repo in self._repositories:
+                    if repo["name"] == repo_name:
+                        repo_id = repo["id"]
+                        break
+            else:
+                # /api/repositories/{id}/tree
+                repo_id = int(parts[3])
+                repo_name = ""
+                for repo in self._repositories:
+                    if repo["id"] == repo_id:
+                        repo_name = repo["name"]
+                        break
             commit_hash = params.get("commit", "")
             changed_only = params.get("changed_only") in ("true", True)
             if changed_only and commit_hash:
@@ -207,7 +222,7 @@ class FakeInxr2Client(Inxr2Client):
             else:
                 files = []
             return {
-                "repository_id": 1,
+                "repository_id": repo_id,
                 "repository_name": repo_name,
                 "root": files,
                 "total_files": len(files),
