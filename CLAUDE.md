@@ -192,9 +192,9 @@ Test repos live at `/repos/test-repos/` (separate from `/workspace`). Always use
 
 ## Session Startup
 
-Set iTerm2 tab title to the current git branch name:
+Set iTerm2 tab title to the current git branch name via AppleScript (escape sequences don't work from inside Claude Code because the pty captures them):
 ```bash
-echo -ne "\033]0;$(git branch --show-current)\007"
+osascript -e "tell application \"iTerm2\" to tell current session of current tab of current window to set name to \"$(git branch --show-current)\""
 ```
 
 ## Skills Reference
