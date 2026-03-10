@@ -5,6 +5,8 @@ import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { getCommits, type CommitInfo } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
 import { CopyButton } from '@/components/CopyButton/CopyButton'
+import { useSelectionToolbar } from '@/hooks/useSelectionToolbar'
+import { SelectionToolbar } from '@/components/SelectionToolbar'
 
 export function History(): React.ReactElement {
   const [searchParams] = useSearchParams()
@@ -14,6 +16,9 @@ export function History(): React.ReactElement {
   const repoName = searchParams.get('repo')
   const branch = searchParams.get('branch')
   const commit = searchParams.get('commit')
+
+  // Selection toolbar for copy + search
+  const { toolbar, containerRef, handleClose } = useSelectionToolbar()
 
   // Local state
   const [commits, setCommits] = useState<CommitInfo[]>([])
@@ -127,7 +132,7 @@ export function History(): React.ReactElement {
         onTabChange={handleTabChange}
       />
 
-      <Container maxWidth="lg" sx={{ flex: 1, py: 3, overflow: 'auto' }}>
+      <Container maxWidth="lg" sx={{ flex: 1, py: 3, overflow: 'auto' }} ref={containerRef}>
         {!repoName ? (
           <Paper sx={{ p: 4, textAlign: 'center' }}>
             <Typography variant="h6" color="text.secondary">
@@ -161,17 +166,15 @@ export function History(): React.ReactElement {
                     divider={index < commits.length - 1}
                     sx={{
                       display: 'block',
-                      cursor: commitInfo.is_indexed ? 'pointer' : 'default',
                       py: 2,
                       px: 3,
-                      '&:hover': commitInfo.is_indexed ? { bgcolor: 'action.hover' } : {},
+                      userSelect: 'text',
                       ...(isFocused && {
                         bgcolor: 'action.selected',
                         borderLeft: 3,
                         borderColor: 'primary.main',
                       }),
                     }}
-                    onClick={() => handleCommitClick(commitInfo)}
                   >
                     {/* Summary line */}
                     <Typography
@@ -200,7 +203,12 @@ export function History(): React.ReactElement {
                           fontSize: '0.8rem',
                           color: commitInfo.is_indexed ? 'primary.main' : 'text.disabled',
                           fontWeight: 500,
+                          cursor: commitInfo.is_indexed ? 'pointer' : 'default',
+                          '&:hover': commitInfo.is_indexed ? { textDecoration: 'underline' } : {},
                         }}
+                        onClick={
+                          commitInfo.is_indexed ? () => handleCommitClick(commitInfo) : undefined
+                        }
                       >
                         {commitInfo.short_hash}
                         {!commitInfo.is_indexed && (
@@ -250,6 +258,24 @@ export function History(): React.ReactElement {
           </Paper>
         )}
       </Container>
+      <SelectionToolbar
+        toolbar={toolbar}
+        onCopy={() => {
+          const text = toolbar?.selectedText
+          if (text) navigator.clipboard?.writeText(text)
+        }}
+        onSearch={() => {
+          const text = toolbar?.selectedText
+          if (!text || !repoName) return
+          const params = new URLSearchParams()
+          params.set('repo', repoName)
+          if (branch) params.set('branch', branch)
+          if (commit) params.set('commit', commit)
+          params.set('query', text)
+          navigate(`/search?${params.toString()}`)
+        }}
+        onClose={handleClose}
+      />
     </Box>
   )
 }

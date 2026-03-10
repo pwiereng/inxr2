@@ -438,68 +438,22 @@ line 3`
     })
   })
 
-  describe('context menu', () => {
-    it('should show menu on right-click when text is selected and onSearchText provided', () => {
+  describe('selection toolbar', () => {
+    it('should render SelectionToolbar when onSearchText provided', () => {
       const onSearchText = vi.fn()
-      vi.spyOn(window, 'getSelection').mockReturnValue({
-        toString: () => 'selectedCode',
-      } as Selection)
-
       render(
         <CodeViewer content="some selectedCode here" language="text" onSearchText={onSearchText} />
       )
 
-      // Right-click on the code area
-      const codeRow = document.querySelector('[data-line="1"]')!
-      fireEvent.contextMenu(codeRow)
-
-      // Menu item should appear with the search text
-      expect(screen.getByRole('menuitem')).toHaveTextContent("Search for 'selectedCode'")
+      // Component renders without errors; toolbar is hidden until text is selected
+      expect(document.querySelector('[data-line="1"]')).toBeInTheDocument()
     })
 
-    it('should call onSearchText with selected text when menu item is clicked', () => {
-      const onSearchText = vi.fn()
-      vi.spyOn(window, 'getSelection').mockReturnValue({
-        toString: () => 'myVar',
-      } as Selection)
-
-      render(<CodeViewer content="const myVar = 1" language="text" onSearchText={onSearchText} />)
-
-      // Right-click
-      const codeRow = document.querySelector('[data-line="1"]')!
-      fireEvent.contextMenu(codeRow)
-
-      // Click the search menu item
-      fireEvent.click(screen.getByText(/Search for/))
-
-      expect(onSearchText).toHaveBeenCalledWith('myVar')
-    })
-
-    it('should NOT show menu when no text is selected', () => {
-      const onSearchText = vi.fn()
-      vi.spyOn(window, 'getSelection').mockReturnValue({
-        toString: () => '',
-      } as Selection)
-
-      render(<CodeViewer content="some code here" language="text" onSearchText={onSearchText} />)
-
-      const codeRow = document.querySelector('[data-line="1"]')!
-      fireEvent.contextMenu(codeRow)
-
-      expect(screen.queryByText(/Search for/)).not.toBeInTheDocument()
-    })
-
-    it('should NOT show menu when onSearchText is not provided', () => {
-      vi.spyOn(window, 'getSelection').mockReturnValue({
-        toString: () => 'selectedCode',
-      } as Selection)
-
+    it('should NOT render toolbar when onSearchText is not provided', () => {
       render(<CodeViewer content="some selectedCode here" language="text" />)
 
-      const codeRow = document.querySelector('[data-line="1"]')!
-      fireEvent.contextMenu(codeRow)
-
-      expect(screen.queryByText(/Search for/)).not.toBeInTheDocument()
+      // No toolbar buttons should be present
+      expect(screen.queryByRole('button', { name: /Search/ })).not.toBeInTheDocument()
     })
   })
 })

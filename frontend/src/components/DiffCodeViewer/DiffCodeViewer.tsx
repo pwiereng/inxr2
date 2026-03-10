@@ -11,8 +11,8 @@ import { getPrismLanguage } from '@/lib/prismLanguages'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 
 import type { FileSymbol, FileReference } from '@/lib/api'
-import { useCodeContextMenu } from '@/hooks/useCodeContextMenu'
-import { CodeContextMenu } from '@/components/CodeContextMenu'
+import { useSelectionToolbar } from '@/hooks/useSelectionToolbar'
+import { SelectionToolbar } from '@/components/SelectionToolbar'
 
 interface DiffCodeViewerProps {
   leftContent: string
@@ -126,7 +126,7 @@ export function DiffCodeViewer({
   const rightContainerRef = useRef<HTMLDivElement>(null)
   const [syncScroll] = useState(true)
   const theme = useTheme()
-  const { contextMenu, handleContextMenu, handleClose } = useCodeContextMenu()
+  const { toolbar, containerRef: toolbarContainerRef, handleClose } = useSelectionToolbar()
 
   const prismLanguage = getPrismLanguage(language)
   const langGrammar = Prism.languages[prismLanguage]
@@ -585,7 +585,6 @@ export function DiffCodeViewer({
         {/* Code content */}
         <Box
           ref={containerRef}
-          onContextMenu={onSearchText ? handleContextMenu : undefined}
           sx={{
             flex: 1,
             overflow: 'auto',
@@ -689,7 +688,10 @@ export function DiffCodeViewer({
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+    <Box
+      ref={toolbarContainerRef}
+      sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}
+    >
       {/* Diff navigation bar */}
       {changeIndices.length > 0 && (
         <Box
@@ -747,9 +749,13 @@ export function DiffCodeViewer({
         </Panel>
       </Group>
       {onSearchText && (
-        <CodeContextMenu
-          contextMenu={contextMenu}
-          onSearch={() => onSearchText(contextMenu?.selectedText ?? '')}
+        <SelectionToolbar
+          toolbar={toolbar}
+          onCopy={() => {
+            const text = toolbar?.selectedText
+            if (text) navigator.clipboard?.writeText(text)
+          }}
+          onSearch={() => onSearchText(toolbar?.selectedText ?? '')}
           onClose={handleClose}
         />
       )}

@@ -201,8 +201,13 @@ describe('Search', () => {
       expect(screen.getByText(/Commit Message/i)).toBeInTheDocument()
     })
 
-    // Click the result (text may be split by <mark> highlighting)
-    fireEvent.click(getByTextContent(/fix: update get_file_symbols_by_path/i))
+    // Click the location link (repo name) to navigate — content text is now non-clickable
+    // Find the result list item by locating the "Commit Message" chip
+    const chipEl = screen.getByText('Commit Message')
+    const listItem = chipEl.closest('li')!
+    // The clickable location link is the Typography showing repo name
+    const locationLink = within(listItem).getByText('test-repo')
+    fireEvent.click(locationLink)
 
     // Should navigate to history, not browse
     await waitFor(() => {
@@ -246,7 +251,8 @@ describe('Search', () => {
       expect(getByTextContent(/# helper function/i)).toBeInTheDocument()
     })
 
-    fireEvent.click(getByTextContent(/# helper function/i))
+    // Click the location link (file path), not the content text
+    fireEvent.click(getByTextContent(/test-repo \/ src\/utils\.py:10/))
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/browse/test-repo/src/utils.py')
@@ -288,7 +294,8 @@ describe('Search', () => {
       expect(getByTextContent(/# Initialize console/i)).toBeInTheDocument()
     })
 
-    fireEvent.click(getByTextContent(/# Initialize console/i))
+    // Click the location link (file path), not the content text
+    fireEvent.click(getByTextContent(/test-repo \/ src\/cli\.py:22/))
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/browse/test-repo/src/cli.py')
@@ -469,7 +476,8 @@ describe('Search', () => {
       expect(getByTextContent('def my_function(x: int) -> str')).toBeInTheDocument()
     })
 
-    fireEvent.click(getByTextContent('def my_function(x: int) -> str'))
+    // Click the location link (file path), not the signature text
+    fireEvent.click(getByTextContent(/test-repo \/ src\/utils\.py:15/))
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/browse/test-repo/src/utils.py')

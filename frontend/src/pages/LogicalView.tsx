@@ -32,6 +32,9 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import IconButton from '@mui/material/IconButton'
 import { CodeHeader } from '@/components/CodeHeader'
 import type { TabValue } from '@/components/CodeHeader'
+import { SymbolContextMenu, type SymbolContextMenuState } from '@/components/SymbolContextMenu'
+import { useSelectionToolbar } from '@/hooks/useSelectionToolbar'
+import { SelectionToolbar } from '@/components/SelectionToolbar'
 import {
   getSymbolTree,
   searchSymbols,
@@ -665,6 +668,63 @@ export default function LogicalView(): React.ReactElement {
     [repoName, branch, commit, navigate, expanded.files, toggleFile]
   )
 
+  // Symbol context menu state
+  const [symbolContextMenu, setSymbolContextMenu] = useState<SymbolContextMenuState | null>(null)
+  const symbolContextMenuRef = useRef<{
+    symbol: SymbolTreeSymbol | null
+  }>({ symbol: null })
+
+  // Selection toolbar for copy + search on any selected text
+  const {
+    toolbar,
+    containerRef: toolbarContainerRef,
+    handleClose: handleToolbarClose,
+  } = useSelectionToolbar()
+
+  const handleSymbolContextMenu = useCallback(
+    (symbol: SymbolTreeSymbol, event: React.MouseEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+      symbolContextMenuRef.current.symbol = symbol
+      setSymbolContextMenu({
+        mouseX: event.clientX,
+        mouseY: event.clientY,
+        symbolName: symbol.name,
+        hasDefinition: !!symbol.file_path,
+      })
+    },
+    []
+  )
+
+  const handleSymbolContextMenuClose = useCallback(() => {
+    setSymbolContextMenu(null)
+  }, [])
+
+  const handleCopySymbolName = useCallback(() => {
+    const name = symbolContextMenuRef.current.symbol?.name
+    if (name) {
+      navigator.clipboard?.writeText(name)
+    }
+  }, [])
+
+  const handleSearchSymbol = useCallback(() => {
+    const name = symbolContextMenuRef.current.symbol?.name
+    if (!name || !repoName) return
+    const params = new URLSearchParams()
+    params.set('repo', repoName)
+    if (branch) params.set('branch', branch)
+    if (commit) params.set('commit', commit)
+    params.set('query', name)
+    navigate(`/search?${params.toString()}`)
+  }, [repoName, branch, commit, navigate])
+
+  const handleGoToDefinition = useCallback(() => {
+    const symbol = symbolContextMenuRef.current.symbol
+    if (symbol) {
+      handleSymbolClick(symbol)
+    }
+  }, [handleSymbolClick])
+
   // Header handlers
   const handleRepoChange = (newRepo: string) => {
     // Reset all UI state when switching repos
@@ -1131,7 +1191,14 @@ export default function LogicalView(): React.ReactElement {
         )}
 
         {/* Content */}
-        <Box ref={scrollRef} onScroll={handleScroll} sx={{ flex: 1, overflow: 'auto' }}>
+        <Box
+          ref={(el: HTMLDivElement | null) => {
+            ;(scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+            toolbarContainerRef.current = el
+          }}
+          onScroll={handleScroll}
+          sx={{ flex: 1, overflow: 'auto' }}
+        >
           {!repoName && (
             <Box
               sx={{
@@ -1251,6 +1318,7 @@ export default function LogicalView(): React.ReactElement {
                           onToggle={toggleKindSymbol}
                           onSymbolClick={handleSymbolClick}
                           onInheritanceClick={handleInheritanceClick}
+                          onSymbolContextMenu={handleSymbolContextMenu}
                           onSwitchToOutline={switchToOutline}
                           fileName={fileName}
                           fileDir={fileDir}
@@ -1294,6 +1362,7 @@ export default function LogicalView(): React.ReactElement {
                   onToggleSymbol={toggleSymbol}
                   onSymbolClick={handleSymbolClick}
                   onInheritanceClick={handleInheritanceClick}
+                  onSymbolContextMenu={handleSymbolContextMenu}
                   fileName={fileName}
                   fileDir={fileDir}
                 />
@@ -1302,6 +1371,31 @@ export default function LogicalView(): React.ReactElement {
           )}
         </Box>
       </Box>
+      <SymbolContextMenu
+        contextMenu={symbolContextMenu}
+        onCopyName={handleCopySymbolName}
+        onSearchSymbol={handleSearchSymbol}
+        onGoToDefinition={handleGoToDefinition}
+        onClose={handleSymbolContextMenuClose}
+      />
+      <SelectionToolbar
+        toolbar={toolbar}
+        onCopy={() => {
+          const text = toolbar?.selectedText
+          if (text) navigator.clipboard?.writeText(text)
+        }}
+        onSearch={() => {
+          const text = toolbar?.selectedText
+          if (!text || !repoName) return
+          const params = new URLSearchParams()
+          params.set('repo', repoName)
+          if (branch) params.set('branch', branch)
+          if (commit) params.set('commit', commit)
+          params.set('query', text)
+          navigate(`/search?${params.toString()}`)
+        }}
+        onClose={handleToolbarClose}
+      />
     </Box>
   )
 }
@@ -1322,6 +1416,7 @@ interface FileNodeProps {
   onToggleSymbol: (symbolId: number) => void
   onSymbolClick: (symbol: SymbolTreeSymbol) => void
   onInheritanceClick: (inh: SymbolTreeInheritance, e: React.MouseEvent) => void
+  onSymbolContextMenu: (symbol: SymbolTreeSymbol, e: React.MouseEvent) => void
   fileName: (path: string) => string
   fileDir: (path: string) => string
 }
@@ -1340,6 +1435,7 @@ function FileNode({
   onToggleSymbol,
   onSymbolClick,
   onInheritanceClick,
+  onSymbolContextMenu,
   fileName,
   fileDir,
 }: FileNodeProps): React.ReactElement {
@@ -1426,6 +1522,7 @@ function FileNode({
             onToggle={onToggleSymbol}
             onClick={onSymbolClick}
             onInheritanceClick={onInheritanceClick}
+            onContextMenuAction={onSymbolContextMenu}
           />
         ))}
       </Collapse>
@@ -1444,6 +1541,7 @@ interface SymbolNodeProps {
   onToggle: (symbolId: number) => void
   onClick: (symbol: SymbolTreeSymbol) => void
   onInheritanceClick: (inh: SymbolTreeInheritance, e: React.MouseEvent) => void
+  onContextMenuAction: (symbol: SymbolTreeSymbol, e: React.MouseEvent) => void
 }
 
 function SymbolNode({
@@ -1457,6 +1555,7 @@ function SymbolNode({
   onToggle,
   onClick,
   onInheritanceClick,
+  onContextMenuAction,
 }: SymbolNodeProps): React.ReactElement {
   const isExpanded = expandedSymbols.has(symbol.id)
   const isExpanding = expandingSymbol === symbol.id
@@ -1481,6 +1580,7 @@ function SymbolNode({
       <ListItemButton
         onClick={handleClick}
         onDoubleClick={handleNavigate}
+        onContextMenu={(e) => onContextMenuAction(symbol, e)}
         sx={{
           pl: `${indent + 16}px`,
           py: 0.25,
@@ -1588,6 +1688,7 @@ function SymbolNode({
               onToggle={onToggle}
               onClick={onClick}
               onInheritanceClick={onInheritanceClick}
+              onContextMenuAction={onContextMenuAction}
             />
           ))}
         </Collapse>
@@ -1609,6 +1710,7 @@ interface KindSymbolNodeProps {
   onToggle: (symbolId: number) => void
   onSymbolClick: (symbol: SymbolTreeSymbol) => void
   onInheritanceClick: (inh: SymbolTreeInheritance, e: React.MouseEvent) => void
+  onSymbolContextMenu: (symbol: SymbolTreeSymbol, e: React.MouseEvent) => void
   onSwitchToOutline: (filePath: string) => void
   fileName: (path: string) => string
   fileDir: (path: string) => string
@@ -1626,6 +1728,7 @@ function KindSymbolNode({
   onToggle,
   onSymbolClick,
   onInheritanceClick,
+  onSymbolContextMenu,
   onSwitchToOutline,
   fileName,
   fileDir,
@@ -1666,6 +1769,7 @@ function KindSymbolNode({
     <>
       <ListItemButton
         onClick={isContainer ? () => onToggle(symbol.id) : () => onSymbolClick(asTreeSymbol)}
+        onContextMenu={(e) => onSymbolContextMenu(asTreeSymbol, e)}
         sx={{ py: 0.5, pl: 2 + indent * 3 }}
       >
         {isContainer && (
@@ -1748,6 +1852,7 @@ function KindSymbolNode({
               onToggle={onToggle}
               onClick={onSymbolClick}
               onInheritanceClick={onInheritanceClick}
+              onContextMenuAction={onSymbolContextMenu}
             />
           ))}
         </Collapse>
