@@ -772,6 +772,17 @@ class TypeScriptParser(BaseLanguageParser):
                                     get_text(prop), "call", prop, scope
                                 )
                             )
+                        # Also reference the receiver object
+                        obj = func_node.child_by_field_name("object")
+                        if obj and obj.type == "identifier":
+                            obj_name = get_text(obj)
+                            if (
+                                obj_name not in ("this", "super")
+                                and obj_name not in TS_BUILTINS
+                            ):
+                                add_reference(
+                                    self._make_reference(obj_name, "usage", obj, scope)
+                                )
 
             # New object creation (new ClassName())
             if node.type == "new_expression":
@@ -829,6 +840,17 @@ class TypeScriptParser(BaseLanguageParser):
                         add_reference(
                             self._make_reference(prop_name, "usage", prop, scope)
                         )
+                    # Also reference the receiver object
+                    obj = node.child_by_field_name("object")
+                    if obj and obj.type == "identifier":
+                        obj_name = get_text(obj)
+                        if (
+                            obj_name not in ("this", "super")
+                            and obj_name not in TS_BUILTINS
+                        ):
+                            add_reference(
+                                self._make_reference(obj_name, "usage", obj, scope)
+                            )
 
             # Type references (skip heritage base types — handled as inheritance)
             if node.type == "type_identifier":

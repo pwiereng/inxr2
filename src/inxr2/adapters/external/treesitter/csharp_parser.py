@@ -972,18 +972,22 @@ class CSharpParser(BaseLanguageParser):
                                     method_name, "call", method_node, scope
                                 )
                             )
-                        # If first identifier looks like a type, add type ref
+                        # Add reference for the receiver (first identifier)
                         if len(identifiers) > 1:
                             obj_name, obj_node = identifiers[0]
                             if (
                                 obj_name not in CSHARP_BUILTINS
                                 and obj_name not in CSHARP_PRIMITIVE_TYPES
-                                and obj_name[0:1].isupper()
                             ):
+                                ref_type = (
+                                    "type_annotation"
+                                    if obj_name[0:1].isupper()
+                                    else "usage"
+                                )
                                 add_reference(
                                     self._make_reference(
                                         obj_name,
-                                        "type_annotation",
+                                        ref_type,
                                         obj_node,
                                         scope,
                                     )
