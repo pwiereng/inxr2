@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { Box, Typography, Tooltip } from '@mui/material'
+import { Box } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import Prism from 'prismjs'
 import { getPrismLanguage } from '@/lib/prismLanguages'
 
 import type { FileSymbol, FileReference, BlameLine } from '@/lib/api'
 import { formatDateYMD } from '@/lib/dateUtils'
-import { useCodeContextMenu } from '@/hooks/useCodeContextMenu'
-import { CodeContextMenu } from '@/components/CodeContextMenu'
+import { useSelectionToolbar } from '@/hooks/useSelectionToolbar'
+import { SelectionToolbar } from '@/components/SelectionToolbar'
 import { CopyButton } from '@/components/CopyButton/CopyButton'
 
 interface CodeViewerProps {
@@ -49,9 +49,8 @@ export function CodeViewer({
   onSearchText,
 }: CodeViewerProps): React.ReactElement {
   const codeRef = useRef<HTMLElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
   const theme = useTheme()
-  const { contextMenu, handleContextMenu, handleClose } = useCodeContextMenu()
+  const { toolbar, containerRef, handleClose } = useSelectionToolbar()
 
   // Map language to Prism language
   const prismLanguage = getPrismLanguage(language)
@@ -71,7 +70,7 @@ export function CodeViewer({
         lineElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
     }
-  }, [highlightLine, content])
+  }, [highlightLine, content, containerRef])
 
   // Split content into lines
   const lines = content.split('\n')
@@ -228,70 +227,38 @@ export function CodeViewer({
       if (seg.type === 'symbol' && seg.symbol) {
         const sym = seg.symbol
         parts.push(
-          <Tooltip
+          <Box
             key={`sym-${i}`}
-            title={
-              <Box>
-                <Typography variant="body2" fontWeight="bold">
-                  {sym.name}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {sym.kind}
-                  {sym.signature && <> - {sym.signature}</>}
-                </Typography>
-              </Box>
-            }
-            placement="top-start"
-            arrow
-          >
-            <Box
-              component="span"
-              onClick={() => onSymbolClick?.(sym)}
-              sx={{
-                cursor: onSymbolClick ? 'pointer' : 'default',
-                '&:hover': onSymbolClick
-                  ? {
-                      textDecoration: 'underline',
-                      textDecorationColor: theme.palette.code.symbolUnderline,
-                    }
-                  : {},
-              }}
-              dangerouslySetInnerHTML={{ __html: segmentHtml }}
-            />
-          </Tooltip>
+            component="span"
+            onClick={() => onSymbolClick?.(sym)}
+            sx={{
+              cursor: onSymbolClick ? 'pointer' : 'default',
+              '&:hover': onSymbolClick
+                ? {
+                    textDecoration: 'underline',
+                    textDecorationColor: theme.palette.code.symbolUnderline,
+                  }
+                : {},
+            }}
+            dangerouslySetInnerHTML={{ __html: segmentHtml }}
+          />
         )
       } else if (seg.type === 'reference' && seg.reference && onReferenceClick) {
         const ref = seg.reference
         parts.push(
-          <Tooltip
+          <Box
             key={`ref-${i}`}
-            title={
-              <Box>
-                <Typography variant="body2" fontWeight="bold">
-                  {ref.reference_text}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {ref.reference_type} -{' '}
-                  {ref.target_symbol_id !== null ? 'Click to see references' : 'Click to search'}
-                </Typography>
-              </Box>
-            }
-            placement="top-start"
-            arrow
-          >
-            <Box
-              component="span"
-              onClick={() => onReferenceClick(ref)}
-              sx={{
-                cursor: 'pointer',
-                '&:hover': {
-                  textDecoration: 'underline',
-                  textDecorationColor: theme.palette.code.referenceUnderline,
-                },
-              }}
-              dangerouslySetInnerHTML={{ __html: segmentHtml }}
-            />
-          </Tooltip>
+            component="span"
+            onClick={() => onReferenceClick(ref)}
+            sx={{
+              cursor: 'pointer',
+              '&:hover': {
+                textDecoration: 'underline',
+                textDecorationColor: theme.palette.code.referenceUnderline,
+              },
+            }}
+            dangerouslySetInnerHTML={{ __html: segmentHtml }}
+          />
         )
       }
 
@@ -320,7 +287,6 @@ export function CodeViewer({
   return (
     <Box
       ref={containerRef}
-      onContextMenu={onSearchText ? handleContextMenu : undefined}
       sx={{
         fontFamily: 'monospace',
         fontSize: '13px',
@@ -464,9 +430,13 @@ export function CodeViewer({
         </Box>
       </Box>
       {onSearchText && (
-        <CodeContextMenu
-          contextMenu={contextMenu}
-          onSearch={() => onSearchText(contextMenu?.selectedText ?? '')}
+        <SelectionToolbar
+          toolbar={toolbar}
+          onCopy={() => {
+            const text = toolbar?.selectedText
+            if (text) navigator.clipboard?.writeText(text)
+          }}
+          onSearch={() => onSearchText(toolbar?.selectedText ?? '')}
           onClose={handleClose}
         />
       )}

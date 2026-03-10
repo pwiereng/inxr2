@@ -23,6 +23,8 @@ import SearchIcon from '@mui/icons-material/Search'
 import { CodeHeader } from '@/components/CodeHeader'
 import type { TabValue } from '@/components/CodeHeader'
 import { getRepositoryDependencies, type DependencyItem } from '@/lib/api'
+import { useSelectionToolbar } from '@/hooks/useSelectionToolbar'
+import { SelectionToolbar } from '@/components/SelectionToolbar'
 
 // Language colors (One Dark Pro palette, consistent with LogicalView)
 const LANGUAGE_COLORS: Record<string, string> = {
@@ -55,6 +57,9 @@ export default function Dependencies(): React.ReactElement {
   const repoName = searchParams.get('repo')
   const branch = searchParams.get('branch')
   const commit = searchParams.get('commit')
+
+  // Floating toolbar for text selection (copy + search)
+  const { toolbar, containerRef, handleClose } = useSelectionToolbar()
 
   // Data state
   const [items, setItems] = useState<DependencyItem[]>([])
@@ -391,7 +396,7 @@ export default function Dependencies(): React.ReactElement {
         )}
 
         {/* Content */}
-        <Box sx={{ flex: 1, overflow: 'auto' }}>
+        <Box ref={containerRef} sx={{ flex: 1, overflow: 'auto' }}>
           {!repoName && (
             <Box
               sx={{
@@ -456,6 +461,24 @@ export default function Dependencies(): React.ReactElement {
           )}
         </Box>
       </Box>
+      <SelectionToolbar
+        toolbar={toolbar}
+        onCopy={() => {
+          const text = toolbar?.selectedText
+          if (text) navigator.clipboard?.writeText(text)
+        }}
+        onSearch={() => {
+          const text = toolbar?.selectedText
+          if (!text || !repoName) return
+          const params = new URLSearchParams()
+          params.set('repo', repoName)
+          if (branch) params.set('branch', branch)
+          if (commit) params.set('commit', commit)
+          params.set('query', text)
+          navigate(`/search?${params.toString()}`)
+        }}
+        onClose={handleClose}
+      />
     </Box>
   )
 }
@@ -571,64 +594,63 @@ interface DependencyNodeProps {
 
 function DependencyNode({ item }: DependencyNodeProps): React.ReactElement {
   return (
-    <ListItemButton
+    <Box
       sx={{
         pl: `${24 + 16}px`,
-        py: 0.25,
+        py: 0.5,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.5,
+        flexWrap: 'wrap',
+        userSelect: 'text',
+        cursor: 'text',
       }}
-      disableRipple
     >
-      <ListItemText
-        primary={
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-            <Typography
-              variant="body2"
-              component="span"
-              sx={{ fontFamily: 'monospace', fontWeight: 500 }}
-            >
-              {item.package_name}
-            </Typography>
+      <Typography
+        variant="body2"
+        component="span"
+        sx={{ fontFamily: 'monospace', fontWeight: 500 }}
+      >
+        {item.package_name}
+      </Typography>
 
-            {item.version_spec && (
-              <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace' }}>
-                {item.version_spec}
-              </Typography>
-            )}
+      {item.version_spec && (
+        <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace' }}>
+          {item.version_spec}
+        </Typography>
+      )}
 
-            {item.resolved_version && item.resolved_version !== item.version_spec && (
-              <Chip
-                label={item.resolved_version}
-                size="small"
-                variant="outlined"
-                color="success"
-                sx={{ height: 18, fontSize: '0.65rem' }}
-              />
-            )}
+      {item.resolved_version && item.resolved_version !== item.version_spec && (
+        <Chip
+          label={item.resolved_version}
+          size="small"
+          variant="outlined"
+          color="success"
+          sx={{ height: 18, fontSize: '0.65rem' }}
+        />
+      )}
 
-            <Chip
-              label={item.dependency_type}
-              size="small"
-              variant="outlined"
-              sx={{
-                height: 18,
-                fontSize: '0.65rem',
-                color: TYPE_COLORS[item.dependency_type] ?? '#abb2bf',
-                borderColor: TYPE_COLORS[item.dependency_type] ?? '#abb2bf',
-              }}
-            />
-
-            {!item.is_direct && (
-              <Chip
-                label="transitive"
-                size="small"
-                variant="outlined"
-                color="warning"
-                sx={{ height: 18, fontSize: '0.65rem' }}
-              />
-            )}
-          </Box>
-        }
+      <Chip
+        label={item.dependency_type}
+        size="small"
+        variant="outlined"
+        sx={{
+          height: 18,
+          fontSize: '0.65rem',
+          color: TYPE_COLORS[item.dependency_type] ?? '#abb2bf',
+          borderColor: TYPE_COLORS[item.dependency_type] ?? '#abb2bf',
+        }}
       />
-    </ListItemButton>
+
+      {!item.is_direct && (
+        <Chip
+          label="transitive"
+          size="small"
+          variant="outlined"
+          color="warning"
+          sx={{ height: 18, fontSize: '0.65rem' }}
+        />
+      )}
+    </Box>
   )
 }

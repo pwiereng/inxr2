@@ -9,6 +9,7 @@ import {
   ClickAwayListener,
 } from '@mui/material'
 import type { VirtualElement } from '@popperjs/core'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import SearchIcon from '@mui/icons-material/Search'
 
 import type { ContextMenuState } from '@/hooks/useCodeContextMenu'
@@ -17,6 +18,8 @@ interface CodeContextMenuProps {
   contextMenu: ContextMenuState | null
   onSearch: () => void
   onClose: () => void
+  /** When provided, shows a "Copy" menu item that copies selected text to clipboard. */
+  onCopy?: () => void
 }
 
 /**
@@ -34,6 +37,7 @@ export function CodeContextMenu({
   contextMenu,
   onSearch,
   onClose,
+  onCopy,
 }: CodeContextMenuProps): React.ReactElement {
   const open = contextMenu !== null
 
@@ -77,6 +81,19 @@ export function CodeContextMenu({
       <ClickAwayListener onClickAway={onClose}>
         <Paper elevation={8} sx={{ minWidth: 180 }}>
           <MenuList autoFocusItem={false}>
+            {onCopy && (
+              <MenuItem
+                onClick={() => {
+                  onClose()
+                  onCopy()
+                }}
+              >
+                <ListItemIcon>
+                  <ContentCopyIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Copy &apos;{contextMenu?.displayText}&apos;</ListItemText>
+              </MenuItem>
+            )}
             <MenuItem
               onClick={() => {
                 // Close first, then navigate: onSearch() triggers React Router

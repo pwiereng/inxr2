@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
+  ButtonBase,
   Typography,
   TextField,
   Select,
@@ -13,8 +14,6 @@ import {
   Paper,
   List,
   ListItem,
-  ListItemButton,
-  ListItemText,
   Pagination,
   CircularProgress,
   Alert,
@@ -45,6 +44,14 @@ import {
   type Symbol,
 } from '@/lib/api'
 import { MENU_PROPS } from '@/lib/menuProps'
+import { useSelectionToolbar } from '@/hooks/useSelectionToolbar'
+import { SelectionToolbar } from '@/components/SelectionToolbar'
+
+/** Guard click handler: no-op when user has an active text selection (drag-select). */
+function hasActiveSelection(): boolean {
+  const sel = window.getSelection()
+  return sel !== null && sel.toString().trim().length > 0
+}
 
 // Search mode type
 type SearchMode = 'keyword' | 'phrase' | 'regex' | 'file'
@@ -77,6 +84,7 @@ const EXT_SHOW_ALL = '__show_all__'
 export default function Search(): React.ReactElement {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { toolbar, containerRef: toolbarContainerRef, handleClose } = useSelectionToolbar()
 
   // State from URL for CodeHeader
   const repoNameParam = searchParams.get('repo') || null
@@ -102,6 +110,11 @@ export default function Search(): React.ReactElement {
 
   // Local state for input (debouncing)
   const [inputQuery, setInputQuery] = useState(query)
+
+  // Sync input when URL query param changes externally (e.g. selection toolbar search)
+  useEffect(() => {
+    setInputQuery(query)
+  }, [query])
 
   // Data state
   const [repositories, setRepositories] = useState<Repository[]>([])
@@ -595,7 +608,7 @@ export default function Search(): React.ReactElement {
       />
 
       {/* Main Content */}
-      <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
+      <Box ref={toolbarContainerRef} sx={{ flex: 1, overflow: 'auto', p: 3 }}>
         <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
           {/* Search Input */}
           <Paper sx={{ p: 2, mb: 3 }}>
@@ -932,134 +945,199 @@ export default function Search(): React.ReactElement {
                     ? fileResults.map((file, index) => (
                         <ListItem
                           key={file.id}
-                          disablePadding
                           divider={index < fileResults.length - 1}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'stretch',
+                            py: 0,
+                            px: 0,
+                            userSelect: 'text',
+                          }}
                         >
-                          <ListItemButton onClick={() => handleFileResultClick(file)}>
-                            <ListItemText
-                              primary={
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <InsertDriveFileIcon
-                                    sx={{ fontSize: 18, color: 'text.secondary' }}
-                                  />
-                                  <Typography
-                                    variant="body2"
-                                    sx={{ fontFamily: 'monospace', fontWeight: 500 }}
-                                  >
-                                    {file.name}
-                                  </Typography>
-                                  {file.language && (
-                                    <Chip label={file.language} size="small" variant="outlined" />
-                                  )}
-                                </Box>
-                              }
-                              secondary={
-                                <Typography
-                                  variant="body2"
-                                  sx={{
-                                    color: 'text.secondary',
-                                    fontFamily: 'monospace',
-                                    fontSize: '0.8rem',
-                                  }}
-                                >
-                                  {file.repository_name} / {file.path}
-                                </Typography>
-                              }
-                            />
-                          </ListItemButton>
+                          <ButtonBase
+                            onClick={() => {
+                              if (!hasActiveSelection()) handleFileResultClick(file)
+                            }}
+                            aria-label="Go to file"
+                            sx={{
+                              width: 10,
+                              minWidth: 10,
+                              flexShrink: 0,
+                              bgcolor: 'primary.main',
+                              cursor: 'pointer',
+                              opacity: 0.4,
+                              transition: 'opacity 0.15s',
+                              '&:hover': { opacity: 1 },
+                            }}
+                          />
+                          <Box sx={{ flex: 1, py: 1.5, px: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <InsertDriveFileIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                              <ButtonBase
+                                onClick={() => {
+                                  if (!hasActiveSelection()) handleFileResultClick(file)
+                                }}
+                                sx={{
+                                  fontFamily: 'monospace',
+                                  fontWeight: 500,
+                                  fontSize: '0.875rem',
+                                  userSelect: 'text',
+                                  '&:hover': {
+                                    textDecoration: 'underline',
+                                    color: 'primary.main',
+                                  },
+                                }}
+                              >
+                                {file.name}
+                              </ButtonBase>
+                              {file.language && (
+                                <Chip label={file.language} size="small" variant="outlined" />
+                              )}
+                            </Box>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                color: 'text.secondary',
+                                fontFamily: 'monospace',
+                                fontSize: '0.8rem',
+                                mt: 0.5,
+                              }}
+                            >
+                              {file.repository_name} / {file.path}
+                            </Typography>
+                          </Box>
                         </ListItem>
                       ))
                     : results.map((result, index) => (
                         <ListItem
                           key={`${result.kind}-${result.kind === 'text' ? result.data.source_type : 'sym'}-${result.data.id}`}
-                          disablePadding
                           divider={index < results.length - 1}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'stretch',
+                            py: 0,
+                            px: 0,
+                            userSelect: 'text',
+                          }}
                         >
-                          <ListItemButton onClick={() => handleUnifiedResultClick(result)}>
-                            <ListItemText
-                              primary={
-                                result.kind === 'symbol' ? (
-                                  <Box
-                                    sx={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 1,
-                                      mb: 0.5,
-                                    }}
-                                  >
-                                    <Chip label="Symbol" size="small" color="primary" />
-                                    <Chip
-                                      label={result.data.kind}
-                                      size="small"
-                                      variant="outlined"
-                                    />
-                                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                                      {repositories.find((r) => r.id === result.data.repository_id)
-                                        ?.name || ''}
-                                      {result.data.file_path && ` / ${result.data.file_path}`}:
-                                      {result.data.start_line}
-                                    </Typography>
-                                  </Box>
-                                ) : (
-                                  <Box
-                                    sx={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 1,
-                                      mb: 0.5,
-                                    }}
-                                  >
-                                    <Chip
-                                      label={formatSourceType(result.data.source_type)}
-                                      size="small"
-                                      color={getSourceTypeBadgeColor(result.data.source_type)}
-                                    />
-                                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                                      {result.data.repository_name}
-                                      {result.data.file_path && ` / ${result.data.file_path}`}
-                                      {result.data.source_line && `:${result.data.source_line}`}
-                                    </Typography>
-                                    {result.data.language && (
-                                      <Chip
-                                        label={result.data.language}
-                                        size="small"
-                                        variant="outlined"
-                                      />
-                                    )}
-                                  </Box>
-                                )
-                              }
-                              secondary={
-                                <Typography
-                                  variant="body2"
+                          <ButtonBase
+                            onClick={() => {
+                              if (!hasActiveSelection()) handleUnifiedResultClick(result)
+                            }}
+                            aria-label="Go to result"
+                            sx={{
+                              width: 10,
+                              minWidth: 10,
+                              flexShrink: 0,
+                              bgcolor: 'primary.main',
+                              cursor: 'pointer',
+                              opacity: 0.4,
+                              transition: 'opacity 0.15s',
+                              '&:hover': { opacity: 1 },
+                            }}
+                          />
+                          <Box sx={{ flex: 1, py: 1.5, px: 2 }}>
+                            {result.kind === 'symbol' ? (
+                              <Box
+                                sx={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 1,
+                                  mb: 0.5,
+                                }}
+                              >
+                                <Chip label="Symbol" size="small" color="primary" />
+                                <Chip label={result.data.kind} size="small" variant="outlined" />
+                                <ButtonBase
+                                  onClick={() => {
+                                    if (!hasActiveSelection()) handleUnifiedResultClick(result)
+                                  }}
                                   sx={{
-                                    color: 'text.primary',
                                     fontFamily: 'monospace',
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word',
+                                    fontSize: '0.875rem',
+                                    userSelect: 'text',
+                                    '&:hover': {
+                                      textDecoration: 'underline',
+                                      color: 'primary.main',
+                                    },
                                   }}
                                 >
-                                  {result.kind === 'symbol' ? (
-                                    highlightMatches(
-                                      result.data.signature ||
-                                        result.data.qualified_name ||
-                                        result.data.name,
-                                      query,
-                                      'keyword'
-                                    )
-                                  ) : result.data.headline ? (
-                                    <span
-                                      dangerouslySetInnerHTML={{
-                                        __html: sanitizeHeadline(result.data.headline),
-                                      }}
-                                    />
-                                  ) : (
-                                    highlightMatches(result.data.content, query, mode)
-                                  )}
-                                </Typography>
-                              }
-                            />
-                          </ListItemButton>
+                                  {repositories.find((r) => r.id === result.data.repository_id)
+                                    ?.name || ''}
+                                  {result.data.file_path && ` / ${result.data.file_path}`}:
+                                  {result.data.start_line}
+                                </ButtonBase>
+                              </Box>
+                            ) : (
+                              <Box
+                                sx={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 1,
+                                  mb: 0.5,
+                                }}
+                              >
+                                <Chip
+                                  label={formatSourceType(result.data.source_type)}
+                                  size="small"
+                                  color={getSourceTypeBadgeColor(result.data.source_type)}
+                                />
+                                <ButtonBase
+                                  onClick={() => {
+                                    if (!hasActiveSelection()) handleUnifiedResultClick(result)
+                                  }}
+                                  sx={{
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.875rem',
+                                    userSelect: 'text',
+                                    '&:hover': {
+                                      textDecoration: 'underline',
+                                      color: 'primary.main',
+                                    },
+                                  }}
+                                >
+                                  {result.data.repository_name}
+                                  {result.data.file_path && ` / ${result.data.file_path}`}
+                                  {result.data.source_line && `:${result.data.source_line}`}
+                                </ButtonBase>
+                                {result.data.language && (
+                                  <Chip
+                                    label={result.data.language}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                )}
+                              </Box>
+                            )}
+                            <Typography
+                              variant="body2"
+                              component="div"
+                              sx={{
+                                color: 'text.primary',
+                                fontFamily: 'monospace',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                              }}
+                            >
+                              {result.kind === 'symbol' ? (
+                                highlightMatches(
+                                  result.data.signature ||
+                                    result.data.qualified_name ||
+                                    result.data.name,
+                                  query,
+                                  'keyword'
+                                )
+                              ) : result.data.headline ? (
+                                <span
+                                  dangerouslySetInnerHTML={{
+                                    __html: sanitizeHeadline(result.data.headline),
+                                  }}
+                                />
+                              ) : (
+                                highlightMatches(result.data.content, query, mode)
+                              )}
+                            </Typography>
+                          </Box>
                         </ListItem>
                       ))}
                 </List>
@@ -1095,6 +1173,22 @@ export default function Search(): React.ReactElement {
           )}
         </Box>
       </Box>
+      <SelectionToolbar
+        toolbar={toolbar}
+        onCopy={() => {
+          const text = toolbar?.selectedText
+          if (text) navigator.clipboard?.writeText(text)
+        }}
+        onSearch={() => {
+          const text = toolbar?.selectedText
+          if (!text) return
+          const newParams = new URLSearchParams(searchParams)
+          newParams.set('query', text)
+          newParams.delete('page')
+          setSearchParams(newParams, { replace: true })
+        }}
+        onClose={handleClose}
+      />
     </Box>
   )
 }
