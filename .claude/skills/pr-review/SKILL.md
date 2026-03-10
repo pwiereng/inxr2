@@ -97,10 +97,6 @@ EOF
 ```
 
 6. Report the PR URL to the user
-7. Request Copilot review:
-   ```bash
-   gh pr edit <PR_NUMBER> --add-reviewer copilot
-   ```
 
 ### On Subsequent Pushes (PR Already Exists)
 
@@ -109,11 +105,6 @@ When pushing additional commits to a branch that already has an open PR:
 1. Push the changes:
    ```bash
    git push origin $(git branch --show-current)
-   ```
-
-2. Re-request Copilot review (dismiss stale review first, then re-add):
-   ```bash
-   gh pr edit <PR_NUMBER> --add-reviewer copilot
    ```
 
 ## Review Mode (Open PR Exists)
