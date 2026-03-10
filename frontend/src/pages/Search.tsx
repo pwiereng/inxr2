@@ -979,6 +979,7 @@ export default function Search(): React.ReactElement {
                                   fontFamily: 'monospace',
                                   fontWeight: 500,
                                   fontSize: '0.875rem',
+                                  userSelect: 'text',
                                   '&:hover': {
                                     textDecoration: 'underline',
                                     color: 'primary.main',
@@ -1050,6 +1051,7 @@ export default function Search(): React.ReactElement {
                                   sx={{
                                     fontFamily: 'monospace',
                                     fontSize: '0.875rem',
+                                    userSelect: 'text',
                                     '&:hover': {
                                       textDecoration: 'underline',
                                       color: 'primary.main',
@@ -1083,6 +1085,7 @@ export default function Search(): React.ReactElement {
                                   sx={{
                                     fontFamily: 'monospace',
                                     fontSize: '0.875rem',
+                                    userSelect: 'text',
                                     '&:hover': {
                                       textDecoration: 'underline',
                                       color: 'primary.main',

@@ -33,6 +33,8 @@ export function useSelectionToolbar(): UseSelectionToolbarResult {
     let timeoutId: ReturnType<typeof setTimeout> | null = null
 
     const onMouseUp = () => {
+      // Clear any previously scheduled timeout to avoid stale updates
+      if (timeoutId !== null) clearTimeout(timeoutId)
       // Small delay to let the browser finalize the selection
       timeoutId = setTimeout(() => {
         const container = containerRef.current
@@ -49,6 +51,7 @@ export function useSelectionToolbar(): UseSelectionToolbarResult {
         if (selection && selection.rangeCount > 0) {
           const range = selection.getRangeAt(0)
           if (!container.contains(range.commonAncestorContainer)) {
+            setToolbar(null)
             return
           }
           const rect = range.getBoundingClientRect()
@@ -70,8 +73,8 @@ export function useSelectionToolbar(): UseSelectionToolbarResult {
     }
 
     const onMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (target.closest('[data-selection-toolbar]')) return
+      const target = e.target
+      if (target instanceof Element && target.closest('[data-selection-toolbar]')) return
       setToolbar(null)
     }
 

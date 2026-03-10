@@ -205,7 +205,7 @@ describe('Search', () => {
     // Find the result list item by locating the "Commit Message" chip
     const chipEl = screen.getByText('Commit Message')
     const listItem = chipEl.closest('li')!
-    // The clickable location link is the Typography showing repo name
+    // The clickable location link is the ButtonBase showing repo name
     const locationLink = within(listItem).getByText('test-repo')
     fireEvent.click(locationLink)
 
