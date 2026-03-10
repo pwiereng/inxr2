@@ -30,9 +30,11 @@ export function useSelectionToolbar(): UseSelectionToolbarResult {
   const handleClose = useCallback(() => setToolbar(null), [])
 
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
     const onMouseUp = () => {
       // Small delay to let the browser finalize the selection
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         const container = containerRef.current
         if (!container) return
 
@@ -78,6 +80,7 @@ export function useSelectionToolbar(): UseSelectionToolbarResult {
     document.addEventListener('mousedown', onMouseDown)
 
     return () => {
+      if (timeoutId !== null) clearTimeout(timeoutId)
       document.removeEventListener('mouseup', onMouseUp)
       document.removeEventListener('selectionchange', onSelectionChange)
       document.removeEventListener('mousedown', onMouseDown)

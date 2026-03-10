@@ -58,6 +58,7 @@ export function SelectionToolbar({
         <Tooltip title={`Copy '${toolbar?.displayText}'`} placement="top">
           <IconButton
             size="small"
+            aria-label="Copy selected text"
             onClick={() => {
               onClose()
               onCopy()
@@ -70,6 +71,7 @@ export function SelectionToolbar({
         <Tooltip title={`Search for '${toolbar?.displayText}'`} placement="top">
           <IconButton
             size="small"
+            aria-label="Search selected text"
             onClick={() => {
               onClose()
               onSearch()

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
+  ButtonBase,
   Typography,
   TextField,
   Select,
@@ -45,6 +46,12 @@ import {
 import { MENU_PROPS } from '@/lib/menuProps'
 import { useSelectionToolbar } from '@/hooks/useSelectionToolbar'
 import { SelectionToolbar } from '@/components/SelectionToolbar'
+
+/** Guard click handler: no-op when user has an active text selection (drag-select). */
+function hasActiveSelection(): boolean {
+  const sel = window.getSelection()
+  return sel !== null && sel.toString().trim().length > 0
+}
 
 // Search mode type
 type SearchMode = 'keyword' | 'phrase' | 'regex' | 'file'
@@ -947,7 +954,7 @@ export default function Search(): React.ReactElement {
                             userSelect: 'text',
                           }}
                         >
-                          <Box
+                          <ButtonBase
                             onClick={() => handleFileResultClick(file)}
                             aria-label="Go to file"
                             sx={{
@@ -964,22 +971,22 @@ export default function Search(): React.ReactElement {
                           <Box sx={{ flex: 1, py: 1.5, px: 2 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <InsertDriveFileIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-                              <Typography
-                                variant="body2"
-                                component="span"
+                              <ButtonBase
+                                onClick={() => {
+                                  if (!hasActiveSelection()) handleFileResultClick(file)
+                                }}
                                 sx={{
                                   fontFamily: 'monospace',
                                   fontWeight: 500,
-                                  cursor: 'pointer',
+                                  fontSize: '0.875rem',
                                   '&:hover': {
                                     textDecoration: 'underline',
                                     color: 'primary.main',
                                   },
                                 }}
-                                onClick={() => handleFileResultClick(file)}
                               >
                                 {file.name}
-                              </Typography>
+                              </ButtonBase>
                               {file.language && (
                                 <Chip label={file.language} size="small" variant="outlined" />
                               )}
@@ -1010,7 +1017,7 @@ export default function Search(): React.ReactElement {
                             userSelect: 'text',
                           }}
                         >
-                          <Box
+                          <ButtonBase
                             onClick={() => handleUnifiedResultClick(result)}
                             aria-label="Go to result"
                             sx={{
@@ -1036,24 +1043,24 @@ export default function Search(): React.ReactElement {
                               >
                                 <Chip label="Symbol" size="small" color="primary" />
                                 <Chip label={result.data.kind} size="small" variant="outlined" />
-                                <Typography
-                                  variant="body2"
-                                  component="span"
+                                <ButtonBase
+                                  onClick={() => {
+                                    if (!hasActiveSelection()) handleUnifiedResultClick(result)
+                                  }}
                                   sx={{
                                     fontFamily: 'monospace',
-                                    cursor: 'pointer',
+                                    fontSize: '0.875rem',
                                     '&:hover': {
                                       textDecoration: 'underline',
                                       color: 'primary.main',
                                     },
                                   }}
-                                  onClick={() => handleUnifiedResultClick(result)}
                                 >
                                   {repositories.find((r) => r.id === result.data.repository_id)
                                     ?.name || ''}
                                   {result.data.file_path && ` / ${result.data.file_path}`}:
                                   {result.data.start_line}
-                                </Typography>
+                                </ButtonBase>
                               </Box>
                             ) : (
                               <Box
@@ -1069,23 +1076,23 @@ export default function Search(): React.ReactElement {
                                   size="small"
                                   color={getSourceTypeBadgeColor(result.data.source_type)}
                                 />
-                                <Typography
-                                  variant="body2"
-                                  component="span"
+                                <ButtonBase
+                                  onClick={() => {
+                                    if (!hasActiveSelection()) handleUnifiedResultClick(result)
+                                  }}
                                   sx={{
                                     fontFamily: 'monospace',
-                                    cursor: 'pointer',
+                                    fontSize: '0.875rem',
                                     '&:hover': {
                                       textDecoration: 'underline',
                                       color: 'primary.main',
                                     },
                                   }}
-                                  onClick={() => handleUnifiedResultClick(result)}
                                 >
                                   {result.data.repository_name}
                                   {result.data.file_path && ` / ${result.data.file_path}`}
                                   {result.data.source_line && `:${result.data.source_line}`}
-                                </Typography>
+                                </ButtonBase>
                                 {result.data.language && (
                                   <Chip
                                     label={result.data.language}

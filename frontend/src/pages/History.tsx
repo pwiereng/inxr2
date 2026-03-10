@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { Box, Container, Typography, List, ListItem, Paper, CircularProgress } from '@mui/material'
+import {
+  Box,
+  ButtonBase,
+  Container,
+  Typography,
+  List,
+  ListItem,
+  Paper,
+  CircularProgress,
+} from '@mui/material'
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { getCommits, type CommitInfo } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
@@ -196,30 +205,39 @@ export function History(): React.ReactElement {
                         mb: body ? 1.5 : 0,
                       }}
                     >
-                      <Typography
-                        component="span"
-                        sx={{
-                          fontFamily: 'monospace',
-                          fontSize: '0.8rem',
-                          color: commitInfo.is_indexed ? 'primary.main' : 'text.disabled',
-                          fontWeight: 500,
-                          cursor: commitInfo.is_indexed ? 'pointer' : 'default',
-                          '&:hover': commitInfo.is_indexed ? { textDecoration: 'underline' } : {},
-                        }}
-                        onClick={
-                          commitInfo.is_indexed ? () => handleCommitClick(commitInfo) : undefined
-                        }
-                      >
-                        {commitInfo.short_hash}
-                        {!commitInfo.is_indexed && (
+                      {commitInfo.is_indexed ? (
+                        <ButtonBase
+                          onClick={() => handleCommitClick(commitInfo)}
+                          sx={{
+                            fontFamily: 'monospace',
+                            fontSize: '0.8rem',
+                            color: 'primary.main',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            '&:hover': { textDecoration: 'underline' },
+                          }}
+                        >
+                          {commitInfo.short_hash}
+                        </ButtonBase>
+                      ) : (
+                        <Typography
+                          component="span"
+                          sx={{
+                            fontFamily: 'monospace',
+                            fontSize: '0.8rem',
+                            color: 'text.disabled',
+                            fontWeight: 500,
+                          }}
+                        >
+                          {commitInfo.short_hash}
                           <Typography
                             component="span"
                             sx={{ fontSize: '0.7rem', color: 'text.disabled', ml: 0.5 }}
                           >
                             (not indexed)
                           </Typography>
-                        )}
-                      </Typography>
+                        </Typography>
+                      )}
                       <CopyButton
                         value={commitInfo.short_hash}
                         fullValue={commitInfo.hash}
