@@ -473,11 +473,15 @@ class PythonParser(BaseLanguageParser):
                                 )
                             )
                         # Also reference the receiver (e.g., FileFilter in
-                        # FileFilter.should_skip()), but not self/cls
+                        # FileFilter.should_skip()), but not self/cls/builtins
                         obj_node = func_node.children[0] if func_node.children else None
                         if obj_node and obj_node.type == "identifier":
                             obj_name = get_text(obj_node)
-                            if obj_name not in ("self", "cls"):
+                            if (
+                                obj_name not in ("self", "cls")
+                                and obj_name not in PYTHON_BUILTINS
+                                and obj_name not in PYTHON_TYPE_BUILTINS
+                            ):
                                 add_reference(
                                     self._make_reference(
                                         obj_name, "usage", obj_node, scope
@@ -513,7 +517,11 @@ class PythonParser(BaseLanguageParser):
                         # above). Extract both receiver and attribute.
                         if obj_node.type == "identifier":
                             obj_name = get_text(obj_node)
-                            if obj_name not in ("self", "cls"):
+                            if (
+                                obj_name not in ("self", "cls")
+                                and obj_name not in PYTHON_BUILTINS
+                                and obj_name not in PYTHON_TYPE_BUILTINS
+                            ):
                                 add_reference(
                                     self._make_reference(
                                         obj_name, "usage", obj_node, scope
