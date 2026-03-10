@@ -34,9 +34,10 @@ export function History(): React.ReactElement {
     if (loadedKeyRef.current === key) {
       return
     }
-    // Set optimistically so a StrictMode re-run of this effect (refs
-    // persist across the simulated unmount/remount) skips the duplicate
-    // network request.  Reset on failure so a retry is not blocked.
+    // Set optimistically so that if React StrictMode runs this effect
+    // twice in development with the same dependencies, we skip issuing
+    // a duplicate network request.  Reset on failure so a retry is not
+    // blocked.
     loadedKeyRef.current = key
 
     const loadCommits = async () => {
