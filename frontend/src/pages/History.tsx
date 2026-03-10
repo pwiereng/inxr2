@@ -25,13 +25,14 @@ export function History(): React.ReactElement {
   // Load commits when repo/branch changes
   useEffect(() => {
     if (!repoName) {
+      ++fetchIdRef.current
       setCommits([])
       return
     }
 
-    // Monotonic ID so only the latest fetch wins; earlier in-flight
-    // requests (from StrictMode remount or rapid dep changes) become
-    // stale and their results are silently discarded.
+    // Monotonic ID so only the latest fetch in this component instance wins;
+    // earlier in-flight requests from prior effect runs (e.g. rapid dep changes)
+    // become stale and their results are silently discarded.
     const id = ++fetchIdRef.current
 
     const loadCommits = async () => {
