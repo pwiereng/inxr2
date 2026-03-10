@@ -20,38 +20,37 @@ export function History(): React.ReactElement {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const focusedCommitRef = useRef<HTMLLIElement>(null)
-  const fetchIdRef = useRef(0)
+  const loadedKeyRef = useRef<string | null>(null)
 
   // Load commits when repo/branch changes
   useEffect(() => {
     if (!repoName) {
-      ++fetchIdRef.current
+      loadedKeyRef.current = null
       setCommits([])
       return
     }
 
-    // Monotonic ID so only the latest fetch in this component instance wins;
-    // earlier in-flight requests from prior effect runs (e.g. rapid dep changes)
-    // become stale and their results are silently discarded.
-    const id = ++fetchIdRef.current
+    const key = `${repoName}:${branch ?? ''}`
+    if (loadedKeyRef.current === key) {
+      return
+    }
+    // Set optimistically so a StrictMode re-run of this effect (refs
+    // persist across the simulated unmount/remount) skips the duplicate
+    // network request.  Reset on failure so a retry is not blocked.
+    loadedKeyRef.current = key
 
     const loadCommits = async () => {
       setLoading(true)
       setError(null)
       try {
         const response = await getCommits(repoName, branch || undefined, 1000)
-        if (fetchIdRef.current === id) {
-          setCommits(response.commits)
-        }
+        setCommits(response.commits)
       } catch (err) {
-        if (fetchIdRef.current === id) {
-          setError(err instanceof Error ? err.message : 'Failed to load commits')
-          setCommits([])
-        }
+        setError(err instanceof Error ? err.message : 'Failed to load commits')
+        setCommits([])
+        loadedKeyRef.current = null
       } finally {
-        if (fetchIdRef.current === id) {
-          setLoading(false)
-        }
+        setLoading(false)
       }
     }
 
