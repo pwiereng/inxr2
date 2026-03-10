@@ -27,6 +27,8 @@ export function History(): React.ReactElement {
     if (!repoName) {
       loadedKeyRef.current = null
       setCommits([])
+      setLoading(false)
+      setError(null)
       return
     }
 
@@ -51,6 +53,7 @@ export function History(): React.ReactElement {
         if (loadedKeyRef.current !== key) return
         setError(err instanceof Error ? err.message : 'Failed to load commits')
         setCommits([])
+        setLoading(false)
         loadedKeyRef.current = null
       } finally {
         if (loadedKeyRef.current === key) {
