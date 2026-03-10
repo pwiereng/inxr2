@@ -3265,3 +3265,256 @@ function init() {
         handler_sym = [s for s in symbols if s["name"] == "handler"]
         assert len(handler_sym) == 1
         assert handler_sym[0]["kind"] == "function"
+
+
+class TestAttributeAccessReceiverReferences:
+    """Tests for issue #306: attribute access receiver references.
+
+    Expressions like FileFilter.should_skip() should produce references for
+    BOTH the receiver (FileFilter) AND the method/field (should_skip).
+    """
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        """Create a TreeSitterService instance."""
+        return TreeSitterService()
+
+    # --- Python ---
+
+    @pytest.mark.asyncio
+    async def test_python_class_method_call_receiver(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Python: FileFilter.should_skip() should reference FileFilter."""
+        code = """
+def process(file_path):
+    if FileFilter.should_skip(file_path):
+        return
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "should_skip" in ref_texts, "method call reference missing"
+        assert "FileFilter" in ref_texts, "receiver reference missing"
+
+        ff_ref = [r for r in references if r["text"] == "FileFilter"]
+        assert len(ff_ref) == 1
+        assert ff_ref[0]["type"] == "usage"
+
+    @pytest.mark.asyncio
+    async def test_python_variable_method_call_receiver(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Python: client.fetch_data() should reference client."""
+        code = """
+def process():
+    result = client.fetch_data()
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "fetch_data" in ref_texts
+        assert "client" in ref_texts, "receiver reference missing"
+
+    @pytest.mark.asyncio
+    async def test_python_standalone_attribute_access_receiver(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Python: config.value (not a call) should reference config."""
+        code = """
+def process():
+    x = config.value
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "value" in ref_texts
+        assert "config" in ref_texts, "receiver reference missing"
+
+    @pytest.mark.asyncio
+    async def test_python_self_receiver_not_referenced(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Python: self.method() should NOT add a reference for 'self'."""
+        code = """
+class Foo:
+    def bar(self):
+        self.baz()
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "self" not in ref_texts
+
+    # --- TypeScript ---
+
+    @pytest.mark.asyncio
+    async def test_typescript_method_call_receiver(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """TS: FileFilter.shouldSkip() should reference FileFilter."""
+        code = """
+function process(filePath: string) {
+    if (FileFilter.shouldSkip(filePath)) {
+        return;
+    }
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "shouldSkip" in ref_texts, "method call reference missing"
+        assert "FileFilter" in ref_texts, "receiver reference missing"
+
+    @pytest.mark.asyncio
+    async def test_typescript_standalone_member_access_receiver(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """TS: config.value (not a call) should reference config."""
+        code = """
+function process() {
+    const x = config.value;
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "value" in ref_texts
+        assert "config" in ref_texts, "receiver reference missing"
+
+    @pytest.mark.asyncio
+    async def test_typescript_this_receiver_not_referenced(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """TS: this.method() should NOT add a reference for 'this'."""
+        code = """
+class Foo {
+    bar() {
+        this.baz();
+    }
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="typescript", file_path="test.ts"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "this" not in ref_texts
+
+    # --- Go ---
+
+    @pytest.mark.asyncio
+    async def test_go_method_call_receiver(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Go: filter.ShouldSkip() should reference filter."""
+        code = """
+package main
+
+func process(filter FileFilter) {
+    filter.ShouldSkip("test.go")
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="test.go"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "ShouldSkip" in ref_texts, "method call reference missing"
+        assert "filter" in ref_texts, "receiver reference missing"
+
+    @pytest.mark.asyncio
+    async def test_go_field_access_receiver(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Go: config.Value (not a call) should reference config."""
+        code = """
+package main
+
+func process(config Config) {
+    x := config.Value
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="go", file_path="test.go"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "Value" in ref_texts
+        assert "config" in ref_texts, "receiver reference missing"
+
+    # --- Java ---
+
+    @pytest.mark.asyncio
+    async def test_java_method_call_receiver(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Java: FileFilter.shouldSkip() should reference FileFilter."""
+        code = """
+public class Main {
+    public void process(String filePath) {
+        FileFilter.shouldSkip(filePath);
+    }
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="java", file_path="Test.java"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "shouldSkip" in ref_texts, "method call reference missing"
+        assert "FileFilter" in ref_texts, "receiver reference missing"
+
+    # --- C# ---
+
+    @pytest.mark.asyncio
+    async def test_csharp_method_call_receiver(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """C#: FileFilter.ShouldSkip() should reference FileFilter."""
+        code = """
+public class Main {
+    public void Process(string filePath) {
+        FileFilter.ShouldSkip(filePath);
+    }
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="csharp", file_path="Test.cs"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "ShouldSkip" in ref_texts, "method call reference missing"
+        assert "FileFilter" in ref_texts, "receiver reference missing"
+
+    @pytest.mark.asyncio
+    async def test_csharp_variable_method_call_receiver(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """C#: client.FetchData() should reference client."""
+        code = """
+public class Main {
+    public void Process() {
+        var result = client.FetchData();
+    }
+}
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="csharp", file_path="Test.cs"
+        )
+
+        ref_texts = [r["text"] for r in references]
+        assert "FetchData" in ref_texts
+        assert "client" in ref_texts, "receiver reference missing"

@@ -472,13 +472,28 @@ class PythonParser(BaseLanguageParser):
                                     get_text(attr_node), "call", attr_node, scope
                                 )
                             )
+                        # Also reference the receiver (e.g., FileFilter in
+                        # FileFilter.should_skip()), but not self/cls
+                        obj_node = func_node.children[0] if func_node.children else None
+                        if obj_node and obj_node.type == "identifier":
+                            obj_name = get_text(obj_node)
+                            if obj_name not in ("self", "cls"):
+                                add_reference(
+                                    self._make_reference(
+                                        obj_name, "usage", obj_node, scope
+                                    )
+                                )
 
-            # self.attribute references (instance variable usage)
+            # Attribute references (obj.attr usage)
             if node.type == "attribute":
                 children = list(node.children)
                 if len(children) >= 3:
                     obj_node = children[0]
+                    parent = node.parent
+                    is_call = parent is not None and parent.type == "call"
+                    is_write_target = _is_write_target(node)
                     if obj_node.type == "identifier" and get_text(obj_node) == "self":
+                        # self.attribute — extract attr but not self
                         attr_name = None
                         attr_node = None
                         for child in reversed(children):
@@ -487,10 +502,32 @@ class PythonParser(BaseLanguageParser):
                                 attr_node = child
                                 break
                         if attr_name and attr_node:
-                            parent = node.parent
-                            is_call = parent is not None and parent.type == "call"
-                            is_write_target = _is_write_target(node)
                             if not is_call and not is_write_target:
+                                add_reference(
+                                    self._make_reference(
+                                        attr_name, "usage", attr_node, scope
+                                    )
+                                )
+                    elif not is_call:
+                        # Non-self attribute access (not a call — calls handled
+                        # above). Extract both receiver and attribute.
+                        if obj_node.type == "identifier":
+                            obj_name = get_text(obj_node)
+                            if obj_name not in ("self", "cls"):
+                                add_reference(
+                                    self._make_reference(
+                                        obj_name, "usage", obj_node, scope
+                                    )
+                                )
+                        # Extract the attribute name
+                        attr_node = None
+                        for child in reversed(children):
+                            if child.type == "identifier" and child != obj_node:
+                                attr_node = child
+                                break
+                        if attr_node:
+                            attr_name = get_text(attr_node)
+                            if not is_write_target:
                                 add_reference(
                                     self._make_reference(
                                         attr_name, "usage", attr_node, scope

@@ -589,6 +589,12 @@ class GoParser(BaseLanguageParser):
                                     field_text, "call", field_node, scope
                                 )
                             )
+                            # Also reference the receiver
+                            add_reference(
+                                self._make_reference(
+                                    operand_text, "usage", operand_node, scope
+                                )
+                            )
                     elif operand_node.type in (
                         "selector_expression",
                         "call_expression",
@@ -615,6 +621,16 @@ class GoParser(BaseLanguageParser):
                     if not is_builtin_or_primitive(field_text):
                         add_reference(
                             self._make_reference(field_text, "usage", field_node, scope)
+                        )
+                    # Also reference the receiver
+                    if (
+                        operand_node.type == "identifier"
+                        and not is_builtin_or_primitive(operand_text)
+                    ):
+                        add_reference(
+                            self._make_reference(
+                                operand_text, "usage", operand_node, scope
+                            )
                         )
 
         # --- Main processing ---
