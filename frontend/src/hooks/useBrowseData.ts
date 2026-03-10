@@ -220,8 +220,11 @@ export function useBrowseData({
   ])
 
   // Clear selected file if it's not in the changed-files tree
+  // Skip in diff mode: the user is comparing two versions of a file, so the file
+  // may not appear in the tree panel's commit changeset but is still valid.
   useEffect(() => {
     if (!urlState.changedOnly || !urlState.filePath || !urlState.repoName) return
+    if (urlState.diffMode) return
 
     // Recursively check if a file path exists in the tree
     const fileInTree = (nodes: TreeNode[], path: string): boolean =>
@@ -242,6 +245,7 @@ export function useBrowseData({
     }
   }, [
     urlState.changedOnly,
+    urlState.diffMode,
     urlState.filePath,
     urlState.repoName,
     treeNodes,

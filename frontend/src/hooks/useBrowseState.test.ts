@@ -2069,6 +2069,51 @@ describe('useBrowseState', () => {
       expect(clearCall![0]).toContain('/browse/test-repo')
     })
 
+    it('should not clear file selection in diff mode even when file is not in changed-files tree', async () => {
+      // Regression #286: In diff mode with changedOnly, changing the diff version
+      // caused the tree to reload for the new commit. If the file wasn't in that
+      // commit's changed files, the clearing effect would strip the file path.
+      mockSearchParams = new URLSearchParams('commit=abc123&diff=def456&co=1')
+
+      // Return a tree that does NOT contain the current file (src/main.py)
+      mockGetRepositoryTreeByName.mockResolvedValue({
+        root: [
+          {
+            name: 'changed.py',
+            path: 'src/changed.py',
+            type: 'file',
+            file_id: 1,
+            language: 'python',
+            children: null,
+          },
+        ],
+        repository_id: 1,
+        repository_name: 'test-repo',
+        total_files: 1,
+        total_directories: 0,
+      })
+
+      mockNavigate.mockClear()
+      const { result } = await renderBrowseStateHook()
+
+      // Wait for tree to load
+      await vi.waitFor(() => {
+        expect(result.current.dataState.treeNodes.length).toBe(1)
+      })
+
+      // Give time for effects to settle
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      // Navigate should NOT have been called to clear the file in diff mode
+      const clearCalls = mockNavigate.mock.calls.filter(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('/browse/test-repo') &&
+          !call[0].includes('src/main.py')
+      )
+      expect(clearCalls.length).toBe(0)
+    })
+
     it('should not clear file selection when file is in the changed-files tree', async () => {
       mockSearchParams = new URLSearchParams('commit=abc123&co=1')
 
