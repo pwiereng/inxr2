@@ -20,6 +20,7 @@ export function History(): React.ReactElement {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const focusedCommitRef = useRef<HTMLLIElement>(null)
+  const fetchIdRef = useRef(0)
 
   // Load commits when repo/branch changes
   useEffect(() => {
@@ -28,17 +29,28 @@ export function History(): React.ReactElement {
       return
     }
 
+    // Monotonic ID so only the latest fetch wins; earlier in-flight
+    // requests (from StrictMode remount or rapid dep changes) become
+    // stale and their results are silently discarded.
+    const id = ++fetchIdRef.current
+
     const loadCommits = async () => {
       setLoading(true)
       setError(null)
       try {
         const response = await getCommits(repoName, branch || undefined, 1000)
-        setCommits(response.commits)
+        if (fetchIdRef.current === id) {
+          setCommits(response.commits)
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load commits')
-        setCommits([])
+        if (fetchIdRef.current === id) {
+          setError(err instanceof Error ? err.message : 'Failed to load commits')
+          setCommits([])
+        }
       } finally {
-        setLoading(false)
+        if (fetchIdRef.current === id) {
+          setLoading(false)
+        }
       }
     }
 
