@@ -20,25 +20,45 @@ export function History(): React.ReactElement {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const focusedCommitRef = useRef<HTMLLIElement>(null)
+  const loadedKeyRef = useRef<string | null>(null)
 
   // Load commits when repo/branch changes
   useEffect(() => {
     if (!repoName) {
+      loadedKeyRef.current = null
       setCommits([])
+      setLoading(false)
+      setError(null)
       return
     }
+
+    const key = `${repoName}:${branch ?? ''}`
+    if (loadedKeyRef.current === key) {
+      return
+    }
+    // Set optimistically so that if React StrictMode runs this effect
+    // twice in development with the same dependencies, we skip issuing
+    // a duplicate network request.  Reset on failure so a retry is not
+    // blocked.
+    loadedKeyRef.current = key
 
     const loadCommits = async () => {
       setLoading(true)
       setError(null)
       try {
         const response = await getCommits(repoName, branch || undefined, 1000)
+        if (loadedKeyRef.current !== key) return
         setCommits(response.commits)
       } catch (err) {
+        if (loadedKeyRef.current !== key) return
         setError(err instanceof Error ? err.message : 'Failed to load commits')
         setCommits([])
-      } finally {
         setLoading(false)
+        loadedKeyRef.current = null
+      } finally {
+        if (loadedKeyRef.current === key) {
+          setLoading(false)
+        }
       }
     }
 

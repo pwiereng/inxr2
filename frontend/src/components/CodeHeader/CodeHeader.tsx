@@ -99,7 +99,7 @@ export function CodeHeader({
           <>
             <BranchSelect
               branches={branches}
-              loading={loadingBranches}
+              loading={currentTab !== 'history' && loadingBranches}
               branch={branch}
               defaultBranch={defaultBranch}
               onBranchChange={onBranchChange}
@@ -107,7 +107,7 @@ export function CodeHeader({
 
             <CommitSelect
               commits={commits}
-              loading={loadingCommits}
+              loading={currentTab !== 'history' && loadingCommits}
               commitDisplayValue={commitDisplayValue}
               onCommitChange={onCommitChange}
             />
