@@ -45,13 +45,17 @@ export function History(): React.ReactElement {
       setError(null)
       try {
         const response = await getCommits(repoName, branch || undefined, 1000)
+        if (loadedKeyRef.current !== key) return
         setCommits(response.commits)
       } catch (err) {
+        if (loadedKeyRef.current !== key) return
         setError(err instanceof Error ? err.message : 'Failed to load commits')
         setCommits([])
         loadedKeyRef.current = null
       } finally {
-        setLoading(false)
+        if (loadedKeyRef.current === key) {
+          setLoading(false)
+        }
       }
     }
 
