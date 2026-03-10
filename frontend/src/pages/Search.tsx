@@ -955,7 +955,9 @@ export default function Search(): React.ReactElement {
                           }}
                         >
                           <ButtonBase
-                            onClick={() => handleFileResultClick(file)}
+                            onClick={() => {
+                              if (!hasActiveSelection()) handleFileResultClick(file)
+                            }}
                             aria-label="Go to file"
                             sx={{
                               width: 10,
@@ -1019,7 +1021,9 @@ export default function Search(): React.ReactElement {
                           }}
                         >
                           <ButtonBase
-                            onClick={() => handleUnifiedResultClick(result)}
+                            onClick={() => {
+                              if (!hasActiveSelection()) handleUnifiedResultClick(result)
+                            }}
                             aria-label="Go to result"
                             sx={{
                               width: 10,
