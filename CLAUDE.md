@@ -194,9 +194,14 @@ Test repos live at `/repos/test-repos/` (separate from `/workspace`). Always use
 
 ## Session Startup
 
-Set iTerm2 tab title to the current git branch name via AppleScript (escape sequences don't work from inside Claude Code because the pty captures them):
+Set iTerm2 tab title to the branch name and frontend port via AppleScript (escape sequences don't work from inside Claude Code because the pty captures them):
 ```bash
-osascript -e "tell application \"iTerm2\" to tell current session of current tab of current window to set name to \"$(git branch --show-current)\""
+# Format: "branch-name :port"
+# Port is from the .env file (FRONTEND_PORT) — main=5173, slot1=5183, slot2=5193, slot3=5203
+BRANCH=$(git branch --show-current)
+PORT=$(grep FRONTEND_PORT .env 2>/dev/null | cut -d= -f2)
+PORT=${PORT:-5173}
+osascript -e "tell application \"iTerm2\" to tell current session of current tab of current window to set name to \"${BRANCH} :${PORT}\""
 ```
 
 ## Skills Reference
