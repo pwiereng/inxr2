@@ -101,7 +101,11 @@ class DependencyRepositoryPort(ABC):
             dependency_type: Filter by type (runtime, dev, etc.) (optional)
             is_direct: Filter by direct/transitive (optional)
             branch: Filter to files on this branch (optional)
-            scope: Search scope — "latest" filters to latest file versions (default)
+            scope: Search scope for global searches. When both ``repository_id``
+                and ``branch`` are ``None``, ``"latest"`` filters results to the
+                latest file versions; ``None`` disables this scoping. When either
+                ``repository_id`` or ``branch`` is provided, results are already
+                constrained to latest file versions and this parameter is ignored.
             limit: Maximum results to return
             offset: Pagination offset
         """

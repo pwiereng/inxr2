@@ -134,12 +134,13 @@ class PostgresDependencyRepository(
         count_query = select(func.count()).select_from(base.subquery())
         total = (await self.session.execute(count_query)).scalar() or 0
 
-        # Fetch page — include file_id as tie-breaker for deterministic pagination
+        # Fetch page — include unique tie-breaker for deterministic pagination
         results_query = (
             base.order_by(
                 DependencyModel.package_name,
                 DependencyModel.repository_id,
                 DependencyModel.file_id,
+                DependencyModel.id,
             )
             .limit(limit)
             .offset(offset)
