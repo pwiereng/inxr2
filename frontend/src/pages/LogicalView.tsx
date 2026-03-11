@@ -29,6 +29,7 @@ import TagIcon from '@mui/icons-material/Tag'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import ClearIcon from '@mui/icons-material/Clear'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import IconButton from '@mui/material/IconButton'
 import { CodeHeader } from '@/components/CodeHeader'
 import type { TabValue } from '@/components/CodeHeader'
@@ -1562,116 +1563,136 @@ function SymbolNode({
   const indent = level * 24
   const isHighlighted = highlightedSymbolIds.size > 0 && highlightedSymbolIds.has(symbol.id)
 
-  const handleClick = () => {
-    if (symbol.has_children) {
-      onToggle(symbol.id)
-    } else {
-      onClick(symbol)
-    }
-  }
-
   const handleNavigate = (e: React.MouseEvent) => {
     e.stopPropagation()
     onClick(symbol)
   }
 
+  const rowContent = (
+    <>
+      {symbol.has_children && (
+        <ListItemIcon sx={{ minWidth: 20 }}>
+          {isExpanding ? (
+            <CircularProgress size={14} />
+          ) : isExpanded ? (
+            <ExpandMoreIcon sx={{ fontSize: 16 }} />
+          ) : (
+            <ChevronRightIcon sx={{ fontSize: 16 }} />
+          )}
+        </ListItemIcon>
+      )}
+      {!symbol.has_children && <Box sx={{ width: 20 }} />}
+
+      <ListItemIcon sx={{ minWidth: 24 }}>{getKindIcon(symbol.kind)}</ListItemIcon>
+
+      <ListItemText
+        primary={
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+            <Typography
+              variant="body2"
+              component="span"
+              sx={{
+                fontFamily: 'monospace',
+                fontWeight: symbol.has_children || isHighlighted ? 500 : 400,
+                userSelect: 'text',
+                ...(isHighlighted && {
+                  color: '#61afef',
+                }),
+              }}
+            >
+              {symbol.name}
+              {symbol.kind === 'function' ||
+              symbol.kind === 'method' ||
+              symbol.kind === 'constructor' ||
+              symbol.kind === 'staticmethod' ||
+              symbol.kind === 'classmethod'
+                ? '()'
+                : ''}
+            </Typography>
+            <Tooltip title={`Go to line ${symbol.start_line}`} arrow>
+              <IconButton
+                size="small"
+                onClick={handleNavigate}
+                sx={{ p: 0.25 }}
+                aria-label={`Go to line ${symbol.start_line}`}
+              >
+                <ArrowForwardIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
+
+            <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace' }}>
+              {getKindLabel(symbol.kind)}
+            </Typography>
+
+            {symbol.inheritance.map((inh, i) => (
+              <Tooltip
+                key={i}
+                title={
+                  inh.target_file_path
+                    ? `Click: go to source | ${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+Click: locate in tree`
+                    : ''
+                }
+                arrow
+              >
+                <Chip
+                  label={`extends ${inh.reference_text}`}
+                  size="small"
+                  variant="outlined"
+                  color="info"
+                  sx={{
+                    height: 18,
+                    fontSize: '0.65rem',
+                    cursor: inh.target_file_path ? 'pointer' : 'default',
+                  }}
+                  onClick={
+                    inh.target_file_path
+                      ? (e) => {
+                          e.stopPropagation()
+                          onInheritanceClick(inh, e)
+                        }
+                      : undefined
+                  }
+                />
+              </Tooltip>
+            ))}
+          </Box>
+        }
+      />
+    </>
+  )
+
+  const rowSx = {
+    pl: `${indent + 16}px`,
+    py: 0.25,
+    ...(isHighlighted && {
+      backgroundColor: 'rgba(97, 175, 239, 0.12)',
+    }),
+  }
+
   return (
     <>
-      <ListItemButton
-        onClick={handleClick}
-        onDoubleClick={handleNavigate}
-        onContextMenu={(e) => onContextMenuAction(symbol, e)}
-        sx={{
-          pl: `${indent + 16}px`,
-          py: 0.25,
-          ...(isHighlighted && {
-            backgroundColor: 'rgba(97, 175, 239, 0.12)',
-          }),
-        }}
-      >
-        {symbol.has_children && (
-          <ListItemIcon sx={{ minWidth: 20 }}>
-            {isExpanding ? (
-              <CircularProgress size={14} />
-            ) : isExpanded ? (
-              <ExpandMoreIcon sx={{ fontSize: 16 }} />
-            ) : (
-              <ChevronRightIcon sx={{ fontSize: 16 }} />
-            )}
-          </ListItemIcon>
-        )}
-        {!symbol.has_children && <Box sx={{ width: 20 }} />}
-
-        <ListItemIcon sx={{ minWidth: 24 }}>{getKindIcon(symbol.kind)}</ListItemIcon>
-
-        <ListItemText
-          primary={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-              <Tooltip title={`Go to line ${symbol.start_line}`} arrow>
-                <Typography
-                  variant="body2"
-                  component="span"
-                  sx={{
-                    fontFamily: 'monospace',
-                    fontWeight: symbol.has_children || isHighlighted ? 500 : 400,
-                    cursor: 'pointer',
-                    '&:hover': { textDecoration: 'underline' },
-                    ...(isHighlighted && {
-                      color: '#61afef',
-                    }),
-                  }}
-                  onClick={handleNavigate}
-                >
-                  {symbol.name}
-                  {symbol.kind === 'function' ||
-                  symbol.kind === 'method' ||
-                  symbol.kind === 'constructor' ||
-                  symbol.kind === 'staticmethod' ||
-                  symbol.kind === 'classmethod'
-                    ? '()'
-                    : ''}
-                </Typography>
-              </Tooltip>
-
-              <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace' }}>
-                {getKindLabel(symbol.kind)}
-              </Typography>
-
-              {symbol.inheritance.map((inh, i) => (
-                <Tooltip
-                  key={i}
-                  title={
-                    inh.target_file_path
-                      ? `Click: go to source | ${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+Click: locate in tree`
-                      : ''
-                  }
-                  arrow
-                >
-                  <Chip
-                    label={`extends ${inh.reference_text}`}
-                    size="small"
-                    variant="outlined"
-                    color="info"
-                    sx={{
-                      height: 18,
-                      fontSize: '0.65rem',
-                      cursor: inh.target_file_path ? 'pointer' : 'default',
-                    }}
-                    onClick={
-                      inh.target_file_path
-                        ? (e) => {
-                            e.stopPropagation()
-                            onInheritanceClick(inh, e)
-                          }
-                        : undefined
-                    }
-                  />
-                </Tooltip>
-              ))}
-            </Box>
-          }
-        />
-      </ListItemButton>
+      {symbol.has_children ? (
+        <ListItemButton
+          onClick={() => onToggle(symbol.id)}
+          onContextMenu={(e) => onContextMenuAction(symbol, e)}
+          sx={rowSx}
+        >
+          {rowContent}
+        </ListItemButton>
+      ) : (
+        <Box
+          onContextMenu={(e) => onContextMenuAction(symbol, e)}
+          sx={{
+            ...rowSx,
+            display: 'flex',
+            alignItems: 'center',
+            pl: `${indent + 16}px`,
+            '&:hover': { backgroundColor: 'action.hover' },
+          }}
+        >
+          {rowContent}
+        </Box>
+      )}
 
       {symbol.has_children && (
         <Collapse in={isExpanded} timeout="auto">
@@ -1765,77 +1786,106 @@ function KindSymbolNode({
     [symbol, isContainer]
   )
 
-  return (
+  const kindRowContent = (
     <>
-      <ListItemButton
-        onClick={isContainer ? () => onToggle(symbol.id) : () => onSymbolClick(asTreeSymbol)}
-        onContextMenu={(e) => onSymbolContextMenu(asTreeSymbol, e)}
-        sx={{ py: 0.5, pl: 2 + indent * 3 }}
-      >
-        {isContainer && (
-          <ListItemIcon sx={{ minWidth: 28 }}>
-            {isExpanding ? (
-              <CircularProgress size={16} />
-            ) : isExpanded ? (
-              <ExpandMoreIcon fontSize="small" />
-            ) : (
-              <ChevronRightIcon fontSize="small" />
-            )}
-          </ListItemIcon>
-        )}
-        {!isContainer && <Box sx={{ width: 28 }} />}
-        <ListItemIcon sx={{ minWidth: 24 }}>{getKindIcon(symbol.kind)}</ListItemIcon>
-        <ListItemText
-          primary={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-              <Typography
-                variant="body2"
-                component="span"
-                sx={{
-                  fontFamily: 'monospace',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  '&:hover': { textDecoration: 'underline' },
-                }}
+      {isContainer && (
+        <ListItemIcon sx={{ minWidth: 28 }}>
+          {isExpanding ? (
+            <CircularProgress size={16} />
+          ) : isExpanded ? (
+            <ExpandMoreIcon fontSize="small" />
+          ) : (
+            <ChevronRightIcon fontSize="small" />
+          )}
+        </ListItemIcon>
+      )}
+      {!isContainer && <Box sx={{ width: 28 }} />}
+      <ListItemIcon sx={{ minWidth: 24 }}>{getKindIcon(symbol.kind)}</ListItemIcon>
+      <ListItemText
+        primary={
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+            <Typography
+              variant="body2"
+              component="span"
+              sx={{
+                fontFamily: 'monospace',
+                fontWeight: 500,
+                userSelect: 'text',
+              }}
+            >
+              {symbol.name}
+              {isCallable ? '()' : ''}
+            </Typography>
+            <Tooltip title={`Go to line ${symbol.start_line}`} arrow>
+              <IconButton
+                size="small"
                 onClick={(e) => {
                   e.stopPropagation()
                   onSymbolClick(asTreeSymbol)
                 }}
+                sx={{ p: 0.25 }}
+                aria-label={`Go to line ${symbol.start_line}`}
               >
-                {symbol.name}
-                {isCallable ? '()' : ''}
-              </Typography>
-              {symbol.file_path && (
-                <Tooltip title="View in Outline mode" arrow>
+                <ArrowForwardIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
+            {symbol.file_path && (
+              <Tooltip title="View in Outline mode" arrow>
+                <Typography
+                  variant="caption"
+                  component="span"
+                  sx={{
+                    fontFamily: 'monospace',
+                    color: 'text.secondary',
+                    cursor: 'pointer',
+                    '&:hover': { color: 'primary.main', textDecoration: 'underline' },
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onSwitchToOutline(symbol.file_path!)
+                  }}
+                >
+                  {fileDir(symbol.file_path)}
                   <Typography
                     variant="caption"
                     component="span"
-                    sx={{
-                      fontFamily: 'monospace',
-                      color: 'text.secondary',
-                      cursor: 'pointer',
-                      '&:hover': { color: 'primary.main', textDecoration: 'underline' },
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onSwitchToOutline(symbol.file_path!)
-                    }}
+                    sx={{ fontFamily: 'monospace', color: 'text.primary' }}
                   >
-                    {fileDir(symbol.file_path)}
-                    <Typography
-                      variant="caption"
-                      component="span"
-                      sx={{ fontFamily: 'monospace', color: 'text.primary' }}
-                    >
-                      {fileName(symbol.file_path)}
-                    </Typography>
+                    {fileName(symbol.file_path)}
                   </Typography>
-                </Tooltip>
-              )}
-            </Box>
-          }
-        />
-      </ListItemButton>
+                </Typography>
+              </Tooltip>
+            )}
+          </Box>
+        }
+      />
+    </>
+  )
+
+  return (
+    <>
+      {isContainer ? (
+        <ListItemButton
+          onClick={() => onToggle(symbol.id)}
+          onContextMenu={(e) => onSymbolContextMenu(asTreeSymbol, e)}
+          sx={{ py: 0.5, pl: 2 + indent * 3 }}
+        >
+          {kindRowContent}
+        </ListItemButton>
+      ) : (
+        <Box
+          onContextMenu={(e) => onSymbolContextMenu(asTreeSymbol, e)}
+          sx={{
+            py: 0.5,
+            pl: 2 + indent * 3,
+            display: 'flex',
+            alignItems: 'center',
+            '&:hover': { backgroundColor: 'action.hover' },
+          }}
+        >
+          {kindRowContent}
+        </Box>
+      )}
 
       {isContainer && (
         <Collapse in={isExpanded} timeout="auto">
