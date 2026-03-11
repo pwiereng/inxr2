@@ -208,6 +208,13 @@ class TestSearchDependenciesUseCase:
         assert len(response2.results) == 1
         assert response2.total == 3
 
+        # Offset beyond last result — empty results but total preserved
+        response3 = await use_case.execute(
+            SearchDependenciesRequest(query="react", limit=20, offset=100)
+        )
+        assert len(response3.results) == 0
+        assert response3.total == 3
+
     async def test_search_response_metadata(
         self, use_case: SearchDependenciesUseCase
     ) -> None:

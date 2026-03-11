@@ -84,7 +84,7 @@ class SearchDependenciesUseCase:
         if not deps:
             return SearchDependenciesResponse(
                 results=[],
-                total=0,
+                total=total,
                 query=request.query,
                 limit=request.limit,
                 offset=request.offset,
