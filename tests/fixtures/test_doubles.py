@@ -3127,6 +3127,34 @@ class InMemoryDependencyRepository(DependencyRepositoryPort):
             results = [d for d in results if d.language == language]
         return sorted(results, key=lambda d: (d.repository_id, d.file_id))
 
+    async def search_by_package_name(
+        self,
+        query: str,
+        repository_id: int | None = None,
+        language: str | None = None,
+        dependency_type: str | None = None,
+        is_direct: bool | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[Dependency], int]:
+        """Search dependencies by package name with partial, case-insensitive matching."""
+        results = [
+            d
+            for d in self._dependencies.values()
+            if query.lower() in d.package_name.lower()
+        ]
+        if repository_id is not None:
+            results = [d for d in results if d.repository_id == repository_id]
+        if language is not None:
+            results = [d for d in results if d.language == language]
+        if dependency_type is not None:
+            results = [d for d in results if d.dependency_type == dependency_type]
+        if is_direct is not None:
+            results = [d for d in results if d.is_direct == is_direct]
+        results.sort(key=lambda d: (d.package_name, d.repository_id))
+        total = len(results)
+        return results[offset : offset + limit], total
+
     async def count_by_repository(self, repository_id: int) -> int:
         """Count total dependencies in a repository."""
         return sum(

@@ -35,11 +35,13 @@ import {
   searchText,
   searchFiles,
   searchSymbols,
+  searchDependencies,
   getRepositories,
   getFileExtensions,
   type TextSearchParams,
   type TextSearchResult,
   type FileSearchResult,
+  type DependencySearchResult,
   type Repository,
   type Symbol,
 } from '@/lib/api'
@@ -56,8 +58,11 @@ function hasActiveSelection(): boolean {
 // Search mode type
 type SearchMode = 'keyword' | 'phrase' | 'regex' | 'file'
 
-// Unified result type for combining text and symbol search results
-type UnifiedResult = { kind: 'text'; data: TextSearchResult } | { kind: 'symbol'; data: Symbol }
+// Unified result type for combining text, symbol, and dependency search results
+type UnifiedResult =
+  | { kind: 'text'; data: TextSearchResult }
+  | { kind: 'symbol'; data: Symbol }
+  | { kind: 'dependency'; data: DependencySearchResult }
 
 // Source type options
 const SOURCE_TYPES = [
@@ -67,10 +72,11 @@ const SOURCE_TYPES = [
   { value: 'docstring', label: 'Docstrings' },
   { value: 'commit_message', label: 'Commit Messages' },
   { value: 'file_content', label: 'File Content' },
+  { value: 'dependency', label: 'Dependencies' },
 ]
 
 const ALL_SOURCE_TYPE_VALUES = SOURCE_TYPES.map((t) => t.value)
-const NON_TEXT_TYPES = new Set(['symbol', 'reference'])
+const NON_TEXT_TYPES = new Set(['symbol', 'reference', 'dependency'])
 const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => !NON_TEXT_TYPES.has(t.value)).map(
   (t) => t.value
 )
@@ -243,6 +249,7 @@ export default function Search(): React.ReactElement {
           const textSourceTypes = activeSourceTypes.filter((t) => !NON_TEXT_TYPES.has(t))
           const hasSymbol = activeSourceTypes.includes('symbol')
           const hasReference = activeSourceTypes.includes('reference')
+          const hasDependency = activeSourceTypes.includes('dependency')
           const callText = textSourceTypes.length > 0 || hasReference
           const allTextTypesSelected = ALL_TEXT_TYPE_VALUES.every((v) =>
             textSourceTypes.includes(v)
@@ -251,8 +258,10 @@ export default function Search(): React.ReactElement {
           const promises: Promise<void>[] = []
           let symbolResults: Symbol[] = []
           let textResults: TextSearchResult[] = []
+          let depResults: DependencySearchResult[] = []
           let symbolTotal = 0
           let textTotal = 0
+          let depTotal = 0
 
           if (hasSymbol && offset === 0) {
             // Only fetch symbols on page 1 (they're top matches, not paginated —
@@ -305,6 +314,20 @@ export default function Search(): React.ReactElement {
             )
           }
 
+          if (hasDependency && offset === 0) {
+            promises.push(
+              searchDependencies({
+                q: query,
+                repository_id: selectedRepoId,
+                limit: RESULTS_PER_PAGE,
+                offset: 0,
+              }).then((response) => {
+                depResults = response.results
+                depTotal = response.total
+              })
+            )
+          }
+
           await Promise.all(promises)
 
           // Symbols are shown as top matches on page 1 only (not paginated).
@@ -314,11 +337,14 @@ export default function Search(): React.ReactElement {
             ...(offset === 0
               ? symbolResults.map((s) => ({ kind: 'symbol' as const, data: s }))
               : []),
+            ...(offset === 0
+              ? depResults.map((d) => ({ kind: 'dependency' as const, data: d }))
+              : []),
             ...textResults.map((t) => ({ kind: 'text' as const, data: t })),
           ]
           setResults(unified)
           setFileResults([])
-          setTotalResults(symbolTotal + textTotal)
+          setTotalResults(symbolTotal + depTotal + textTotal)
           // Pagination is driven by text search total (the only source with a real total count).
           // Symbol search returns batch size, not a true total, so it can't drive pagination.
           setPaginationTotal(callText ? textTotal : 0)
@@ -482,6 +508,23 @@ export default function Search(): React.ReactElement {
   const handleUnifiedResultClick = (result: UnifiedResult) => {
     if (result.kind === 'text') {
       handleResultClick(result.data)
+    } else if (result.kind === 'dependency') {
+      // Dependency result - navigate to the manifest file in browse
+      const dep = result.data
+      if (!dep.file_path) return
+
+      const params = new URLSearchParams()
+      params.set('repo', dep.repository_name)
+      if (branchParam) params.set('branch', branchParam)
+
+      const encodedPath = dep.file_path
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/')
+
+      navigate(
+        `/browse/${encodeURIComponent(dep.repository_name)}/${encodedPath}?${params.toString()}`
+      )
     } else {
       // Symbol result - navigate to browse at the file and line
       const repo = repositories.find((r) => r.id === result.data.repository_id)
@@ -560,7 +603,6 @@ export default function Search(): React.ReactElement {
   const handleSelectNone = () => {
     const newParams = new URLSearchParams(searchParams)
     newParams.set('types', '')
-    newParams.set('ext', '')
     newParams.delete('page')
     setSearchParams(newParams, { replace: true })
   }
@@ -581,6 +623,8 @@ export default function Search(): React.ReactElement {
         return 'secondary'
       case 'file_content':
         return 'default'
+      case 'dependency':
+        return 'info'
       default:
         return 'default'
     }
@@ -1010,7 +1054,7 @@ export default function Search(): React.ReactElement {
                       ))
                     : results.map((result, index) => (
                         <ListItem
-                          key={`${result.kind}-${result.kind === 'text' ? result.data.source_type : 'sym'}-${result.data.id}`}
+                          key={`${result.kind}-${result.kind === 'text' ? result.data.source_type : result.kind}-${result.data.id}`}
                           divider={index < results.length - 1}
                           sx={{
                             display: 'flex',
@@ -1067,6 +1111,52 @@ export default function Search(): React.ReactElement {
                                   {result.data.file_path && ` / ${result.data.file_path}`}:
                                   {result.data.start_line}
                                 </ButtonBase>
+                              </Box>
+                            ) : result.kind === 'dependency' ? (
+                              <Box
+                                sx={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 1,
+                                  mb: 0.5,
+                                }}
+                              >
+                                <Chip label="Dependency" size="small" color="info" />
+                                <Chip
+                                  label={result.data.dependency_type}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                                {!result.data.is_direct && (
+                                  <Chip
+                                    label="transitive"
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ fontStyle: 'italic' }}
+                                  />
+                                )}
+                                <ButtonBase
+                                  onClick={() => {
+                                    if (!hasActiveSelection()) handleUnifiedResultClick(result)
+                                  }}
+                                  sx={{
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.875rem',
+                                    userSelect: 'text',
+                                    '&:hover': {
+                                      textDecoration: 'underline',
+                                      color: 'primary.main',
+                                    },
+                                  }}
+                                >
+                                  {result.data.repository_name}
+                                  {result.data.file_path && ` / ${result.data.file_path}`}
+                                </ButtonBase>
+                                <Chip
+                                  label={result.data.language}
+                                  size="small"
+                                  variant="outlined"
+                                />
                               </Box>
                             ) : (
                               <Box
@@ -1127,6 +1217,28 @@ export default function Search(): React.ReactElement {
                                   query,
                                   'keyword'
                                 )
+                              ) : result.kind === 'dependency' ? (
+                                <Box
+                                  component="span"
+                                  sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                                >
+                                  {highlightMatches(result.data.package_name, query, 'keyword')}
+                                  {result.data.version_spec && (
+                                    <Chip
+                                      label={result.data.version_spec}
+                                      size="small"
+                                      variant="outlined"
+                                      sx={{ fontFamily: 'monospace', height: 20 }}
+                                    />
+                                  )}
+                                  {result.data.resolved_version && (
+                                    <Chip
+                                      label={`= ${result.data.resolved_version}`}
+                                      size="small"
+                                      sx={{ fontFamily: 'monospace', height: 20 }}
+                                    />
+                                  )}
+                                </Box>
                               ) : result.data.headline ? (
                                 <span
                                   dangerouslySetInnerHTML={{
@@ -1167,7 +1279,7 @@ export default function Search(): React.ReactElement {
               <Typography color="text.secondary">
                 {isFileMode
                   ? 'Enter a file name to search for files by path'
-                  : 'Enter a search query to find symbols, comments, docstrings, commit messages, and files'}
+                  : 'Enter a search query to find symbols, comments, docstrings, commit messages, dependencies, and files'}
               </Typography>
             </Paper>
           )}

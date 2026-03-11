@@ -30,6 +30,7 @@ vi.mock('@/lib/api', async () => {
     ...actual,
     searchText: vi.fn(),
     searchSymbols: vi.fn(),
+    searchDependencies: vi.fn(),
     getRepositories: vi.fn(),
     getRepositoryBranches: vi.fn(),
     getCommits: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock('@/lib/api', async () => {
 
 const mockSearchText = vi.mocked(api.searchText)
 const mockSearchSymbols = vi.mocked(api.searchSymbols)
+const mockSearchDependencies = vi.mocked(api.searchDependencies)
 const mockGetRepositories = vi.mocked(api.getRepositories)
 const mockGetRepositoryBranches = vi.mocked(api.getRepositoryBranches)
 const mockGetCommits = vi.mocked(api.getCommits)
@@ -110,6 +112,14 @@ describe('Search', () => {
       limit: 20,
       offset: 0,
     })
+
+    mockSearchDependencies.mockResolvedValue({
+      results: [],
+      total: 0,
+      query: '',
+      limit: 20,
+      offset: 0,
+    })
   })
 
   it('should render search page with empty state', async () => {
@@ -121,7 +131,7 @@ describe('Search', () => {
 
     expect(
       screen.getByText(
-        /Enter a search query to find symbols, comments, docstrings, commit messages, and files/i
+        /Enter a search query to find symbols, comments, docstrings, commit messages, dependencies, and files/i
       )
     ).toBeInTheDocument()
   })

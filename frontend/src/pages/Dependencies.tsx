@@ -14,6 +14,7 @@ import {
   InputAdornment,
   Chip,
   Tooltip,
+  IconButton,
 } from '@mui/material'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 import FolderOpenIcon from '@mui/icons-material/FolderOpen'
@@ -194,6 +195,15 @@ export default function Dependencies(): React.ReactElement {
       .map((segment) => encodeURIComponent(segment))
       .join('/')
     navigate(`/browse/${encodedRepoName}/${encodedFilePath}?${params.toString()}`)
+  }
+
+  const handleSearchUsages = (packageName: string) => {
+    const params = new URLSearchParams()
+    if (repoName) params.set('repo', repoName)
+    if (branch) params.set('branch', branch)
+    params.set('query', packageName)
+    params.set('types', 'dependency')
+    navigate(`/search?${params.toString()}`)
   }
 
   // Header handlers
@@ -455,6 +465,7 @@ export default function Dependencies(): React.ReactElement {
                   isExpanded={expandedFiles.has(group.fileId)}
                   onToggle={toggleFile}
                   onFileClick={handleFileClick}
+                  onSearchUsages={handleSearchUsages}
                 />
               ))}
             </List>
@@ -512,6 +523,7 @@ interface FileGroupNodeProps {
   isExpanded: boolean
   onToggle: (fileId: number) => void
   onFileClick: (filePath: string) => void
+  onSearchUsages: (packageName: string) => void
 }
 
 function FileGroupNode({
@@ -519,6 +531,7 @@ function FileGroupNode({
   isExpanded,
   onToggle,
   onFileClick,
+  onSearchUsages,
 }: FileGroupNodeProps): React.ReactElement {
   const [expandedPackages, setExpandedPackages] = useState<Set<string>>(new Set())
 
@@ -621,7 +634,7 @@ function FileGroupNode({
         {packageGroups.map((pkg) => {
           const first = pkg.items[0]
           return pkg.items.length === 1 && first ? (
-            <DependencyNode key={first.id} item={first} />
+            <DependencyNode key={first.id} item={first} onSearchUsages={onSearchUsages} />
           ) : (
             <PackageGroupNode
               key={pkg.packageName}
@@ -716,9 +729,10 @@ function PackageGroupNode({
 
 interface DependencyNodeProps {
   item: DependencyItem
+  onSearchUsages?: (packageName: string) => void
 }
 
-function DependencyNode({ item }: DependencyNodeProps): React.ReactElement {
+function DependencyNode({ item, onSearchUsages }: DependencyNodeProps): React.ReactElement {
   const version = item.version_spec ?? item.resolved_version
   return (
     <Box
@@ -773,6 +787,25 @@ function DependencyNode({ item }: DependencyNodeProps): React.ReactElement {
           color="warning"
           sx={{ height: 18, fontSize: '0.65rem' }}
         />
+      )}
+
+      {onSearchUsages && (
+        <Tooltip title="Search usages" arrow placement="right">
+          <IconButton
+            size="small"
+            aria-label={`Search usages of ${item.package_name}`}
+            onClick={() => onSearchUsages(item.package_name)}
+            sx={{
+              ml: 'auto',
+              opacity: 0.3,
+              transition: 'opacity 0.15s',
+              '&:hover': { opacity: 1 },
+              p: 0.25,
+            }}
+          >
+            <SearchIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
       )}
     </Box>
   )
