@@ -1686,7 +1686,7 @@ function SymbolNode({
             ...rowSx,
             display: 'flex',
             alignItems: 'center',
-            px: `${indent + 16}px`,
+            pl: `${indent + 16}px`,
             '&:hover': { backgroundColor: 'action.hover' },
           }}
         >
