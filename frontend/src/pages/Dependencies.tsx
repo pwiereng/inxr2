@@ -618,9 +618,10 @@ function FileGroupNode({
       </ListItemButton>
 
       <Collapse in={isExpanded} timeout="auto">
-        {packageGroups.map((pkg) =>
-          pkg.items.length === 1 ? (
-            <DependencyNode key={pkg.items[0]?.id} item={pkg.items[0] as DependencyItem} />
+        {packageGroups.map((pkg) => {
+          const first = pkg.items[0]
+          return pkg.items.length === 1 && first ? (
+            <DependencyNode key={first.id} item={first} />
           ) : (
             <PackageGroupNode
               key={pkg.packageName}
@@ -629,7 +630,7 @@ function FileGroupNode({
               onToggle={togglePackage}
             />
           )
-        )}
+        })}
       </Collapse>
     </>
   )
@@ -651,6 +652,11 @@ const handleSelectName = (e: React.MouseEvent) => {
   const sel = window.getSelection()
   sel?.removeAllRanges()
   sel?.addRange(range)
+}
+
+/** Prevent click from bubbling to parent ListItemButton (avoids double-click flicker) */
+const stopClick = (e: React.MouseEvent) => {
+  e.stopPropagation()
 }
 
 /** Consistent left padding for dependency names within a file group */
@@ -681,6 +687,7 @@ function PackageGroupNode({
               <Typography
                 variant="body2"
                 component="span"
+                onClick={stopClick}
                 onDoubleClick={handleSelectName}
                 sx={{ fontFamily: 'monospace', fontWeight: 500 }}
               >
