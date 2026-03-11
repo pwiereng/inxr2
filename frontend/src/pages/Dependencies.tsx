@@ -866,7 +866,6 @@ function DependencyVersionNode({ item }: DependencyNodeProps): React.ReactElemen
           sx={{ height: 18, fontSize: '0.65rem' }}
         />
       )}
-
     </Box>
   )
 }

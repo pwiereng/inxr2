@@ -101,8 +101,11 @@ class PostgresDependencyRepository(
         offset: int = 0,
     ) -> tuple[list[Dependency], int]:
         """Search dependencies by package name with partial, case-insensitive matching."""
+        escaped_query = (
+            query.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+        )
         base = select(DependencyModel).where(
-            DependencyModel.package_name.ilike(f"%{query}%")
+            DependencyModel.package_name.ilike(f"%{escaped_query}%", escape="\\")
         )
 
         if repository_id is not None:

@@ -228,3 +228,23 @@ class TestSearchDependenciesUseCase:
         )
         assert response.total == 1
         assert response.results[0].package_name == "react-scripts"
+
+    async def test_search_filter_by_is_direct_true(
+        self, use_case: SearchDependenciesUseCase
+    ) -> None:
+        """Filter by is_direct=True returns only direct dependencies."""
+        response = await use_case.execute(
+            SearchDependenciesRequest(query="react", is_direct=True)
+        )
+        assert response.total == 3
+        assert all(r.is_direct is True for r in response.results)
+
+    async def test_search_filter_by_is_direct_false(
+        self, use_case: SearchDependenciesUseCase
+    ) -> None:
+        """Filter by is_direct=False returns only transitive dependencies."""
+        response = await use_case.execute(
+            SearchDependenciesRequest(query="react", is_direct=False)
+        )
+        assert response.total == 0
+        assert response.results == []
