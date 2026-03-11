@@ -6,10 +6,20 @@ from .get_repository_dependencies import (
     GetRepositoryDependenciesResponse,
     GetRepositoryDependenciesUseCase,
 )
+from .search_dependencies import (
+    SearchDependenciesRequest,
+    SearchDependenciesResponse,
+    SearchDependenciesUseCase,
+    SearchDependencyItem,
+)
 
 __all__ = [
     "DependencyItem",
     "GetRepositoryDependenciesRequest",
     "GetRepositoryDependenciesResponse",
     "GetRepositoryDependenciesUseCase",
+    "SearchDependenciesRequest",
+    "SearchDependenciesResponse",
+    "SearchDependencyItem",
+    "SearchDependenciesUseCase",
 ]

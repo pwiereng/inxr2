@@ -78,6 +78,40 @@ class DependencyRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def search_by_package_name(
+        self,
+        query: str,
+        repository_id: int | None = None,
+        language: str | None = None,
+        dependency_type: str | None = None,
+        is_direct: bool | None = None,
+        branch: str | None = None,
+        scope: str | None = "latest",
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[Dependency], int]:
+        """Search dependencies by package name with partial, case-insensitive matching.
+
+        Returns (results, total_count) for pagination.
+
+        Args:
+            query: Package name search pattern (partial match)
+            repository_id: Filter by repository (optional)
+            language: Filter by language ecosystem (optional)
+            dependency_type: Filter by type (runtime, dev, etc.) (optional)
+            is_direct: Filter by direct/transitive (optional)
+            branch: Filter to files on this branch (optional)
+            scope: Search scope for global searches. When both ``repository_id``
+                and ``branch`` are ``None``, ``"latest"`` filters results to the
+                latest file versions; ``None`` disables this scoping. When either
+                ``repository_id`` or ``branch`` is provided, results are already
+                constrained to latest file versions and this parameter is ignored.
+            limit: Maximum results to return
+            offset: Pagination offset
+        """
+        pass
+
+    @abstractmethod
     async def count_by_repository(self, repository_id: int) -> int:
         """Count total dependencies in a repository."""
         pass

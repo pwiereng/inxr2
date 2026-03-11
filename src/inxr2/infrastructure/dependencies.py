@@ -65,7 +65,10 @@ from ..application.ports.repositories import (
 )
 from ..application.ports.services import FileSystemPort, GitServicePort, TextSearchPort
 from ..application.use_cases.commits import ListCommitsUseCase
-from ..application.use_cases.dependencies import GetRepositoryDependenciesUseCase
+from ..application.use_cases.dependencies import (
+    GetRepositoryDependenciesUseCase,
+    SearchDependenciesUseCase,
+)
 from ..application.use_cases.files import (
     GetFileContentUseCase,
     GetFileHistoryUseCase,
@@ -539,4 +542,22 @@ def get_repository_dependencies_use_case(
 GetRepositoryDependenciesUseCaseDep = Annotated[
     GetRepositoryDependenciesUseCase,
     Depends(get_repository_dependencies_use_case),
+]
+
+
+def get_search_dependencies_use_case(
+    dependency_adapter: DependencyAdapter,
+    file_adapter: FileAdapter,
+    repository_adapter: RepositoryAdapter,
+) -> SearchDependenciesUseCase:
+    """Provide SearchDependenciesUseCase with dependencies."""
+    return SearchDependenciesUseCase(
+        dependency_repo=dependency_adapter,
+        file_repo=file_adapter,
+        repository_repo=repository_adapter,
+    )
+
+
+SearchDependenciesUseCaseDep = Annotated[
+    SearchDependenciesUseCase, Depends(get_search_dependencies_use_case)
 ]

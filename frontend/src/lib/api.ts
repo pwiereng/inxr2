@@ -649,6 +649,56 @@ export async function getFileExtensions(params?: {
   return fetchApi<ExtensionsResponse>(`/search/extensions${query ? `?${query}` : ''}`)
 }
 
+// Dependency Search types and functions
+export interface DependencySearchParams {
+  q: string
+  repository_id?: number
+  language?: string
+  dependency_type?: string
+  is_direct?: boolean
+  branch?: string
+  limit?: number
+  offset?: number
+}
+
+export interface DependencySearchResult {
+  id: number
+  package_name: string
+  language: string
+  version_spec: string | null
+  resolved_version: string | null
+  dependency_type: string
+  is_direct: boolean
+  file_id: number
+  file_path: string | null
+  repository_id: number
+  repository_name: string
+}
+
+export interface DependencySearchResponse {
+  results: DependencySearchResult[]
+  total: number
+  query: string
+  limit: number
+  offset: number
+}
+
+export async function searchDependencies(
+  params: DependencySearchParams
+): Promise<DependencySearchResponse> {
+  const searchParams = new URLSearchParams()
+  searchParams.set('q', params.q)
+  if (params.repository_id) searchParams.set('repository_id', params.repository_id.toString())
+  if (params.language) searchParams.set('language', params.language)
+  if (params.dependency_type) searchParams.set('dependency_type', params.dependency_type)
+  if (params.is_direct !== undefined) searchParams.set('is_direct', params.is_direct.toString())
+  if (params.branch) searchParams.set('branch', params.branch)
+  if (params.limit) searchParams.set('limit', params.limit.toString())
+  if (params.offset) searchParams.set('offset', params.offset.toString())
+
+  return fetchApi<DependencySearchResponse>(`/search/dependencies?${searchParams}`)
+}
+
 // Dependencies
 export interface DependencyItem {
   id: number

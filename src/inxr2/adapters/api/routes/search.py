@@ -6,11 +6,13 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
+from ....application.use_cases.dependencies import SearchDependenciesRequest
 from ....application.use_cases.search import SearchFilesRequest, SearchTextRequest
 from ....domain.exceptions import CommitNotFound, RepositoryNotFound
 from ....domain.value_objects import QueryMode, TextSearchSourceType
 from ....infrastructure.dependencies import (
     FileSearchAdapter,
+    SearchDependenciesUseCaseDep,
     SearchFilesUseCaseDep,
     SearchTextUseCaseDep,
 )
@@ -344,3 +346,102 @@ async def get_extensions(
         scope=scope,
     )
     return ExtensionsResponse(extensions=extensions)
+
+
+# Dependency search response models
+class DependencySearchResultResponse(BaseModel):
+    """A single dependency search result."""
+
+    id: int
+    package_name: str
+    language: str
+    version_spec: str | None
+    resolved_version: str | None
+    dependency_type: str
+    is_direct: bool
+    file_id: int
+    file_path: str | None
+    repository_id: int
+    repository_name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DependencySearchListResponse(BaseModel):
+    """Paginated dependency search results response."""
+
+    results: list[DependencySearchResultResponse]
+    total: int
+    query: str
+    limit: int
+    offset: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/dependencies", response_model=DependencySearchListResponse)
+async def search_dependencies(
+    use_case: SearchDependenciesUseCaseDep,
+    q: str = Query(
+        ...,
+        min_length=1,
+        max_length=MAX_TEXT_QUERY_LENGTH,
+        description="Package name search query",
+    ),
+    repo: int | None = Query(
+        None, alias="repository_id", description="Repository ID filter"
+    ),
+    language: str | None = Query(None, description="Language filter"),
+    dependency_type: str | None = Query(None, description="Dependency type filter"),
+    is_direct: bool | None = Query(None, description="Direct/transitive filter"),
+    branch: str | None = Query(None, description="Branch filter"),
+    scope: Literal["latest"] = Query(
+        "latest",
+        description="Search scope — filters to latest file versions",
+    ),
+    limit: int = Query(20, ge=1, le=100, description="Results per page"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+) -> DependencySearchListResponse:
+    """
+    Search dependencies by package name with partial, case-insensitive matching.
+
+    Returns matching dependencies across repositories, with package name,
+    version, source file, and dependency type information.
+    Results are scoped to the latest file versions by default.
+    """
+    response = await use_case.execute(
+        SearchDependenciesRequest(
+            query=q,
+            repository_id=repo,
+            language=language,
+            dependency_type=dependency_type,
+            is_direct=is_direct,
+            branch=branch,
+            scope=scope,
+            limit=limit,
+            offset=offset,
+        )
+    )
+
+    return DependencySearchListResponse(
+        results=[
+            DependencySearchResultResponse(
+                id=r.id,
+                package_name=r.package_name,
+                language=r.language,
+                version_spec=r.version_spec,
+                resolved_version=r.resolved_version,
+                dependency_type=r.dependency_type,
+                is_direct=r.is_direct,
+                file_id=r.file_id,
+                file_path=r.file_path,
+                repository_id=r.repository_id,
+                repository_name=r.repository_name,
+            )
+            for r in response.results
+        ],
+        total=response.total,
+        query=response.query,
+        limit=response.limit,
+        offset=response.offset,
+    )

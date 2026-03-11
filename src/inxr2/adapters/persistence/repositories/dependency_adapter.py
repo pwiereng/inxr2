@@ -1,6 +1,6 @@
 """PostgreSQL dependency repository adapter."""
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import DependencyRepositoryPort
@@ -8,6 +8,7 @@ from ....domain.entities import Dependency
 from ..mappers import DependencyMapper
 from ..models import CommitFileModel, DependencyModel
 from .base_repository import BaseSQLAlchemyRepository
+from .shared_queries import head_file_ids_subquery, latest_file_ids_subquery
 
 
 class PostgresDependencyRepository(
@@ -89,6 +90,65 @@ class PostgresDependencyRepository(
         query = query.order_by(DependencyModel.repository_id, DependencyModel.file_id)
         result = await self.session.execute(query)
         return [self.mapper.to_domain(m) for m in result.scalars().all()]
+
+    async def search_by_package_name(
+        self,
+        query: str,
+        repository_id: int | None = None,
+        language: str | None = None,
+        dependency_type: str | None = None,
+        is_direct: bool | None = None,
+        branch: str | None = None,
+        scope: str | None = "latest",
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[Dependency], int]:
+        """Search dependencies by package name with partial, case-insensitive matching."""
+        escaped_query = (
+            query.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+        )
+        base = select(DependencyModel).where(
+            DependencyModel.package_name.ilike(f"%{escaped_query}%", escape="\\")
+        )
+
+        if repository_id is not None:
+            base = base.where(DependencyModel.repository_id == repository_id)
+        if language is not None:
+            base = base.where(DependencyModel.language == language)
+        if dependency_type is not None:
+            base = base.where(DependencyModel.dependency_type == dependency_type)
+        if is_direct is not None:
+            base = base.where(DependencyModel.is_direct == is_direct)
+
+        # Scope to latest file versions to avoid stale/duplicate results
+        if branch is not None or repository_id is not None:
+            latest_fids = latest_file_ids_subquery(
+                repository_id=repository_id, branch=branch
+            )
+            base = base.where(DependencyModel.file_id.in_(select(latest_fids.c.max_id)))
+        elif scope == "latest":
+            head_fids = head_file_ids_subquery()
+            base = base.where(DependencyModel.file_id.in_(select(head_fids.c.file_id)))
+
+        # Count total
+        count_query = select(func.count()).select_from(base.subquery())
+        total = (await self.session.execute(count_query)).scalar() or 0
+
+        # Fetch page — include unique tie-breaker for deterministic pagination
+        results_query = (
+            base.order_by(
+                DependencyModel.package_name,
+                DependencyModel.repository_id,
+                DependencyModel.file_id,
+                DependencyModel.id,
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self.session.execute(results_query)
+        deps = [self.mapper.to_domain(m) for m in result.scalars().all()]
+
+        return deps, total
 
     async def delete_by_file(self, file_id: int) -> int:
         """Delete all dependencies for a file. Returns count deleted."""
