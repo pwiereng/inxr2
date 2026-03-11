@@ -539,13 +539,15 @@ function FileGroupNode({
   const packageGroups = useMemo(() => groupByPackage(group.items), [group.items])
 
   const togglePackage = (pkgName: string) => {
-    const next = new Set(expandedPackages)
-    if (next.has(pkgName)) {
-      next.delete(pkgName)
-    } else {
-      next.add(pkgName)
-    }
-    setExpandedPackages(next)
+    setExpandedPackages((prev) => {
+      const next = new Set(prev)
+      if (next.has(pkgName)) {
+        next.delete(pkgName)
+      } else {
+        next.add(pkgName)
+      }
+      return next
+    })
   }
 
   return (
@@ -642,6 +644,7 @@ interface PackageGroupNodeProps {
 /** Select the full text content of an element on double-click */
 const handleSelectName = (e: React.MouseEvent) => {
   e.preventDefault()
+  e.stopPropagation()
   const el = e.currentTarget
   const range = document.createRange()
   range.selectNodeContents(el)
@@ -824,11 +827,6 @@ function DependencyVersionNode({ item }: DependencyNodeProps): React.ReactElemen
         />
       )}
 
-      {item.is_direct && (
-        <Typography variant="caption" color="text.secondary">
-          direct
-        </Typography>
-      )}
     </Box>
   )
 }
