@@ -641,6 +641,7 @@ function FileGroupNode({
               group={pkg}
               isExpanded={expandedPackages.has(pkg.packageName)}
               onToggle={togglePackage}
+              onSearchUsages={onSearchUsages}
             />
           )
         })}
@@ -653,6 +654,7 @@ interface PackageGroupNodeProps {
   group: PackageGroup
   isExpanded: boolean
   onToggle: (pkgName: string) => void
+  onSearchUsages?: (packageName: string) => void
 }
 
 /** Select the full text content of an element on double-click */
@@ -680,6 +682,7 @@ function PackageGroupNode({
   group,
   isExpanded,
   onToggle,
+  onSearchUsages,
 }: PackageGroupNodeProps): React.ReactElement {
   return (
     <>
@@ -713,6 +716,27 @@ function PackageGroupNode({
                 color="info"
                 sx={{ height: 18, fontSize: '0.65rem' }}
               />
+              {onSearchUsages && (
+                <Tooltip title="Search usages" arrow placement="right">
+                  <IconButton
+                    size="small"
+                    aria-label={`Search usages of ${group.packageName}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onSearchUsages(group.packageName)
+                    }}
+                    sx={{
+                      ml: 'auto',
+                      opacity: 0.3,
+                      transition: 'opacity 0.15s',
+                      '&:hover': { opacity: 1 },
+                      p: 0.25,
+                    }}
+                  >
+                    <SearchIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Box>
           }
         />
