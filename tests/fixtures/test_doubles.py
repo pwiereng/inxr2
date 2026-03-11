@@ -3134,6 +3134,8 @@ class InMemoryDependencyRepository(DependencyRepositoryPort):
         language: str | None = None,
         dependency_type: str | None = None,
         is_direct: bool | None = None,
+        branch: str | None = None,
+        scope: str | None = "latest",
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Dependency], int]:
@@ -3151,7 +3153,9 @@ class InMemoryDependencyRepository(DependencyRepositoryPort):
             results = [d for d in results if d.dependency_type == dependency_type]
         if is_direct is not None:
             results = [d for d in results if d.is_direct == is_direct]
-        results.sort(key=lambda d: (d.package_name, d.repository_id))
+        results.sort(
+            key=lambda d: (d.package_name, d.repository_id, d.file_id, d.id or 0)
+        )
         total = len(results)
         return results[offset : offset + limit], total
 

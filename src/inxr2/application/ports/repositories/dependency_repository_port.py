@@ -85,6 +85,8 @@ class DependencyRepositoryPort(ABC):
         language: str | None = None,
         dependency_type: str | None = None,
         is_direct: bool | None = None,
+        branch: str | None = None,
+        scope: str | None = "latest",
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Dependency], int]:
@@ -98,6 +100,8 @@ class DependencyRepositoryPort(ABC):
             language: Filter by language ecosystem (optional)
             dependency_type: Filter by type (runtime, dev, etc.) (optional)
             is_direct: Filter by direct/transitive (optional)
+            branch: Filter to files on this branch (optional)
+            scope: Search scope — "latest" filters to latest file versions (default)
             limit: Maximum results to return
             offset: Pagination offset
         """

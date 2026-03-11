@@ -656,6 +656,7 @@ export interface DependencySearchParams {
   language?: string
   dependency_type?: string
   is_direct?: boolean
+  branch?: string
   limit?: number
   offset?: number
 }
@@ -691,6 +692,7 @@ export async function searchDependencies(
   if (params.language) searchParams.set('language', params.language)
   if (params.dependency_type) searchParams.set('dependency_type', params.dependency_type)
   if (params.is_direct !== undefined) searchParams.set('is_direct', params.is_direct.toString())
+  if (params.branch) searchParams.set('branch', params.branch)
   if (params.limit) searchParams.set('limit', params.limit.toString())
   if (params.offset) searchParams.set('offset', params.offset.toString())
 

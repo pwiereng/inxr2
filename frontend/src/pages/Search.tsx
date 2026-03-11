@@ -319,6 +319,7 @@ export default function Search(): React.ReactElement {
               searchDependencies({
                 q: query,
                 repository_id: selectedRepoId,
+                branch: branchParam || undefined,
                 limit: RESULTS_PER_PAGE,
                 offset: 0,
               }).then((response) => {

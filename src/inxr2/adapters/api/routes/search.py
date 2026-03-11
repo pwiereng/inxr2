@@ -394,14 +394,20 @@ async def search_dependencies(
     language: str | None = Query(None, description="Language filter"),
     dependency_type: str | None = Query(None, description="Dependency type filter"),
     is_direct: bool | None = Query(None, description="Direct/transitive filter"),
+    branch: str | None = Query(None, description="Branch filter"),
+    scope: Literal["latest"] = Query(
+        "latest",
+        description="Search scope — filters to latest file versions",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ) -> DependencySearchListResponse:
     """
     Search dependencies by package name with partial, case-insensitive matching.
 
-    Returns matching dependencies across all repositories, with package name,
+    Returns matching dependencies across repositories, with package name,
     version, source file, and dependency type information.
+    Results are scoped to the latest file versions by default.
     """
     response = await use_case.execute(
         SearchDependenciesRequest(
@@ -410,6 +416,8 @@ async def search_dependencies(
             language=language,
             dependency_type=dependency_type,
             is_direct=is_direct,
+            branch=branch,
+            scope=scope,
             limit=limit,
             offset=offset,
         )

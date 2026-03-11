@@ -22,6 +22,8 @@ class SearchDependenciesRequest:
     language: str | None = None
     dependency_type: str | None = None
     is_direct: bool | None = None
+    branch: str | None = None
+    scope: str = "latest"
     limit: int = 20
     offset: int = 0
 
@@ -77,6 +79,8 @@ class SearchDependenciesUseCase:
             language=request.language,
             dependency_type=request.dependency_type,
             is_direct=request.is_direct,
+            branch=request.branch,
+            scope=request.scope if request.repository_id is None else None,
             limit=request.limit,
             offset=request.offset,
         )
@@ -100,9 +104,14 @@ class SearchDependenciesUseCase:
         repositories = await self._repository_repo.find_by_ids(repo_ids)
         repo_map = {r.id: r.name for r in repositories if r.id is not None}
 
+        for d in deps:
+            assert (
+                d.id is not None
+            ), f"Persisted dependency missing id: {d.package_name}"
+
         items = [
             SearchDependencyItem(
-                id=d.id if d.id is not None else 0,
+                id=d.id,  # type: ignore[arg-type]
                 package_name=d.package_name,
                 language=d.language,
                 version_spec=d.version_spec,

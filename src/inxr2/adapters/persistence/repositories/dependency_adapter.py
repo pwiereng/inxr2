@@ -8,6 +8,7 @@ from ....domain.entities import Dependency
 from ..mappers import DependencyMapper
 from ..models import CommitFileModel, DependencyModel
 from .base_repository import BaseSQLAlchemyRepository
+from .shared_queries import head_file_ids_subquery, latest_file_ids_subquery
 
 
 class PostgresDependencyRepository(
@@ -97,6 +98,8 @@ class PostgresDependencyRepository(
         language: str | None = None,
         dependency_type: str | None = None,
         is_direct: bool | None = None,
+        branch: str | None = None,
+        scope: str | None = "latest",
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Dependency], int]:
@@ -117,13 +120,27 @@ class PostgresDependencyRepository(
         if is_direct is not None:
             base = base.where(DependencyModel.is_direct == is_direct)
 
+        # Scope to latest file versions to avoid stale/duplicate results
+        if branch is not None or repository_id is not None:
+            latest_fids = latest_file_ids_subquery(
+                repository_id=repository_id, branch=branch
+            )
+            base = base.where(DependencyModel.file_id.in_(select(latest_fids.c.max_id)))
+        elif scope == "latest":
+            head_fids = head_file_ids_subquery()
+            base = base.where(DependencyModel.file_id.in_(select(head_fids.c.file_id)))
+
         # Count total
         count_query = select(func.count()).select_from(base.subquery())
         total = (await self.session.execute(count_query)).scalar() or 0
 
-        # Fetch page
+        # Fetch page — include file_id as tie-breaker for deterministic pagination
         results_query = (
-            base.order_by(DependencyModel.package_name, DependencyModel.repository_id)
+            base.order_by(
+                DependencyModel.package_name,
+                DependencyModel.repository_id,
+                DependencyModel.file_id,
+            )
             .limit(limit)
             .offset(offset)
         )
