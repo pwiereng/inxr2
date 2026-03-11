@@ -485,6 +485,28 @@ export default function Dependencies(): React.ReactElement {
 
 // --- Sub-components ---
 
+interface PackageGroup {
+  packageName: string
+  items: DependencyItem[]
+}
+
+/** Group items by package name, preserving sort order of first occurrence */
+function groupByPackage(items: DependencyItem[]): PackageGroup[] {
+  const map = new Map<string, DependencyItem[]>()
+  for (const item of items) {
+    const existing = map.get(item.package_name)
+    if (existing) {
+      existing.push(item)
+    } else {
+      map.set(item.package_name, [item])
+    }
+  }
+  return [...map.entries()].map(([packageName, pkgItems]) => ({
+    packageName,
+    items: pkgItems,
+  }))
+}
+
 interface FileGroupNodeProps {
   group: FileGroup
   isExpanded: boolean
@@ -498,6 +520,8 @@ function FileGroupNode({
   onToggle,
   onFileClick,
 }: FileGroupNodeProps): React.ReactElement {
+  const [expandedPackages, setExpandedPackages] = useState<Set<string>>(new Set())
+
   const fileName = (path: string) => {
     const parts = path.split('/')
     return parts[parts.length - 1] ?? path
@@ -511,6 +535,20 @@ function FileGroupNode({
 
   const dir = group.filePath ? fileDir(group.filePath) : ''
   const name = group.filePath ? fileName(group.filePath) : `(file #${group.fileId})`
+
+  const packageGroups = useMemo(() => groupByPackage(group.items), [group.items])
+
+  const togglePackage = (pkgName: string) => {
+    setExpandedPackages((prev) => {
+      const next = new Set(prev)
+      if (next.has(pkgName)) {
+        next.delete(pkgName)
+      } else {
+        next.add(pkgName)
+      }
+      return next
+    })
+  }
 
   return (
     <>
@@ -580,8 +618,96 @@ function FileGroupNode({
       </ListItemButton>
 
       <Collapse in={isExpanded} timeout="auto">
+        {packageGroups.map((pkg) => {
+          const first = pkg.items[0]
+          return pkg.items.length === 1 && first ? (
+            <DependencyNode key={first.id} item={first} />
+          ) : (
+            <PackageGroupNode
+              key={pkg.packageName}
+              group={pkg}
+              isExpanded={expandedPackages.has(pkg.packageName)}
+              onToggle={togglePackage}
+            />
+          )
+        })}
+      </Collapse>
+    </>
+  )
+}
+
+interface PackageGroupNodeProps {
+  group: PackageGroup
+  isExpanded: boolean
+  onToggle: (pkgName: string) => void
+}
+
+/** Select the full text content of an element on double-click */
+const handleSelectName = (e: React.MouseEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+  const el = e.currentTarget
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  const sel = window.getSelection()
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+}
+
+/** Prevent click from bubbling to parent ListItemButton (avoids double-click flicker) */
+const stopClick = (e: React.MouseEvent) => {
+  e.stopPropagation()
+}
+
+/** Consistent left padding for dependency names within a file group */
+const DEP_NAME_PL = 56 // px — all dep names align here
+const DEP_CHEVRON_PL = 36 // px — chevron sits to the left of dep names
+
+function PackageGroupNode({
+  group,
+  isExpanded,
+  onToggle,
+}: PackageGroupNodeProps): React.ReactElement {
+  return (
+    <>
+      <ListItemButton
+        onClick={() => onToggle(group.packageName)}
+        sx={{ py: 0.25, pl: `${DEP_CHEVRON_PL}px` }}
+      >
+        <ListItemIcon sx={{ minWidth: DEP_NAME_PL - DEP_CHEVRON_PL }}>
+          {isExpanded ? (
+            <ExpandMoreIcon sx={{ fontSize: 16 }} />
+          ) : (
+            <ChevronRightIcon sx={{ fontSize: 16 }} />
+          )}
+        </ListItemIcon>
+        <ListItemText
+          primary={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Typography
+                variant="body2"
+                component="span"
+                onClick={stopClick}
+                onDoubleClick={handleSelectName}
+                sx={{ fontFamily: 'monospace', fontWeight: 500 }}
+              >
+                {group.packageName}
+              </Typography>
+              <Chip
+                label={`${group.items.length} versions`}
+                size="small"
+                variant="outlined"
+                color="info"
+                sx={{ height: 18, fontSize: '0.65rem' }}
+              />
+            </Box>
+          }
+        />
+      </ListItemButton>
+
+      <Collapse in={isExpanded} timeout="auto">
         {group.items.map((item) => (
-          <DependencyNode key={item.id} item={item} />
+          <DependencyVersionNode key={item.id} item={item} />
         ))}
       </Collapse>
     </>
@@ -593,10 +719,11 @@ interface DependencyNodeProps {
 }
 
 function DependencyNode({ item }: DependencyNodeProps): React.ReactElement {
+  const version = item.version_spec ?? item.resolved_version
   return (
     <Box
       sx={{
-        pl: `${24 + 16}px`,
+        pl: `${DEP_NAME_PL}px`,
         py: 0.5,
         display: 'flex',
         alignItems: 'center',
@@ -609,25 +736,21 @@ function DependencyNode({ item }: DependencyNodeProps): React.ReactElement {
       <Typography
         variant="body2"
         component="span"
+        onDoubleClick={handleSelectName}
         sx={{ fontFamily: 'monospace', fontWeight: 500 }}
       >
         {item.package_name}
       </Typography>
 
-      {item.version_spec && (
-        <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace' }}>
-          {item.version_spec}
+      {version && (
+        <Typography
+          variant="body2"
+          component="span"
+          color="text.secondary"
+          sx={{ fontFamily: 'monospace' }}
+        >
+          {version}
         </Typography>
-      )}
-
-      {item.resolved_version && item.resolved_version !== item.version_spec && (
-        <Chip
-          label={item.resolved_version}
-          size="small"
-          variant="outlined"
-          color="success"
-          sx={{ height: 18, fontSize: '0.65rem' }}
-        />
       )}
 
       <Chip
@@ -651,6 +774,66 @@ function DependencyNode({ item }: DependencyNodeProps): React.ReactElement {
           sx={{ height: 18, fontSize: '0.65rem' }}
         />
       )}
+    </Box>
+  )
+}
+
+/** Version sub-item shown under a multi-version package group */
+function DependencyVersionNode({ item }: DependencyNodeProps): React.ReactElement {
+  const version = item.version_spec ?? item.resolved_version
+  return (
+    <Box
+      sx={{
+        pl: `${DEP_NAME_PL + 24}px`,
+        py: 0.25,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.5,
+        flexWrap: 'wrap',
+        userSelect: 'text',
+        cursor: 'text',
+      }}
+    >
+      <Typography
+        variant="body2"
+        component="span"
+        onDoubleClick={handleSelectName}
+        sx={{ fontFamily: 'monospace', fontWeight: 500 }}
+      >
+        {item.package_name}
+      </Typography>
+
+      <Typography
+        variant="body2"
+        component="span"
+        color="text.secondary"
+        sx={{ fontFamily: 'monospace' }}
+      >
+        {version ?? '(no version)'}
+      </Typography>
+
+      <Chip
+        label={item.dependency_type}
+        size="small"
+        variant="outlined"
+        sx={{
+          height: 18,
+          fontSize: '0.65rem',
+          color: TYPE_COLORS[item.dependency_type] ?? '#abb2bf',
+          borderColor: TYPE_COLORS[item.dependency_type] ?? '#abb2bf',
+        }}
+      />
+
+      {!item.is_direct && (
+        <Chip
+          label="transitive"
+          size="small"
+          variant="outlined"
+          color="warning"
+          sx={{ height: 18, fontSize: '0.65rem' }}
+        />
+      )}
+
     </Box>
   )
 }
