@@ -66,7 +66,9 @@ asyncio.run(main())
 4. **Git Commits**
    - ❌ NEVER use `git commit --amend` — always create new commits
    - ❌ NEVER run `git push` — the user will manually push
-   - ✅ Rebase is OK for resolving conflicts on feature branches
+   - ❌ NEVER force push (`git push --force` or `--force-with-lease`) — if a rebase would require force push, use merge instead
+   - ✅ Prefer rebase over merge for resolving conflicts on feature branches
+   - ✅ If rebase gets complicated (conflicts in many files, risk of force push), fall back to merge
    - ⚠️ ALWAYS ask the user if they want to test before committing
 
 ## Common Commands
