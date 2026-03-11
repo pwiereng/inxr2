@@ -1628,7 +1628,12 @@ function SymbolNode({
                   : ''}
               </Typography>
               <Tooltip title={`Go to line ${symbol.start_line}`} arrow>
-                <IconButton size="small" onClick={handleNavigate} sx={{ p: 0.25 }}>
+                <IconButton
+                  size="small"
+                  onClick={handleNavigate}
+                  sx={{ p: 0.25 }}
+                  aria-label={`Go to line ${symbol.start_line}`}
+                >
                   <ArrowForwardIcon sx={{ fontSize: 14 }} />
                 </IconButton>
               </Tooltip>
@@ -1808,6 +1813,7 @@ function KindSymbolNode({
                     onSymbolClick(asTreeSymbol)
                   }}
                   sx={{ p: 0.25 }}
+                  aria-label={`Go to line ${symbol.start_line}`}
                 >
                   <ArrowForwardIcon sx={{ fontSize: 14 }} />
                 </IconButton>
