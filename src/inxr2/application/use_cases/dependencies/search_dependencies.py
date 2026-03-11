@@ -104,27 +104,27 @@ class SearchDependenciesUseCase:
         repositories = await self._repository_repo.find_by_ids(repo_ids)
         repo_map = {r.id: r.name for r in repositories if r.id is not None}
 
+        items: list[SearchDependencyItem] = []
         for d in deps:
-            assert (
-                d.id is not None
-            ), f"Persisted dependency missing id: {d.package_name}"
-
-        items = [
-            SearchDependencyItem(
-                id=d.id,  # type: ignore[arg-type]
-                package_name=d.package_name,
-                language=d.language,
-                version_spec=d.version_spec,
-                resolved_version=d.resolved_version,
-                dependency_type=d.dependency_type,
-                is_direct=d.is_direct,
-                file_id=d.file_id,
-                file_path=file_path_map.get(d.file_id),
-                repository_id=d.repository_id,
-                repository_name=repo_map.get(d.repository_id, "unknown"),
+            if d.id is None:
+                raise ValueError(
+                    f"Persisted dependency missing id: {d.package_name}"
+                )
+            items.append(
+                SearchDependencyItem(
+                    id=d.id,
+                    package_name=d.package_name,
+                    language=d.language,
+                    version_spec=d.version_spec,
+                    resolved_version=d.resolved_version,
+                    dependency_type=d.dependency_type,
+                    is_direct=d.is_direct,
+                    file_id=d.file_id,
+                    file_path=file_path_map.get(d.file_id),
+                    repository_id=d.repository_id,
+                    repository_name=repo_map.get(d.repository_id, "unknown"),
+                )
             )
-            for d in deps
-        ]
 
         return SearchDependenciesResponse(
             results=items,
