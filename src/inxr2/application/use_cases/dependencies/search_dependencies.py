@@ -107,9 +107,7 @@ class SearchDependenciesUseCase:
         items: list[SearchDependencyItem] = []
         for d in deps:
             if d.id is None:
-                raise ValueError(
-                    f"Persisted dependency missing id: {d.package_name}"
-                )
+                raise ValueError(f"Persisted dependency missing id: {d.package_name}")
             items.append(
                 SearchDependencyItem(
                     id=d.id,
