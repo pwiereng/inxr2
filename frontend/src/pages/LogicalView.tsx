@@ -29,6 +29,7 @@ import TagIcon from '@mui/icons-material/Tag'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import ClearIcon from '@mui/icons-material/Clear'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import IconButton from '@mui/material/IconButton'
 import { CodeHeader } from '@/components/CodeHeader'
 import type { TabValue } from '@/components/CodeHeader'
@@ -1565,8 +1566,6 @@ function SymbolNode({
   const handleClick = () => {
     if (symbol.has_children) {
       onToggle(symbol.id)
-    } else {
-      onClick(symbol)
     }
   }
 
@@ -1579,11 +1578,11 @@ function SymbolNode({
     <>
       <ListItemButton
         onClick={handleClick}
-        onDoubleClick={handleNavigate}
         onContextMenu={(e) => onContextMenuAction(symbol, e)}
         sx={{
           pl: `${indent + 16}px`,
           py: 0.25,
+          cursor: symbol.has_children ? 'pointer' : 'default',
           ...(isHighlighted && {
             backgroundColor: 'rgba(97, 175, 239, 0.12)',
           }),
@@ -1607,30 +1606,31 @@ function SymbolNode({
         <ListItemText
           primary={
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+              <Typography
+                variant="body2"
+                component="span"
+                sx={{
+                  fontFamily: 'monospace',
+                  fontWeight: symbol.has_children || isHighlighted ? 500 : 400,
+                  userSelect: 'text',
+                  ...(isHighlighted && {
+                    color: '#61afef',
+                  }),
+                }}
+              >
+                {symbol.name}
+                {symbol.kind === 'function' ||
+                symbol.kind === 'method' ||
+                symbol.kind === 'constructor' ||
+                symbol.kind === 'staticmethod' ||
+                symbol.kind === 'classmethod'
+                  ? '()'
+                  : ''}
+              </Typography>
               <Tooltip title={`Go to line ${symbol.start_line}`} arrow>
-                <Typography
-                  variant="body2"
-                  component="span"
-                  sx={{
-                    fontFamily: 'monospace',
-                    fontWeight: symbol.has_children || isHighlighted ? 500 : 400,
-                    cursor: 'pointer',
-                    '&:hover': { textDecoration: 'underline' },
-                    ...(isHighlighted && {
-                      color: '#61afef',
-                    }),
-                  }}
-                  onClick={handleNavigate}
-                >
-                  {symbol.name}
-                  {symbol.kind === 'function' ||
-                  symbol.kind === 'method' ||
-                  symbol.kind === 'constructor' ||
-                  symbol.kind === 'staticmethod' ||
-                  symbol.kind === 'classmethod'
-                    ? '()'
-                    : ''}
-                </Typography>
+                <IconButton size="small" onClick={handleNavigate} sx={{ p: 0.25 }}>
+                  <ArrowForwardIcon sx={{ fontSize: 14 }} />
+                </IconButton>
               </Tooltip>
 
               <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace' }}>
@@ -1768,9 +1768,9 @@ function KindSymbolNode({
   return (
     <>
       <ListItemButton
-        onClick={isContainer ? () => onToggle(symbol.id) : () => onSymbolClick(asTreeSymbol)}
+        onClick={isContainer ? () => onToggle(symbol.id) : undefined}
         onContextMenu={(e) => onSymbolContextMenu(asTreeSymbol, e)}
-        sx={{ py: 0.5, pl: 2 + indent * 3 }}
+        sx={{ py: 0.5, pl: 2 + indent * 3, cursor: isContainer ? 'pointer' : 'default' }}
       >
         {isContainer && (
           <ListItemIcon sx={{ minWidth: 28 }}>
@@ -1794,17 +1794,24 @@ function KindSymbolNode({
                 sx={{
                   fontFamily: 'monospace',
                   fontWeight: 500,
-                  cursor: 'pointer',
-                  '&:hover': { textDecoration: 'underline' },
-                }}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onSymbolClick(asTreeSymbol)
+                  userSelect: 'text',
                 }}
               >
                 {symbol.name}
                 {isCallable ? '()' : ''}
               </Typography>
+              <Tooltip title={`Go to line ${symbol.start_line}`} arrow>
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onSymbolClick(asTreeSymbol)
+                  }}
+                  sx={{ p: 0.25 }}
+                >
+                  <ArrowForwardIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+              </Tooltip>
               {symbol.file_path && (
                 <Tooltip title="View in Outline mode" arrow>
                   <Typography
