@@ -179,7 +179,7 @@ class TestPostgresReferenceRepositorySave:
         self, db_session: AsyncSession
     ) -> None:
         adapter = PostgresReferenceRepository(db_session)
-        assert await adapter.find_by_id(999999) is None
+        assert await adapter.find_by_id(-1) is None
 
     async def test_save_many_bulk_creates_references(
         self, db_session: AsyncSession
@@ -299,7 +299,7 @@ class TestPostgresReferenceRepositoryListByFile:
 
     async def test_list_by_file_empty(self, db_session: AsyncSession) -> None:
         adapter = PostgresReferenceRepository(db_session)
-        results = await adapter.list_by_file(999999)
+        results = await adapter.list_by_file(-1)
         assert results == []
 
 

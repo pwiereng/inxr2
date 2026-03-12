@@ -170,7 +170,7 @@ class TestPostgresSymbolRepositorySave:
         self, db_session: AsyncSession
     ) -> None:
         adapter = PostgresSymbolRepository(db_session)
-        assert await adapter.find_by_id(999999) is None
+        assert await adapter.find_by_id(-1) is None
 
     async def test_save_many_bulk_creates_symbols(
         self, db_session: AsyncSession
