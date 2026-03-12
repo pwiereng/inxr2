@@ -711,7 +711,7 @@ class TestPostgresReferenceRepositoryResolution:
 
         resolved_count = await ref_adapter.resolve_unlinked_references(repo_id)
 
-        assert resolved_count >= 1
+        assert resolved_count == 1
         updated = await ref_adapter.find_by_id(ref.id)
         assert updated is not None
         assert updated.target_symbol_id == symbol.id
@@ -778,7 +778,7 @@ class TestPostgresReferenceRepositoryResolution:
 
         resolved_count = await ref_adapter.resolve_unlinked_references(repo.id)
 
-        assert resolved_count >= 1
+        assert resolved_count == 1
         updated = await ref_adapter.find_by_id(ref.id)
         assert updated is not None
         assert updated.target_symbol_id == symbol.id
@@ -845,7 +845,7 @@ class TestPostgresReferenceRepositoryResolution:
 
         resolved_count = await ref_adapter.resolve_unlinked_references(repo.id)
 
-        assert resolved_count >= 1
+        assert resolved_count == 1
         updated = await ref_adapter.find_by_id(ref.id)
         assert updated is not None
         assert updated.target_symbol_id == symbol.id
