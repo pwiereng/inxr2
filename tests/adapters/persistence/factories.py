@@ -3,8 +3,8 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from inxr2.domain.entities import Commit, File, Repository, Symbol
-from inxr2.domain.value_objects import CommitHash, SymbolKind
+from inxr2.domain.entities import Commit, File, Reference, Repository, Symbol
+from inxr2.domain.value_objects import CommitHash, ReferenceType, SymbolKind
 
 
 class RepositoryFactory:
@@ -111,6 +111,39 @@ class SymbolFactory:
             scope=kwargs.get("scope"),
             signature=kwargs.get("signature"),
             docstring=kwargs.get("docstring"),
+            metadata=kwargs.get("metadata"),
+            indexed_at=kwargs.get("indexed_at"),
+        )
+
+
+class ReferenceFactory:
+    """Factory for creating test Reference entities."""
+
+    @staticmethod
+    def create(
+        repository_id: int = 1,
+        source_file_id: int = 1,
+        reference_text: str = "test_function",
+        **kwargs: Any,
+    ) -> Reference:
+        """Create a test reference."""
+        return Reference(
+            repository_id=repository_id,
+            source_file_id=source_file_id,
+            source_line=kwargs.get("source_line", 5),
+            source_column=kwargs.get("source_column", 0),
+            source_end_column=kwargs.get(
+                "source_end_column",
+                kwargs.get("source_column", 0) + len(reference_text),
+            ),
+            reference_text=reference_text,
+            reference_type=kwargs.get("reference_type", ReferenceType.CALL),
+            id=kwargs.get("id"),
+            target_symbol_id=kwargs.get("target_symbol_id"),
+            target_repository_id=kwargs.get("target_repository_id"),
+            is_definition=kwargs.get("is_definition", False),
+            is_write=kwargs.get("is_write", False),
+            resolution_confidence=kwargs.get("resolution_confidence", 1.0),
             metadata=kwargs.get("metadata"),
             indexed_at=kwargs.get("indexed_at"),
         )
