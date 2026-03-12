@@ -1,13 +1,14 @@
 """Indexing use cases."""
 
+from inxr2.application.dtos.indexing import (
+    IndexRepositoryRequest,
+    IndexRepositoryResponse,
+)
+
 from .get_index_status import (
     GetIndexStatusRequest,
     GetIndexStatusResponse,
     GetIndexStatusUseCase,
-)
-from .orchestrator import (
-    IndexRepositoryRequest,
-    IndexRepositoryResponse,
 )
 from .process_commit import (
     ProcessCommitRequest,

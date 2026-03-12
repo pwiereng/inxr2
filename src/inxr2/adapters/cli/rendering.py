@@ -29,9 +29,7 @@ from rich.table import Table
 
 if TYPE_CHECKING:
     from inxr2.adapters.cli.commands.index_command import IndexingStats
-    from inxr2.application.use_cases.indexing.default_orchestrator import (
-        IndexingProgress,
-    )
+    from inxr2.application.dtos.indexing import IndexingProgress
 
 
 def format_duration(seconds: float) -> str:

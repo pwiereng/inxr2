@@ -8,11 +8,17 @@ ProcessCommitUseCase) while keeping the orchestration logic here.
 
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from typing import Any
 
 from inxr2.domain.entities import IndexStatus
 
+from ...dtos.indexing import (
+    DBQueryStats,
+    IndexingProgress,
+    IndexRepositoryRequest,
+    IndexRepositoryResponse,
+    ProgressCallback,
+)
 from ...ports.repositories import (
     CommitRepositoryPort,
     DependencyRepositoryPort,
@@ -31,11 +37,6 @@ from ...ports.services import (
     ParserServicePort,
     PlaintextParserPort,
 )
-from .orchestrator import (
-    DBQueryStats,
-    IndexRepositoryRequest,
-    IndexRepositoryResponse,
-)
 from .process_commit import (
     ProcessCommitRequest,
     ProcessCommitResult,
@@ -47,26 +48,6 @@ from .resolve_references import (
     ResolveReferencesRequest,
     ResolveReferencesUseCase,
 )
-
-
-@dataclass
-class IndexingProgress:
-    """Progress information during indexing."""
-
-    phase: str  # "files", "resolving"
-    files_processed: int
-    files_total: int
-    symbols_found: int = 0
-    references_found: int = 0
-    # Resolution progress (only set during "resolving" phase)
-    refs_resolved: int = 0
-    refs_total: int = 0
-    refs_preparing: bool = False
-    refs_prepare_stage: str = ""
-
-
-# Type alias for progress callback
-ProgressCallback = Callable[[IndexingProgress], None]
 
 
 class DefaultIndexingOrchestrator(IndexingOrchestratorPort):

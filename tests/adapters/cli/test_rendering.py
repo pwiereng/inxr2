@@ -10,8 +10,7 @@ from inxr2.adapters.cli.rendering import (
     format_duration,
     shorten_path,
 )
-from inxr2.application.use_cases.indexing.default_orchestrator import IndexingProgress
-from inxr2.application.use_cases.indexing.orchestrator import DBQueryStats
+from inxr2.application.dtos.indexing import DBQueryStats, IndexingProgress
 
 
 class TestFormatDuration:
