@@ -22,16 +22,16 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
-    # TODO: Configure CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
-            "http://localhost:5173",  # Vite dev server
-            "http://localhost:8000",  # Production
+            "http://localhost:5173",  # Vite dev server (main)
+            "http://localhost:5183",  # Vite dev server (worktree slot 1)
+            "http://localhost:5193",  # Vite dev server (worktree slot 2)
+            "http://localhost:5203",  # Vite dev server (worktree slot 3)
         ],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
     )
 
     # Initialize database

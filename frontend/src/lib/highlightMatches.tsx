@@ -1,4 +1,5 @@
 import React from 'react'
+import { validateRegexPattern } from './regexValidation'
 
 /**
  * Sanitize a ts_headline snippet from PostgreSQL for safe rendering via dangerouslySetInnerHTML.
@@ -44,6 +45,8 @@ export function highlightMatches(
   let pattern: RegExp
   try {
     if (searchMode === 'regex') {
+      const validation = validateRegexPattern(searchQuery)
+      if (!validation.valid) return text
       pattern = new RegExp(`(${searchQuery})`, 'gi')
     } else if (searchMode === 'phrase') {
       const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

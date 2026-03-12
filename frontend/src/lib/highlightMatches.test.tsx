@@ -82,6 +82,16 @@ describe('highlightMatches', () => {
       expect(result).toBe('some text')
     })
 
+    it('returns plain text for dangerous ReDoS pattern', () => {
+      const result = highlightMatches('some text', '(a+)+', 'regex')
+      expect(result).toBe('some text')
+    })
+
+    it('returns plain text for overly long regex', () => {
+      const result = highlightMatches('some text', 'a'.repeat(501), 'regex')
+      expect(result).toBe('some text')
+    })
+
     it('highlights all occurrences', () => {
       const html = renderToHTML(highlightMatches('foo bar foo baz foo', 'foo', 'regex'))
       const markCount = (html.match(/<mark/g) || []).length
