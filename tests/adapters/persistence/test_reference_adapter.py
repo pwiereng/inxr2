@@ -966,7 +966,7 @@ class TestPostgresReferenceRepositoryResolution:
         resolved = await ref_adapter.resolve_references_batch(repo_id, batch_size=2)
 
         # batch_size=2 limits total resolved across all 3 passes
-        assert resolved <= 2
+        assert resolved == 2
 
     async def test_resolve_already_resolved_not_changed(
         self, db_session: AsyncSession

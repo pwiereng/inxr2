@@ -132,7 +132,10 @@ class ReferenceFactory:
             source_file_id=source_file_id,
             source_line=kwargs.get("source_line", 5),
             source_column=kwargs.get("source_column", 0),
-            source_end_column=kwargs.get("source_end_column", 13),
+            source_end_column=kwargs.get(
+                "source_end_column",
+                kwargs.get("source_column", 0) + len(reference_text),
+            ),
             reference_text=reference_text,
             reference_type=kwargs.get("reference_type", ReferenceType.CALL),
             id=kwargs.get("id"),
