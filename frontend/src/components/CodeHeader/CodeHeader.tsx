@@ -95,7 +95,7 @@ export function CodeHeader({
           onRepoChange={onRepoChange}
         />
 
-        {repoName && (
+        {repoName && currentTab !== 'help' && (
           <>
             <BranchSelect
               branches={branches}
@@ -114,7 +114,7 @@ export function CodeHeader({
           </>
         )}
 
-        {repoName && !loadingCommits && currentCommitDate && (
+        {repoName && currentTab !== 'help' && !loadingCommits && currentCommitDate && (
           <CommitDateIndicator currentCommitDate={currentCommitDate} />
         )}
 

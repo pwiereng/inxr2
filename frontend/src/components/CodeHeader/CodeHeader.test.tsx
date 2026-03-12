@@ -645,6 +645,39 @@ describe('CodeHeader', () => {
     })
   })
 
+  describe('help page', () => {
+    it('should not display branch or commit selectors on help tab', async () => {
+      const api = await import('@/lib/api')
+
+      render(<CodeHeader {...defaultProps} currentTab="help" />)
+
+      // Wait for all data loading to settle
+      await waitFor(() => {
+        expect(vi.mocked(api.getCommits)).toHaveBeenCalled()
+        expect(screen.getByDisplayValue('test-repo')).toBeInTheDocument()
+      })
+
+      // Branch and commit selectors should NOT be present
+      // On browse tab there are 3 comboboxes (repo, branch, commit), on help only 1 (repo)
+      const comboboxes = screen.getAllByRole('combobox')
+      expect(comboboxes).toHaveLength(1)
+    })
+
+    it('should not display commit date indicator on help tab', async () => {
+      const api = await import('@/lib/api')
+
+      render(<CodeHeader {...defaultProps} currentTab="help" />)
+
+      // Wait for commit loading to complete before asserting absence
+      await waitFor(() => {
+        expect(vi.mocked(api.getCommits)).toHaveBeenCalled()
+      })
+
+      // No datetime indicator should be shown
+      expect(screen.queryByText(/UTC/)).not.toBeInTheDocument()
+    })
+  })
+
   describe('error handling', () => {
     it('should handle repository loading error gracefully', async () => {
       const api = await import('@/lib/api')
