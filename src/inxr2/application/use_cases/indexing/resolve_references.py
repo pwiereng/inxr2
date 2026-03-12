@@ -9,6 +9,10 @@ from dataclasses import dataclass
 
 from ...ports.repositories import ReferenceRepositoryPort
 
+# Default batch size for reference resolution. Larger batches reduce the
+# O(N²/batch_size) scanning cost but use more memory per UPDATE.
+DEFAULT_RESOLUTION_BATCH_SIZE = 5000
+
 
 @dataclass
 class ResolutionProgress:
@@ -87,20 +91,19 @@ class ResolveReferencesUseCase:
         self,
         request: ResolveReferencesRequest,
         progress_callback: ResolutionProgressCallback | None = None,
-        batch_size: int = 5000,
+        batch_size: int = DEFAULT_RESOLUTION_BATCH_SIZE,
     ) -> ResolveReferencesResponse:
         """Execute reference resolution with progress updates.
 
         Resolves references in batches, calling the progress callback
         after each batch to report progress. Uses a large default
-        batch_size (5000) to balance memory usage against the
-        O(N²/batch_size) scanning cost of small batches.
+        batch_size to balance memory usage against the O(N²/batch_size)
+        scanning cost of small batches.
 
-        When request.branch is set, resolution is scoped to that branch:
-        prepare_resolution builds branch-scoped temp tables, and
-        count_unresolved_references uses them for an accurate count.
-        The prepare step runs BEFORE the count so the count can leverage
-        the branch-scoped temp table.
+        Resolution is always repo-wide: prepare_resolution builds
+        repo-scoped temp tables and count_unresolved_references counts
+        all unresolved refs for the repository. The prepare step runs
+        BEFORE the count so the count can leverage the temp tables.
         """
         # Pre-compute lookup tables FIRST so the count query can use
         # the branch-scoped temp table (when branch is set).

@@ -431,7 +431,7 @@ class PostgresReferenceRepository(
     async def resolve_references_batch(
         self,
         repository_id: int,
-        batch_size: int = 1000,
+        batch_size: int = 5000,
     ) -> int:
         """Resolve a batch of unlinked references.
 
