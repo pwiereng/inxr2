@@ -245,7 +245,11 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 ### Key Rules
 
 - **Pre-creation:** Ensure main is in sync with GitHub (`git fetch origin main && git status`)
-- **Cleanup:** Verify PR merged → `worktree-remove.sh` → `git pull --rebase` → run tests on main
+- **Cleanup (closing a worktree):**
+  1. Verify the PR is merged on GitHub
+  2. `worktree-remove.sh <branch-name>` to tear down Docker stack and remove worktree
+  3. `git pull --rebase` on main to pull in the merged changes
+  4. `docker exec inxr2-dev ./scripts/run-all-tests.sh` to verify everything passes on main
 - **Container naming:** Main: `inxr2-dev` / Worktree: `inxr2-<branch>-dev`
 - **instructions.txt:** Always write a prompt file in the worktree root, starting with tab title command. Do NOT commit (in `.gitignore`).
 - **MCP from worktrees:** Use `docker exec inxr2-dev` for MCP queries (main has indexed data). Use worktree container only for testing MCP code changes.
