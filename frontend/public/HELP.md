@@ -20,6 +20,8 @@ The main code exploration view. Select a repository to see its file tree and sou
 
 **Code viewer** — displays source code with syntax highlighting. For semantically indexed languages, clicking a symbol (function, class, variable) opens the references panel on the right, showing everywhere that symbol is used.
 
+**Text selection** — you can select and copy text in the code viewer and across all views. When you select text, a floating toolbar appears with options to copy the selection or search for it across the codebase.
+
 **Navigation features:**
 
 - **Jump to definition** — click any reference in the references panel to navigate directly to where a symbol is defined
@@ -49,6 +51,7 @@ Search across all indexed repositories with multiple modes and filters.
 
 - **Definitions** — symbol definitions (functions, classes, methods, variables). These come from the semantic index.
 - **References** — symbol usages (calls, imports, type annotations). Also from the semantic index.
+- **Dependencies** — third-party package names from manifest files (package.json, pyproject.toml, etc.)
 - **Comments** — code comments
 - **Docstrings** — documentation strings
 - **Commit Messages** — git commit messages
@@ -79,21 +82,23 @@ Browse the codebase by its logical structure — classes, functions, methods, an
 - **Text filter** — type to filter symbols by name
 - **Depth** — control how many levels of the hierarchy to display
 
-**Clicking a symbol** navigates to its definition in the Browse tab at the correct file and line.
+**Navigating to a symbol** — click the arrow button next to a symbol name to jump to its definition in the Browse tab. Symbol names themselves are selectable text, so you can copy or search them using the floating toolbar that appears on text selection.
 
 ## Dependencies
 
 View the third-party package dependencies for the selected repository at any commit.
 
-**Supported languages:** Python, JavaScript/TypeScript, Java, and C#. Dependencies are extracted from manifest and lock files during indexing.
+**Supported languages:** Python, JavaScript/TypeScript, Java, C#, Go, and Ruby. Dependencies are extracted from manifest and lock files during indexing.
 
-**Tree view** — dependencies are grouped by manifest file (e.g., `pyproject.toml`, `package.json`), then by type (runtime vs dev). Lock files provide the full transitive dependency tree — expand a direct dependency to see what it pulls in.
+**Tree view** — dependencies are grouped by manifest file (e.g., `pyproject.toml`, `package.json`), then by type (runtime vs dev). Lock files provide the full transitive dependency tree — expand a direct dependency to see what it pulls in. When the same package appears in multiple manifest files, they are grouped together with a version sub-tree.
 
 **Filters:**
 
 - **Language** — filter by language when a repo has multiple manifest files
 - **Type** — show All, Runtime only, or Dev only dependencies
 - **Text filter** — search by package name
+
+**Search usages** — click the search button on a dependency to find all references to it across the codebase via the Search page.
 
 **Commit-aware** — dependencies reflect exactly what was declared at the selected commit. Switch commits to see how dependencies changed over time.
 
