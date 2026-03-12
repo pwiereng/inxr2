@@ -647,10 +647,13 @@ describe('CodeHeader', () => {
 
   describe('help page', () => {
     it('should not display branch or commit selectors on help tab', async () => {
+      const api = await import('@/lib/api')
+
       render(<CodeHeader {...defaultProps} currentTab="help" />)
 
+      // Wait for all data loading to settle
       await waitFor(() => {
-        // Repo selector should still be present
+        expect(vi.mocked(api.getCommits)).toHaveBeenCalled()
         expect(screen.getByDisplayValue('test-repo')).toBeInTheDocument()
       })
 
@@ -661,10 +664,13 @@ describe('CodeHeader', () => {
     })
 
     it('should not display commit date indicator on help tab', async () => {
+      const api = await import('@/lib/api')
+
       render(<CodeHeader {...defaultProps} currentTab="help" />)
 
+      // Wait for commit loading to complete before asserting absence
       await waitFor(() => {
-        expect(screen.getByDisplayValue('test-repo')).toBeInTheDocument()
+        expect(vi.mocked(api.getCommits)).toHaveBeenCalled()
       })
 
       // No datetime indicator should be shown
