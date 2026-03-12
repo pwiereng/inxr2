@@ -98,20 +98,33 @@ class TestCorsConfiguration:
         assert response.status_code == 200
         assert "access-control-allow-origin" in response.headers
 
-    def test_cors_allows_localhost_8000(self, client: TestClient) -> None:
-        """CORS should allow requests from localhost:8000 (production)."""
+    def test_cors_allows_worktree_origins(self, client: TestClient) -> None:
+        """CORS should allow requests from worktree dev server ports."""
+        for port in ["5183", "5193", "5203"]:
+            response = client.options(
+                "/api/health",
+                headers={
+                    "Origin": f"http://localhost:{port}",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+            assert response.status_code == 200
+            assert "access-control-allow-origin" in response.headers
+
+    def test_cors_rejects_unknown_origin(self, client: TestClient) -> None:
+        """CORS should reject requests from unknown origins."""
         response = client.options(
             "/api/health",
             headers={
-                "Origin": "http://localhost:8000",
+                "Origin": "http://localhost:9999",
                 "Access-Control-Request-Method": "GET",
             },
         )
-        assert response.status_code == 200
+        assert response.headers.get("access-control-allow-origin") is None
 
-    def test_cors_allows_all_methods(self, client: TestClient) -> None:
-        """CORS should allow all HTTP methods."""
-        for method in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
+    def test_cors_allows_get_and_post(self, client: TestClient) -> None:
+        """CORS should allow GET and POST methods."""
+        for method in ["GET", "POST"]:
             response = client.options(
                 "/api/health",
                 headers={
@@ -121,8 +134,21 @@ class TestCorsConfiguration:
             )
             assert response.status_code == 200
 
-    def test_cors_allows_credentials(self, client: TestClient) -> None:
-        """CORS should allow credentials."""
+    def test_cors_rejects_disallowed_methods(self, client: TestClient) -> None:
+        """CORS should not allow PUT, DELETE, or PATCH methods."""
+        for method in ["PUT", "DELETE", "PATCH"]:
+            response = client.options(
+                "/api/health",
+                headers={
+                    "Origin": "http://localhost:5173",
+                    "Access-Control-Request-Method": method,
+                },
+            )
+            allowed = response.headers.get("access-control-allow-methods", "")
+            assert method not in allowed
+
+    def test_cors_does_not_allow_credentials(self, client: TestClient) -> None:
+        """CORS should not allow credentials (no auth needed)."""
         response = client.options(
             "/api/health",
             headers={
@@ -130,5 +156,4 @@ class TestCorsConfiguration:
                 "Access-Control-Request-Method": "GET",
             },
         )
-        # Check for allow-credentials header
-        assert response.headers.get("access-control-allow-credentials") == "true"
+        assert response.headers.get("access-control-allow-credentials") != "true"
