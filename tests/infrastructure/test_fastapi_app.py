@@ -101,15 +101,16 @@ class TestCorsConfiguration:
     def test_cors_allows_worktree_origins(self, client: TestClient) -> None:
         """CORS should allow requests from worktree dev server ports."""
         for port in ["5183", "5193", "5203"]:
+            origin = f"http://localhost:{port}"
             response = client.options(
                 "/api/health",
                 headers={
-                    "Origin": f"http://localhost:{port}",
+                    "Origin": origin,
                     "Access-Control-Request-Method": "GET",
                 },
             )
             assert response.status_code == 200
-            assert "access-control-allow-origin" in response.headers
+            assert response.headers.get("access-control-allow-origin") == origin
 
     def test_cors_rejects_unknown_origin(self, client: TestClient) -> None:
         """CORS should reject requests from unknown origins."""
@@ -133,6 +134,8 @@ class TestCorsConfiguration:
                 },
             )
             assert response.status_code == 200
+            allowed = response.headers.get("access-control-allow-methods", "")
+            assert method in allowed
 
     def test_cors_rejects_disallowed_methods(self, client: TestClient) -> None:
         """CORS should not allow PUT, DELETE, or PATCH methods."""
@@ -144,6 +147,7 @@ class TestCorsConfiguration:
                     "Access-Control-Request-Method": method,
                 },
             )
+            assert response.status_code == 400
             allowed = response.headers.get("access-control-allow-methods", "")
             assert method not in allowed
 
