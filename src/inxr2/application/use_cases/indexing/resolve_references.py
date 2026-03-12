@@ -9,6 +9,10 @@ from dataclasses import dataclass
 
 from ...ports.repositories import ReferenceRepositoryPort
 
+# Default batch size for reference resolution. Larger batches reduce the
+# O(N²/batch_size) scanning cost but use more memory per UPDATE.
+DEFAULT_RESOLUTION_BATCH_SIZE = 5000
+
 
 @dataclass
 class ResolutionProgress:
@@ -37,8 +41,8 @@ class ResolveReferencesRequest:
 
     Args:
         repository_id: The repository ID to resolve references for
-        branch: Optional branch to scope resolution to. When set,
-            only references from files on that branch are resolved.
+        branch: Optional branch hint passed to prepare_resolution
+            for API compatibility. Resolution is repo-wide.
     """
 
     repository_id: int
@@ -87,21 +91,21 @@ class ResolveReferencesUseCase:
         self,
         request: ResolveReferencesRequest,
         progress_callback: ResolutionProgressCallback | None = None,
-        batch_size: int = 1000,
+        batch_size: int = DEFAULT_RESOLUTION_BATCH_SIZE,
     ) -> ResolveReferencesResponse:
         """Execute reference resolution with progress updates.
 
         Resolves references in batches, calling the progress callback
-        after each batch to report progress.
+        after each batch to report progress. Uses a large default
+        batch_size to balance memory usage against the O(N²/batch_size)
+        scanning cost of small batches.
 
-        When request.branch is set, resolution is scoped to that branch:
-        prepare_resolution builds branch-scoped temp tables, and
-        count_unresolved_references uses them for an accurate count.
-        The prepare step runs BEFORE the count so the count can leverage
-        the branch-scoped temp table.
+        Resolution is always repo-wide: prepare_resolution builds
+        repo-scoped symbol lookup tables, then resolve_references_batch
+        uses them to match references to symbols. The prepare step runs
+        before the batch loop.
         """
-        # Pre-compute lookup tables FIRST so the count query can use
-        # the branch-scoped temp table (when branch is set).
+        # Pre-compute symbol lookup tables before counting/resolving.
         total_resolved = 0
 
         def on_prepare_stage(stage: str) -> None:
@@ -123,7 +127,7 @@ class ResolveReferencesUseCase:
             branch=request.branch,
         )
 
-        # Count AFTER prepare so the count uses branch-scoped temp tables
+        # Count unresolved references for progress reporting
         total_unresolved = await self._reference_repository.count_unresolved_references(
             repository_id=request.repository_id
         )

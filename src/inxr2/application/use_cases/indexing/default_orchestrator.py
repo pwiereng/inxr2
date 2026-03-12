@@ -283,7 +283,6 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         resolve_response = await self._resolve_refs_use_case.execute_with_progress(
             ResolveReferencesRequest(repository_id=repo_id, branch=branch),
             progress_callback=on_resolution_progress,
-            batch_size=100,
         )
         resolving_seconds = time.monotonic() - resolve_start
 
