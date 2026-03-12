@@ -121,6 +121,7 @@ class TestCorsConfiguration:
                 "Access-Control-Request-Method": "GET",
             },
         )
+        assert response.status_code == 400
         assert response.headers.get("access-control-allow-origin") is None
 
     def test_cors_allows_get_and_post(self, client: TestClient) -> None:
@@ -160,4 +161,18 @@ class TestCorsConfiguration:
                 "Access-Control-Request-Method": "GET",
             },
         )
-        assert response.headers.get("access-control-allow-credentials") != "true"
+        assert response.headers.get("access-control-allow-credentials") is None
+
+    def test_cors_rejects_disallowed_headers(self, client: TestClient) -> None:
+        """CORS should not allow headers beyond Content-Type."""
+        response = client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "Authorization",
+            },
+        )
+        assert response.status_code == 400
+        allowed = response.headers.get("access-control-allow-headers", "")
+        assert "Authorization" not in allowed
