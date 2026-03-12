@@ -105,8 +105,8 @@ class ResolveReferencesUseCase:
         all unresolved refs for the repository. The prepare step runs
         BEFORE the count so the count can leverage the temp tables.
         """
-        # Pre-compute lookup tables FIRST so the count query can use
-        # the branch-scoped temp table (when branch is set).
+        # Pre-compute lookup tables FIRST so the count query benefits
+        # from any indexes or temp tables built during preparation.
         total_resolved = 0
 
         def on_prepare_stage(stage: str) -> None:
