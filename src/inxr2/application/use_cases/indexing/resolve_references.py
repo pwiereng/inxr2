@@ -41,8 +41,8 @@ class ResolveReferencesRequest:
 
     Args:
         repository_id: The repository ID to resolve references for
-        branch: Optional branch to scope resolution to. When set,
-            only references from files on that branch are resolved.
+        branch: Optional branch hint passed to prepare_resolution
+            for API compatibility. Resolution is repo-wide.
     """
 
     repository_id: int
@@ -101,12 +101,11 @@ class ResolveReferencesUseCase:
         scanning cost of small batches.
 
         Resolution is always repo-wide: prepare_resolution builds
-        repo-scoped temp tables and count_unresolved_references counts
-        all unresolved refs for the repository. The prepare step runs
-        BEFORE the count so the count can leverage the temp tables.
+        repo-scoped symbol lookup tables, then resolve_references_batch
+        uses them to match references to symbols. The prepare step runs
+        before the batch loop.
         """
-        # Pre-compute lookup tables FIRST so the count query benefits
-        # from any indexes or temp tables built during preparation.
+        # Pre-compute symbol lookup tables before counting/resolving.
         total_resolved = 0
 
         def on_prepare_stage(stage: str) -> None:
@@ -128,7 +127,7 @@ class ResolveReferencesUseCase:
             branch=request.branch,
         )
 
-        # Count AFTER prepare so the count uses branch-scoped temp tables
+        # Count unresolved references for progress reporting
         total_unresolved = await self._reference_repository.count_unresolved_references(
             repository_id=request.repository_id
         )
