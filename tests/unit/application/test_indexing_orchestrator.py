@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from inxr2.application.ports.services import IndexingOrchestratorPort, ProgressCallback
-from inxr2.application.use_cases.indexing.orchestrator import (
+from inxr2.application.dtos.indexing import (
     IndexRepositoryRequest,
     IndexRepositoryResponse,
 )
+from inxr2.application.ports.services import IndexingOrchestratorPort, ProgressCallback
 
 
 class FakeIndexingOrchestrator(IndexingOrchestratorPort):

@@ -5,12 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from inxr2.application.dtos.indexing import IndexRepositoryRequest
 from inxr2.application.ports.services import ChangedFiles, CommitInfo, ParserServicePort
 from inxr2.application.use_cases.indexing.default_orchestrator import (
     DefaultIndexingOrchestrator,
-)
-from inxr2.application.use_cases.indexing.orchestrator import (
-    IndexRepositoryRequest,
 )
 from tests.fixtures.test_doubles import (
     FakeGitService,

@@ -17,11 +17,11 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
+from inxr2.application.dtos.indexing import DBQueryStats
 from inxr2.application.use_cases.indexing import (
     GetIndexStatusRequest,
     GetIndexStatusUseCase,
 )
-from inxr2.application.use_cases.indexing.orchestrator import DBQueryStats
 
 logger = logging.getLogger(__name__)
 
@@ -293,11 +293,9 @@ async def _run_full_index_async(
     from inxr2.adapters.external.git_service import GitService
     from inxr2.adapters.external.plaintext_parser import PlaintextParser
     from inxr2.adapters.external.treesitter import TreeSitterService
+    from inxr2.application.dtos.indexing import IndexRepositoryRequest
     from inxr2.application.use_cases.indexing.default_orchestrator import (
         DefaultIndexingOrchestrator,
-    )
-    from inxr2.application.use_cases.indexing.orchestrator import (
-        IndexRepositoryRequest,
     )
 
     # Initialize services

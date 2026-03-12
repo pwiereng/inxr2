@@ -1,18 +1,12 @@
 """Indexing orchestrator port interface."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from ...use_cases.indexing.default_orchestrator import IndexingProgress
-    from ...use_cases.indexing.orchestrator import (
-        IndexRepositoryRequest,
-        IndexRepositoryResponse,
-    )
+from ...dtos.indexing import ProgressCallback
 
-# Progress callback type for indexing operations
-ProgressCallback = Callable[["IndexingProgress"], None]
+if TYPE_CHECKING:
+    from ...dtos.indexing import IndexRepositoryRequest, IndexRepositoryResponse
 
 
 class IndexingOrchestratorPort(ABC):
