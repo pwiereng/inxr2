@@ -87,12 +87,14 @@ class ResolveReferencesUseCase:
         self,
         request: ResolveReferencesRequest,
         progress_callback: ResolutionProgressCallback | None = None,
-        batch_size: int = 1000,
+        batch_size: int = 5000,
     ) -> ResolveReferencesResponse:
         """Execute reference resolution with progress updates.
 
         Resolves references in batches, calling the progress callback
-        after each batch to report progress.
+        after each batch to report progress. Uses a large default
+        batch_size (5000) to balance memory usage against the
+        O(N²/batch_size) scanning cost of small batches.
 
         When request.branch is set, resolution is scoped to that branch:
         prepare_resolution builds branch-scoped temp tables, and
