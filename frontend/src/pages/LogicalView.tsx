@@ -122,6 +122,7 @@ export default function LogicalView(): React.ReactElement {
   const commit = searchParams.get('commit')
   const fileParam = searchParams.get('file')
   const kindParam = searchParams.get('kind')
+  const languageParam = searchParams.get('language')
 
   // Resolve default branch and latest commit when missing from URL
   useEffect(() => {
@@ -171,13 +172,16 @@ export default function LogicalView(): React.ReactElement {
   const [expandingSymbol, setExpandingSymbol] = useState<number | null>(null)
   const [filterText, setFilterText] = useState('')
   const [excludeText, setExcludeText] = useState('')
-  const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null)
+  const [selectedLanguage, setSelectedLanguage] = useState<string | null>(languageParam)
   const [activeKind, setActiveKind] = useState<string | null>(kindParam)
 
-  // Sync activeKind with URL on browser back/forward navigation
+  // Sync activeKind and selectedLanguage with URL on browser back/forward navigation
   useEffect(() => {
     setActiveKind(kindParam ?? null)
   }, [kindParam])
+  useEffect(() => {
+    setSelectedLanguage(languageParam ?? null)
+  }, [languageParam])
   const [showKindCounts, setShowKindCounts] = useState(false)
   const [symbolSearch, setSymbolSearch] = useState('')
   const [symbolSearchMatchFileIds, setSymbolSearchMatchFileIds] = useState<Set<number> | null>(null)
@@ -298,7 +302,7 @@ export default function LogicalView(): React.ReactElement {
 
   // Update URL to reflect current browsing state
   const updateUrlState = useCallback(
-    (updates: { file?: string | null; kind?: string | null }) => {
+    (updates: { file?: string | null; kind?: string | null; language?: string | null }) => {
       const params = new URLSearchParams(searchParams)
       if ('file' in updates) {
         if (updates.file) {
@@ -312,6 +316,13 @@ export default function LogicalView(): React.ReactElement {
           params.set('kind', updates.kind)
         } else {
           params.delete('kind')
+        }
+      }
+      if ('language' in updates) {
+        if (updates.language) {
+          params.set('language', updates.language)
+        } else {
+          params.delete('language')
         }
       }
       navigate(`/logical-view?${params.toString()}`, { replace: true })
@@ -917,14 +928,14 @@ export default function LogicalView(): React.ReactElement {
     return groups
   }, [filteredKindSymbols])
 
-  // Summary stats — always total counts, but filter to active kind when in kind mode
+  // Summary stats — use filtered file count, filter to active kind when in kind mode
   const summaryStats = useMemo(() => {
     if (activeKind) {
       const count = totalKindCounts[activeKind] ?? 0
-      return { files: files.length, kinds: count > 0 ? { [activeKind]: count } : {} }
+      return { files: filteredFiles.length, kinds: count > 0 ? { [activeKind]: count } : {} }
     }
-    return { files: files.length, kinds: totalKindCounts }
-  }, [activeKind, files, totalKindCounts])
+    return { files: filteredFiles.length, kinds: totalKindCounts }
+  }, [activeKind, filteredFiles, totalKindCounts])
 
   // Restore scroll position after filter/search changes re-render the list
   useLayoutEffect(() => {
@@ -1059,7 +1070,7 @@ export default function LogicalView(): React.ReactElement {
                   size="small"
                   variant={selectedLanguage === null ? 'filled' : 'outlined'}
                   color={selectedLanguage === null ? 'primary' : 'default'}
-                  onClick={() => setSelectedLanguage(null)}
+                  onClick={() => updateUrlState({ language: null })}
                   sx={{ height: 24 }}
                 />
                 {availableLanguages.map((lang) => (
@@ -1069,7 +1080,9 @@ export default function LogicalView(): React.ReactElement {
                     size="small"
                     variant={selectedLanguage === lang ? 'filled' : 'outlined'}
                     color={selectedLanguage === lang ? 'primary' : 'default'}
-                    onClick={() => setSelectedLanguage(selectedLanguage === lang ? null : lang)}
+                    onClick={() =>
+                      updateUrlState({ language: selectedLanguage === lang ? null : lang })
+                    }
                     sx={{ height: 24 }}
                   />
                 ))}
@@ -1082,13 +1095,12 @@ export default function LogicalView(): React.ReactElement {
                   setSymbolSearch('')
                   setFilterText('')
                   setExcludeText('')
-                  setSelectedLanguage(null)
                   setActiveKind(null)
                   setShowKindCounts(false)
                   setExpanded({ files: new Set(), symbols: new Set() })
                   setKindExpandedSymbols(new Set())
                   setKindSymbolChildren({})
-                  updateUrlState({ file: null, kind: null })
+                  updateUrlState({ file: null, kind: null, language: null })
                   savedScrollTop.current = 0
                   if (scrollRef.current) scrollRef.current.scrollTop = 0
                 }}
