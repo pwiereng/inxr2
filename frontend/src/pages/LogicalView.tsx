@@ -122,7 +122,7 @@ export default function LogicalView(): React.ReactElement {
   const commit = searchParams.get('commit')
   const fileParam = searchParams.get('file')
   const kindParam = searchParams.get('kind')
-  const languageParam = searchParams.get('language')?.trim() || null
+  const languageParam = searchParams.get('language')?.trim().toLowerCase() || null
 
   // Resolve default branch and latest commit when missing from URL
   useEffect(() => {
