@@ -1,8 +1,8 @@
 """Centralized exception-to-HTTP-response mapping.
 
-Registers FastAPI exception handlers that convert domain exceptions
-to appropriate HTTP error responses, eliminating duplicated try/except
-blocks across route files.
+Registers FastAPI exception handlers that convert domain and application
+exceptions to appropriate HTTP error responses, eliminating duplicated
+try/except blocks across route files.
 """
 
 from fastapi import FastAPI, Request
@@ -49,7 +49,9 @@ async def _binary_file_handler(request: Request, exc: BinaryFileError) -> JSONRe
 async def _repository_path_not_found_handler(
     request: Request, exc: RepositoryPathNotFoundError
 ) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"detail": str(exc)})
+    return JSONResponse(
+        status_code=500, content={"detail": "Repository path not found on server"}
+    )
 
 
 def register_exception_handlers(app: FastAPI) -> None:

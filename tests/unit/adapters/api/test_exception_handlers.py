@@ -147,7 +147,7 @@ class TestRepositoryPathNotFoundHandler:
             resp = await client.get("/test")
 
         assert resp.status_code == 500
-        assert "/repos/missing" in resp.json()["detail"]
+        assert resp.json() == {"detail": "Repository path not found on server"}
 
 
 class TestUnhandledExceptionsPassThrough:
