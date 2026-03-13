@@ -874,6 +874,17 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                   )}
                 </Box>
               </>
+            ) : treeNodes.length === 0 ? (
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  flex: 1,
+                }}
+              >
+                <CircularProgress size={24} />
+              </Box>
             ) : (
               <DirectoryListing
                 treeNodes={treeNodes}
