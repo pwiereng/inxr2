@@ -212,6 +212,7 @@ export function useBrowseData({
         setTreeNodes(tree.root)
       } catch (err) {
         console.error('Failed to load tree:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load file tree')
         setTreeNodes([])
       } finally {
         setTreeLoading(false)

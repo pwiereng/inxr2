@@ -216,6 +216,7 @@ export function useBrowseUrlState(
 
   const navigateToDirectory = useCallback(
     (path: string) => {
+      refs.setErrorRef.current(null)
       const params = new URLSearchParams()
       if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
       if (!urlState.drawerOpen) params.set('drawer', '0')
@@ -227,7 +228,7 @@ export function useBrowseUrlState(
         `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(path)}/${query ? `?${query}` : ''}`
       )
     },
-    [navigate, urlState]
+    [navigate, urlState, refs.setErrorRef]
   )
 
   const navigateToLine = useCallback(
