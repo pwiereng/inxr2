@@ -72,6 +72,7 @@ export interface BrowseUIState {
   drawerOpen: boolean
   refsPanelOpen: boolean
   loading: boolean
+  treeLoading: boolean
   fileLoading: boolean
   diffLoading: boolean
   error: string | null

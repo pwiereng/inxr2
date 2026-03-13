@@ -41,6 +41,7 @@ export interface UseBrowseDataResult {
   latestBranchCommit: string | null | undefined
   commitDateMap: Map<string, string>
   loading: boolean
+  treeLoading: boolean
   fileLoading: boolean
   error: string | null
   setError: (error: string | null) => void
@@ -79,6 +80,7 @@ export function useBrowseData({
 
   // ========== UI state (loading/error only) ==========
   const [loading, setLoading] = useState(true)
+  const [treeLoading, setTreeLoading] = useState(true)
   const [fileLoading, setFileLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -193,6 +195,7 @@ export function useBrowseData({
           return
         }
 
+        setTreeLoading(true)
         // changedOnly only applies when viewing a specific commit
         const shouldUseChangedOnly = urlState.changedOnly && !!treeCommit
         const tree = await getRepositoryTreeByName(
@@ -204,6 +207,8 @@ export function useBrowseData({
         setTreeNodes(tree.root)
       } catch (err) {
         console.error('Failed to load tree:', err)
+      } finally {
+        setTreeLoading(false)
       }
     }
 
@@ -383,6 +388,7 @@ export function useBrowseData({
     latestBranchCommit,
     commitDateMap,
     loading,
+    treeLoading,
     fileLoading,
     error,
     setError,

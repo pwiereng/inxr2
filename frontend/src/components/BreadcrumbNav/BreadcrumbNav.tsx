@@ -96,6 +96,7 @@ export function BreadcrumbNav({
             ) : (
               <Link
                 component="button"
+                type="button"
                 variant="body2"
                 underline="hover"
                 onClick={() => onDirectoryClick(segmentPaths[index]!)}

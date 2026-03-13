@@ -67,7 +67,8 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
     urlState
   const { repository, treeNodes, fileContent, fileSymbols, fileReferences, rawContent } = dataState
   const { diffContent, diffSymbols, diffReferences, activePanel, treePanel, refPanel } = diffState
-  const { drawerOpen, refsPanelOpen, loading, fileLoading, diffLoading, error } = uiState
+  const { drawerOpen, refsPanelOpen, loading, treeLoading, fileLoading, diffLoading, error } =
+    uiState
   const { selectedSymbol, isDirectDefinition, searchByName } = refsState
   const {
     comparisonCommit,
@@ -874,7 +875,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                   )}
                 </Box>
               </>
-            ) : treeNodes.length === 0 ? (
+            ) : treeLoading ? (
               <Box
                 sx={{
                   display: 'flex',

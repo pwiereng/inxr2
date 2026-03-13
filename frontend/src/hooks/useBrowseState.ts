@@ -205,6 +205,7 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
     drawerOpen: urlResult.urlState.drawerOpen,
     refsPanelOpen: urlResult.urlState.refsPanelOpen,
     loading: dataResult.loading,
+    treeLoading: dataResult.treeLoading,
     fileLoading: dataResult.fileLoading,
     diffLoading: diffResult.diffLoading,
     error: dataResult.error,
