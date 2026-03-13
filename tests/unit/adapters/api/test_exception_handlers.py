@@ -39,7 +39,7 @@ class TestRepositoryNotFoundHandler:
             resp = await client.get("/test")
 
         assert resp.status_code == 404
-        assert resp.json() == {"detail": "Repository not found"}
+        assert resp.json() == {"detail": "Repository not found: my-repo"}
 
 
 class TestFileNotFoundHandler:
@@ -91,7 +91,7 @@ class TestCommitNotFoundHandler:
             resp = await client.get("/test")
 
         assert resp.status_code == 404
-        assert resp.json() == {"detail": "Commit not found"}
+        assert resp.json() == {"detail": "Commit not found: abc123"}
 
 
 class TestSymbolNotFoundHandler:
@@ -109,7 +109,7 @@ class TestSymbolNotFoundHandler:
             resp = await client.get("/test")
 
         assert resp.status_code == 404
-        assert resp.json() == {"detail": "Symbol not found"}
+        assert resp.json() == {"detail": "Symbol not found: 42"}
 
 
 class TestBinaryFileHandler:

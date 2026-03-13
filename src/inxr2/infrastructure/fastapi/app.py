@@ -13,7 +13,6 @@ def create_app() -> FastAPI:
 
     TODO: Add router registration
     TODO: Add middleware configuration
-    TODO: Add error handlers
     TODO: Add dependency injection
     """
     app = FastAPI(

@@ -5,8 +5,6 @@ to appropriate HTTP error responses, eliminating duplicated try/except
 blocks across route files.
 """
 
-import logging
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -18,13 +16,11 @@ from ...domain.exceptions import (
     SymbolNotFound,
 )
 
-logger = logging.getLogger(__name__)
-
 
 async def _repository_not_found_handler(
     request: Request, exc: RepositoryNotFound
 ) -> JSONResponse:
-    return JSONResponse(status_code=404, content={"detail": "Repository not found"})
+    return JSONResponse(status_code=404, content={"detail": exc.message})
 
 
 async def _file_not_found_handler(request: Request, exc: FileNotFound) -> JSONResponse:
@@ -34,13 +30,13 @@ async def _file_not_found_handler(request: Request, exc: FileNotFound) -> JSONRe
 async def _commit_not_found_handler(
     request: Request, exc: CommitNotFound
 ) -> JSONResponse:
-    return JSONResponse(status_code=404, content={"detail": "Commit not found"})
+    return JSONResponse(status_code=404, content={"detail": exc.message})
 
 
 async def _symbol_not_found_handler(
     request: Request, exc: SymbolNotFound
 ) -> JSONResponse:
-    return JSONResponse(status_code=404, content={"detail": "Symbol not found"})
+    return JSONResponse(status_code=404, content={"detail": exc.message})
 
 
 async def _binary_file_handler(request: Request, exc: BinaryFileError) -> JSONResponse:
