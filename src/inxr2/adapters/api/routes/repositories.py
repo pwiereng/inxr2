@@ -22,7 +22,6 @@ from ....application.use_cases.symbols import (
     GetSymbolTreeFilesResponse,
     GetSymbolTreeRequest,
 )
-from ....domain.exceptions import RepositoryNotFound
 from ....infrastructure.dependencies import (
     GetAllRepositoryStatsUseCaseDep,
     GetRepositoryBranchesUseCaseDep,
@@ -336,12 +335,9 @@ async def get_repository_stats(
 
     Returns counts of files, symbols, and references.
     """
-    try:
-        stats = await use_case.execute(
-            GetRepositoryStatsRequest(repository_id=repository_id)
-        )
-    except RepositoryNotFound as e:
-        raise HTTPException(status_code=404, detail="Repository not found") from e
+    stats = await use_case.execute(
+        GetRepositoryStatsRequest(repository_id=repository_id)
+    )
 
     return _stats_to_response(stats)
 
@@ -361,8 +357,6 @@ async def get_repository_branches(
         response = await use_case.execute(
             GetRepositoryBranchesRequest(repository_id=repository_id)
         )
-    except RepositoryNotFound as e:
-        raise HTTPException(status_code=404, detail="Repository not found") from e
     except ValueError as e:
         # Path not found or git error
         error_msg = str(e).lower()

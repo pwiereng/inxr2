@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict
 
 from ....application.use_cases.dependencies import SearchDependenciesRequest
 from ....application.use_cases.search import SearchFilesRequest, SearchTextRequest
-from ....domain.exceptions import CommitNotFound, RepositoryNotFound
 from ....domain.value_objects import QueryMode, TextSearchSourceType
 from ....infrastructure.dependencies import (
     FileSearchAdapter,
@@ -295,10 +294,6 @@ async def search_files(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
-    except RepositoryNotFound as e:
-        raise HTTPException(status_code=404, detail=str(e)) from None
-    except CommitNotFound as e:
-        raise HTTPException(status_code=404, detail=str(e)) from None
 
     return FileSearchListResponse(
         files=[

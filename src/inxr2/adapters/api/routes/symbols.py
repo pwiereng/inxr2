@@ -9,7 +9,6 @@ from ....application.use_cases.symbols import (
     GetSymbolReferencesRequest,
     SearchSymbolsRequest,
 )
-from ....domain.exceptions import SymbolNotFound
 from ....infrastructure.dependencies import (
     FileAdapter,
     GetSymbolReferencesUseCaseDep,
@@ -295,18 +294,15 @@ async def get_symbol_references(
     - branch: Branch name to filter references. Only returns references from
               files that exist on this branch.
     """
-    try:
-        result = await use_case.execute(
-            GetSymbolReferencesRequest(
-                symbol_id=symbol_id,
-                by_name=by_name,
-                commit_hash=commit,
-                branch=branch,
-                limit=limit,
-            )
+    result = await use_case.execute(
+        GetSymbolReferencesRequest(
+            symbol_id=symbol_id,
+            by_name=by_name,
+            commit_hash=commit,
+            branch=branch,
+            limit=limit,
         )
-    except SymbolNotFound:
-        raise HTTPException(status_code=404, detail="Symbol not found") from None
+    )
 
     return ReferencesListResponse(
         items=[

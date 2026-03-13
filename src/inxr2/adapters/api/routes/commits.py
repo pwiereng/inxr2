@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ....application.use_cases.commits import ListCommitsRequest
-from ....domain.exceptions import DomainException, RepositoryNotFound
+from ....domain.exceptions import DomainException
 from ....infrastructure.dependencies import (
     CommitAdapter,
     GitServiceDep,
@@ -91,16 +91,13 @@ async def list_commits(
     # Validate inputs
     repo = validate_repo_name(repo)
 
-    try:
-        result = await use_case.execute(
-            ListCommitsRequest(
-                repository_name=repo,
-                branch=branch,
-                limit=limit,
-            )
+    result = await use_case.execute(
+        ListCommitsRequest(
+            repository_name=repo,
+            branch=branch,
+            limit=limit,
         )
-    except RepositoryNotFound:
-        raise HTTPException(status_code=404, detail="Repository not found") from None
+    )
 
     return CommitListResponse(
         commits=[
