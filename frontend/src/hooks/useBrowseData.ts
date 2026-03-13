@@ -41,6 +41,7 @@ export interface UseBrowseDataResult {
   latestBranchCommit: string | null | undefined
   commitDateMap: Map<string, string>
   loading: boolean
+  treeLoading: boolean
   fileLoading: boolean
   error: string | null
   setError: (error: string | null) => void
@@ -79,6 +80,7 @@ export function useBrowseData({
 
   // ========== UI state (loading/error only) ==========
   const [loading, setLoading] = useState(true)
+  const [treeLoading, setTreeLoading] = useState(true)
   const [fileLoading, setFileLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -176,23 +178,29 @@ export function useBrowseData({
       : urlState.selectedBranch
 
     const loadTree = async () => {
+      // Guard 1: When changedOnly is requested but latestBranchCommit is still
+      // pending (undefined = not yet resolved), skip loading to avoid showing
+      // the full unfiltered tree. Once it resolves (to a string or null), the
+      // effect re-fires.
+      if (urlState.changedOnly && !treeCommit && latestBranchCommit === undefined) {
+        setTreeLoading(true)
+        setTreeNodes([])
+        return
+      }
+
+      // Guard 2: When neither an explicit commit nor branch is available, wait
+      // for latestBranchCommit to resolve. Without this, the tree API is called
+      // without filtering params, which returns ghost files (stale paths from
+      // renamed/deleted files). Once latestBranchCommit resolves, the effect
+      // re-fires with a proper commit.
+      if (!treeCommit && !treeBranch && latestBranchCommit === undefined) {
+        setTreeLoading(true)
+        setTreeNodes([])
+        return
+      }
+
+      setTreeLoading(true)
       try {
-        // Guard 1: When changedOnly is requested but latestBranchCommit is still
-        // pending (undefined = not yet resolved), skip loading to avoid showing
-        // the full unfiltered tree. Once it resolves (to a string or null), the
-        // effect re-fires.
-        if (urlState.changedOnly && !treeCommit && latestBranchCommit === undefined) return
-
-        // Guard 2: When neither an explicit commit nor branch is available, wait
-        // for latestBranchCommit to resolve. Without this, the tree API is called
-        // without filtering params, which returns ghost files (stale paths from
-        // renamed/deleted files). Once latestBranchCommit resolves, the effect
-        // re-fires with a proper commit.
-        if (!treeCommit && !treeBranch && latestBranchCommit === undefined) {
-          setTreeNodes([])
-          return
-        }
-
         // changedOnly only applies when viewing a specific commit
         const shouldUseChangedOnly = urlState.changedOnly && !!treeCommit
         const tree = await getRepositoryTreeByName(
@@ -204,6 +212,10 @@ export function useBrowseData({
         setTreeNodes(tree.root)
       } catch (err) {
         console.error('Failed to load tree:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load file tree')
+        setTreeNodes([])
+      } finally {
+        setTreeLoading(false)
       }
     }
 
@@ -383,6 +395,7 @@ export function useBrowseData({
     latestBranchCommit,
     commitDateMap,
     loading,
+    treeLoading,
     fileLoading,
     error,
     setError,

@@ -205,6 +205,7 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
     drawerOpen: urlResult.urlState.drawerOpen,
     refsPanelOpen: urlResult.urlState.refsPanelOpen,
     loading: dataResult.loading,
+    treeLoading: dataResult.treeLoading,
     fileLoading: dataResult.fileLoading,
     diffLoading: diffResult.diffLoading,
     error: dataResult.error,
@@ -221,6 +222,7 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
     // Navigation
     navigateToRepository: urlResult.navigateToRepository,
     navigateToFile: urlResult.navigateToFile,
+    navigateToDirectory: urlResult.navigateToDirectory,
     navigateToSymbol: refsResult.navigateToSymbol,
     navigateToLine: urlResult.navigateToLine,
     resetToFileTree: urlResult.resetToFileTree,

@@ -28,6 +28,8 @@ import type {
 export interface BrowseUrlState {
   repoName: string | undefined
   filePath: string | null
+  /** Non-null when the URL path points to a subdirectory (trailing slash); null at root */
+  directoryPath: string | null
   highlightLine: number | undefined
   selectedCommit: string | null
   diffCommit: string | null
@@ -70,6 +72,7 @@ export interface BrowseUIState {
   drawerOpen: boolean
   refsPanelOpen: boolean
   loading: boolean
+  treeLoading: boolean
   fileLoading: boolean
   diffLoading: boolean
   error: string | null
@@ -86,6 +89,7 @@ export interface BrowseActions {
   // Navigation
   navigateToRepository: (repoName: string) => void
   navigateToFile: (path: string) => void
+  navigateToDirectory: (path: string) => void
   navigateToSymbol: (symbol: Symbol) => void
   navigateToLine: (line: number) => void
   resetToFileTree: () => void

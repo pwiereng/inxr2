@@ -15,6 +15,17 @@ export function encodeFilePath(path: string): string {
     .join('/')
 }
 
+/**
+ * Build the base URL path for a browse navigation, preserving file or directory context.
+ * File paths use no trailing slash; directory paths use a trailing slash.
+ */
+function buildBasePath(urlState: BrowseUrlState): string {
+  const repo = `/browse/${encodeURIComponent(urlState.repoName!)}`
+  if (urlState.filePath) return `${repo}/${encodeFilePath(urlState.filePath)}`
+  if (urlState.directoryPath) return `${repo}/${encodeFilePath(urlState.directoryPath)}/`
+  return repo
+}
+
 export interface UseBrowseUrlStateRefs {
   resetRefsPanelRef: MutableRefObject<() => void>
   setErrorRef: MutableRefObject<(error: string | null) => void>
@@ -36,6 +47,7 @@ export interface UseBrowseUrlStateResult {
   setViewMode: (mode: 'rendered' | 'raw' | null) => void
   navigateToRepository: (repoName: string) => void
   navigateToFile: (path: string) => void
+  navigateToDirectory: (path: string) => void
   navigateToLine: (line: number) => void
   handleDiffLineClick: (line: number, panel: 'left' | 'right') => void
   changeVersion: (commitHash: string | null) => void
@@ -58,7 +70,13 @@ export function useBrowseUrlState(
 
   // ========== URL-derived state ==========
   const urlState = useMemo<BrowseUrlState>(() => {
-    const filePath = splatPath || searchParams.get('file') || null
+    const rawPath = splatPath || searchParams.get('file') || null
+    // Directory paths end with '/' or are empty (root).
+    // When a directory path is detected, filePath is null (no file to load)
+    // and directoryPath holds the directory path (without trailing slash).
+    const isDirectoryPath = rawPath === null || rawPath === '' || rawPath.endsWith('/')
+    const filePath = isDirectoryPath ? null : rawPath
+    const directoryPath = isDirectoryPath ? rawPath?.replace(/\/$/, '') || null : null
     const highlightLine = searchParams.get('line')
       ? parseInt(searchParams.get('line')!, 10)
       : undefined
@@ -83,6 +101,7 @@ export function useBrowseUrlState(
     return {
       repoName,
       filePath,
+      directoryPath,
       highlightLine,
       selectedCommit,
       diffCommit,
@@ -195,6 +214,23 @@ export function useBrowseUrlState(
     [navigate, urlState]
   )
 
+  const navigateToDirectory = useCallback(
+    (path: string) => {
+      refs.setErrorRef.current(null)
+      const params = new URLSearchParams()
+      if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
+      if (!urlState.drawerOpen) params.set('drawer', '0')
+      if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
+      if (urlState.changedOnly) params.set('co', '1')
+      const query = params.toString()
+      // Trailing slash signals directory mode
+      navigate(
+        `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(path)}/${query ? `?${query}` : ''}`
+      )
+    },
+    [navigate, urlState, refs.setErrorRef]
+  )
+
   const navigateToLine = useCallback(
     (line: number) => {
       if (urlState.filePath) {
@@ -284,9 +320,7 @@ export function useBrowseUrlState(
       if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
       // Preserve changedOnly state
       if (urlState.changedOnly) params.set('co', '1')
-      const basePath = urlState.filePath
-        ? `/browse/${encodeURIComponent(urlState.repoName)}/${encodeFilePath(urlState.filePath)}`
-        : `/browse/${encodeURIComponent(urlState.repoName)}`
+      const basePath = buildBasePath(urlState)
       const query = params.toString()
       navigate(`${basePath}${query ? `?${query}` : ''}`)
     },
@@ -342,13 +376,9 @@ export function useBrowseUrlState(
       // Preserve changedOnly state
       if (urlState.changedOnly) params.set('co', '1')
 
-      if (urlState.filePath) {
-        navigate(
-          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
-        )
-      } else {
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}?${params}`)
-      }
+      const basePath = buildBasePath(urlState)
+      const query = params.toString()
+      navigate(`${basePath}${query ? `?${query}` : ''}`)
     },
     [navigate, urlState, refs.resetRefsPanelRef]
   )
@@ -413,6 +443,7 @@ export function useBrowseUrlState(
     setViewMode,
     navigateToRepository,
     navigateToFile,
+    navigateToDirectory,
     navigateToLine,
     handleDiffLineClick,
     changeVersion,
