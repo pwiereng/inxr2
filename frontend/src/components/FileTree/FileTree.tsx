@@ -231,10 +231,10 @@ export function FileTree({
   // Auto-expand to selected directory path (from breadcrumb navigation)
   useEffect(() => {
     if (selectedDirectoryPath && nodes.length > 0) {
-      const parentPaths = getParentPaths(selectedDirectoryPath + '/placeholder')
+      const parentPaths = getParentPaths(selectedDirectoryPath)
       setExpandedPaths((prev) => {
         const next = new Set(prev)
-        // Expand all parents AND the directory itself
+        // Expand the directory itself and all its parents
         next.add(selectedDirectoryPath)
         parentPaths.forEach((p) => next.add(p))
         return next

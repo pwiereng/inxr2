@@ -505,6 +505,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                     selectedFileId={fileContent?.id ?? null}
                     selectedDirectoryPath={urlState.directoryPath}
                     onFileSelect={actions.navigateToFile}
+                    loading={treeLoading}
                   />
                 </Box>
               </Box>
