@@ -252,6 +252,7 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
   4. `docker exec inxr2-dev ./scripts/run-all-tests.sh` to verify everything passes on main
 - **Container naming:** Main: `inxr2-dev` / Worktree: `inxr2-<branch>-dev`
 - **instructions.txt:** Always write a prompt file in the worktree root, starting with tab title command. Do NOT commit (in `.gitignore`).
+- **Temporary files:** Save screenshots, curl downloads, and other scratch files to `.tmp/` in the project root (gitignored) — NOT `/tmp`. This keeps temp files contained and they get cleaned up automatically with `worktree-remove.sh`. Create the directory if it doesn't exist: `mkdir -p .tmp`
 - **MCP from worktrees:** Use `docker exec inxr2-dev` for MCP queries (main has indexed data). Use worktree container only for testing MCP code changes.
 
 ## Important Files

@@ -285,3 +285,6 @@ htmlcov/
 
 # Worktree session bootstrapping (local-only)
 instructions.txt
+
+# Temporary files (screenshots, curl downloads, etc.)
+.tmp/
