@@ -47,6 +47,8 @@ function getParentPaths(filePath: string): string[] {
 interface FileTreeProps {
   nodes: TreeNode[]
   selectedFileId?: number | null
+  /** When set, the tree auto-expands to reveal this directory */
+  selectedDirectoryPath?: string | null
   onFileSelect?: (path: string) => void
   loading?: boolean
 }
@@ -181,6 +183,7 @@ function TreeNodeItem({
 export function FileTree({
   nodes,
   selectedFileId,
+  selectedDirectoryPath,
   onFileSelect,
   loading = false,
 }: FileTreeProps): React.ReactElement {
@@ -224,6 +227,20 @@ export function FileTree({
       }
     }
   }, [selectedFileId, nodes])
+
+  // Auto-expand to selected directory path (from breadcrumb navigation)
+  useEffect(() => {
+    if (selectedDirectoryPath && nodes.length > 0) {
+      const parentPaths = getParentPaths(selectedDirectoryPath + '/placeholder')
+      setExpandedPaths((prev) => {
+        const next = new Set(prev)
+        // Expand all parents AND the directory itself
+        next.add(selectedDirectoryPath)
+        parentPaths.forEach((p) => next.add(p))
+        return next
+      })
+    }
+  }, [selectedDirectoryPath, nodes])
 
   const handleFilterFileSelect = useCallback(
     (path: string) => {

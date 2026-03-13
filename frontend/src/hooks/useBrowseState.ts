@@ -221,6 +221,7 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
     // Navigation
     navigateToRepository: urlResult.navigateToRepository,
     navigateToFile: urlResult.navigateToFile,
+    navigateToDirectory: urlResult.navigateToDirectory,
     navigateToSymbol: refsResult.navigateToSymbol,
     navigateToLine: urlResult.navigateToLine,
     resetToFileTree: urlResult.resetToFileTree,

@@ -29,6 +29,7 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz'
 
 import { Group, Panel, Separator } from 'react-resizable-panels'
 
+import { BreadcrumbNav } from '@/components/BreadcrumbNav'
 import { BranchSelector } from '@/components/BranchSelector'
 import { CodeViewer } from '@/components/CodeViewer'
 import { DiffCodeViewer } from '@/components/DiffCodeViewer'
@@ -40,6 +41,7 @@ import { ReferencesPanel } from '@/components/ReferencesPanel'
 import { VersionSelector } from '@/components/VersionSelector'
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { CopyButton } from '@/components/CopyButton/CopyButton'
+import { DirectoryListing } from '@/components/DirectoryListing'
 import { useBrowseState } from '@/hooks/useBrowseState'
 import { getFileBlame, type BlameLine } from '@/lib/api'
 import { isMarkdownFile, detectLanguage } from '@/lib/fileUtils'
@@ -308,21 +310,18 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
           }}
         />
 
-        {/* File path and info */}
+        {/* Breadcrumb navigation */}
+        {repoName && (
+          <BreadcrumbNav
+            repoName={repoName}
+            currentPath={fileContent?.path ?? urlState.directoryPath}
+            isDirectory={!fileContent && urlState.directoryPath !== undefined}
+            onDirectoryClick={actions.navigateToDirectory}
+            onRootClick={actions.resetToFileTree}
+          />
+        )}
         {fileContent && (
           <>
-            <Typography
-              variant="body2"
-              sx={{
-                fontFamily: 'monospace',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                minWidth: 0,
-              }}
-            >
-              {fileContent.path}
-            </Typography>
             {detectLanguage(fileContent.path, fileContent.language) && (
               <Chip label={detectLanguage(fileContent.path, fileContent.language)} size="small" />
             )}
@@ -504,6 +503,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                   <FileTree
                     nodes={treeNodes}
                     selectedFileId={fileContent?.id ?? null}
+                    selectedDirectoryPath={urlState.directoryPath}
                     onFileSelect={actions.navigateToFile}
                   />
                 </Box>
@@ -876,17 +876,20 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                 </Box>
               </>
             ) : (
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  flex: 1,
-                  color: 'text.secondary',
+              <DirectoryListing
+                treeNodes={treeNodes}
+                directoryPath={urlState.directoryPath ?? null}
+                onFileSelect={actions.navigateToFile}
+                onDirectorySelect={actions.navigateToDirectory}
+                onParentClick={() => {
+                  const dir = urlState.directoryPath
+                  if (!dir || !dir.includes('/')) {
+                    actions.resetToFileTree()
+                  } else {
+                    actions.navigateToDirectory(dir.substring(0, dir.lastIndexOf('/')))
+                  }
                 }}
-              >
-                <Typography>Select a file from the tree to view its contents</Typography>
-              </Box>
+              />
             )}
           </Box>
         </Panel>

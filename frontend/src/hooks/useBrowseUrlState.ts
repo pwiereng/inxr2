@@ -36,6 +36,7 @@ export interface UseBrowseUrlStateResult {
   setViewMode: (mode: 'rendered' | 'raw' | null) => void
   navigateToRepository: (repoName: string) => void
   navigateToFile: (path: string) => void
+  navigateToDirectory: (path: string) => void
   navigateToLine: (line: number) => void
   handleDiffLineClick: (line: number, panel: 'left' | 'right') => void
   changeVersion: (commitHash: string | null) => void
@@ -58,7 +59,13 @@ export function useBrowseUrlState(
 
   // ========== URL-derived state ==========
   const urlState = useMemo<BrowseUrlState>(() => {
-    const filePath = splatPath || searchParams.get('file') || null
+    const rawPath = splatPath || searchParams.get('file') || null
+    // Directory paths end with '/' or are empty (root).
+    // When a directory path is detected, filePath is null (no file to load)
+    // and directoryPath holds the directory path (without trailing slash).
+    const isDirectoryPath = rawPath === null || rawPath === '' || rawPath.endsWith('/')
+    const filePath = isDirectoryPath ? null : rawPath
+    const directoryPath = isDirectoryPath ? rawPath?.replace(/\/$/, '') || null : null
     const highlightLine = searchParams.get('line')
       ? parseInt(searchParams.get('line')!, 10)
       : undefined
@@ -83,6 +90,7 @@ export function useBrowseUrlState(
     return {
       repoName,
       filePath,
+      directoryPath,
       highlightLine,
       selectedCommit,
       diffCommit,
@@ -190,6 +198,22 @@ export function useBrowseUrlState(
       const query = params.toString()
       navigate(
         `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(path)}${query ? `?${query}` : ''}`
+      )
+    },
+    [navigate, urlState]
+  )
+
+  const navigateToDirectory = useCallback(
+    (path: string) => {
+      const params = new URLSearchParams()
+      if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
+      if (!urlState.drawerOpen) params.set('drawer', '0')
+      if (urlState.selectedBranch) params.set('branch', urlState.selectedBranch)
+      if (urlState.changedOnly) params.set('co', '1')
+      const query = params.toString()
+      // Trailing slash signals directory mode
+      navigate(
+        `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(path)}/${query ? `?${query}` : ''}`
       )
     },
     [navigate, urlState]
@@ -413,6 +437,7 @@ export function useBrowseUrlState(
     setViewMode,
     navigateToRepository,
     navigateToFile,
+    navigateToDirectory,
     navigateToLine,
     handleDiffLineClick,
     changeVersion,

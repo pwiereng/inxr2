@@ -51,6 +51,7 @@ function makeUrlState(overrides: Partial<BrowseUrlState> = {}): BrowseUrlState {
   return {
     repoName: 'test-repo',
     filePath: 'src/main.py',
+    directoryPath: null,
     highlightLine: undefined,
     selectedCommit: null,
     diffCommit: null,
