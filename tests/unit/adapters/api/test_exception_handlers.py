@@ -159,7 +159,7 @@ class TestUnhandledExceptionsPassThrough:
         async def route() -> dict[str, str]:
             raise ValueError("bad input")
 
-        # ValueError is not handled by our exception handlers, so it propagates
+        # ValueError is not handled by our exception handlers; Starlette returns 500
         async with AsyncClient(
             transport=ASGITransport(app=app, raise_app_exceptions=False),
             base_url="http://test",

@@ -55,7 +55,7 @@ async def _repository_path_not_found_handler(
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """Register all domain exception handlers on the FastAPI app."""
+    """Register all domain and application exception handlers on the FastAPI app."""
     app.add_exception_handler(RepositoryNotFound, _repository_not_found_handler)  # type: ignore[arg-type]
     app.add_exception_handler(FileNotFound, _file_not_found_handler)  # type: ignore[arg-type]
     app.add_exception_handler(CommitNotFound, _commit_not_found_handler)  # type: ignore[arg-type]
