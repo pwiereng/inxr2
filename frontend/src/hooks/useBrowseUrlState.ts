@@ -15,6 +15,17 @@ export function encodeFilePath(path: string): string {
     .join('/')
 }
 
+/**
+ * Build the base URL path for a browse navigation, preserving file or directory context.
+ * File paths use no trailing slash; directory paths use a trailing slash.
+ */
+function buildBasePath(urlState: BrowseUrlState): string {
+  const repo = `/browse/${encodeURIComponent(urlState.repoName!)}`
+  if (urlState.filePath) return `${repo}/${encodeFilePath(urlState.filePath)}`
+  if (urlState.directoryPath) return `${repo}/${encodeFilePath(urlState.directoryPath)}/`
+  return repo
+}
+
 export interface UseBrowseUrlStateRefs {
   resetRefsPanelRef: MutableRefObject<() => void>
   setErrorRef: MutableRefObject<(error: string | null) => void>
@@ -308,9 +319,7 @@ export function useBrowseUrlState(
       if (urlState.diffBranch) params.set('diffBranch', urlState.diffBranch)
       // Preserve changedOnly state
       if (urlState.changedOnly) params.set('co', '1')
-      const basePath = urlState.filePath
-        ? `/browse/${encodeURIComponent(urlState.repoName)}/${encodeFilePath(urlState.filePath)}`
-        : `/browse/${encodeURIComponent(urlState.repoName)}`
+      const basePath = buildBasePath(urlState)
       const query = params.toString()
       navigate(`${basePath}${query ? `?${query}` : ''}`)
     },
@@ -366,13 +375,9 @@ export function useBrowseUrlState(
       // Preserve changedOnly state
       if (urlState.changedOnly) params.set('co', '1')
 
-      if (urlState.filePath) {
-        navigate(
-          `/browse/${encodeURIComponent(urlState.repoName!)}/${encodeFilePath(urlState.filePath)}?${params}`
-        )
-      } else {
-        navigate(`/browse/${encodeURIComponent(urlState.repoName!)}?${params}`)
-      }
+      const basePath = buildBasePath(urlState)
+      const query = params.toString()
+      navigate(`${basePath}${query ? `?${query}` : ''}`)
     },
     [navigate, urlState, refs.resetRefsPanelRef]
   )

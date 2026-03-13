@@ -53,6 +53,7 @@ export function BreadcrumbNav({
       {/* Repo root */}
       <Link
         component="button"
+        type="button"
         variant="body2"
         underline="hover"
         onClick={onRootClick}
