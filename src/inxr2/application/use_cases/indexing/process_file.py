@@ -10,6 +10,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from inxr2.domain.entities import (
     Dependency,
@@ -117,6 +118,18 @@ def _cached_result(file_id: int) -> ProcessFileResult:
     )
 
 
+@dataclass
+class _FileResolution:
+    """Result of resolving a file's content and version."""
+
+    file_id: int
+    content: str
+    language: str | None
+    line_count: int
+    created: bool
+    cached: bool  # True if file version already existed (no parsing needed)
+
+
 class ProcessFileUseCase:
     """
     Use case for processing a single file during indexing.
@@ -173,84 +186,16 @@ class ProcessFileUseCase:
 
     async def _do_process(self, request: ProcessFileRequest) -> ProcessFileResult:
         """Inner processing logic."""
-        fvi = request.file_version_index  # pre-loaded (path, content_hash)->file_id
+        resolution = await self._resolve_file_version(request)
+        if resolution.cached:
+            return _cached_result(resolution.file_id)
 
-        # Fast path 1: blob hash → content hash → file_version_index lookup
-        # Avoids BOTH git content read AND DB query.
-        known_content_hash = self._lookup_blob_hash(request)
-        if known_content_hash:
-            # Check in-memory index first (O(1) dict lookup)
-            if fvi is not None:
-                cached_id = fvi.get((request.file_path, known_content_hash))
-                if cached_id is not None:
-                    return _cached_result(cached_id)
-            # Fallback to DB query
-            existing_files = await self._file_repo.find_by_content_hash(
-                known_content_hash,
-                repository_id=request.repository_id,
-                path=request.file_path,
-            )
-            existing_version = existing_files[0] if existing_files else None
-            if existing_version is not None:
-                return _cached_result(existing_version.id)  # type: ignore[arg-type]
-            # Not found — fall through to full processing (read content, create properly)
+        file_id = resolution.file_id
+        content = resolution.content
+        language = resolution.language
+        line_count = resolution.line_count
 
-        # Read file content from git
-        content = self._git_service.get_file_content(
-            repo_path=request.repo_path,
-            commit_hash=request.commit_hash,
-            file_path=request.file_path,
-        )
-
-        # Calculate content hash
-        content_hash = hashlib.sha1(content.encode("utf-8")).hexdigest()
-
-        # Record blob → content hash mapping for future fast skip
-        if request.blob_hash and request.blob_to_content_hash is not None:
-            request.blob_to_content_hash[request.blob_hash] = content_hash
-
-        # Fast path 2: check file_version_index after computing content hash.
-        # Avoids the DB query in find_or_create_version for cached files.
-        if fvi is not None:
-            cached_id = fvi.get((request.file_path, content_hash))
-            if cached_id is not None:
-                return _cached_result(cached_id)
-
-        # Detect language using full LanguageDetector (60+ extensions, fixes #35)
-        language = LanguageDetector.detect(request.file_path)
-
-        # Shebang fallback for extensionless scripts (e.g. #!/bin/bash)
-        if language is None and content:
-            first_line = content.split("\n", 1)[0]
-            language = LanguageDetector.detect_from_shebang(first_line)
-
-        # Extract file extension (e.g., ".py", ".tsx")
-        extension = Path(request.file_path).suffix.lower() or None
-
-        # Find or create file version
-        content_bytes = content.encode("utf-8")
-        line_count = content.count("\n") + 1
-        file_entity, created = await self._file_repo.find_or_create_version(
-            repository_id=request.repository_id,
-            path=request.file_path,
-            content_hash=content_hash,
-            size_bytes=len(content_bytes),
-            language=language,
-            extension=extension,
-            line_count=line_count,
-        )
-        file_id = file_entity.id
-        assert file_id is not None
-
-        # Register newly created file in the index for subsequent lookups
-        if created and fvi is not None:
-            fvi[(request.file_path, content_hash)] = file_id
-
-        if not created:
-            # File version already exists — symbols/references already saved
-            return _cached_result(file_id)
-
-        # New file version — parse dependencies if this is a manifest/lock file
+        # Parse dependencies if this is a manifest/lock file
         dependencies_found = await self._extract_and_save_dependencies(
             content=content,
             file_path_str=request.file_path,
@@ -258,7 +203,7 @@ class ProcessFileUseCase:
             file_id=file_id,
         )
 
-        # New file version — parse and save symbols/references
+        # Parse and save symbols/references for supported code files
         if language and self._parser_service.supports_language(language):
             symbols_data, references_data = await self._parser_service.parse_file(
                 content=content,
@@ -266,7 +211,6 @@ class ProcessFileUseCase:
                 file_path=request.file_path,
             )
 
-            # Extract and save comments (file-derived, commit_id=None)
             comments_indexed, docstrings_indexed, comment_errors = (
                 await self._extract_and_save_comments(
                     content=content,
@@ -277,75 +221,18 @@ class ProcessFileUseCase:
                 )
             )
 
-            # Filter out symbols with empty names (can happen with
-            # macro-heavy code where tree-sitter produces empty identifiers)
-            valid_symbols_data = []
-            for sd in symbols_data:
-                if sd.get("name"):
-                    valid_symbols_data.append(sd)
-                else:
-                    logger.debug(
-                        "Skipping symbol with empty name at line %d in %s",
-                        sd.get("start_line", 0),
-                        request.file_path,
-                    )
+            symbols_found = await self._extract_and_save_symbols(
+                symbols_data=symbols_data,
+                repository_id=request.repository_id,
+                file_id=file_id,
+                file_path_str=request.file_path,
+            )
 
-            # Save symbols (batch)
-            symbols = [
-                Symbol(
-                    id=None,
-                    file_id=file_id,
-                    repository_id=request.repository_id,
-                    name=symbol_data["name"],
-                    kind=SymbolKind(symbol_data["kind"]),
-                    start_line=symbol_data["start_line"],
-                    start_column=symbol_data["start_column"],
-                    end_line=symbol_data["end_line"],
-                    end_column=symbol_data["end_column"],
-                    parent_symbol_id=symbol_data.get("parent_symbol_id"),
-                    scope=symbol_data.get("scope"),
-                    qualified_name=symbol_data.get("qualified_name"),
-                    signature=symbol_data.get("signature"),
-                    metadata=symbol_data.get("metadata", {}),
-                )
-                for symbol_data in valid_symbols_data
-            ]
-            if symbols:
-                saved_symbols = await self._symbol_repo.save_many(symbols)
-                await self._resolve_parent_symbol_ids(saved_symbols)
-            symbols_found = len(symbols)
-
-            # Save references (batch)
-            references = []
-            for ref_data in references_data:
-                reference_text = ref_data.get("text") or ref_data.get(
-                    "reference_text", ""
-                )
-                reference_type = ref_data.get("type") or ref_data.get(
-                    "reference_type", "usage"
-                )
-                source_column = ref_data["source_column"]
-                source_end_column = ref_data.get(
-                    "source_end_column",
-                    source_column + len(reference_text),
-                )
-
-                references.append(
-                    Reference(
-                        id=None,
-                        repository_id=request.repository_id,
-                        source_file_id=file_id,
-                        source_line=ref_data["source_line"],
-                        source_column=source_column,
-                        source_end_column=source_end_column,
-                        reference_text=reference_text,
-                        reference_type=ReferenceType(reference_type),
-                        target_symbol_id=None,
-                    )
-                )
-            if references:
-                await self._reference_repo.save_many(references)
-            references_found = len(references)
+            references_found = await self._extract_and_save_references(
+                references_data=references_data,
+                repository_id=request.repository_id,
+                file_id=file_id,
+            )
 
             return ProcessFileResult(
                 processed=True,
@@ -404,6 +291,197 @@ class ProcessFileUseCase:
             dependencies_found=dependencies_found,
             non_code_file_indexed=False,
         )
+
+    async def _resolve_file_version(
+        self, request: ProcessFileRequest
+    ) -> _FileResolution:
+        """Retrieve file content, compute hash, and find or create file version.
+
+        Checks multiple cache layers (blob hash, file version index, DB) to
+        avoid redundant content reads and parsing. Returns a cached resolution
+        if the file version already exists.
+        """
+        fvi = request.file_version_index
+
+        # Fast path 1: blob hash → content hash → file_version_index lookup
+        # Avoids BOTH git content read AND DB query.
+        known_content_hash = self._lookup_blob_hash(request)
+        if known_content_hash:
+            # Check in-memory index first (O(1) dict lookup)
+            if fvi is not None:
+                cached_id = fvi.get((request.file_path, known_content_hash))
+                if cached_id is not None:
+                    return _FileResolution(
+                        file_id=cached_id,
+                        content="",
+                        language=None,
+                        line_count=0,
+                        created=False,
+                        cached=True,
+                    )
+            # Fallback to DB query
+            existing_files = await self._file_repo.find_by_content_hash(
+                known_content_hash,
+                repository_id=request.repository_id,
+                path=request.file_path,
+            )
+            existing_version = existing_files[0] if existing_files else None
+            if existing_version is not None:
+                return _FileResolution(
+                    file_id=existing_version.id,  # type: ignore[arg-type]
+                    content="",
+                    language=None,
+                    line_count=0,
+                    created=False,
+                    cached=True,
+                )
+            # Not found — fall through to full processing
+
+        # Read file content from git
+        content = self._git_service.get_file_content(
+            repo_path=request.repo_path,
+            commit_hash=request.commit_hash,
+            file_path=request.file_path,
+        )
+
+        # Calculate content hash
+        content_hash = hashlib.sha1(content.encode("utf-8")).hexdigest()
+
+        # Record blob → content hash mapping for future fast skip
+        if request.blob_hash and request.blob_to_content_hash is not None:
+            request.blob_to_content_hash[request.blob_hash] = content_hash
+
+        # Fast path 2: check file_version_index after computing content hash
+        if fvi is not None:
+            cached_id = fvi.get((request.file_path, content_hash))
+            if cached_id is not None:
+                return _FileResolution(
+                    file_id=cached_id,
+                    content="",
+                    language=None,
+                    line_count=0,
+                    created=False,
+                    cached=True,
+                )
+
+        # Detect language
+        language = LanguageDetector.detect(request.file_path)
+        if language is None and content:
+            first_line = content.split("\n", 1)[0]
+            language = LanguageDetector.detect_from_shebang(first_line)
+
+        extension = Path(request.file_path).suffix.lower() or None
+        content_bytes = content.encode("utf-8")
+        line_count = content.count("\n") + 1
+
+        file_entity, created = await self._file_repo.find_or_create_version(
+            repository_id=request.repository_id,
+            path=request.file_path,
+            content_hash=content_hash,
+            size_bytes=len(content_bytes),
+            language=language,
+            extension=extension,
+            line_count=line_count,
+        )
+        file_id = file_entity.id
+        assert file_id is not None
+
+        # Register newly created file in the index for subsequent lookups
+        if created and fvi is not None:
+            fvi[(request.file_path, content_hash)] = file_id
+
+        return _FileResolution(
+            file_id=file_id,
+            content=content,
+            language=language,
+            line_count=line_count,
+            created=created,
+            cached=not created,
+        )
+
+    async def _extract_and_save_symbols(
+        self,
+        symbols_data: list[dict[str, Any]],
+        repository_id: int,
+        file_id: int,
+        file_path_str: str,
+    ) -> int:
+        """Filter, build, and persist symbol entities.
+
+        Skips symbols with empty names (can happen with macro-heavy code
+        where tree-sitter produces empty identifiers). Returns the count
+        of symbols saved.
+        """
+        valid_symbols_data = []
+        for sd in symbols_data:
+            if sd.get("name"):
+                valid_symbols_data.append(sd)
+            else:
+                logger.debug(
+                    "Skipping symbol with empty name at line %d in %s",
+                    sd.get("start_line", 0),
+                    file_path_str,
+                )
+
+        symbols = [
+            Symbol(
+                id=None,
+                file_id=file_id,
+                repository_id=repository_id,
+                name=symbol_data["name"],
+                kind=SymbolKind(symbol_data["kind"]),
+                start_line=symbol_data["start_line"],
+                start_column=symbol_data["start_column"],
+                end_line=symbol_data["end_line"],
+                end_column=symbol_data["end_column"],
+                parent_symbol_id=symbol_data.get("parent_symbol_id"),
+                scope=symbol_data.get("scope"),
+                qualified_name=symbol_data.get("qualified_name"),
+                signature=symbol_data.get("signature"),
+                metadata=symbol_data.get("metadata", {}),
+            )
+            for symbol_data in valid_symbols_data
+        ]
+        if symbols:
+            saved_symbols = await self._symbol_repo.save_many(symbols)
+            await self._resolve_parent_symbol_ids(saved_symbols)
+        return len(symbols)
+
+    async def _extract_and_save_references(
+        self,
+        references_data: list[dict[str, Any]],
+        repository_id: int,
+        file_id: int,
+    ) -> int:
+        """Build and persist reference entities. Returns the count saved."""
+        references = []
+        for ref_data in references_data:
+            reference_text = ref_data.get("text") or ref_data.get("reference_text", "")
+            reference_type = ref_data.get("type") or ref_data.get(
+                "reference_type", "usage"
+            )
+            source_column = ref_data["source_column"]
+            source_end_column = ref_data.get(
+                "source_end_column",
+                source_column + len(reference_text),
+            )
+
+            references.append(
+                Reference(
+                    id=None,
+                    repository_id=repository_id,
+                    source_file_id=file_id,
+                    source_line=ref_data["source_line"],
+                    source_column=source_column,
+                    source_end_column=source_end_column,
+                    reference_text=reference_text,
+                    reference_type=ReferenceType(reference_type),
+                    target_symbol_id=None,
+                )
+            )
+        if references:
+            await self._reference_repo.save_many(references)
+        return len(references)
 
     @staticmethod
     def _lookup_blob_hash(request: ProcessFileRequest) -> str | None:
