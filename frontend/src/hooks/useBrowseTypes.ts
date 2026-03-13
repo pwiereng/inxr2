@@ -28,7 +28,7 @@ import type {
 export interface BrowseUrlState {
   repoName: string | undefined
   filePath: string | null
-  /** Non-null when the URL path points to a directory (trailing slash or root) */
+  /** Non-null when the URL path points to a subdirectory (trailing slash); null at root */
   directoryPath: string | null
   highlightLine: number | undefined
   selectedCommit: string | null

@@ -69,7 +69,7 @@ export function DirectoryListing({
     return [...dirs, ...files]
   }, [children])
 
-  if (sorted.length === 0) {
+  if (sorted.length === 0 && !directoryPath) {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
         <Typography color="text.secondary">This directory is empty</Typography>
@@ -100,6 +100,13 @@ export function DirectoryListing({
                 >
                   ..
                 </Typography>
+              </TableCell>
+            </TableRow>
+          )}
+          {sorted.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={2} sx={{ px: 1.5, py: 2, textAlign: 'center' }}>
+                <Typography color="text.secondary">This directory is empty</Typography>
               </TableCell>
             </TableRow>
           )}

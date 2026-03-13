@@ -131,6 +131,27 @@ describe('DirectoryListing', () => {
     expect(onDirectorySelect).toHaveBeenCalledWith('src/utils')
   })
 
+  it('should show .. row in empty subdirectory for parent navigation', () => {
+    renderWithTheme(
+      <DirectoryListing
+        {...defaultProps}
+        treeNodes={[
+          {
+            name: 'empty',
+            path: 'empty',
+            type: 'directory',
+            file_id: null,
+            language: null,
+            children: [],
+          },
+        ]}
+        directoryPath="empty"
+      />
+    )
+    expect(screen.getByText('..')).toBeInTheDocument()
+    expect(screen.getByText('This directory is empty')).toBeInTheDocument()
+  })
+
   it('should show empty message for empty directory', () => {
     renderWithTheme(
       <DirectoryListing
