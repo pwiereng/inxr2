@@ -62,6 +62,9 @@ def create_app() -> FastAPI:
         """Health check endpoint."""
         return {"status": "healthy"}
 
-    # TODO: Add error handlers
+    # Register centralized exception handlers
+    from ...adapters.api.exception_handlers import register_exception_handlers
+
+    register_exception_handlers(app)
 
     return app

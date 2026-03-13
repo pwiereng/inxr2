@@ -7,10 +7,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ....application.use_cases.files import (
-    BinaryFileError,
     GetFileContentRequest,
     GetFileHistoryRequest,
-    RepositoryPathNotFoundError,
     ResolveFileRequest,
 )
 from ....infrastructure.dependencies import (
@@ -31,7 +29,6 @@ from ..converters import (
     reference_to_response,
     symbol_to_response,
 )
-from ..decorators import handle_file_resolution_errors
 from ..validation import validate_path, validate_repo_name
 
 router = APIRouter(prefix="/files", tags=["files"])
@@ -133,7 +130,6 @@ _IMAGE_CONTENT_TYPES: dict[str, str] = {
 
 
 @router.get("/by-path/raw", response_model=RawFileContentResponse)
-@handle_file_resolution_errors
 async def get_file_raw_content_by_path(
     repo: str,
     path: str,
@@ -218,7 +214,6 @@ async def get_file_raw_content_by_path(
 
 
 @router.get("/by-path", response_model=FileContentResponse)
-@handle_file_resolution_errors
 async def get_file_content_by_path(
     repo: str,
     path: str,
@@ -241,22 +236,14 @@ async def get_file_content_by_path(
     repo = validate_repo_name(repo)
     path = validate_path(path)
 
-    try:
-        result = await use_case.execute(
-            GetFileContentRequest(
-                repository_name=repo,
-                file_path=path,
-                commit_hash=commit,
-                branch=branch,
-            )
+    result = await use_case.execute(
+        GetFileContentRequest(
+            repository_name=repo,
+            file_path=path,
+            commit_hash=commit,
+            branch=branch,
         )
-    except RepositoryPathNotFoundError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-    except BinaryFileError as e:
-        raise HTTPException(
-            status_code=400,
-            detail="File is binary and cannot be displayed as text",
-        ) from e
+    )
 
     return FileContentResponse(
         id=result.file.id or 0,
@@ -269,7 +256,6 @@ async def get_file_content_by_path(
 
 
 @router.get("/history", response_model=FileHistoryResponse)
-@handle_file_resolution_errors
 async def get_file_history(
     repo: str,
     path: str,
@@ -319,7 +305,6 @@ async def get_file_history(
 
 
 @router.get("/by-path/blame", response_model=FileBlameResponse)
-@handle_file_resolution_errors
 async def get_file_blame_by_path(
     repo: str,
     path: str,
@@ -401,7 +386,6 @@ async def get_file_blame_by_path(
 
 
 @router.get("/by-path/symbols", response_model=FileSymbolsResponse)
-@handle_file_resolution_errors
 async def get_file_symbols_by_path(
     repo: str,
     path: str,
@@ -450,7 +434,6 @@ async def get_file_symbols_by_path(
 
 
 @router.get("/by-path/references", response_model=FileReferencesResponse)
-@handle_file_resolution_errors
 async def get_file_references_by_path(
     repo: str,
     path: str,
