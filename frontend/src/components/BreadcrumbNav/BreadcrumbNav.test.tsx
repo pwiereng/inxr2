@@ -6,7 +6,6 @@ describe('BreadcrumbNav', () => {
   const defaultProps = {
     repoName: 'my-repo',
     currentPath: null as string | null,
-    isDirectory: false,
     onDirectoryClick: vi.fn(),
     onRootClick: vi.fn(),
   }
@@ -53,7 +52,7 @@ describe('BreadcrumbNav', () => {
   })
 
   it('should show directory path with last segment as non-clickable text', () => {
-    render(<BreadcrumbNav {...defaultProps} currentPath="src/inxr2/domain" isDirectory={true} />)
+    render(<BreadcrumbNav {...defaultProps} currentPath="src/inxr2/domain" />)
     // Parent segments are clickable
     expect(screen.getByRole('button', { name: 'src' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'inxr2' })).toBeInTheDocument()

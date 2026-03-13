@@ -62,7 +62,7 @@ export function DirectoryListing({
     [treeNodes, directoryPath]
   )
 
-  // Sort: directories first, then files, alphabetically within each group
+  // Group directories first, then files (each group's order comes from the tree API)
   const sorted = useMemo(() => {
     const dirs = children.filter((n) => n.type === 'directory')
     const files = children.filter((n) => n.type === 'file')

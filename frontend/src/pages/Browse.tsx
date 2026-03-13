@@ -314,8 +314,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
         {repoName && (
           <BreadcrumbNav
             repoName={repoName}
-            currentPath={fileContent?.path ?? urlState.directoryPath}
-            isDirectory={!fileContent && urlState.directoryPath !== undefined}
+            currentPath={urlState.filePath ?? urlState.directoryPath}
             onDirectoryClick={actions.navigateToDirectory}
             onRootClick={actions.resetToFileTree}
           />

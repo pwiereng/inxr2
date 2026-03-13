@@ -6,8 +6,6 @@ interface BreadcrumbNavProps {
   repoName: string
   /** Current path (file or directory) — null/empty for root */
   currentPath: string | null
-  /** Whether the current path is a directory */
-  isDirectory: boolean
   /** Called when a directory segment is clicked */
   onDirectoryClick: (path: string) => void
   /** Called when the repo root is clicked */
@@ -17,7 +15,6 @@ interface BreadcrumbNavProps {
 export function BreadcrumbNav({
   repoName,
   currentPath,
-  isDirectory,
   onDirectoryClick,
   onRootClick,
 }: BreadcrumbNavProps): React.ReactElement {
@@ -73,10 +70,6 @@ export function BreadcrumbNav({
 
       {segments.map((segment, index) => {
         const isLast = index === segments.length - 1
-        const isClickable = !isLast || isDirectory
-        // Last segment of a file path is not clickable (already viewing it)
-        // Last segment of a directory path is also not clickable (already viewing it)
-        // All other segments are directory segments and clickable
 
         return (
           <Box
@@ -99,7 +92,7 @@ export function BreadcrumbNav({
               >
                 {segment}
               </Typography>
-            ) : isClickable ? (
+            ) : (
               <Link
                 component="button"
                 variant="body2"
@@ -114,16 +107,6 @@ export function BreadcrumbNav({
               >
                 {segment}
               </Link>
-            ) : (
-              <Typography
-                variant="body2"
-                sx={{
-                  fontFamily: 'monospace',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {segment}
-              </Typography>
             )}
           </Box>
         )
