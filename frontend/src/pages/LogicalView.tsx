@@ -122,7 +122,7 @@ export default function LogicalView(): React.ReactElement {
   const commit = searchParams.get('commit')
   const fileParam = searchParams.get('file')
   const kindParam = searchParams.get('kind')
-  const languageParam = searchParams.get('language')
+  const languageParam = searchParams.get('language')?.trim() || null
 
   // Resolve default branch and latest commit when missing from URL
   useEffect(() => {
@@ -180,7 +180,7 @@ export default function LogicalView(): React.ReactElement {
     setActiveKind(kindParam ?? null)
   }, [kindParam])
   useEffect(() => {
-    setSelectedLanguage(languageParam ?? null)
+    setSelectedLanguage(languageParam)
   }, [languageParam])
   const [showKindCounts, setShowKindCounts] = useState(false)
   const [symbolSearch, setSymbolSearch] = useState('')
@@ -931,11 +931,11 @@ export default function LogicalView(): React.ReactElement {
   // Summary stats — use filtered file count, filter to active kind when in kind mode
   const summaryStats = useMemo(() => {
     if (activeKind) {
-      const count = totalKindCounts[activeKind] ?? 0
+      const count = filteredKindSymbols.length
       return { files: filteredFiles.length, kinds: count > 0 ? { [activeKind]: count } : {} }
     }
     return { files: filteredFiles.length, kinds: totalKindCounts }
-  }, [activeKind, filteredFiles, totalKindCounts])
+  }, [activeKind, filteredFiles, filteredKindSymbols, totalKindCounts])
 
   // Restore scroll position after filter/search changes re-render the list
   useLayoutEffect(() => {
