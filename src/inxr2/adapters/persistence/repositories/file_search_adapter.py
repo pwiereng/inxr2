@@ -28,7 +28,7 @@ class PostgresFileSearchRepository(FileSearchPort):
         commit_id: int | None = None,
         language: str | None = None,
         extensions: list[str] | None = None,
-        limit: int = 20,
+        limit: int = 50,
         offset: int = 0,
         scope: str | None = None,
     ) -> tuple[list["File"], int]:

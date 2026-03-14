@@ -159,7 +159,10 @@ export default function Search(): React.ReactElement {
 
   // Per-source totals for unified pagination (symbols → deps → text ordering).
   // Stored in state so they persist across page changes within the same query.
+  // Reset when search parameters change (tracked via searchKey).
   const [sourceTotals, setSourceTotals] = useState({ symbol: 0, dep: 0, text: 0 })
+  const [totalsDiscovered, setTotalsDiscovered] = useState(false)
+  const [totalsSearchKey, setTotalsSearchKey] = useState('')
 
   // Look up repo ID from repoName param
   const selectedRepoId = repoNameParam
@@ -282,8 +285,9 @@ export default function Search(): React.ReactElement {
 
           // Unified pagination: sources in order symbols → deps → text.
           // We need per-source totals to compute correct slices. If totals
-          // are unknown (deep link to page > 1), do a discovery fetch first
-          // (limit=1 per source) to learn totals, then fetch the real page.
+          // are unknown (new query or deep link to page > 1), do a discovery
+          // fetch first (limit=1 per source) to learn totals, then fetch
+          // the real page.
 
           // Build source_types for the text API
           let apiSourceTypes: string[] | undefined
@@ -295,16 +299,27 @@ export default function Search(): React.ReactElement {
             }
           }
 
-          // Check if we know totals from a previous fetch
-          const totalsKnown =
-            sourceTotals.symbol > 0 || sourceTotals.dep > 0 || sourceTotals.text > 0
+          // Detect whether the search parameters changed (vs. just a page change).
+          // If they changed, we need to re-discover totals.
+          const currentSearchKey = [
+            query,
+            mode,
+            caseSensitive,
+            selectedRepoId,
+            branchParam,
+            commitParam,
+            typesKey,
+            extKey,
+          ].join('|')
+          const searchKeyChanged = currentSearchKey !== totalsSearchKey
+          const needsDiscovery = searchKeyChanged || !totalsDiscovered
 
-          // Phase 1: If totals are unknown and we're not on page 1, discover them
-          let symbolTotal = hasSymbol ? sourceTotals.symbol : 0
-          let depTotal = hasDependency ? sourceTotals.dep : 0
-          let textTotal = callText ? sourceTotals.text : 0
+          // Use cached totals only if they're still valid for this search
+          let symbolTotal = !needsDiscovery && hasSymbol ? sourceTotals.symbol : 0
+          let depTotal = !needsDiscovery && hasDependency ? sourceTotals.dep : 0
+          let textTotal = !needsDiscovery && callText ? sourceTotals.text : 0
 
-          if (!totalsKnown) {
+          if (needsDiscovery) {
             // Fetch with limit=1 from each source just to discover totals
             const discoveryPromises: Promise<void>[] = []
             if (hasSymbol) {
@@ -359,6 +374,8 @@ export default function Search(): React.ReactElement {
             }
             await Promise.all(discoveryPromises)
             setSourceTotals({ symbol: symbolTotal, dep: depTotal, text: textTotal })
+            setTotalsDiscovered(true)
+            setTotalsSearchKey(currentSearchKey)
           }
 
           // Phase 2: Compute per-source slices and fetch the actual page

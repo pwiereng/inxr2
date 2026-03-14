@@ -22,7 +22,7 @@ class SearchFilesRequest:
         language: Optional programming language filter
         scope: Search scope for cross-repo search (default: "latest").
             Only applies when repository_name is not provided.
-        limit: Maximum results to return (default: 20)
+        limit: Maximum results to return (default: 50)
         offset: Pagination offset (default: 0)
     """
 
@@ -33,7 +33,7 @@ class SearchFilesRequest:
     language: str | None = None
     extensions: list[str] | None = None
     scope: str = "latest"
-    limit: int = 20
+    limit: int = 50
     offset: int = 0
 
 
