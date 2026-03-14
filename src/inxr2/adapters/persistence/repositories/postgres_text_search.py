@@ -113,8 +113,23 @@ class PostgresTextSearch(TextSearchPort):
             base_query = base_query.where(file_branch_exists | commit_branch_exists)
 
         # Apply commit filter (for time travel)
+        # File-derived content (comments, docstrings, file_content) has NULL commit_id
+        # but has source_file_id — join through commit_files to check the file version.
+        # Commit messages have commit_id set directly.
         if query.commit_id is not None:
-            base_query = base_query.where(TextContentModel.commit_id == query.commit_id)
+            file_commit_exists = exists(
+                select(1)
+                .select_from(CommitFileModel)
+                .where(CommitFileModel.file_id == TextContentModel.source_file_id)
+                .where(CommitFileModel.commit_id == query.commit_id)
+            )
+            # File-derived: commit_id IS NULL, match via source_file_id → commit_files
+            file_commit_match = (
+                TextContentModel.commit_id.is_(None) & file_commit_exists
+            )
+            # Commit-based: match commit_id directly
+            direct_commit_match = TextContentModel.commit_id == query.commit_id
+            base_query = base_query.where(file_commit_match | direct_commit_match)
 
         # Apply source type filters
         if query.source_types:

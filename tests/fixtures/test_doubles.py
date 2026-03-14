@@ -2886,9 +2886,22 @@ class FakeTextSearch(TextSearchPort):
                 if not (file_ok or commit_ok):
                     continue
 
-            # Commit filter
-            if query.commit_id is not None and tc.commit_id != query.commit_id:
-                continue
+            # Commit filter — file-derived content has NULL commit_id but
+            # links to files via source_file_id; check commit_files mapping.
+            # Content with commit_id set uses direct match only.
+            if query.commit_id is not None:
+                if tc.commit_id is not None:
+                    if tc.commit_id != query.commit_id:
+                        continue
+                else:
+                    file_match = False
+                    if tc.source_file_id is not None and self._file_repo is not None:
+                        file_match = (
+                            query.commit_id,
+                            tc.source_file_id,
+                        ) in self._file_repo._commit_files
+                    if not file_match:
+                        continue
 
             # Source type filter
             if query.source_types and tc.source_type not in query.source_types:
