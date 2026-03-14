@@ -3069,6 +3069,7 @@ class InMemoryDependencyRepository(DependencyRepositoryPort):
                 is_direct=dependency.is_direct,
                 parent_dependency_id=dependency.parent_dependency_id,
                 extras=dependency.extras,
+                source_line=dependency.source_line,
                 indexed_at=dependency.indexed_at,
             )
         assert dependency.id is not None

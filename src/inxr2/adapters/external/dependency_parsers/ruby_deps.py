@@ -54,7 +54,7 @@ class RubyDependencyParser(BaseDependencyParser):
         deps: list[dict[str, Any]] = []
         group_stack: list[list[str]] = []
 
-        for line in content.splitlines():
+        for line_num, line in enumerate(content.splitlines(), 1):
             stripped = line.strip()
 
             # Track group blocks as a proper stack for nesting
@@ -86,6 +86,7 @@ class RubyDependencyParser(BaseDependencyParser):
                     version_spec=version,
                     dependency_type=dep_type,
                     is_direct=True,
+                    source_line=line_num,
                 )
             )
 
@@ -97,7 +98,7 @@ class RubyDependencyParser(BaseDependencyParser):
         in_gem_specs = False
         current_parent: str | None = None
 
-        for line in content.splitlines():
+        for line_num, line in enumerate(content.splitlines(), 1):
             # Detect the GEM > specs: section
             if line == "  specs:":
                 in_gem_specs = True
@@ -124,6 +125,7 @@ class RubyDependencyParser(BaseDependencyParser):
                         resolved_version=version,
                         dependency_type="runtime",
                         is_direct=False,
+                        source_line=line_num,
                     )
                 )
                 continue
@@ -140,6 +142,7 @@ class RubyDependencyParser(BaseDependencyParser):
                         dependency_type="runtime",
                         is_direct=False,
                         extras={"parent": current_parent} if current_parent else None,
+                        source_line=line_num,
                     )
                 )
 

@@ -393,6 +393,7 @@ class DependencyResponse(BaseModel):
     is_direct: bool
     file_id: int
     file_path: str | None = None
+    source_line: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -457,6 +458,7 @@ async def get_repository_dependencies_by_name(
                 is_direct=item.is_direct,
                 file_id=item.file_id,
                 file_path=item.file_path,
+                source_line=item.source_line,
             )
             for item in response.items
         ],

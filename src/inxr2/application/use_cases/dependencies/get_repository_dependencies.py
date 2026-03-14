@@ -44,6 +44,7 @@ class DependencyItem:
     is_direct: bool
     file_id: int
     file_path: str | None = None
+    source_line: int | None = None
 
 
 @dataclass
@@ -143,6 +144,7 @@ class GetRepositoryDependenciesUseCase:
                 is_direct=d.is_direct,
                 file_id=d.file_id,
                 file_path=file_path_map.get(d.file_id),
+                source_line=d.source_line,
             )
             for d in deps
         ]

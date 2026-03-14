@@ -43,6 +43,7 @@ class SearchDependencyItem:
     file_path: str | None
     repository_id: int
     repository_name: str
+    source_line: int | None
 
 
 @dataclass
@@ -121,6 +122,7 @@ class SearchDependenciesUseCase:
                     file_path=file_path_map.get(d.file_id),
                     repository_id=d.repository_id,
                     repository_name=repo_map.get(d.repository_id, "unknown"),
+                    source_line=d.source_line,
                 )
             )
 

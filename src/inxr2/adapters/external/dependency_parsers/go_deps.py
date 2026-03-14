@@ -37,7 +37,7 @@ class GoDependencyParser(BaseDependencyParser):
         deps: list[dict[str, Any]] = []
         in_require_block = False
 
-        for line in content.splitlines():
+        for line_num, line in enumerate(content.splitlines(), 1):
             stripped = line.strip()
 
             # Handle require block boundaries
@@ -51,20 +51,22 @@ class GoDependencyParser(BaseDependencyParser):
             # Single-line require: require github.com/foo/bar v1.0.0
             if stripped.startswith("require "):
                 dep_line = stripped[len("require ") :]
-                dep = self._parse_require_line(dep_line)
+                dep = self._parse_require_line(dep_line, line_num)
                 if dep:
                     deps.append(dep)
                 continue
 
             # Lines inside a require block
             if in_require_block:
-                dep = self._parse_require_line(stripped)
+                dep = self._parse_require_line(stripped, line_num)
                 if dep:
                     deps.append(dep)
 
         return deps
 
-    def _parse_require_line(self, line: str) -> dict[str, Any] | None:
+    def _parse_require_line(
+        self, line: str, source_line: int | None = None
+    ) -> dict[str, Any] | None:
         """Parse a single require line."""
         match = _REQUIRE_RE.match(line)
         if not match:
@@ -80,4 +82,5 @@ class GoDependencyParser(BaseDependencyParser):
             version_spec=version,
             dependency_type="runtime",
             is_direct=not is_indirect,
+            source_line=source_line,
         )

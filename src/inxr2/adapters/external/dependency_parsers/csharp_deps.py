@@ -54,6 +54,7 @@ class CSharpDependencyParser(BaseDependencyParser):
         deps: list[dict[str, Any]] = []
 
         # Find all PackageReference elements (no namespace in SDK-style projects)
+        last_line = 0
         for ref in root.iter("PackageReference"):
             name = ref.get("Include") or ref.get("Update")
             version = ref.get("Version")
@@ -75,11 +76,16 @@ class CSharpDependencyParser(BaseDependencyParser):
 
             dep_type = "dev" if private_assets.lower() == "all" else "runtime"
 
+            line = self._find_line(content, name, last_line)
+            if line is not None:
+                last_line = line
+
             deps.append(
                 self._make_dep(
                     package_name=name,
                     version_spec=version,
                     dependency_type=dep_type,
+                    source_line=line,
                 )
             )
 
@@ -119,6 +125,7 @@ class CSharpDependencyParser(BaseDependencyParser):
                         resolved_version=resolved,
                         dependency_type=dep_type,
                         is_direct=is_direct,
+                        source_line=self._find_line(content, f'"{name}"'),
                     )
                 )
 
@@ -133,6 +140,7 @@ class CSharpDependencyParser(BaseDependencyParser):
             return []
 
         deps: list[dict[str, Any]] = []
+        last_line = 0
 
         for ref in root.iter("PackageVersion"):
             name = ref.get("Include")
@@ -141,11 +149,16 @@ class CSharpDependencyParser(BaseDependencyParser):
             if not name:
                 continue
 
+            line = self._find_line(content, name, last_line)
+            if line is not None:
+                last_line = line
+
             deps.append(
                 self._make_dep(
                     package_name=name,
                     version_spec=version,
                     extras={"central_package_management": True},
+                    source_line=line,
                 )
             )
 

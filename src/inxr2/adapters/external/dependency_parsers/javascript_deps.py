@@ -60,13 +60,18 @@ class JavaScriptDependencyParser(BaseDependencyParser):
             "optionalDependencies": "optional",
         }
 
+        last_line = 0
         for section, dep_type in section_map.items():
             for name, version in (data.get(section) or {}).items():
+                line = self._find_line(content, f'"{name}"', last_line)
+                if line is not None:
+                    last_line = line
                 deps.append(
                     self._make_dep(
                         package_name=name,
                         version_spec=version,
                         dependency_type=dep_type,
+                        source_line=line,
                     )
                 )
 
@@ -118,12 +123,17 @@ class JavaScriptDependencyParser(BaseDependencyParser):
                     resolved_version=version,
                     dependency_type=dep_type,
                     is_direct=is_direct,
+                    source_line=self._find_line(content, f'"{pkg_path}"'),
                 )
             )
 
         # Fallback: v1 format with "dependencies" key
         if not packages and "dependencies" in data:
-            deps.extend(self._parse_lock_v1_deps(data["dependencies"], is_direct=True))
+            deps.extend(
+                self._parse_lock_v1_deps(
+                    data["dependencies"], is_direct=True, content=content
+                )
+            )
 
         return deps
 
@@ -131,6 +141,7 @@ class JavaScriptDependencyParser(BaseDependencyParser):
         self,
         dependencies: dict[str, Any],
         is_direct: bool,
+        content: str = "",
     ) -> list[dict[str, Any]]:
         """Recursively parse v1 package-lock.json dependencies."""
         deps: list[dict[str, Any]] = []
@@ -146,13 +157,18 @@ class JavaScriptDependencyParser(BaseDependencyParser):
                     resolved_version=version,
                     dependency_type=dep_type,
                     is_direct=is_direct,
+                    source_line=(
+                        self._find_line(content, f'"{name}"') if content else None
+                    ),
                 )
             )
 
             # Nested dependencies (transitive)
             nested = info.get("dependencies", {})
             if nested:
-                deps.extend(self._parse_lock_v1_deps(nested, is_direct=False))
+                deps.extend(
+                    self._parse_lock_v1_deps(nested, is_direct=False, content=content)
+                )
 
         return deps
 
@@ -173,8 +189,9 @@ class JavaScriptDependencyParser(BaseDependencyParser):
         deps: list[dict[str, Any]] = []
         current_name: str | None = None
         current_version: str | None = None
+        current_line: int | None = None
 
-        for line in content.splitlines():
+        for line_num, line in enumerate(content.splitlines(), 1):
             # Skip comments and empty lines
             if not line or line.startswith("#"):
                 continue
@@ -188,11 +205,13 @@ class JavaScriptDependencyParser(BaseDependencyParser):
                             package_name=current_name,
                             resolved_version=current_version,
                             is_direct=False,
+                            source_line=current_line,
                         )
                     )
 
                 current_name = None
                 current_version = None
+                current_line = None
 
                 # Parse entry header
                 header = line.rstrip(":")
@@ -203,6 +222,7 @@ class JavaScriptDependencyParser(BaseDependencyParser):
                 match = re.match(r"^(@?[^@]+)@", header)
                 if match:
                     current_name = match.group(1)
+                    current_line = line_num
                     # Remove "npm:" prefix from berry format
                     if current_name.endswith(", "):
                         current_name = current_name.rstrip(", ")
@@ -226,6 +246,7 @@ class JavaScriptDependencyParser(BaseDependencyParser):
                     package_name=current_name,
                     resolved_version=current_version,
                     is_direct=False,
+                    source_line=current_line,
                 )
             )
 
@@ -274,6 +295,7 @@ class JavaScriptDependencyParser(BaseDependencyParser):
                     resolved_version=version,
                     dependency_type=dep_type,
                     is_direct=False,
+                    source_line=self._find_line(content, pkg_key),
                 )
             )
 

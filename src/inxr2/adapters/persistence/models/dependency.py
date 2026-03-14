@@ -65,6 +65,9 @@ class DependencyModel(Base):
     # Language-specific metadata
     extras: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
+    # Source location in the manifest file (1-based line number)
+    source_line: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     indexed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default="now()"
     )

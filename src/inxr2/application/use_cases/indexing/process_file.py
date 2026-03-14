@@ -527,6 +527,7 @@ class ProcessFileUseCase:
                     dependency_type=d.get("dependency_type", "runtime"),
                     is_direct=d.get("is_direct", True),
                     extras=d.get("extras"),
+                    source_line=d.get("source_line"),
                 )
                 for d in dep_dicts
             ]

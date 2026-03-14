@@ -299,6 +299,7 @@ class DependencyMapper:
             is_direct=model.is_direct,
             parent_dependency_id=model.parent_dependency_id,
             extras=model.extras,
+            source_line=model.source_line,
             indexed_at=model.indexed_at,
         )
 
@@ -317,6 +318,7 @@ class DependencyMapper:
             is_direct=entity.is_direct,
             parent_dependency_id=entity.parent_dependency_id,
             extras=entity.extras,
+            source_line=entity.source_line,
             indexed_at=entity.indexed_at or datetime.now(UTC).replace(tzinfo=None),
         )
 
