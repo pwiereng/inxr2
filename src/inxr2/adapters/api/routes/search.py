@@ -179,7 +179,7 @@ async def search_text(
     - source_types: Filter by source type (comment, docstring, commit_message, file_content)
     - languages: Filter by language (python, typescript, markdown, etc.)
     - scope: Search scope for global search (currently only "latest")
-    - limit: Results per page (1-100, default 20)
+    - limit: Results per page (1-500, default 50)
     - offset: Pagination offset (default 0)
 
     Returns:
@@ -275,7 +275,7 @@ async def search_files(
     - commit_hash: Filter by specific commit (time travel)
     - language: Filter by programming language
     - scope: Search scope for global search (currently only "latest")
-    - limit: Maximum number of results (1-100, default 20)
+    - limit: Maximum number of results (1-500, default 50)
     - offset: Pagination offset (default 0)
 
     Returns:

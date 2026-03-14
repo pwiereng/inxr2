@@ -38,7 +38,6 @@ import {
   searchDependencies,
   getRepositories,
   getFileExtensions,
-  type TextSearchParams,
   type TextSearchResult,
   type FileSearchResult,
   type DependencySearchResult,
@@ -82,6 +81,23 @@ const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => !NON_TEXT_TYPES.has(t.va
 )
 
 const RESULTS_PER_PAGE = 50
+
+/**
+ * Compute per-source offset and limit for unified pagination.
+ * Sources are displayed in a fixed order; this determines which slice
+ * of a given source falls within the global page window.
+ */
+function sourceSlice(
+  sourceStart: number,
+  sourceTotal: number,
+  globalOffset: number,
+  pageSize: number
+): { offset: number; limit: number } {
+  const overlapStart = Math.max(sourceStart, globalOffset)
+  const overlapEnd = Math.min(sourceStart + sourceTotal, globalOffset + pageSize)
+  if (overlapStart >= overlapEnd) return { offset: 0, limit: 0 }
+  return { offset: overlapStart - sourceStart, limit: overlapEnd - overlapStart }
+}
 
 // Sentinel values for extension dropdown actions
 const EXT_SELECT_NONE = '__select_none__'
@@ -139,6 +155,10 @@ export default function Search(): React.ReactElement {
   const [paginationTotal, setPaginationTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Per-source totals for unified pagination (symbols → deps → text ordering).
+  // Stored in state so they persist across page changes within the same query.
+  const [sourceTotals, setSourceTotals] = useState({ symbol: 0, dep: 0, text: 0 })
 
   // Look up repo ID from repoName param
   const selectedRepoId = repoNameParam
@@ -259,15 +279,39 @@ export default function Search(): React.ReactElement {
             textSourceTypes.includes(v)
           )
 
+          // Unified pagination: sources displayed in order symbols → deps → text.
+          // On page 1 (offset=0), fetch all active sources to discover totals.
+          // On subsequent pages, use stored totals to compute per-source slices
+          // and only fetch sources that have items on this page.
+
+          // Use stored totals for subsequent pages; page 1 will overwrite them.
+          const knownTotals = offset === 0 ? { symbol: 0, dep: 0, text: 0 } : sourceTotals
+          const symTotal = hasSymbol ? knownTotals.symbol : 0
+          const depStart = symTotal
+          const dTotal = hasDependency ? knownTotals.dep : 0
+          const txtStart = depStart + dTotal
+
           const promises: Promise<void>[] = []
           let symbolResults: Symbol[] = []
           let textResults: TextSearchResult[] = []
           let depResults: DependencySearchResult[] = []
-          let symbolTotal = 0
-          let textTotal = 0
-          let depTotal = 0
+          let symbolTotal = symTotal
+          let textTotal = hasSymbol ? knownTotals.text : 0
+          let depTotal = dTotal
 
-          if (hasSymbol) {
+          // Compute per-source slices for this page
+          const symSlice = sourceSlice(0, symTotal, offset, RESULTS_PER_PAGE)
+          const depSlice = sourceSlice(depStart, dTotal, offset, RESULTS_PER_PAGE)
+          const txtSlice = sourceSlice(
+            txtStart,
+            callText ? knownTotals.text : 0,
+            offset,
+            RESULTS_PER_PAGE
+          )
+
+          // On page 1, always fetch all active sources to get totals.
+          // On later pages, only fetch sources that overlap with this page.
+          if (hasSymbol && (offset === 0 || symSlice.limit > 0)) {
             promises.push(
               searchSymbols({
                 q: query,
@@ -277,8 +321,8 @@ export default function Search(): React.ReactElement {
                 mode: mode === 'regex' ? 'regex' : undefined,
                 case_sensitive: caseSensitive,
                 scope,
-                limit: RESULTS_PER_PAGE,
-                offset,
+                limit: offset === 0 ? RESULTS_PER_PAGE : symSlice.limit,
+                offset: offset === 0 ? 0 : symSlice.offset,
               }).then((response) => {
                 symbolResults = response.items
                 symbolTotal = response.total
@@ -287,43 +331,42 @@ export default function Search(): React.ReactElement {
           }
 
           if (callText) {
-            // Build source_types for the API:
-            // - When all standard text types are selected AND no reference, pass undefined (backend default)
-            // - Otherwise pass the explicit list including "reference" if selected
+            // Build source_types for the API
             let apiSourceTypes: string[] | undefined
             if (allTextTypesSelected && !hasReference) {
               apiSourceTypes = undefined
             } else {
               apiSourceTypes = [...textSourceTypes, ...(hasReference ? ['reference'] : [])]
             }
-            const params: TextSearchParams = {
-              q: query,
-              mode: mode as 'keyword' | 'phrase' | 'regex',
-              repo: selectedRepoId,
-              branch: branchParam || undefined,
-              source_types: apiSourceTypes,
-              extensions: apiExtensions,
-              case_sensitive: caseSensitive,
-              scope,
-              limit: RESULTS_PER_PAGE,
-              offset,
+            if (offset === 0 || txtSlice.limit > 0) {
+              promises.push(
+                searchText({
+                  q: query,
+                  mode: mode as 'keyword' | 'phrase' | 'regex',
+                  repo: selectedRepoId,
+                  branch: branchParam || undefined,
+                  source_types: apiSourceTypes,
+                  extensions: apiExtensions,
+                  case_sensitive: caseSensitive,
+                  scope,
+                  limit: offset === 0 ? RESULTS_PER_PAGE : txtSlice.limit,
+                  offset: offset === 0 ? 0 : txtSlice.offset,
+                }).then((response) => {
+                  textResults = response.results
+                  textTotal = response.total
+                })
+              )
             }
-            promises.push(
-              searchText(params).then((response) => {
-                textResults = response.results
-                textTotal = response.total
-              })
-            )
           }
 
-          if (hasDependency) {
+          if (hasDependency && (offset === 0 || depSlice.limit > 0)) {
             promises.push(
               searchDependencies({
                 q: query,
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
-                limit: RESULTS_PER_PAGE,
-                offset,
+                limit: offset === 0 ? RESULTS_PER_PAGE : depSlice.limit,
+                offset: offset === 0 ? 0 : depSlice.offset,
               }).then((response) => {
                 depResults = response.results
                 depTotal = response.total
@@ -333,8 +376,12 @@ export default function Search(): React.ReactElement {
 
           await Promise.all(promises)
 
-          // Combine all result types into a unified list, capped at page size.
-          // Each type is independently paginated with the same offset/limit.
+          // Store totals for subsequent page fetches
+          const newTotals = { symbol: symbolTotal, dep: depTotal, text: textTotal }
+          setSourceTotals(newTotals)
+
+          // Build unified result list in order: symbols → deps → text.
+          // On page 1, we fetched generously; slice to fit the page.
           const unified: UnifiedResult[] = [
             ...symbolResults.map((s) => ({ kind: 'symbol' as const, data: s })),
             ...depResults.map((d) => ({ kind: 'dependency' as const, data: d })),
@@ -342,9 +389,9 @@ export default function Search(): React.ReactElement {
           ].slice(0, RESULTS_PER_PAGE)
           setResults(unified)
           setFileResults([])
-          setTotalResults(symbolTotal + depTotal + textTotal)
-          // Pagination is driven by the largest total across all active sources.
-          setPaginationTotal(Math.max(symbolTotal, depTotal, textTotal))
+          const combinedTotal = symbolTotal + depTotal + textTotal
+          setTotalResults(combinedTotal)
+          setPaginationTotal(combinedTotal)
         }
       } catch (err) {
         console.error('Search failed:', err)
