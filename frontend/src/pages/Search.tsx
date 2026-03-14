@@ -221,6 +221,8 @@ export default function Search(): React.ReactElement {
 
   // Perform search when query or filters change
   useEffect(() => {
+    let cancelled = false
+
     if (!query.trim()) {
       setResults([])
       setFileResults([])
@@ -268,6 +270,7 @@ export default function Search(): React.ReactElement {
             limit: RESULTS_PER_PAGE,
             offset,
           })
+          if (cancelled) return
           setFileResults(response.files)
           setResults([])
           setTotalResults(response.total_count)
@@ -284,10 +287,10 @@ export default function Search(): React.ReactElement {
           )
 
           // Unified pagination: sources in order symbols → deps → text.
-          // We need per-source totals to compute correct slices. If totals
-          // are unknown (new query or deep link to page > 1), do a discovery
-          // fetch first (limit=1 per source) to learn totals, then fetch
-          // the real page.
+          // On page 1 (offset=0), fetch all sources with full limit and
+          // learn totals from the responses. On later pages, use cached
+          // totals to compute per-source slices. If deep-linking to a
+          // page > 1 without cached totals, do a discovery fetch first.
 
           // Build source_types for the text API
           let apiSourceTypes: string[] | undefined
@@ -300,7 +303,6 @@ export default function Search(): React.ReactElement {
           }
 
           // Detect whether the search parameters changed (vs. just a page change).
-          // If they changed, we need to re-discover totals.
           const currentSearchKey = [
             query,
             mode,
@@ -312,15 +314,15 @@ export default function Search(): React.ReactElement {
             extKey,
           ].join('|')
           const searchKeyChanged = currentSearchKey !== totalsSearchKey
-          const needsDiscovery = searchKeyChanged || !totalsDiscovered
+          const hasCachedTotals = !searchKeyChanged && totalsDiscovered
 
           // Use cached totals only if they're still valid for this search
-          let symbolTotal = !needsDiscovery && hasSymbol ? sourceTotals.symbol : 0
-          let depTotal = !needsDiscovery && hasDependency ? sourceTotals.dep : 0
-          let textTotal = !needsDiscovery && callText ? sourceTotals.text : 0
+          let symbolTotal = hasCachedTotals && hasSymbol ? sourceTotals.symbol : 0
+          let depTotal = hasCachedTotals && hasDependency ? sourceTotals.dep : 0
+          let textTotal = hasCachedTotals && callText ? sourceTotals.text : 0
 
-          if (needsDiscovery) {
-            // Fetch with limit=1 from each source just to discover totals
+          // Deep link to page > 1 without cached totals: discover first
+          if (offset > 0 && !hasCachedTotals) {
             const discoveryPromises: Promise<void>[] = []
             if (hasSymbol) {
               discoveryPromises.push(
@@ -373,12 +375,13 @@ export default function Search(): React.ReactElement {
               )
             }
             await Promise.all(discoveryPromises)
-            setSourceTotals({ symbol: symbolTotal, dep: depTotal, text: textTotal })
-            setTotalsDiscovered(true)
-            setTotalsSearchKey(currentSearchKey)
+            if (cancelled) return
           }
 
-          // Phase 2: Compute per-source slices and fetch the actual page
+          // Compute per-source slices for this page.
+          // On page 1 without cached totals, totals are 0 so all slices
+          // have limit=0 — we fetch all sources with RESULTS_PER_PAGE instead.
+          const isFirstPage = offset === 0 && !hasCachedTotals
           const depStart = symbolTotal
           const txtStart = depStart + depTotal
 
@@ -391,7 +394,7 @@ export default function Search(): React.ReactElement {
           let textResults: TextSearchResult[] = []
           let depResults: DependencySearchResult[] = []
 
-          if (hasSymbol && symSlice.limit > 0) {
+          if (hasSymbol && (isFirstPage || symSlice.limit > 0)) {
             promises.push(
               searchSymbols({
                 q: query,
@@ -402,8 +405,8 @@ export default function Search(): React.ReactElement {
                 mode: mode === 'regex' ? 'regex' : undefined,
                 case_sensitive: caseSensitive,
                 scope,
-                limit: symSlice.limit,
-                offset: symSlice.offset,
+                limit: isFirstPage ? RESULTS_PER_PAGE : symSlice.limit,
+                offset: isFirstPage ? 0 : symSlice.offset,
               }).then((response) => {
                 symbolResults = response.items
                 symbolTotal = response.total
@@ -411,7 +414,7 @@ export default function Search(): React.ReactElement {
             )
           }
 
-          if (callText && txtSlice.limit > 0) {
+          if (callText && (isFirstPage || txtSlice.limit > 0)) {
             promises.push(
               searchText({
                 q: query,
@@ -423,8 +426,8 @@ export default function Search(): React.ReactElement {
                 extensions: apiExtensions,
                 case_sensitive: caseSensitive,
                 scope,
-                limit: txtSlice.limit,
-                offset: txtSlice.offset,
+                limit: isFirstPage ? RESULTS_PER_PAGE : txtSlice.limit,
+                offset: isFirstPage ? 0 : txtSlice.offset,
               }).then((response) => {
                 textResults = response.results
                 textTotal = response.total
@@ -432,14 +435,14 @@ export default function Search(): React.ReactElement {
             )
           }
 
-          if (hasDependency && depSlice.limit > 0) {
+          if (hasDependency && (isFirstPage || depSlice.limit > 0)) {
             promises.push(
               searchDependencies({
                 q: query,
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
-                limit: depSlice.limit,
-                offset: depSlice.offset,
+                limit: isFirstPage ? RESULTS_PER_PAGE : depSlice.limit,
+                offset: isFirstPage ? 0 : depSlice.offset,
               }).then((response) => {
                 depResults = response.results
                 depTotal = response.total
@@ -448,16 +451,20 @@ export default function Search(): React.ReactElement {
           }
 
           await Promise.all(promises)
+          if (cancelled) return
 
-          // Update stored totals (may have refreshed from phase 2 responses)
+          // Update stored totals
           setSourceTotals({ symbol: symbolTotal, dep: depTotal, text: textTotal })
+          setTotalsDiscovered(true)
+          setTotalsSearchKey(currentSearchKey)
 
-          // Build unified result list in order: symbols → deps → text
+          // Build unified result list in order: symbols → deps → text.
+          // On first page, we fetched generously; slice to page size.
           const unified: UnifiedResult[] = [
             ...symbolResults.map((s) => ({ kind: 'symbol' as const, data: s })),
             ...depResults.map((d) => ({ kind: 'dependency' as const, data: d })),
             ...textResults.map((t) => ({ kind: 'text' as const, data: t })),
-          ]
+          ].slice(0, RESULTS_PER_PAGE)
           setResults(unified)
           setFileResults([])
           const combinedTotal = symbolTotal + depTotal + textTotal
@@ -465,6 +472,7 @@ export default function Search(): React.ReactElement {
           setPaginationTotal(combinedTotal)
         }
       } catch (err) {
+        if (cancelled) return
         console.error('Search failed:', err)
         setError(err instanceof Error ? err.message : 'Search failed')
         setResults([])
@@ -472,11 +480,15 @@ export default function Search(): React.ReactElement {
         setTotalResults(0)
         setPaginationTotal(0)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
     performSearch()
+
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     query,
