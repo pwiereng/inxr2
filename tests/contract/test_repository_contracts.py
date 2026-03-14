@@ -72,7 +72,7 @@ class TestSearchByNameContract:
         """search_by_name should return only symbols from latest file version."""
         data = await _setup_two_commits(repos)
 
-        results = await repos.symbol.search_by_name(
+        results, _total = await repos.symbol.search_by_name(
             "foo", repository_id=data["repo_id"]
         )
 
@@ -83,7 +83,7 @@ class TestSearchByNameContract:
         """search_by_name without repository_id returns all matches."""
         await _setup_two_commits(repos)
 
-        results = await repos.symbol.search_by_name("foo")
+        results, _total = await repos.symbol.search_by_name("foo")
 
         # Without repository_id, no latest-file filtering is applied
         assert len(results) == 2
@@ -460,7 +460,7 @@ class TestSearchByNameTopLevelOnly:
         """top_level_only=True should exclude symbols nested inside non-namespace parents."""
         data = await self._setup_nested_symbols(repos)
 
-        results = await repos.symbol.search_by_name(
+        results, _total = await repos.symbol.search_by_name(
             "", repository_id=data["repo_id"], top_level_only=True
         )
 
@@ -475,7 +475,7 @@ class TestSearchByNameTopLevelOnly:
         """top_level_only=True should include symbols whose parent is a namespace."""
         data = await self._setup_nested_symbols(repos)
 
-        results = await repos.symbol.search_by_name(
+        results, _total = await repos.symbol.search_by_name(
             "", repository_id=data["repo_id"], top_level_only=True
         )
 
@@ -486,7 +486,7 @@ class TestSearchByNameTopLevelOnly:
         """top_level_only=False (default) should return all symbols including nested."""
         data = await self._setup_nested_symbols(repos)
 
-        results = await repos.symbol.search_by_name(
+        results, _total = await repos.symbol.search_by_name(
             "", repository_id=data["repo_id"], top_level_only=False
         )
 
@@ -502,7 +502,7 @@ class TestSearchByNameHeadFirst:
         """search_by_name should return symbol from newer commit even if it has lower ID."""
         data = await _setup_two_commits_head_first(repos)
 
-        results = await repos.symbol.search_by_name(
+        results, _total = await repos.symbol.search_by_name(
             "foo", repository_id=data["repo_id"]
         )
 

@@ -597,6 +597,7 @@ export interface FileSearchParams {
   extensions?: string[]
   scope?: 'latest' | 'all_branches' | 'all_history'
   limit?: number
+  offset?: number
 }
 
 export interface FileSearchResult {
@@ -613,6 +614,8 @@ export interface FileSearchResult {
 export interface FileSearchResponse {
   files: FileSearchResult[]
   total_count: number
+  limit: number
+  offset: number
 }
 
 export async function searchFiles(params: FileSearchParams): Promise<FileSearchResponse> {
@@ -627,6 +630,7 @@ export async function searchFiles(params: FileSearchParams): Promise<FileSearchR
   }
   if (params.scope) searchParams.set('scope', params.scope)
   if (params.limit) searchParams.set('limit', params.limit.toString())
+  if (params.offset) searchParams.set('offset', params.offset.toString())
 
   return fetchApi<FileSearchResponse>(`/search/files?${searchParams}`)
 }

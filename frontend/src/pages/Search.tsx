@@ -39,7 +39,6 @@ import {
   searchDependencies,
   getRepositories,
   getFileExtensions,
-  type TextSearchParams,
   type TextSearchResult,
   type FileSearchResult,
   type DependencySearchResult,
@@ -82,7 +81,24 @@ const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => !NON_TEXT_TYPES.has(t.va
   (t) => t.value
 )
 
-const RESULTS_PER_PAGE = 20
+const RESULTS_PER_PAGE = 50
+
+/**
+ * Compute per-source offset and limit for unified pagination.
+ * Sources are displayed in a fixed order; this determines which slice
+ * of a given source falls within the global page window.
+ */
+function sourceSlice(
+  sourceStart: number,
+  sourceTotal: number,
+  globalOffset: number,
+  pageSize: number
+): { offset: number; limit: number } {
+  const overlapStart = Math.max(sourceStart, globalOffset)
+  const overlapEnd = Math.min(sourceStart + sourceTotal, globalOffset + pageSize)
+  if (overlapStart >= overlapEnd) return { offset: 0, limit: 0 }
+  return { offset: overlapStart - sourceStart, limit: overlapEnd - overlapStart }
+}
 
 // Sentinel values for extension dropdown actions
 const EXT_SELECT_NONE = '__select_none__'
@@ -141,6 +157,13 @@ export default function Search(): React.ReactElement {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Per-source totals for unified pagination (symbols → deps → text ordering).
+  // Stored in state so they persist across page changes within the same query.
+  // Reset when search parameters change (tracked via searchKey).
+  const [sourceTotals, setSourceTotals] = useState({ symbol: 0, dep: 0, text: 0 })
+  const [totalsDiscovered, setTotalsDiscovered] = useState(false)
+  const [totalsSearchKey, setTotalsSearchKey] = useState('')
+
   // Look up repo ID from repoName param
   const selectedRepoId = repoNameParam
     ? repositories.find((r) => r.name === repoNameParam)?.id
@@ -149,6 +172,9 @@ export default function Search(): React.ReactElement {
   // Debounce search - update URL after delay
   useEffect(() => {
     if (!inputQuery.trim()) return
+    // Only update URL when the query text actually changed; skip when
+    // other URL params (e.g. page) changed to avoid resetting pagination.
+    if (inputQuery === query) return
 
     const timer = setTimeout(() => {
       const newParams = new URLSearchParams(searchParams)
@@ -158,7 +184,7 @@ export default function Search(): React.ReactElement {
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [inputQuery, searchParams, setSearchParams])
+  }, [inputQuery, query, searchParams, setSearchParams])
 
   // Load repositories
   useEffect(() => {
@@ -195,6 +221,8 @@ export default function Search(): React.ReactElement {
 
   // Perform search when query or filters change
   useEffect(() => {
+    let cancelled = false
+
     if (!query.trim()) {
       setResults([])
       setFileResults([])
@@ -240,7 +268,9 @@ export default function Search(): React.ReactElement {
             extensions: apiExtensions,
             scope,
             limit: RESULTS_PER_PAGE,
+            offset,
           })
+          if (cancelled) return
           setFileResults(response.files)
           setResults([])
           setTotalResults(response.total_count)
@@ -256,17 +286,115 @@ export default function Search(): React.ReactElement {
             textSourceTypes.includes(v)
           )
 
+          // Unified pagination: sources in order symbols → deps → text.
+          // On page 1 (offset=0), fetch all sources with full limit and
+          // learn totals from the responses. On later pages, use cached
+          // totals to compute per-source slices. If deep-linking to a
+          // page > 1 without cached totals, do a discovery fetch first.
+
+          // Build source_types for the text API
+          let apiSourceTypes: string[] | undefined
+          if (callText) {
+            if (allTextTypesSelected && !hasReference) {
+              apiSourceTypes = undefined
+            } else {
+              apiSourceTypes = [...textSourceTypes, ...(hasReference ? ['reference'] : [])]
+            }
+          }
+
+          // Detect whether the search parameters changed (vs. just a page change).
+          const currentSearchKey = [
+            query,
+            mode,
+            caseSensitive,
+            selectedRepoId,
+            branchParam,
+            commitParam,
+            typesKey,
+            extKey,
+          ].join('|')
+          const searchKeyChanged = currentSearchKey !== totalsSearchKey
+          const hasCachedTotals = !searchKeyChanged && totalsDiscovered
+
+          // Use cached totals only if they're still valid for this search
+          let symbolTotal = hasCachedTotals && hasSymbol ? sourceTotals.symbol : 0
+          let depTotal = hasCachedTotals && hasDependency ? sourceTotals.dep : 0
+          let textTotal = hasCachedTotals && callText ? sourceTotals.text : 0
+
+          // Deep link to page > 1 without cached totals: discover first
+          if (offset > 0 && !hasCachedTotals) {
+            const discoveryPromises: Promise<void>[] = []
+            if (hasSymbol) {
+              discoveryPromises.push(
+                searchSymbols({
+                  q: query,
+                  repository_id: selectedRepoId,
+                  branch: branchParam || undefined,
+                  commit: selectedRepoId && commitParam ? commitParam : undefined,
+                  extensions: apiExtensions,
+                  mode: mode === 'regex' ? 'regex' : undefined,
+                  case_sensitive: caseSensitive,
+                  scope,
+                  limit: 1,
+                  offset: 0,
+                }).then((r) => {
+                  symbolTotal = r.total
+                })
+              )
+            }
+            if (callText) {
+              discoveryPromises.push(
+                searchText({
+                  q: query,
+                  mode: mode as 'keyword' | 'phrase' | 'regex',
+                  repo: selectedRepoId,
+                  branch: branchParam || undefined,
+                  commit: selectedRepoId && commitParam ? commitParam : undefined,
+                  source_types: apiSourceTypes,
+                  extensions: apiExtensions,
+                  case_sensitive: caseSensitive,
+                  scope,
+                  limit: 1,
+                  offset: 0,
+                }).then((r) => {
+                  textTotal = r.total
+                })
+              )
+            }
+            if (hasDependency) {
+              discoveryPromises.push(
+                searchDependencies({
+                  q: query,
+                  repository_id: selectedRepoId,
+                  branch: branchParam || undefined,
+                  limit: 1,
+                  offset: 0,
+                }).then((r) => {
+                  depTotal = r.total
+                })
+              )
+            }
+            await Promise.all(discoveryPromises)
+            if (cancelled) return
+          }
+
+          // Compute per-source slices for this page.
+          // On page 1 without cached totals, totals are 0 so all slices
+          // have limit=0 — we fetch all sources with RESULTS_PER_PAGE instead.
+          const isFirstPage = offset === 0 && !hasCachedTotals
+          const depStart = symbolTotal
+          const txtStart = depStart + depTotal
+
+          const symSlice = sourceSlice(0, symbolTotal, offset, RESULTS_PER_PAGE)
+          const depSlice = sourceSlice(depStart, depTotal, offset, RESULTS_PER_PAGE)
+          const txtSlice = sourceSlice(txtStart, textTotal, offset, RESULTS_PER_PAGE)
+
           const promises: Promise<void>[] = []
           let symbolResults: Symbol[] = []
           let textResults: TextSearchResult[] = []
           let depResults: DependencySearchResult[] = []
-          let symbolTotal = 0
-          let textTotal = 0
-          let depTotal = 0
 
-          if (hasSymbol && offset === 0) {
-            // Only fetch symbols on page 1 (they're top matches, not paginated —
-            // the API returns batch count, not a true total).
+          if (hasSymbol && (isFirstPage || symSlice.limit > 0)) {
             promises.push(
               searchSymbols({
                 q: query,
@@ -277,8 +405,8 @@ export default function Search(): React.ReactElement {
                 mode: mode === 'regex' ? 'regex' : undefined,
                 case_sensitive: caseSensitive,
                 scope,
-                limit: RESULTS_PER_PAGE,
-                offset: 0,
+                limit: isFirstPage ? RESULTS_PER_PAGE : symSlice.limit,
+                offset: isFirstPage ? 0 : symSlice.offset,
               }).then((response) => {
                 symbolResults = response.items
                 symbolTotal = response.total
@@ -286,45 +414,35 @@ export default function Search(): React.ReactElement {
             )
           }
 
-          if (callText) {
-            // Build source_types for the API:
-            // - When all standard text types are selected AND no reference, pass undefined (backend default)
-            // - Otherwise pass the explicit list including "reference" if selected
-            let apiSourceTypes: string[] | undefined
-            if (allTextTypesSelected && !hasReference) {
-              apiSourceTypes = undefined
-            } else {
-              apiSourceTypes = [...textSourceTypes, ...(hasReference ? ['reference'] : [])]
-            }
-            const params: TextSearchParams = {
-              q: query,
-              mode: mode as 'keyword' | 'phrase' | 'regex',
-              repo: selectedRepoId,
-              branch: branchParam || undefined,
-              commit: selectedRepoId && commitParam ? commitParam : undefined,
-              source_types: apiSourceTypes,
-              extensions: apiExtensions,
-              case_sensitive: caseSensitive,
-              scope,
-              limit: RESULTS_PER_PAGE,
-              offset,
-            }
+          if (callText && (isFirstPage || txtSlice.limit > 0)) {
             promises.push(
-              searchText(params).then((response) => {
+              searchText({
+                q: query,
+                mode: mode as 'keyword' | 'phrase' | 'regex',
+                repo: selectedRepoId,
+                branch: branchParam || undefined,
+                commit: selectedRepoId && commitParam ? commitParam : undefined,
+                source_types: apiSourceTypes,
+                extensions: apiExtensions,
+                case_sensitive: caseSensitive,
+                scope,
+                limit: isFirstPage ? RESULTS_PER_PAGE : txtSlice.limit,
+                offset: isFirstPage ? 0 : txtSlice.offset,
+              }).then((response) => {
                 textResults = response.results
                 textTotal = response.total
               })
             )
           }
 
-          if (hasDependency && offset === 0) {
+          if (hasDependency && (isFirstPage || depSlice.limit > 0)) {
             promises.push(
               searchDependencies({
                 q: query,
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
-                limit: RESULTS_PER_PAGE,
-                offset: 0,
+                limit: isFirstPage ? RESULTS_PER_PAGE : depSlice.limit,
+                offset: isFirstPage ? 0 : depSlice.offset,
               }).then((response) => {
                 depResults = response.results
                 depTotal = response.total
@@ -333,27 +451,28 @@ export default function Search(): React.ReactElement {
           }
 
           await Promise.all(promises)
+          if (cancelled) return
 
-          // Symbols are shown as top matches on page 1 only (not paginated).
-          // They don't displace text results — text always gets the full page
-          // at its own offset, so there are no pagination gaps across pages.
+          // Update stored totals
+          setSourceTotals({ symbol: symbolTotal, dep: depTotal, text: textTotal })
+          setTotalsDiscovered(true)
+          setTotalsSearchKey(currentSearchKey)
+
+          // Build unified result list in order: symbols → deps → text.
+          // On first page, we fetched generously; slice to page size.
           const unified: UnifiedResult[] = [
-            ...(offset === 0
-              ? symbolResults.map((s) => ({ kind: 'symbol' as const, data: s }))
-              : []),
-            ...(offset === 0
-              ? depResults.map((d) => ({ kind: 'dependency' as const, data: d }))
-              : []),
+            ...symbolResults.map((s) => ({ kind: 'symbol' as const, data: s })),
+            ...depResults.map((d) => ({ kind: 'dependency' as const, data: d })),
             ...textResults.map((t) => ({ kind: 'text' as const, data: t })),
-          ]
+          ].slice(0, RESULTS_PER_PAGE)
           setResults(unified)
           setFileResults([])
-          setTotalResults(symbolTotal + depTotal + textTotal)
-          // Pagination is driven by text search total (the only source with a real total count).
-          // Symbol search returns batch size, not a true total, so it can't drive pagination.
-          setPaginationTotal(callText ? textTotal : 0)
+          const combinedTotal = symbolTotal + depTotal + textTotal
+          setTotalResults(combinedTotal)
+          setPaginationTotal(combinedTotal)
         }
       } catch (err) {
+        if (cancelled) return
         console.error('Search failed:', err)
         setError(err instanceof Error ? err.message : 'Search failed')
         setResults([])
@@ -361,11 +480,15 @@ export default function Search(): React.ReactElement {
         setTotalResults(0)
         setPaginationTotal(0)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
     performSearch()
+
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     query,

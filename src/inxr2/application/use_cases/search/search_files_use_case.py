@@ -22,7 +22,8 @@ class SearchFilesRequest:
         language: Optional programming language filter
         scope: Search scope for cross-repo search (default: "latest").
             Only applies when repository_name is not provided.
-        limit: Maximum results to return (default: 20)
+        limit: Maximum results to return (default: 50)
+        offset: Pagination offset (default: 0)
     """
 
     query: str
@@ -32,7 +33,8 @@ class SearchFilesRequest:
     language: str | None = None
     extensions: list[str] | None = None
     scope: str = "latest"
-    limit: int = 20
+    limit: int = 50
+    offset: int = 0
 
 
 @dataclass(frozen=True)
@@ -66,11 +68,15 @@ class SearchFilesResponse:
 
     Attributes:
         files: List of matching files with metadata
-        total_count: Number of files returned
+        total_count: Total number of matching files (for pagination)
+        limit: Maximum results per page
+        offset: Pagination offset used
     """
 
     files: list[SearchFilesResultItem]
     total_count: int
+    limit: int
+    offset: int
 
 
 class SearchFilesUseCase:
@@ -140,13 +146,14 @@ class SearchFilesUseCase:
                 commit_id = commit.id
 
         # Search files
-        files = await self._file_search_repo.search_by_name(
+        files, total_count = await self._file_search_repo.search_by_name(
             query=request.query,
             repository_id=repository_id,
             commit_id=commit_id,
             language=request.language,
             extensions=request.extensions,
             limit=request.limit,
+            offset=request.offset,
             scope=request.scope if repository_id is None else None,
         )
 
@@ -195,4 +202,9 @@ class SearchFilesUseCase:
                 )
             )
 
-        return SearchFilesResponse(files=results, total_count=len(results))
+        return SearchFilesResponse(
+            files=results,
+            total_count=total_count,
+            limit=request.limit,
+            offset=request.offset,
+        )

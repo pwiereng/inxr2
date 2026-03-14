@@ -110,6 +110,8 @@ class FileSearchListResponse(BaseModel):
 
     files: list[FileSearchResultResponse]
     total_count: int
+    limit: int
+    offset: int
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -157,7 +159,7 @@ async def search_text(
         "latest",
         description="Search scope when no repository is specified",
     ),
-    limit: int = Query(20, ge=1, le=100, description="Results per page"),
+    limit: int = Query(50, ge=1, le=500, description="Results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ) -> SearchTextListResponse:
     """
@@ -177,7 +179,7 @@ async def search_text(
     - source_types: Filter by source type (comment, docstring, commit_message, file_content)
     - languages: Filter by language (python, typescript, markdown, etc.)
     - scope: Search scope for global search (currently only "latest")
-    - limit: Results per page (1-100, default 20)
+    - limit: Results per page (1-500, default 50)
     - offset: Pagination offset (default 0)
 
     Returns:
@@ -257,7 +259,8 @@ async def search_files(
         "latest",
         description="Search scope when no repository is specified",
     ),
-    limit: int = Query(20, ge=1, le=100, description="Maximum results"),
+    limit: int = Query(50, ge=1, le=500, description="Maximum results"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
 ) -> FileSearchListResponse:
     """
     Search files by name or path pattern.
@@ -272,11 +275,14 @@ async def search_files(
     - commit_hash: Filter by specific commit (time travel)
     - language: Filter by programming language
     - scope: Search scope for global search (currently only "latest")
-    - limit: Maximum number of results (1-100, default 20)
+    - limit: Maximum number of results (1-500, default 50)
+    - offset: Pagination offset (default 0)
 
     Returns:
     - files: List of matching files with metadata
-    - total_count: Number of files returned (at most ``limit``)
+    - total_count: Total number of matching files (for pagination)
+    - limit: The limit used
+    - offset: The offset used
     """
     extensions = _validate_extensions(extensions)
     try:
@@ -290,6 +296,7 @@ async def search_files(
                 extensions=extensions,
                 scope=scope,
                 limit=limit,
+                offset=offset,
             )
         )
     except ValueError as e:
@@ -310,6 +317,8 @@ async def search_files(
             for f in response.files
         ],
         total_count=response.total_count,
+        limit=response.limit,
+        offset=response.offset,
     )
 
 
@@ -394,7 +403,7 @@ async def search_dependencies(
         "latest",
         description="Search scope — filters to latest file versions",
     ),
-    limit: int = Query(20, ge=1, le=100, description="Results per page"),
+    limit: int = Query(50, ge=1, le=500, description="Results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ) -> DependencySearchListResponse:
     """

@@ -275,7 +275,7 @@ class TestPostgresSymbolRepositorySearchByName:
             ]
         )
 
-        results = await adapter.search_by_name("calculate", repository_id=repo_id)
+        results, _ = await adapter.search_by_name("calculate", repository_id=repo_id)
 
         assert len(results) == 2
         names = {r.name for r in results}
@@ -303,7 +303,7 @@ class TestPostgresSymbolRepositorySearchByName:
             ]
         )
 
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "my", repository_id=repo_id, kind="class", case_sensitive=False
         )
 
@@ -328,9 +328,47 @@ class TestPostgresSymbolRepositorySearchByName:
             ]
         )
 
-        results = await adapter.search_by_name("item", repository_id=repo_id, limit=3)
+        results, total = await adapter.search_by_name(
+            "item", repository_id=repo_id, limit=3
+        )
 
         assert len(results) == 3
+        assert total == 10
+
+    async def test_search_paginates_with_offset(self, db_session: AsyncSession) -> None:
+        """Test that offset produces disjoint pages with stable totals."""
+        repo_id, _, file_id = await _setup_repo_commit_file(
+            db_session, "sym-offset-repo"
+        )
+        adapter = PostgresSymbolRepository(db_session)
+        await adapter.save_many(
+            [
+                SymbolFactory.create(
+                    file_id=file_id,
+                    repository_id=repo_id,
+                    name=f"item_{i:02d}",
+                    start_line=i * 10 + 1,
+                    end_line=i * 10 + 9,
+                )
+                for i in range(10)
+            ]
+        )
+
+        page1, total1 = await adapter.search_by_name(
+            "item", repository_id=repo_id, limit=5, offset=0
+        )
+        page2, total2 = await adapter.search_by_name(
+            "item", repository_id=repo_id, limit=5, offset=5
+        )
+
+        assert total1 == 10
+        assert total2 == 10
+        assert len(page1) == 5
+        assert len(page2) == 5
+        # Pages are disjoint
+        page1_ids = {s.id for s in page1}
+        page2_ids = {s.id for s in page2}
+        assert page1_ids.isdisjoint(page2_ids)
 
     async def test_search_case_insensitive(self, db_session: AsyncSession) -> None:
         repo_id, _, file_id = await _setup_repo_commit_file(db_session, "sym-case-repo")
@@ -340,13 +378,13 @@ class TestPostgresSymbolRepositorySearchByName:
         )
 
         # Case sensitive (default) should not match
-        results_cs = await adapter.search_by_name(
+        results_cs, _ = await adapter.search_by_name(
             "myclass", repository_id=repo_id, case_sensitive=True
         )
         assert len(results_cs) == 0
 
         # Case insensitive should match
-        results_ci = await adapter.search_by_name(
+        results_ci, _ = await adapter.search_by_name(
             "myclass", repository_id=repo_id, case_sensitive=False
         )
         assert len(results_ci) == 1
@@ -365,8 +403,11 @@ class TestPostgresSymbolRepositorySearchByName:
             )
         )
 
-        results = await adapter.search_by_name("nonexistent", repository_id=repo_id)
+        results, total = await adapter.search_by_name(
+            "nonexistent", repository_id=repo_id
+        )
         assert results == []
+        assert total == 0
 
     async def test_search_with_language_filter(self, db_session: AsyncSession) -> None:
         repo_adapter = PostgresRepositoryAdapter(db_session)
@@ -422,7 +463,7 @@ class TestPostgresSymbolRepositorySearchByName:
             ]
         )
 
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "handler", repository_id=repo.id, language="python"
         )
 
@@ -457,7 +498,7 @@ class TestPostgresSymbolRepositorySearchByName:
         )
 
         # top_level_only should exclude the nested method
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "my", repository_id=repo_id, top_level_only=True, case_sensitive=False
         )
 
@@ -493,7 +534,7 @@ class TestPostgresSymbolRepositorySearchByName:
             )
         )
 
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "ns_func", repository_id=repo_id, top_level_only=True
         )
 
@@ -527,7 +568,7 @@ class TestPostgresSymbolRepositoryDedup:
             )
         )
 
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "dedup_fn", repository_id=data["repo_id"]
         )
 
@@ -557,7 +598,7 @@ class TestPostgresSymbolRepositoryDedup:
         )
 
         # Time travel to commit1 should return only file1's symbol
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "travel_fn",
             repository_id=data["repo_id"],
             commit_id=data["commit1_id"],

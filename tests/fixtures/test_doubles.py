@@ -165,6 +165,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         repository_id: int | None = None,
         kind: str | None = None,
         limit: int = 50,
+        offset: int = 0,
         branch: str | None = None,
         language: str | None = None,
         extensions: list[str] | None = None,
@@ -173,7 +174,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
         case_sensitive: bool = True,
         commit_id: int | None = None,
         top_level_only: bool = False,
-    ) -> list[Symbol]:
+    ) -> tuple[list[Symbol], int]:
         """Search symbols by name with optional filters.
 
         When commit_id is set, filters to symbols from files at that commit.
@@ -283,7 +284,8 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                 continue
             results.append(symbol)
         results.sort(key=lambda s: s.name)
-        return results[:limit]
+        total = len(results)
+        return results[offset : offset + limit], total
 
     async def find_by_qualified_name(
         self, repository_id: int, qualified_name: str
@@ -932,7 +934,7 @@ class InMemoryFileSearchRepository(FileSearchPort):
     Example:
         file_repo = InMemoryFileRepository()
         search_repo = InMemoryFileSearchRepository(file_repo)
-        results = await search_repo.search_by_name("main")
+        results, total = await search_repo.search_by_name("main")
     """
 
     def __init__(self, file_repo: "InMemoryFileRepository") -> None:
@@ -950,12 +952,14 @@ class InMemoryFileSearchRepository(FileSearchPort):
         commit_id: int | None = None,
         language: str | None = None,
         extensions: list[str] | None = None,
-        limit: int = 20,
+        limit: int = 50,
+        offset: int = 0,
         scope: str | None = None,
-    ) -> list[File]:
+    ) -> tuple[list[File], int]:
         """Search files by name/path pattern.
 
         Delegates to the shared file repository's state.
+        Returns (matching files, total count).
         """
         query_lower = query.lower()
 
@@ -1022,7 +1026,8 @@ class InMemoryFileSearchRepository(FileSearchPort):
                 return (3, f.path)
 
         results.sort(key=relevance_key)
-        return results[:limit]
+        total = len(results)
+        return results[offset : offset + limit], total
 
     async def get_distinct_extensions(
         self,

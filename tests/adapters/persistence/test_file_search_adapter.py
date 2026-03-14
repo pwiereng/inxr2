@@ -54,9 +54,10 @@ class TestPostgresFileSearchRepositorySearchByName:
             await file_adapter.link_file_to_commit(f.id, commit.id)
 
         # Search for "utils"
-        results = await search_adapter.search_by_name("utils")
+        results, total = await search_adapter.search_by_name("utils")
 
         assert len(results) == 2
+        assert total == 2
         paths = {f.path for f in results}
         assert "src/utils.py" in paths
         assert "tests/test_utils.py" in paths
@@ -91,9 +92,9 @@ class TestPostgresFileSearchRepositorySearchByName:
         await file_adapter.link_file_to_commit(f.id, commit.id)
 
         # Search with different cases
-        results_lower = await search_adapter.search_by_name("myclass")
-        results_upper = await search_adapter.search_by_name("MYCLASS")
-        results_mixed = await search_adapter.search_by_name("MyClass")
+        results_lower, _ = await search_adapter.search_by_name("myclass")
+        results_upper, _ = await search_adapter.search_by_name("MYCLASS")
+        results_mixed, _ = await search_adapter.search_by_name("MyClass")
 
         assert len(results_lower) == 1
         assert len(results_upper) == 1
@@ -143,9 +144,12 @@ class TestPostgresFileSearchRepositorySearchByName:
         await file_adapter.link_file_to_commit(f2.id, commit2.id)
 
         # Search within repo1 only
-        results = await search_adapter.search_by_name("config", repository_id=repo1.id)
+        results, total = await search_adapter.search_by_name(
+            "config", repository_id=repo1.id
+        )
 
         assert len(results) == 1
+        assert total == 1
         assert results[0].repository_id == repo1.id
 
     async def test_search_by_name_filters_by_commit(
@@ -192,9 +196,12 @@ class TestPostgresFileSearchRepositorySearchByName:
         await file_adapter.link_file_to_commit(f2.id, commit2.id)
 
         # Search within commit1 only
-        results = await search_adapter.search_by_name("app", commit_id=commit1.id)
+        results, total = await search_adapter.search_by_name(
+            "app", commit_id=commit1.id
+        )
 
         assert len(results) == 1
+        assert total == 1
         assert results[0].id == f1.id
 
     async def test_search_by_name_filters_by_language(
@@ -239,7 +246,7 @@ class TestPostgresFileSearchRepositorySearchByName:
         await file_adapter.link_file_to_commit(f_ts.id, commit.id)
 
         # Search for Python files only
-        results = await search_adapter.search_by_name("utils", language="python")
+        results, _ = await search_adapter.search_by_name("utils", language="python")
 
         assert len(results) == 1
         assert results[0].path == "src/utils.py"
@@ -276,9 +283,52 @@ class TestPostgresFileSearchRepositorySearchByName:
             await file_adapter.link_file_to_commit(f.id, commit.id)
 
         # Search with limit of 5
-        results = await search_adapter.search_by_name("test", limit=5)
+        results, total = await search_adapter.search_by_name("test", limit=5)
 
         assert len(results) == 5
+        assert total == 10
+
+    async def test_search_by_name_paginates_with_offset(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that offset produces disjoint pages with stable totals."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+        search_adapter = PostgresFileSearchRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="offset-search-repo")
+        )
+        assert repo.id is not None
+
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="o" * 40)
+        )
+        assert commit.id is not None
+
+        for i in range(10):
+            f = await file_adapter.save(
+                FileFactory.create(
+                    repository_id=repo.id,
+                    path=f"src/item_{i:02d}.py",
+                    content_hash=f"offset{i:04d}" + "0" * 30,
+                )
+            )
+            assert f.id is not None
+            await file_adapter.link_file_to_commit(f.id, commit.id)
+
+        page1, total1 = await search_adapter.search_by_name("item", limit=5, offset=0)
+        page2, total2 = await search_adapter.search_by_name("item", limit=5, offset=5)
+
+        assert total1 == 10
+        assert total2 == 10
+        assert len(page1) == 5
+        assert len(page2) == 5
+        # Pages are disjoint
+        page1_ids = {f.id for f in page1}
+        page2_ids = {f.id for f in page2}
+        assert page1_ids.isdisjoint(page2_ids)
 
     async def test_search_by_name_orders_by_relevance(
         self, db_session: AsyncSession
@@ -316,7 +366,7 @@ class TestPostgresFileSearchRepositorySearchByName:
             assert f.id is not None
             await file_adapter.link_file_to_commit(f.id, commit.id)
 
-        results = await search_adapter.search_by_name("config")
+        results, _ = await search_adapter.search_by_name("config")
 
         assert len(results) == 3
         # Exact match first, prefix second, contains last
@@ -353,9 +403,10 @@ class TestPostgresFileSearchRepositorySearchByName:
         assert f.id is not None
         await file_adapter.link_file_to_commit(f.id, commit.id)
 
-        results = await search_adapter.search_by_name("nonexistent")
+        results, total = await search_adapter.search_by_name("nonexistent")
 
         assert results == []
+        assert total == 0
 
     async def test_search_by_name_deduplicates_without_commit_id(
         self, db_session: AsyncSession
@@ -402,10 +453,13 @@ class TestPostgresFileSearchRepositorySearchByName:
         await file_adapter.link_file_to_commit(f2.id, commit2.id)
 
         # Search without commit filter - should deduplicate
-        results = await search_adapter.search_by_name("service", repository_id=repo.id)
+        results, total = await search_adapter.search_by_name(
+            "service", repository_id=repo.id
+        )
 
         # Should only return one result (deduplicated)
         assert len(results) == 1
+        assert total == 1
         assert results[0].path == "src/service.py"
 
     async def test_search_by_name_cross_repo_same_path(
@@ -463,9 +517,10 @@ class TestPostgresFileSearchRepositorySearchByName:
         await file_adapter.link_file_to_commit(f2.id, commit2.id)
 
         # Search globally (no repository filter) - should return both files
-        results = await search_adapter.search_by_name("main")
+        results, total = await search_adapter.search_by_name("main")
 
         # Should return 2 results - one from each repository
         assert len(results) == 2
+        assert total == 2
         repo_ids = {r.repository_id for r in results}
         assert repo_ids == {repo1.id, repo2.id}
