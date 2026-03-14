@@ -934,7 +934,7 @@ class InMemoryFileSearchRepository(FileSearchPort):
     Example:
         file_repo = InMemoryFileRepository()
         search_repo = InMemoryFileSearchRepository(file_repo)
-        results = await search_repo.search_by_name("main")
+        results, total = await search_repo.search_by_name("main")
     """
 
     def __init__(self, file_repo: "InMemoryFileRepository") -> None:
