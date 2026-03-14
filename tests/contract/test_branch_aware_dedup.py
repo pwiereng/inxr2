@@ -97,7 +97,7 @@ class TestSearchByNameBranchDedup:
         """
         data = await _setup_two_branches(repos)
 
-        results = await repos.symbol.search_by_name(
+        results, _total = await repos.symbol.search_by_name(
             "setup_logging",
             repository_id=data["repo_id"],
             branch="main",
@@ -117,7 +117,7 @@ class TestSearchByNameBranchDedup:
         """
         data = await _setup_two_branches(repos)
 
-        results = await repos.symbol.search_by_name(
+        results, _total = await repos.symbol.search_by_name(
             "setup_logging",
             repository_id=data["repo_id"],
             branch="feature",
@@ -132,7 +132,7 @@ class TestSearchByNameBranchDedup:
         """Without branch filter, search falls back to default branch (main)."""
         data = await _setup_two_branches(repos)
 
-        results = await repos.symbol.search_by_name(
+        results, _total = await repos.symbol.search_by_name(
             "setup_logging",
             repository_id=data["repo_id"],
         )

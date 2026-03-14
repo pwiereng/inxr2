@@ -30,6 +30,7 @@ class SymbolRepositoryPort(ABC):
         repository_id: int | None = None,
         kind: str | None = None,
         limit: int = 50,
+        offset: int = 0,
         branch: str | None = None,
         language: str | None = None,
         extensions: list[str] | None = None,
@@ -38,7 +39,7 @@ class SymbolRepositoryPort(ABC):
         case_sensitive: bool = True,
         commit_id: int | None = None,
         top_level_only: bool = False,
-    ) -> list[Symbol]:
+    ) -> tuple[list[Symbol], int]:
         """Search symbols by name (supports autocomplete).
 
         Args:
@@ -46,6 +47,7 @@ class SymbolRepositoryPort(ABC):
             repository_id: Filter by repository (optional)
             kind: Filter by symbol kind (optional)
             limit: Maximum results
+            offset: Pagination offset (default 0)
             branch: Filter by branch name via commit_files -> branch_commits (optional)
             language: Filter by programming language via files (optional)
             extensions: Filter by file extensions (e.g., [".py", ".ts"]) (optional)
@@ -59,6 +61,9 @@ class SymbolRepositoryPort(ABC):
                 When set, takes precedence over branch-based dedup.
             top_level_only: If True, only return symbols that are effectively
                 top-level (no parent, or parent is a namespace).
+
+        Returns:
+            Tuple of (matching symbols, total count of all matches).
         """
         pass
 

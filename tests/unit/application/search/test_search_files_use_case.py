@@ -633,16 +633,19 @@ class TestExtensionlessFileFilter:
         self, search_repo: InMemoryFileSearchRepository
     ) -> None:
         """Search with (none) extension returns only extensionless files."""
-        results = await search_repo.search_by_name(query="file", extensions=["(none)"])
+        results, total = await search_repo.search_by_name(
+            query="file", extensions=["(none)"]
+        )
         paths = {f.path for f in results}
         assert paths == {"Dockerfile", "Makefile"}
+        assert total == 2
 
     @pytest.mark.asyncio
     async def test_search_by_name_with_mixed_extensions(
         self, search_repo: InMemoryFileSearchRepository
     ) -> None:
         """Search with (none) and real extensions returns both."""
-        results = await search_repo.search_by_name(
+        results, _total = await search_repo.search_by_name(
             query="", extensions=[".py", "(none)"]
         )
         paths = {f.path for f in results}

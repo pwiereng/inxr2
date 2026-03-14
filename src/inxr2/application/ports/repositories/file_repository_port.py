@@ -172,8 +172,9 @@ class FileSearchPort(ABC):
         language: str | None = None,
         extensions: list[str] | None = None,
         limit: int = 20,
+        offset: int = 0,
         scope: str | None = None,
-    ) -> list[File]:
+    ) -> tuple[list[File], int]:
         """Search files by name/path pattern.
 
         Uses case-insensitive pattern matching on file paths.
@@ -194,11 +195,12 @@ class FileSearchPort(ABC):
             language: Filter by programming language (optional)
             extensions: Filter by file extensions (e.g., [".py", ".ts"]) (optional)
             limit: Maximum number of results (default 20)
+            offset: Pagination offset (default 0)
             scope: Search scope for global search (e.g. "latest") when no
                 repository_id is specified. Ignored when repository_id is set.
 
         Returns:
-            List of matching files, ordered by relevance.
+            Tuple of (matching files ordered by relevance, total count of matches).
         """
         pass
 

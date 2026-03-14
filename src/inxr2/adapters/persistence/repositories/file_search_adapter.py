@@ -29,8 +29,9 @@ class PostgresFileSearchRepository(FileSearchPort):
         language: str | None = None,
         extensions: list[str] | None = None,
         limit: int = 20,
+        offset: int = 0,
         scope: str | None = None,
-    ) -> list["File"]:
+    ) -> tuple[list["File"], int]:
         """Search files by name/path pattern.
 
         Uses case-insensitive pattern matching. When commit_id is specified,
@@ -38,6 +39,9 @@ class PostgresFileSearchRepository(FileSearchPort):
         returning only the latest version of each path (highest file ID).
         When scope is "latest" and repository_id is None, filters to files
         at HEAD of each repo's default branch.
+
+        Returns:
+            Tuple of (matching files, total count of all matches).
         """
         query_lower = query.lower()
 
@@ -94,12 +98,19 @@ class PostgresFileSearchRepository(FileSearchPort):
                     FileModel.id.in_(select(latest_sq.c.max_id))
                 )
 
-        query_stmt = query_stmt.order_by(relevance, FileModel.path).limit(limit)
+        # Count total matches before applying limit/offset
+        count_stmt = select(func.count()).select_from(query_stmt.subquery())
+        count_result = await self.session.execute(count_stmt)
+        total = count_result.scalar() or 0
+
+        query_stmt = (
+            query_stmt.order_by(relevance, FileModel.path).limit(limit).offset(offset)
+        )
 
         result = await self.session.execute(query_stmt)
         rows = result.all()
 
-        return [self.mapper.to_domain(row[0]) for row in rows]
+        return [self.mapper.to_domain(row[0]) for row in rows], total
 
     async def get_distinct_extensions(
         self,

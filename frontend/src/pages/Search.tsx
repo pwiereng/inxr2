@@ -81,7 +81,7 @@ const ALL_TEXT_TYPE_VALUES = SOURCE_TYPES.filter((t) => !NON_TEXT_TYPES.has(t.va
   (t) => t.value
 )
 
-const RESULTS_PER_PAGE = 20
+const RESULTS_PER_PAGE = 50
 
 // Sentinel values for extension dropdown actions
 const EXT_SELECT_NONE = '__select_none__'
@@ -148,6 +148,9 @@ export default function Search(): React.ReactElement {
   // Debounce search - update URL after delay
   useEffect(() => {
     if (!inputQuery.trim()) return
+    // Only update URL when the query text actually changed; skip when
+    // other URL params (e.g. page) changed to avoid resetting pagination.
+    if (inputQuery === query) return
 
     const timer = setTimeout(() => {
       const newParams = new URLSearchParams(searchParams)
@@ -157,7 +160,7 @@ export default function Search(): React.ReactElement {
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [inputQuery, searchParams, setSearchParams])
+  }, [inputQuery, query, searchParams, setSearchParams])
 
   // Load repositories
   useEffect(() => {
@@ -239,6 +242,7 @@ export default function Search(): React.ReactElement {
             extensions: apiExtensions,
             scope,
             limit: RESULTS_PER_PAGE,
+            offset,
           })
           setFileResults(response.files)
           setResults([])
@@ -263,9 +267,7 @@ export default function Search(): React.ReactElement {
           let textTotal = 0
           let depTotal = 0
 
-          if (hasSymbol && offset === 0) {
-            // Only fetch symbols on page 1 (they're top matches, not paginated —
-            // the API returns batch count, not a true total).
+          if (hasSymbol) {
             promises.push(
               searchSymbols({
                 q: query,
@@ -276,7 +278,7 @@ export default function Search(): React.ReactElement {
                 case_sensitive: caseSensitive,
                 scope,
                 limit: RESULTS_PER_PAGE,
-                offset: 0,
+                offset,
               }).then((response) => {
                 symbolResults = response.items
                 symbolTotal = response.total
@@ -314,14 +316,14 @@ export default function Search(): React.ReactElement {
             )
           }
 
-          if (hasDependency && offset === 0) {
+          if (hasDependency) {
             promises.push(
               searchDependencies({
                 q: query,
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
                 limit: RESULTS_PER_PAGE,
-                offset: 0,
+                offset,
               }).then((response) => {
                 depResults = response.results
                 depTotal = response.total
@@ -331,24 +333,18 @@ export default function Search(): React.ReactElement {
 
           await Promise.all(promises)
 
-          // Symbols are shown as top matches on page 1 only (not paginated).
-          // They don't displace text results — text always gets the full page
-          // at its own offset, so there are no pagination gaps across pages.
+          // Combine all result types into a unified list, capped at page size.
+          // Each type is independently paginated with the same offset/limit.
           const unified: UnifiedResult[] = [
-            ...(offset === 0
-              ? symbolResults.map((s) => ({ kind: 'symbol' as const, data: s }))
-              : []),
-            ...(offset === 0
-              ? depResults.map((d) => ({ kind: 'dependency' as const, data: d }))
-              : []),
+            ...symbolResults.map((s) => ({ kind: 'symbol' as const, data: s })),
+            ...depResults.map((d) => ({ kind: 'dependency' as const, data: d })),
             ...textResults.map((t) => ({ kind: 'text' as const, data: t })),
-          ]
+          ].slice(0, RESULTS_PER_PAGE)
           setResults(unified)
           setFileResults([])
           setTotalResults(symbolTotal + depTotal + textTotal)
-          // Pagination is driven by text search total (the only source with a real total count).
-          // Symbol search returns batch size, not a true total, so it can't drive pagination.
-          setPaginationTotal(callText ? textTotal : 0)
+          // Pagination is driven by the largest total across all active sources.
+          setPaginationTotal(Math.max(symbolTotal, depTotal, textTotal))
         }
       } catch (err) {
         console.error('Search failed:', err)

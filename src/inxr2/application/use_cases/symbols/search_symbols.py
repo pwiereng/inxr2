@@ -70,8 +70,7 @@ class SearchSymbolsResponse:
 
     Args:
         symbols: List of symbols with file paths
-        total: Number of symbols returned in this response (not the total
-            count of all matching symbols across all pages)
+        total: Total number of matching symbols across all pages (for pagination)
         limit: Limit used in request
         offset: Offset used in request
     """
@@ -141,19 +140,21 @@ class SearchSymbolsUseCase:
             commit_id = commit.id
 
         # Search symbols
+        total: int
         if request.exact_match:
             symbols = await self._symbol_repo.find_by_exact_name(
                 name=request.query,
                 repository_id=request.repository_id,
                 commit_id=commit_id,
             )
+            total = len(symbols)
         else:
-            # Fetch enough for pagination
-            symbols = await self._symbol_repo.search_by_name(
+            symbols, total = await self._symbol_repo.search_by_name(
                 name=request.query,
                 repository_id=request.repository_id,
                 kind=request.kind,
-                limit=request.limit + request.offset,
+                limit=request.limit,
+                offset=request.offset,
                 branch=request.branch,
                 language=request.language,
                 extensions=request.extensions,
@@ -164,15 +165,12 @@ class SearchSymbolsUseCase:
                 top_level_only=request.top_level_only,
             )
 
-        # Apply offset for pagination
-        symbols = symbols[request.offset : request.offset + request.limit]
-
         # Batch fetch file paths
         enriched_symbols = await self._enrich_with_file_paths(symbols)
 
         return SearchSymbolsResponse(
             symbols=enriched_symbols,
-            total=len(enriched_symbols),
+            total=total,
             limit=request.limit,
             offset=request.offset,
         )

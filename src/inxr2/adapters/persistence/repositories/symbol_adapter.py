@@ -43,6 +43,7 @@ class PostgresSymbolRepository(
         repository_id: int | None = None,
         kind: str | None = None,
         limit: int = 50,
+        offset: int = 0,
         branch: str | None = None,
         language: str | None = None,
         extensions: list[str] | None = None,
@@ -51,7 +52,7 @@ class PostgresSymbolRepository(
         case_sensitive: bool = True,
         commit_id: int | None = None,
         top_level_only: bool = False,
-    ) -> list[Symbol]:
+    ) -> tuple[list[Symbol], int]:
         """Search symbols by name (supports autocomplete).
 
         When commit_id is provided, filters to symbols from files at that
@@ -133,12 +134,17 @@ class PostgresSymbolRepository(
                 SymbolModel.file_id.in_(select(FileModel.id).where(ext_filter))
             )
 
-        query = query.order_by(SymbolModel.name).limit(limit)
+        # Count total matches before applying limit/offset
+        count_stmt = select(func.count()).select_from(query.subquery())
+        count_result = await self.session.execute(count_stmt)
+        total = count_result.scalar() or 0
+
+        query = query.order_by(SymbolModel.name).limit(limit).offset(offset)
 
         result = await self.session.execute(query)
         models = result.scalars().all()
 
-        return [self.mapper.to_domain(model) for model in models]
+        return [self.mapper.to_domain(model) for model in models], total
 
     async def find_by_exact_name(
         self,

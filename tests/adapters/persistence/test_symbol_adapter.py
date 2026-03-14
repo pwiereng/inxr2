@@ -275,7 +275,7 @@ class TestPostgresSymbolRepositorySearchByName:
             ]
         )
 
-        results = await adapter.search_by_name("calculate", repository_id=repo_id)
+        results, _ = await adapter.search_by_name("calculate", repository_id=repo_id)
 
         assert len(results) == 2
         names = {r.name for r in results}
@@ -303,7 +303,7 @@ class TestPostgresSymbolRepositorySearchByName:
             ]
         )
 
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "my", repository_id=repo_id, kind="class", case_sensitive=False
         )
 
@@ -328,9 +328,12 @@ class TestPostgresSymbolRepositorySearchByName:
             ]
         )
 
-        results = await adapter.search_by_name("item", repository_id=repo_id, limit=3)
+        results, total = await adapter.search_by_name(
+            "item", repository_id=repo_id, limit=3
+        )
 
         assert len(results) == 3
+        assert total == 10
 
     async def test_search_case_insensitive(self, db_session: AsyncSession) -> None:
         repo_id, _, file_id = await _setup_repo_commit_file(db_session, "sym-case-repo")
@@ -340,13 +343,13 @@ class TestPostgresSymbolRepositorySearchByName:
         )
 
         # Case sensitive (default) should not match
-        results_cs = await adapter.search_by_name(
+        results_cs, _ = await adapter.search_by_name(
             "myclass", repository_id=repo_id, case_sensitive=True
         )
         assert len(results_cs) == 0
 
         # Case insensitive should match
-        results_ci = await adapter.search_by_name(
+        results_ci, _ = await adapter.search_by_name(
             "myclass", repository_id=repo_id, case_sensitive=False
         )
         assert len(results_ci) == 1
@@ -365,8 +368,11 @@ class TestPostgresSymbolRepositorySearchByName:
             )
         )
 
-        results = await adapter.search_by_name("nonexistent", repository_id=repo_id)
+        results, total = await adapter.search_by_name(
+            "nonexistent", repository_id=repo_id
+        )
         assert results == []
+        assert total == 0
 
     async def test_search_with_language_filter(self, db_session: AsyncSession) -> None:
         repo_adapter = PostgresRepositoryAdapter(db_session)
@@ -422,7 +428,7 @@ class TestPostgresSymbolRepositorySearchByName:
             ]
         )
 
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "handler", repository_id=repo.id, language="python"
         )
 
@@ -457,7 +463,7 @@ class TestPostgresSymbolRepositorySearchByName:
         )
 
         # top_level_only should exclude the nested method
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "my", repository_id=repo_id, top_level_only=True, case_sensitive=False
         )
 
@@ -493,7 +499,7 @@ class TestPostgresSymbolRepositorySearchByName:
             )
         )
 
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "ns_func", repository_id=repo_id, top_level_only=True
         )
 
@@ -527,7 +533,7 @@ class TestPostgresSymbolRepositoryDedup:
             )
         )
 
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "dedup_fn", repository_id=data["repo_id"]
         )
 
@@ -557,7 +563,7 @@ class TestPostgresSymbolRepositoryDedup:
         )
 
         # Time travel to commit1 should return only file1's symbol
-        results = await adapter.search_by_name(
+        results, _ = await adapter.search_by_name(
             "travel_fn",
             repository_id=data["repo_id"],
             commit_id=data["commit1_id"],
