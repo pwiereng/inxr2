@@ -326,6 +326,36 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
         with pytest.raises(ValueError, match="git_service"):
             await use_case.execute(request)
 
+    @pytest.mark.asyncio
+    async def test_tree_nodes_include_size_bytes(
+        self,
+        repository_repo: InMemoryRepositoryRepository,
+        file_repo: InMemoryFileRepository,
+        commit_repo: InMemoryCommitRepository,
+        git_service: FakeGitService,
+    ) -> None:
+        """Test that tree nodes include size_bytes for files."""
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
+        use_case = GetRepositoryTreeUseCase(
+            repository_repo=repository_repo,
+            file_repo=file_repo,
+            file_version_repo=file_version_repo,
+            commit_repo=commit_repo,
+            git_service=git_service,
+        )
+
+        request = GetRepositoryTreeRequest(
+            repository_id=1,
+            commit_hash="b" * 40,
+        )
+
+        result = await use_case.execute(request)
+
+        sizes = self._extract_file_sizes(result.root)
+        # file_a.py at commit2 has size 150, file_d.py has 200
+        assert sizes["file_a.py"] == 150
+        assert sizes["file_d.py"] == 200
+
     def _extract_file_paths(self, nodes: list) -> set[str]:
         """Recursively extract all file paths from tree nodes."""
         paths: set[str] = set()
@@ -335,6 +365,16 @@ class TestGetRepositoryTreeUseCaseChangedOnly:
             if node.children:
                 paths.update(self._extract_file_paths(node.children))
         return paths
+
+    def _extract_file_sizes(self, nodes: list) -> dict[str, int | None]:
+        """Recursively extract file sizes from tree nodes."""
+        sizes: dict[str, int | None] = {}
+        for node in nodes:
+            if node.node_type == "file":
+                sizes[node.path] = node.size_bytes
+            if node.children:
+                sizes.update(self._extract_file_sizes(node.children))
+        return sizes
 
 
 class TestGetRepositoryTreeUseCaseGhostFiles:

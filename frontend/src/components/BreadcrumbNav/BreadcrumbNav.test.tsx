@@ -15,6 +15,11 @@ describe('BreadcrumbNav', () => {
     expect(screen.getByText('my-repo')).toBeInTheDocument()
   })
 
+  it('should not show copy button at root (no path to copy)', () => {
+    render(<BreadcrumbNav {...defaultProps} />)
+    expect(screen.queryByLabelText('Copy path')).not.toBeInTheDocument()
+  })
+
   it('should show clickable repo name and path segments for a file', () => {
     render(
       <BreadcrumbNav {...defaultProps} currentPath="src/inxr2/domain/entities/repository.py" />
@@ -65,5 +70,10 @@ describe('BreadcrumbNav', () => {
     render(<BreadcrumbNav {...defaultProps} currentPath="README.md" />)
     expect(screen.getByRole('button', { name: 'my-repo' })).toBeInTheDocument()
     expect(screen.getByText('README.md')).toBeInTheDocument()
+  })
+
+  it('should show copy button when path is set', () => {
+    render(<BreadcrumbNav {...defaultProps} currentPath="src/main.py" />)
+    expect(screen.getByLabelText('Copy path')).toBeInTheDocument()
   })
 })

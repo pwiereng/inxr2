@@ -57,25 +57,30 @@ interface TreeNodeItemProps {
   node: TreeNode
   level: number
   selectedFileId?: number | null
+  selectedDirectoryPath?: string | null
   onFileSelect?: (path: string) => void
   expandedPaths: Set<string>
   toggleExpanded: (path: string) => void
-  selectedRef?: React.RefObject<HTMLDivElement>
+  selectedFileRef?: React.RefObject<HTMLDivElement>
+  selectedDirRef?: React.RefObject<HTMLDivElement>
 }
 
 function TreeNodeItem({
   node,
   level,
   selectedFileId,
+  selectedDirectoryPath,
   onFileSelect,
   expandedPaths,
   toggleExpanded,
-  selectedRef,
+  selectedFileRef,
+  selectedDirRef,
 }: TreeNodeItemProps) {
   const theme = useTheme()
   const isExpanded = expandedPaths.has(node.path)
   const isDirectory = node.type === 'directory'
   const isSelected = node.file_id != null && node.file_id === selectedFileId
+  const isSelectedDirectory = isDirectory && node.path === selectedDirectoryPath
 
   const handleClick = () => {
     if (isDirectory) {
@@ -88,7 +93,7 @@ function TreeNodeItem({
   return (
     <>
       <ListItemButton
-        ref={isSelected ? selectedRef : undefined}
+        ref={isSelected ? selectedFileRef : isSelectedDirectory ? selectedDirRef : undefined}
         onClick={handleClick}
         selected={isSelected}
         sx={{
@@ -167,10 +172,12 @@ function TreeNodeItem({
                 node={child}
                 level={level + 1}
                 selectedFileId={selectedFileId}
+                selectedDirectoryPath={selectedDirectoryPath}
                 onFileSelect={onFileSelect}
                 expandedPaths={expandedPaths}
                 toggleExpanded={toggleExpanded}
-                selectedRef={selectedRef}
+                selectedFileRef={selectedFileRef}
+                selectedDirRef={selectedDirRef}
               />
             ))}
           </List>
@@ -189,7 +196,10 @@ export function FileTree({
 }: FileTreeProps): React.ReactElement {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [filterText, setFilterText] = useState('')
-  const selectedRef = useRef<HTMLDivElement>(null!)
+  const selectedFileRef = useRef<HTMLDivElement>(null!)
+  const selectedDirRef = useRef<HTMLDivElement>(null!)
+  const fileScrollTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const dirScrollTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const toggleExpanded = useCallback((path: string) => {
     setExpandedPaths((prev) => {
@@ -216,9 +226,9 @@ export function FileTree({
           return next
         })
         // Scroll into view after a short delay to allow expansion animation
-        setTimeout(() => {
-          if (typeof selectedRef.current?.scrollIntoView === 'function') {
-            selectedRef.current.scrollIntoView({
+        fileScrollTimerRef.current = setTimeout(() => {
+          if (typeof selectedFileRef.current?.scrollIntoView === 'function') {
+            selectedFileRef.current.scrollIntoView({
               behavior: 'smooth',
               block: 'center',
             })
@@ -226,6 +236,7 @@ export function FileTree({
         }, 100)
       }
     }
+    return () => clearTimeout(fileScrollTimerRef.current)
   }, [selectedFileId, nodes])
 
   // Auto-expand to selected directory path (from breadcrumb navigation)
@@ -239,7 +250,17 @@ export function FileTree({
         parentPaths.forEach((p) => next.add(p))
         return next
       })
+      // Scroll into view after expansion
+      dirScrollTimerRef.current = setTimeout(() => {
+        if (typeof selectedDirRef.current?.scrollIntoView === 'function') {
+          selectedDirRef.current.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          })
+        }
+      }, 100)
     }
+    return () => clearTimeout(dirScrollTimerRef.current)
   }, [selectedDirectoryPath, nodes])
 
   const handleFilterFileSelect = useCallback(
@@ -300,10 +321,12 @@ export function FileTree({
               node={node}
               level={0}
               selectedFileId={selectedFileId}
+              selectedDirectoryPath={selectedDirectoryPath}
               onFileSelect={onFileSelect}
               expandedPaths={expandedPaths}
               toggleExpanded={toggleExpanded}
-              selectedRef={selectedRef}
+              selectedFileRef={selectedFileRef}
+              selectedDirRef={selectedDirRef}
             />
           ))}
         </List>

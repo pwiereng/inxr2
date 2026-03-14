@@ -10,6 +10,9 @@ const sampleTree: TreeNode[] = [
     type: 'directory',
     file_id: null,
     language: null,
+    size_bytes: null,
+    line_count: null,
+
     children: [
       {
         name: 'components',
@@ -17,6 +20,9 @@ const sampleTree: TreeNode[] = [
         type: 'directory',
         file_id: null,
         language: null,
+        size_bytes: null,
+        line_count: null,
+
         children: [
           {
             name: 'Button.tsx',
@@ -24,6 +30,9 @@ const sampleTree: TreeNode[] = [
             type: 'file',
             file_id: 1,
             language: 'typescript',
+            size_bytes: null,
+            line_count: null,
+
             children: null,
           },
         ],
@@ -34,6 +43,9 @@ const sampleTree: TreeNode[] = [
         type: 'file',
         file_id: 4,
         language: 'typescript',
+        size_bytes: null,
+        line_count: null,
+
         children: null,
       },
     ],
@@ -44,6 +56,9 @@ const sampleTree: TreeNode[] = [
     type: 'file',
     file_id: 5,
     language: 'markdown',
+    size_bytes: null,
+    line_count: null,
+
     children: null,
   },
 ]
