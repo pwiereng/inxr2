@@ -272,7 +272,7 @@ export default function Search(): React.ReactElement {
                 q: query,
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
-                commit: commitParam || undefined,
+                commit: selectedRepoId && commitParam ? commitParam : undefined,
                 extensions: apiExtensions,
                 mode: mode === 'regex' ? 'regex' : undefined,
                 case_sensitive: caseSensitive,
@@ -537,6 +537,7 @@ export default function Search(): React.ReactElement {
       const params = new URLSearchParams()
       params.set('repo', repo.name)
       if (branchParam) params.set('branch', branchParam)
+      if (commitParam) params.set('commit', commitParam)
       params.set('line', result.data.start_line.toString())
 
       navigate(

@@ -124,10 +124,12 @@ class PostgresTextSearch(TextSearchPort):
                 .where(CommitFileModel.commit_id == query.commit_id)
             )
             # File-derived: commit_id IS NULL, match via source_file_id → commit_files
-            file_path = TextContentModel.commit_id.is_(None) & file_commit_exists
+            file_commit_match = (
+                TextContentModel.commit_id.is_(None) & file_commit_exists
+            )
             # Commit-based: match commit_id directly
-            commit_path = TextContentModel.commit_id == query.commit_id
-            base_query = base_query.where(file_path | commit_path)
+            direct_commit_match = TextContentModel.commit_id == query.commit_id
+            base_query = base_query.where(file_commit_match | direct_commit_match)
 
         # Apply source type filters
         if query.source_types:
