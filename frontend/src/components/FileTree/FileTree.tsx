@@ -61,7 +61,8 @@ interface TreeNodeItemProps {
   onFileSelect?: (path: string) => void
   expandedPaths: Set<string>
   toggleExpanded: (path: string) => void
-  selectedRef?: React.RefObject<HTMLDivElement>
+  selectedFileRef?: React.RefObject<HTMLDivElement>
+  selectedDirRef?: React.RefObject<HTMLDivElement>
 }
 
 function TreeNodeItem({
@@ -72,7 +73,8 @@ function TreeNodeItem({
   onFileSelect,
   expandedPaths,
   toggleExpanded,
-  selectedRef,
+  selectedFileRef,
+  selectedDirRef,
 }: TreeNodeItemProps) {
   const theme = useTheme()
   const isExpanded = expandedPaths.has(node.path)
@@ -91,7 +93,7 @@ function TreeNodeItem({
   return (
     <>
       <ListItemButton
-        ref={isSelected || isSelectedDirectory ? selectedRef : undefined}
+        ref={isSelected ? selectedFileRef : isSelectedDirectory ? selectedDirRef : undefined}
         onClick={handleClick}
         selected={isSelected}
         sx={{
@@ -174,7 +176,8 @@ function TreeNodeItem({
                 onFileSelect={onFileSelect}
                 expandedPaths={expandedPaths}
                 toggleExpanded={toggleExpanded}
-                selectedRef={selectedRef}
+                selectedFileRef={selectedFileRef}
+                selectedDirRef={selectedDirRef}
               />
             ))}
           </List>
@@ -193,8 +196,10 @@ export function FileTree({
 }: FileTreeProps): React.ReactElement {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [filterText, setFilterText] = useState('')
-  const selectedRef = useRef<HTMLDivElement>(null!)
-  const scrollTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const selectedFileRef = useRef<HTMLDivElement>(null!)
+  const selectedDirRef = useRef<HTMLDivElement>(null!)
+  const fileScrollTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const dirScrollTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
   const toggleExpanded = useCallback((path: string) => {
     setExpandedPaths((prev) => {
@@ -221,9 +226,9 @@ export function FileTree({
           return next
         })
         // Scroll into view after a short delay to allow expansion animation
-        scrollTimerRef.current = setTimeout(() => {
-          if (typeof selectedRef.current?.scrollIntoView === 'function') {
-            selectedRef.current.scrollIntoView({
+        fileScrollTimerRef.current = setTimeout(() => {
+          if (typeof selectedFileRef.current?.scrollIntoView === 'function') {
+            selectedFileRef.current.scrollIntoView({
               behavior: 'smooth',
               block: 'center',
             })
@@ -231,7 +236,7 @@ export function FileTree({
         }, 100)
       }
     }
-    return () => clearTimeout(scrollTimerRef.current)
+    return () => clearTimeout(fileScrollTimerRef.current)
   }, [selectedFileId, nodes])
 
   // Auto-expand to selected directory path (from breadcrumb navigation)
@@ -246,16 +251,16 @@ export function FileTree({
         return next
       })
       // Scroll into view after expansion
-      scrollTimerRef.current = setTimeout(() => {
-        if (typeof selectedRef.current?.scrollIntoView === 'function') {
-          selectedRef.current.scrollIntoView({
+      dirScrollTimerRef.current = setTimeout(() => {
+        if (typeof selectedDirRef.current?.scrollIntoView === 'function') {
+          selectedDirRef.current.scrollIntoView({
             behavior: 'smooth',
             block: 'center',
           })
         }
       }, 100)
     }
-    return () => clearTimeout(scrollTimerRef.current)
+    return () => clearTimeout(dirScrollTimerRef.current)
   }, [selectedDirectoryPath, nodes])
 
   const handleFilterFileSelect = useCallback(
@@ -320,7 +325,8 @@ export function FileTree({
               onFileSelect={onFileSelect}
               expandedPaths={expandedPaths}
               toggleExpanded={toggleExpanded}
-              selectedRef={selectedRef}
+              selectedFileRef={selectedFileRef}
+              selectedDirRef={selectedDirRef}
             />
           ))}
         </List>
