@@ -5,12 +5,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from inxr2.adapters.persistence.repositories import (
     PostgresCommitRepository,
+    PostgresFileRepository,
     PostgresTextContentRepository,
     PostgresTextSearch,
 )
 from inxr2.application.ports.services import TextSearchQuery
 from inxr2.domain.entities import Commit, File, Repository, TextContent
 from inxr2.domain.value_objects import QueryMode, TextSearchSourceType
+
+from .factories import FileFactory
 
 
 @pytest.mark.asyncio
@@ -404,6 +407,91 @@ async def test_search_with_commit_filter(
 
     assert total == 1
     assert results[0].text_content.content == "Old comment"
+
+
+@pytest.mark.asyncio
+async def test_search_commit_filter_for_file_derived_content(
+    db_session: AsyncSession,
+    test_repository: Repository,
+    test_commit: Commit,
+    test_second_commit: Commit,
+    test_file: File,
+) -> None:
+    """File-derived content (NULL commit_id) is filtered via commit_files join.
+
+    Regression test for issue #330: file-derived text_contents have commit_id=NULL
+    but link to files via source_file_id. The commit filter must join through
+    commit_files to determine which file version was present at a given commit.
+    """
+    assert test_repository.id is not None
+    assert test_commit.id is not None
+    assert test_second_commit.id is not None
+    assert test_file.id is not None
+
+    file_repo = PostgresFileRepository(db_session)
+    repo = PostgresTextContentRepository(db_session)
+    search = PostgresTextSearch(db_session)
+
+    # Create a second file version linked only to the second commit
+    second_file = await file_repo.save(
+        FileFactory.create(
+            repository_id=test_repository.id,
+            path="src/other.py",
+        )
+    )
+    assert second_file.id is not None
+    await file_repo.link_file_to_commit(second_file.id, test_second_commit.id)
+
+    # File-derived content (commit_id=None) for each file version
+    await repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=None,
+            source_type=TextSearchSourceType.DOCSTRING.value,
+            source_file_id=test_file.id,
+            source_line=1,
+            content="Docstring in first commit file",
+            language="python",
+            content_type="docstring",
+        )
+    )
+    await repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=None,
+            source_type=TextSearchSourceType.DOCSTRING.value,
+            source_file_id=second_file.id,
+            source_line=1,
+            content="Docstring in second commit file",
+            language="python",
+            content_type="docstring",
+        )
+    )
+    await db_session.commit()
+
+    # Filter to first commit — should only find the first file's docstring
+    query = TextSearchQuery(
+        query="Docstring",
+        mode=QueryMode.REGEX.value,
+        repository_id=test_repository.id,
+        commit_id=test_commit.id,
+    )
+    results, total = await search.search(query)
+
+    assert total == 1
+    assert results[0].text_content.content == "Docstring in first commit file"
+
+    # Filter to second commit — should only find the second file's docstring
+    query2 = TextSearchQuery(
+        query="Docstring",
+        mode=QueryMode.REGEX.value,
+        repository_id=test_repository.id,
+        commit_id=test_second_commit.id,
+    )
+    results2, total2 = await search.search(query2)
+
+    assert total2 == 1
+    assert results2[0].text_content.content == "Docstring in second commit file"
 
 
 @pytest.mark.asyncio

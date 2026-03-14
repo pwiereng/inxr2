@@ -30,6 +30,7 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
+import { isMarkdownFile } from '@/lib/fileUtils'
 import { highlightMatches, sanitizeHeadline } from '@/lib/highlightMatches'
 import {
   searchText,
@@ -271,6 +272,7 @@ export default function Search(): React.ReactElement {
                 q: query,
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
+                commit: selectedRepoId && commitParam ? commitParam : undefined,
                 extensions: apiExtensions,
                 mode: mode === 'regex' ? 'regex' : undefined,
                 case_sensitive: caseSensitive,
@@ -299,6 +301,7 @@ export default function Search(): React.ReactElement {
               mode: mode as 'keyword' | 'phrase' | 'regex',
               repo: selectedRepoId,
               branch: branchParam || undefined,
+              commit: selectedRepoId && commitParam ? commitParam : undefined,
               source_types: apiSourceTypes,
               extensions: apiExtensions,
               case_sensitive: caseSensitive,
@@ -534,6 +537,7 @@ export default function Search(): React.ReactElement {
       const params = new URLSearchParams()
       params.set('repo', repo.name)
       if (branchParam) params.set('branch', branchParam)
+      if (commitParam) params.set('commit', commitParam)
       params.set('line', result.data.start_line.toString())
 
       navigate(
@@ -564,7 +568,17 @@ export default function Search(): React.ReactElement {
       if (result.source_line) {
         params.set('line', result.source_line.toString())
       }
-      navigate(`/browse/${encodeURIComponent(resultRepoName)}/${filePath}?${params.toString()}`)
+      // Show markdown files as raw text so line-number navigation works
+      if (isMarkdownFile(filePath, result.language)) {
+        params.set('view', 'raw')
+      }
+      const encodedFilePath = filePath
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/')
+      navigate(
+        `/browse/${encodeURIComponent(resultRepoName)}/${encodedFilePath}?${params.toString()}`
+      )
     } else {
       // Fallback: navigate to repository root in Browse
       navigate(`/browse/${encodeURIComponent(resultRepoName)}?${params.toString()}`)
