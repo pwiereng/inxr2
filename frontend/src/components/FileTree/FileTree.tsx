@@ -194,6 +194,7 @@ export function FileTree({
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [filterText, setFilterText] = useState('')
   const selectedRef = useRef<HTMLDivElement>(null!)
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
   const toggleExpanded = useCallback((path: string) => {
     setExpandedPaths((prev) => {
@@ -220,7 +221,7 @@ export function FileTree({
           return next
         })
         // Scroll into view after a short delay to allow expansion animation
-        setTimeout(() => {
+        scrollTimerRef.current = setTimeout(() => {
           if (typeof selectedRef.current?.scrollIntoView === 'function') {
             selectedRef.current.scrollIntoView({
               behavior: 'smooth',
@@ -230,6 +231,7 @@ export function FileTree({
         }, 100)
       }
     }
+    return () => clearTimeout(scrollTimerRef.current)
   }, [selectedFileId, nodes])
 
   // Auto-expand to selected directory path (from breadcrumb navigation)
@@ -244,7 +246,7 @@ export function FileTree({
         return next
       })
       // Scroll into view after expansion
-      setTimeout(() => {
+      scrollTimerRef.current = setTimeout(() => {
         if (typeof selectedRef.current?.scrollIntoView === 'function') {
           selectedRef.current.scrollIntoView({
             behavior: 'smooth',
@@ -253,6 +255,7 @@ export function FileTree({
         }
       }, 100)
     }
+    return () => clearTimeout(scrollTimerRef.current)
   }, [selectedDirectoryPath, nodes])
 
   const handleFilterFileSelect = useCallback(
