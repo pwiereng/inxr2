@@ -60,12 +60,13 @@ class JavaScriptDependencyParser(BaseDependencyParser):
             "optionalDependencies": "optional",
         }
 
+        lines = self._split_lines(content)
         for section, dep_type in section_map.items():
             # Reset per section — JSON key order is arbitrary, so sections
             # may appear in any order in the file.
             last_line = 0
             for name, version in (data.get(section) or {}).items():
-                line = self._find_line(content, f'"{name}"', last_line)
+                line = self._find_line(lines, f'"{name}"', last_line)
                 if line is not None:
                     last_line = line
                 deps.append(

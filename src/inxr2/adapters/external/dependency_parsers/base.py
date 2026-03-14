@@ -72,13 +72,31 @@ class BaseDependencyParser(ABC):
         return dep
 
     @staticmethod
-    def _find_line(content: str, search_text: str, after_line: int = 0) -> int | None:
+    def _split_lines(content: str) -> list[str]:
+        """Split content into lines once for repeated ``_find_line`` calls."""
+        return content.splitlines()
+
+    @staticmethod
+    def _find_line(
+        content_or_lines: str | list[str],
+        search_text: str,
+        after_line: int = 0,
+    ) -> int | None:
         """Find the 1-based line number of the first occurrence of search_text.
+
+        ``content_or_lines`` can be a raw string (split on each call) or a
+        pre-split list from ``_split_lines`` (avoids repeated allocations when
+        searching the same content multiple times).
 
         Searches lines starting after ``after_line`` (0 = search from the top).
         Returns None if not found.
         """
-        for line_num, line in enumerate(content.splitlines(), 1):
+        lines = (
+            content_or_lines
+            if isinstance(content_or_lines, list)
+            else content_or_lines.splitlines()
+        )
+        for line_num, line in enumerate(lines, 1):
             if line_num <= after_line:
                 continue
             if search_text in line:

@@ -24,8 +24,16 @@ def upgrade() -> None:
         "dependencies",
         sa.Column("source_line", sa.Integer(), nullable=True),
     )
+    op.create_check_constraint(
+        "ck_dependencies_source_line_positive",
+        "dependencies",
+        "source_line IS NULL OR source_line >= 1",
+    )
 
 
 def downgrade() -> None:
     """Remove source_line column from dependencies table."""
+    op.drop_constraint(
+        "ck_dependencies_source_line_positive", "dependencies", type_="check"
+    )
     op.drop_column("dependencies", "source_line")

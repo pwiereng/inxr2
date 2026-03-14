@@ -75,13 +75,14 @@ class PythonDependencyParser(BaseDependencyParser):
             return []
 
         deps: list[dict[str, Any]] = []
+        lines = self._split_lines(content)
 
         # PEP 621: [project.dependencies]
         project = data.get("project", {})
         for dep_str in project.get("dependencies", []):
             dep = self._parse_pep508(dep_str, "runtime")
             if dep:
-                dep["source_line"] = self._find_line(content, dep["package_name"])
+                dep["source_line"] = self._find_line(lines, dep["package_name"])
                 deps.append(dep)
 
         # PEP 621: [project.optional-dependencies]
@@ -91,7 +92,7 @@ class PythonDependencyParser(BaseDependencyParser):
             for dep_str in group_deps:
                 dep = self._parse_pep508(dep_str, dep_type)
                 if dep:
-                    dep["source_line"] = self._find_line(content, dep["package_name"])
+                    dep["source_line"] = self._find_line(lines, dep["package_name"])
                     if dep_type == "optional":
                         dep.setdefault("extras", {})["group"] = group_name
                     deps.append(dep)
@@ -103,12 +104,12 @@ class PythonDependencyParser(BaseDependencyParser):
                 if name.lower() == "python":
                     continue
                 dep = self._poetry_dep(name, spec, "runtime")
-                dep["source_line"] = self._find_line(content, name)
+                dep["source_line"] = self._find_line(lines, name)
                 deps.append(dep)
 
             for name, spec in poetry.get("dev-dependencies", {}).items():
                 dep = self._poetry_dep(name, spec, "dev")
-                dep["source_line"] = self._find_line(content, name)
+                dep["source_line"] = self._find_line(lines, name)
                 deps.append(dep)
 
             # Poetry groups: [tool.poetry.group.dev.dependencies]
@@ -118,7 +119,7 @@ class PythonDependencyParser(BaseDependencyParser):
                 )
                 for name, spec in group_data.get("dependencies", {}).items():
                     dep = self._poetry_dep(name, spec, dep_type)
-                    dep["source_line"] = self._find_line(content, name)
+                    dep["source_line"] = self._find_line(lines, name)
                     deps.append(dep)
 
         # Build system requirements
@@ -126,7 +127,7 @@ class PythonDependencyParser(BaseDependencyParser):
         for dep_str in build_system.get("requires", []):
             dep = self._parse_pep508(dep_str, "build")
             if dep:
-                dep["source_line"] = self._find_line(content, dep["package_name"])
+                dep["source_line"] = self._find_line(lines, dep["package_name"])
                 deps.append(dep)
 
         return deps

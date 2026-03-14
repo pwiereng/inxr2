@@ -49,6 +49,7 @@ class JavaDependencyParser(BaseDependencyParser):
         prefix = f"{{{ns}}}" if ns else ""
 
         deps: list[dict[str, Any]] = []
+        lines = self._split_lines(content)
 
         # Collect properties for variable substitution
         properties: dict[str, str] = {}
@@ -63,7 +64,7 @@ class JavaDependencyParser(BaseDependencyParser):
         deps_elem = root.find(f"{prefix}dependencies")
         if deps_elem is not None:
             for dep_elem in deps_elem.findall(f"{prefix}dependency"):
-                dep = self._parse_maven_dep(dep_elem, prefix, properties, content)
+                dep = self._parse_maven_dep(dep_elem, prefix, properties, lines)
                 if dep:
                     deps.append(dep)
 
@@ -73,7 +74,7 @@ class JavaDependencyParser(BaseDependencyParser):
             mgmt_deps = mgmt.find(f"{prefix}dependencies")
             if mgmt_deps is not None:
                 for dep_elem in mgmt_deps.findall(f"{prefix}dependency"):
-                    dep = self._parse_maven_dep(dep_elem, prefix, properties, content)
+                    dep = self._parse_maven_dep(dep_elem, prefix, properties, lines)
                     if dep:
                         dep["extras"] = {"managed": True}
                         deps.append(dep)
@@ -85,7 +86,7 @@ class JavaDependencyParser(BaseDependencyParser):
         elem: ET.Element,
         prefix: str,
         properties: dict[str, str],
-        content: str = "",
+        lines: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """Parse a single Maven <dependency> element."""
         group_id = self._get_text(elem, f"{prefix}groupId")
@@ -113,8 +114,8 @@ class JavaDependencyParser(BaseDependencyParser):
 
         package_name = f"{group_id}:{artifact_id}"
 
-        # Find the line containing the artifactId in the raw content
-        source_line = self._find_line(content, artifact_id) if content else None
+        # Find the line containing the artifactId in the pre-split lines
+        source_line = self._find_line(lines, artifact_id) if lines else None
 
         return self._make_dep(
             package_name=package_name,
