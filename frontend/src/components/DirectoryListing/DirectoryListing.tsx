@@ -213,7 +213,7 @@ export function DirectoryListing({
                     })()
                   ) : node.line_count != null ? (
                     <Chip
-                      label={`${node.line_count.toLocaleString()} lines`}
+                      label={`${node.line_count.toLocaleString()} ${node.line_count === 1 ? 'line' : 'lines'}`}
                       size="small"
                       variant="outlined"
                       sx={chipSx}

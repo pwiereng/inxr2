@@ -198,8 +198,8 @@ export function FileTree({
   const [filterText, setFilterText] = useState('')
   const selectedFileRef = useRef<HTMLDivElement>(null!)
   const selectedDirRef = useRef<HTMLDivElement>(null!)
-  const fileScrollTimerRef = useRef<ReturnType<typeof setTimeout>>()
-  const dirScrollTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const fileScrollTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const dirScrollTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const toggleExpanded = useCallback((path: string) => {
     setExpandedPaths((prev) => {
