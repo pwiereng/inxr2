@@ -280,73 +280,53 @@ export default function Search(): React.ReactElement {
             textSourceTypes.includes(v)
           )
 
-          // Unified pagination: sources displayed in order symbols → deps → text.
-          // On page 1 (offset=0), fetch all active sources to discover totals.
-          // On subsequent pages, use stored totals to compute per-source slices
-          // and only fetch sources that have items on this page.
+          // Unified pagination: sources in order symbols → deps → text.
+          // We need per-source totals to compute correct slices. If totals
+          // are unknown (deep link to page > 1), do a discovery fetch first
+          // (limit=1 per source) to learn totals, then fetch the real page.
 
-          // Use stored totals for subsequent pages; page 1 will overwrite them.
-          // If totals are unknown (all zero on a deep-linked page > 1), treat
-          // as a discovery fetch — fetch all sources to learn their totals.
-          const totalsKnown =
-            sourceTotals.symbol > 0 || sourceTotals.dep > 0 || sourceTotals.text > 0
-          const needsDiscovery = offset === 0 || !totalsKnown
-          const knownTotals = needsDiscovery ? { symbol: 0, dep: 0, text: 0 } : sourceTotals
-          const symTotal = hasSymbol ? knownTotals.symbol : 0
-          const depStart = symTotal
-          const dTotal = hasDependency ? knownTotals.dep : 0
-          const txtStart = depStart + dTotal
-
-          const promises: Promise<void>[] = []
-          let symbolResults: Symbol[] = []
-          let textResults: TextSearchResult[] = []
-          let depResults: DependencySearchResult[] = []
-          let symbolTotal = symTotal
-          let textTotal = callText ? knownTotals.text : 0
-          let depTotal = dTotal
-
-          // Compute per-source slices for this page
-          const symSlice = sourceSlice(0, symTotal, offset, RESULTS_PER_PAGE)
-          const depSlice = sourceSlice(depStart, dTotal, offset, RESULTS_PER_PAGE)
-          const txtSlice = sourceSlice(
-            txtStart,
-            callText ? knownTotals.text : 0,
-            offset,
-            RESULTS_PER_PAGE
-          )
-
-          // On discovery (page 1 or unknown totals), fetch all active sources.
-          // On later pages with known totals, only fetch sources that overlap.
-          if (hasSymbol && (needsDiscovery || symSlice.limit > 0)) {
-            promises.push(
-              searchSymbols({
-                q: query,
-                repository_id: selectedRepoId,
-                branch: branchParam || undefined,
-                commit: selectedRepoId && commitParam ? commitParam : undefined,
-                extensions: apiExtensions,
-                mode: mode === 'regex' ? 'regex' : undefined,
-                case_sensitive: caseSensitive,
-                scope,
-                limit: needsDiscovery ? RESULTS_PER_PAGE : symSlice.limit,
-                offset: needsDiscovery ? 0 : symSlice.offset,
-              }).then((response) => {
-                symbolResults = response.items
-                symbolTotal = response.total
-              })
-            )
-          }
-
+          // Build source_types for the text API
+          let apiSourceTypes: string[] | undefined
           if (callText) {
-            // Build source_types for the API
-            let apiSourceTypes: string[] | undefined
             if (allTextTypesSelected && !hasReference) {
               apiSourceTypes = undefined
             } else {
               apiSourceTypes = [...textSourceTypes, ...(hasReference ? ['reference'] : [])]
             }
-            if (needsDiscovery || txtSlice.limit > 0) {
-              promises.push(
+          }
+
+          // Check if we know totals from a previous fetch
+          const totalsKnown =
+            sourceTotals.symbol > 0 || sourceTotals.dep > 0 || sourceTotals.text > 0
+
+          // Phase 1: If totals are unknown and we're not on page 1, discover them
+          let symbolTotal = hasSymbol ? sourceTotals.symbol : 0
+          let depTotal = hasDependency ? sourceTotals.dep : 0
+          let textTotal = callText ? sourceTotals.text : 0
+
+          if (!totalsKnown) {
+            // Fetch with limit=1 from each source just to discover totals
+            const discoveryPromises: Promise<void>[] = []
+            if (hasSymbol) {
+              discoveryPromises.push(
+                searchSymbols({
+                  q: query,
+                  repository_id: selectedRepoId,
+                  branch: branchParam || undefined,
+                  commit: selectedRepoId && commitParam ? commitParam : undefined,
+                  extensions: apiExtensions,
+                  mode: mode === 'regex' ? 'regex' : undefined,
+                  case_sensitive: caseSensitive,
+                  scope,
+                  limit: 1,
+                  offset: 0,
+                }).then((r) => {
+                  symbolTotal = r.total
+                })
+              )
+            }
+            if (callText) {
+              discoveryPromises.push(
                 searchText({
                   q: query,
                   mode: mode as 'keyword' | 'phrase' | 'regex',
@@ -357,24 +337,92 @@ export default function Search(): React.ReactElement {
                   extensions: apiExtensions,
                   case_sensitive: caseSensitive,
                   scope,
-                  limit: needsDiscovery ? RESULTS_PER_PAGE : txtSlice.limit,
-                  offset: needsDiscovery ? 0 : txtSlice.offset,
-                }).then((response) => {
-                  textResults = response.results
-                  textTotal = response.total
+                  limit: 1,
+                  offset: 0,
+                }).then((r) => {
+                  textTotal = r.total
                 })
               )
             }
+            if (hasDependency) {
+              discoveryPromises.push(
+                searchDependencies({
+                  q: query,
+                  repository_id: selectedRepoId,
+                  branch: branchParam || undefined,
+                  limit: 1,
+                  offset: 0,
+                }).then((r) => {
+                  depTotal = r.total
+                })
+              )
+            }
+            await Promise.all(discoveryPromises)
+            setSourceTotals({ symbol: symbolTotal, dep: depTotal, text: textTotal })
           }
 
-          if (hasDependency && (needsDiscovery || depSlice.limit > 0)) {
+          // Phase 2: Compute per-source slices and fetch the actual page
+          const depStart = symbolTotal
+          const txtStart = depStart + depTotal
+
+          const symSlice = sourceSlice(0, symbolTotal, offset, RESULTS_PER_PAGE)
+          const depSlice = sourceSlice(depStart, depTotal, offset, RESULTS_PER_PAGE)
+          const txtSlice = sourceSlice(txtStart, textTotal, offset, RESULTS_PER_PAGE)
+
+          const promises: Promise<void>[] = []
+          let symbolResults: Symbol[] = []
+          let textResults: TextSearchResult[] = []
+          let depResults: DependencySearchResult[] = []
+
+          if (hasSymbol && symSlice.limit > 0) {
+            promises.push(
+              searchSymbols({
+                q: query,
+                repository_id: selectedRepoId,
+                branch: branchParam || undefined,
+                commit: selectedRepoId && commitParam ? commitParam : undefined,
+                extensions: apiExtensions,
+                mode: mode === 'regex' ? 'regex' : undefined,
+                case_sensitive: caseSensitive,
+                scope,
+                limit: symSlice.limit,
+                offset: symSlice.offset,
+              }).then((response) => {
+                symbolResults = response.items
+                symbolTotal = response.total
+              })
+            )
+          }
+
+          if (callText && txtSlice.limit > 0) {
+            promises.push(
+              searchText({
+                q: query,
+                mode: mode as 'keyword' | 'phrase' | 'regex',
+                repo: selectedRepoId,
+                branch: branchParam || undefined,
+                commit: selectedRepoId && commitParam ? commitParam : undefined,
+                source_types: apiSourceTypes,
+                extensions: apiExtensions,
+                case_sensitive: caseSensitive,
+                scope,
+                limit: txtSlice.limit,
+                offset: txtSlice.offset,
+              }).then((response) => {
+                textResults = response.results
+                textTotal = response.total
+              })
+            )
+          }
+
+          if (hasDependency && depSlice.limit > 0) {
             promises.push(
               searchDependencies({
                 q: query,
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
-                limit: needsDiscovery ? RESULTS_PER_PAGE : depSlice.limit,
-                offset: needsDiscovery ? 0 : depSlice.offset,
+                limit: depSlice.limit,
+                offset: depSlice.offset,
               }).then((response) => {
                 depResults = response.results
                 depTotal = response.total
@@ -384,17 +432,15 @@ export default function Search(): React.ReactElement {
 
           await Promise.all(promises)
 
-          // Store totals for subsequent page fetches
-          const newTotals = { symbol: symbolTotal, dep: depTotal, text: textTotal }
-          setSourceTotals(newTotals)
+          // Update stored totals (may have refreshed from phase 2 responses)
+          setSourceTotals({ symbol: symbolTotal, dep: depTotal, text: textTotal })
 
-          // Build unified result list in order: symbols → deps → text.
-          // On page 1, we fetched generously; slice to fit the page.
+          // Build unified result list in order: symbols → deps → text
           const unified: UnifiedResult[] = [
             ...symbolResults.map((s) => ({ kind: 'symbol' as const, data: s })),
             ...depResults.map((d) => ({ kind: 'dependency' as const, data: d })),
             ...textResults.map((t) => ({ kind: 'text' as const, data: t })),
-          ].slice(0, RESULTS_PER_PAGE)
+          ]
           setResults(unified)
           setFileResults([])
           const combinedTotal = symbolTotal + depTotal + textTotal

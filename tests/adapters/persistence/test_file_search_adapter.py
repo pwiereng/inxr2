@@ -288,6 +288,48 @@ class TestPostgresFileSearchRepositorySearchByName:
         assert len(results) == 5
         assert total == 10
 
+    async def test_search_by_name_paginates_with_offset(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Test that offset produces disjoint pages with stable totals."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+        search_adapter = PostgresFileSearchRepository(db_session)
+
+        repo = await repo_adapter.save(
+            RepositoryFactory.create(name="offset-search-repo")
+        )
+        assert repo.id is not None
+
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="o" * 40)
+        )
+        assert commit.id is not None
+
+        for i in range(10):
+            f = await file_adapter.save(
+                FileFactory.create(
+                    repository_id=repo.id,
+                    path=f"src/item_{i:02d}.py",
+                    content_hash=f"offset{i:04d}" + "0" * 30,
+                )
+            )
+            assert f.id is not None
+            await file_adapter.link_file_to_commit(f.id, commit.id)
+
+        page1, total1 = await search_adapter.search_by_name("item", limit=5, offset=0)
+        page2, total2 = await search_adapter.search_by_name("item", limit=5, offset=5)
+
+        assert total1 == 10
+        assert total2 == 10
+        assert len(page1) == 5
+        assert len(page2) == 5
+        # Pages are disjoint
+        page1_ids = {f.id for f in page1}
+        page2_ids = {f.id for f in page2}
+        assert page1_ids.isdisjoint(page2_ids)
+
     async def test_search_by_name_orders_by_relevance(
         self, db_session: AsyncSession
     ) -> None:

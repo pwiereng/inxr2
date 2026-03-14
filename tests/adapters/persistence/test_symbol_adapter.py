@@ -335,6 +335,41 @@ class TestPostgresSymbolRepositorySearchByName:
         assert len(results) == 3
         assert total == 10
 
+    async def test_search_paginates_with_offset(self, db_session: AsyncSession) -> None:
+        """Test that offset produces disjoint pages with stable totals."""
+        repo_id, _, file_id = await _setup_repo_commit_file(
+            db_session, "sym-offset-repo"
+        )
+        adapter = PostgresSymbolRepository(db_session)
+        await adapter.save_many(
+            [
+                SymbolFactory.create(
+                    file_id=file_id,
+                    repository_id=repo_id,
+                    name=f"item_{i:02d}",
+                    start_line=i * 10 + 1,
+                    end_line=i * 10 + 9,
+                )
+                for i in range(10)
+            ]
+        )
+
+        page1, total1 = await adapter.search_by_name(
+            "item", repository_id=repo_id, limit=5, offset=0
+        )
+        page2, total2 = await adapter.search_by_name(
+            "item", repository_id=repo_id, limit=5, offset=5
+        )
+
+        assert total1 == 10
+        assert total2 == 10
+        assert len(page1) == 5
+        assert len(page2) == 5
+        # Pages are disjoint
+        page1_ids = {s.id for s in page1}
+        page2_ids = {s.id for s in page2}
+        assert page1_ids.isdisjoint(page2_ids)
+
     async def test_search_case_insensitive(self, db_session: AsyncSession) -> None:
         repo_id, _, file_id = await _setup_repo_commit_file(db_session, "sym-case-repo")
         adapter = PostgresSymbolRepository(db_session)
