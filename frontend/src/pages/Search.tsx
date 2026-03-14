@@ -285,7 +285,12 @@ export default function Search(): React.ReactElement {
           // and only fetch sources that have items on this page.
 
           // Use stored totals for subsequent pages; page 1 will overwrite them.
-          const knownTotals = offset === 0 ? { symbol: 0, dep: 0, text: 0 } : sourceTotals
+          // If totals are unknown (all zero on a deep-linked page > 1), treat
+          // as a discovery fetch — fetch all sources to learn their totals.
+          const totalsKnown =
+            sourceTotals.symbol > 0 || sourceTotals.dep > 0 || sourceTotals.text > 0
+          const needsDiscovery = offset === 0 || !totalsKnown
+          const knownTotals = needsDiscovery ? { symbol: 0, dep: 0, text: 0 } : sourceTotals
           const symTotal = hasSymbol ? knownTotals.symbol : 0
           const depStart = symTotal
           const dTotal = hasDependency ? knownTotals.dep : 0
@@ -296,7 +301,7 @@ export default function Search(): React.ReactElement {
           let textResults: TextSearchResult[] = []
           let depResults: DependencySearchResult[] = []
           let symbolTotal = symTotal
-          let textTotal = hasSymbol ? knownTotals.text : 0
+          let textTotal = callText ? knownTotals.text : 0
           let depTotal = dTotal
 
           // Compute per-source slices for this page
@@ -309,9 +314,9 @@ export default function Search(): React.ReactElement {
             RESULTS_PER_PAGE
           )
 
-          // On page 1, always fetch all active sources to get totals.
-          // On later pages, only fetch sources that overlap with this page.
-          if (hasSymbol && (offset === 0 || symSlice.limit > 0)) {
+          // On discovery (page 1 or unknown totals), fetch all active sources.
+          // On later pages with known totals, only fetch sources that overlap.
+          if (hasSymbol && (needsDiscovery || symSlice.limit > 0)) {
             promises.push(
               searchSymbols({
                 q: query,
@@ -321,8 +326,8 @@ export default function Search(): React.ReactElement {
                 mode: mode === 'regex' ? 'regex' : undefined,
                 case_sensitive: caseSensitive,
                 scope,
-                limit: offset === 0 ? RESULTS_PER_PAGE : symSlice.limit,
-                offset: offset === 0 ? 0 : symSlice.offset,
+                limit: needsDiscovery ? RESULTS_PER_PAGE : symSlice.limit,
+                offset: needsDiscovery ? 0 : symSlice.offset,
               }).then((response) => {
                 symbolResults = response.items
                 symbolTotal = response.total
@@ -338,7 +343,7 @@ export default function Search(): React.ReactElement {
             } else {
               apiSourceTypes = [...textSourceTypes, ...(hasReference ? ['reference'] : [])]
             }
-            if (offset === 0 || txtSlice.limit > 0) {
+            if (needsDiscovery || txtSlice.limit > 0) {
               promises.push(
                 searchText({
                   q: query,
@@ -349,8 +354,8 @@ export default function Search(): React.ReactElement {
                   extensions: apiExtensions,
                   case_sensitive: caseSensitive,
                   scope,
-                  limit: offset === 0 ? RESULTS_PER_PAGE : txtSlice.limit,
-                  offset: offset === 0 ? 0 : txtSlice.offset,
+                  limit: needsDiscovery ? RESULTS_PER_PAGE : txtSlice.limit,
+                  offset: needsDiscovery ? 0 : txtSlice.offset,
                 }).then((response) => {
                   textResults = response.results
                   textTotal = response.total
@@ -359,14 +364,14 @@ export default function Search(): React.ReactElement {
             }
           }
 
-          if (hasDependency && (offset === 0 || depSlice.limit > 0)) {
+          if (hasDependency && (needsDiscovery || depSlice.limit > 0)) {
             promises.push(
               searchDependencies({
                 q: query,
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
-                limit: offset === 0 ? RESULTS_PER_PAGE : depSlice.limit,
-                offset: offset === 0 ? 0 : depSlice.offset,
+                limit: needsDiscovery ? RESULTS_PER_PAGE : depSlice.limit,
+                offset: needsDiscovery ? 0 : depSlice.offset,
               }).then((response) => {
                 depResults = response.results
                 depTotal = response.total
