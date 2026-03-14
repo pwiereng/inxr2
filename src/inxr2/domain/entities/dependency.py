@@ -55,3 +55,5 @@ class Dependency:
                 f"Invalid dependency type: {self.dependency_type}. "
                 "Must be one of: runtime, dev, optional, build, peer"
             )
+        if self.source_line is not None and self.source_line < 1:
+            raise ValueError("source_line must be >= 1 when set")

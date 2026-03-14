@@ -180,7 +180,6 @@ class PythonDependencyParser(BaseDependencyParser):
                     dependency_type=dep_type,
                     is_direct=False,  # Lock files list all transitives
                     extras={"source": package.get("source", {}).get("type")},
-                    source_line=self._find_line(content, f'name = "{name}"'),
                 )
             )
 
@@ -208,7 +207,6 @@ class PythonDependencyParser(BaseDependencyParser):
                         resolved_version=resolved,
                         dependency_type=dep_type,
                         is_direct=False,  # Lock file — all transitives included
-                        source_line=self._find_line(content, f'"{name}"'),
                     )
                 )
 

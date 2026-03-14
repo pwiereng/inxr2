@@ -141,3 +141,23 @@ class TestDependencySourceLine:
             source_line=42,
         )
         assert dep.source_line == 42
+
+    def test_source_line_zero_raises(self) -> None:
+        with pytest.raises(ValueError, match="source_line must be >= 1"):
+            Dependency(
+                file_id=1,
+                repository_id=1,
+                package_name="fastapi",
+                language="python",
+                source_line=0,
+            )
+
+    def test_source_line_negative_raises(self) -> None:
+        with pytest.raises(ValueError, match="source_line must be >= 1"):
+            Dependency(
+                file_id=1,
+                repository_id=1,
+                package_name="fastapi",
+                language="python",
+                source_line=-1,
+            )

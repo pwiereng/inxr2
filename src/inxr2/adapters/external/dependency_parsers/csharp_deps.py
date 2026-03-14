@@ -125,7 +125,6 @@ class CSharpDependencyParser(BaseDependencyParser):
                         resolved_version=resolved,
                         dependency_type=dep_type,
                         is_direct=is_direct,
-                        source_line=self._find_line(content, f'"{name}"'),
                     )
                 )
 

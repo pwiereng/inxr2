@@ -60,8 +60,10 @@ class JavaScriptDependencyParser(BaseDependencyParser):
             "optionalDependencies": "optional",
         }
 
-        last_line = 0
         for section, dep_type in section_map.items():
+            # Reset per section — JSON key order is arbitrary, so sections
+            # may appear in any order in the file.
+            last_line = 0
             for name, version in (data.get(section) or {}).items():
                 line = self._find_line(content, f'"{name}"', last_line)
                 if line is not None:
@@ -123,17 +125,14 @@ class JavaScriptDependencyParser(BaseDependencyParser):
                     resolved_version=version,
                     dependency_type=dep_type,
                     is_direct=is_direct,
-                    source_line=self._find_line(content, f'"{pkg_path}"'),
+                    # Lock files can have thousands of entries — skip per-entry
+                    # line search to avoid O(entries × lines) cost at index time.
                 )
             )
 
         # Fallback: v1 format with "dependencies" key
         if not packages and "dependencies" in data:
-            deps.extend(
-                self._parse_lock_v1_deps(
-                    data["dependencies"], is_direct=True, content=content
-                )
-            )
+            deps.extend(self._parse_lock_v1_deps(data["dependencies"], is_direct=True))
 
         return deps
 
@@ -141,7 +140,6 @@ class JavaScriptDependencyParser(BaseDependencyParser):
         self,
         dependencies: dict[str, Any],
         is_direct: bool,
-        content: str = "",
     ) -> list[dict[str, Any]]:
         """Recursively parse v1 package-lock.json dependencies."""
         deps: list[dict[str, Any]] = []
@@ -151,24 +149,20 @@ class JavaScriptDependencyParser(BaseDependencyParser):
             is_dev = info.get("dev", False)
             dep_type = "dev" if is_dev else "runtime"
 
+            # Lock files: skip per-entry line search (see _parse_package_lock_json)
             deps.append(
                 self._make_dep(
                     package_name=name,
                     resolved_version=version,
                     dependency_type=dep_type,
                     is_direct=is_direct,
-                    source_line=(
-                        self._find_line(content, f'"{name}"') if content else None
-                    ),
                 )
             )
 
             # Nested dependencies (transitive)
             nested = info.get("dependencies", {})
             if nested:
-                deps.extend(
-                    self._parse_lock_v1_deps(nested, is_direct=False, content=content)
-                )
+                deps.extend(self._parse_lock_v1_deps(nested, is_direct=False))
 
         return deps
 
@@ -289,13 +283,13 @@ class JavaScriptDependencyParser(BaseDependencyParser):
 
             dep_type = "dev" if is_dev else "optional" if is_optional else "runtime"
 
+            # Lock files: skip per-entry line search to avoid O(entries × lines) cost
             deps.append(
                 self._make_dep(
                     package_name=name,
                     resolved_version=version,
                     dependency_type=dep_type,
                     is_direct=False,
-                    source_line=self._find_line(content, pkg_key),
                 )
             )
 

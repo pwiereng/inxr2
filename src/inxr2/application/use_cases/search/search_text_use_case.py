@@ -264,9 +264,12 @@ class SearchTextUseCase:
 
                 # Refine source_line: if the chunk spans many lines,
                 # find the actual line where the query text appears.
+                # Only for keyword/phrase modes — regex queries aren't
+                # literal substrings, so case-insensitive search won't match.
                 refined_line = text_content.source_line
                 if (
-                    text_content.source_line is not None
+                    request.mode in ("keyword", "phrase")
+                    and text_content.source_line is not None
                     and text_content.source_end_line is not None
                     and text_content.source_end_line > text_content.source_line
                     and text_content.content
