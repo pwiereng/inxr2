@@ -49,6 +49,7 @@ class JavaDependencyParser(BaseDependencyParser):
         prefix = f"{{{ns}}}" if ns else ""
 
         deps: list[dict[str, Any]] = []
+        lines = self._split_lines(content)
 
         # Collect properties for variable substitution
         properties: dict[str, str] = {}
@@ -63,7 +64,7 @@ class JavaDependencyParser(BaseDependencyParser):
         deps_elem = root.find(f"{prefix}dependencies")
         if deps_elem is not None:
             for dep_elem in deps_elem.findall(f"{prefix}dependency"):
-                dep = self._parse_maven_dep(dep_elem, prefix, properties)
+                dep = self._parse_maven_dep(dep_elem, prefix, properties, lines)
                 if dep:
                     deps.append(dep)
 
@@ -73,7 +74,7 @@ class JavaDependencyParser(BaseDependencyParser):
             mgmt_deps = mgmt.find(f"{prefix}dependencies")
             if mgmt_deps is not None:
                 for dep_elem in mgmt_deps.findall(f"{prefix}dependency"):
-                    dep = self._parse_maven_dep(dep_elem, prefix, properties)
+                    dep = self._parse_maven_dep(dep_elem, prefix, properties, lines)
                     if dep:
                         dep["extras"] = {"managed": True}
                         deps.append(dep)
@@ -85,6 +86,7 @@ class JavaDependencyParser(BaseDependencyParser):
         elem: ET.Element,
         prefix: str,
         properties: dict[str, str],
+        lines: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """Parse a single Maven <dependency> element."""
         group_id = self._get_text(elem, f"{prefix}groupId")
@@ -112,11 +114,15 @@ class JavaDependencyParser(BaseDependencyParser):
 
         package_name = f"{group_id}:{artifact_id}"
 
+        # Find the line containing the artifactId in the pre-split lines
+        source_line = self._find_line(lines, artifact_id) if lines else None
+
         return self._make_dep(
             package_name=package_name,
             version_spec=version,
             dependency_type=dep_type,
             extras={"group_id": group_id, "artifact_id": artifact_id},
+            source_line=source_line,
         )
 
     def _parse_gradle(self, content: str) -> list[dict[str, Any]]:
@@ -162,12 +168,16 @@ class JavaDependencyParser(BaseDependencyParser):
             dep_type = config_map.get(config, "runtime")
             package_name = f"{group}:{artifact}"
 
+            # Compute 1-based line number from match position
+            source_line = content[: match.start()].count("\n") + 1
+
             deps.append(
                 self._make_dep(
                     package_name=package_name,
                     version_spec=version,
                     dependency_type=dep_type,
                     extras={"group_id": group, "artifact_id": artifact},
+                    source_line=source_line,
                 )
             )
 

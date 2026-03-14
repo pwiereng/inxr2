@@ -262,13 +262,31 @@ class SearchTextUseCase:
                 if branch is None and request.branch:
                     branch = request.branch
 
+                # Refine source_line: if the chunk spans many lines,
+                # find the actual line where the query text appears.
+                # Only for keyword/phrase modes — regex queries aren't
+                # literal substrings, so case-insensitive search won't match.
+                refined_line = text_content.source_line
+                if (
+                    request.mode in ("keyword", "phrase")
+                    and text_content.source_line is not None
+                    and text_content.source_end_line is not None
+                    and text_content.source_end_line > text_content.source_line
+                    and text_content.content
+                ):
+                    query_lower = request.query.lower()
+                    for offset, line in enumerate(text_content.content.splitlines()):
+                        if query_lower in line.lower():
+                            refined_line = text_content.source_line + offset
+                            break
+
                 text_results.append(
                     SearchTextResultItem(
                         id=text_content.id or 0,
                         repository_id=text_content.repository_id,
                         repository_name=repository_name,
                         file_path=file_path,
-                        source_line=text_content.source_line,
+                        source_line=refined_line,
                         source_end_line=text_content.source_end_line,
                         source_type=text_content.source_type,
                         content=text_content.content,

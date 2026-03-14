@@ -643,6 +643,8 @@ export default function Search(): React.ReactElement {
       const params = new URLSearchParams()
       params.set('repo', dep.repository_name)
       if (branchParam) params.set('branch', branchParam)
+      if (commitParam) params.set('commit', commitParam)
+      if (dep.source_line) params.set('line', dep.source_line.toString())
 
       const encodedPath = dep.file_path
         .split('/')

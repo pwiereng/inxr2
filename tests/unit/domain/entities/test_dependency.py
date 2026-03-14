@@ -118,3 +118,46 @@ class TestDependencyValidation:
             dependency_type=dep_type,
         )
         assert dep.dependency_type == dep_type
+
+
+class TestDependencySourceLine:
+    """Test source_line field on Dependency entity."""
+
+    def test_source_line_defaults_to_none(self) -> None:
+        dep = Dependency(
+            file_id=1,
+            repository_id=1,
+            package_name="fastapi",
+            language="python",
+        )
+        assert dep.source_line is None
+
+    def test_source_line_set(self) -> None:
+        dep = Dependency(
+            file_id=1,
+            repository_id=1,
+            package_name="fastapi",
+            language="python",
+            source_line=42,
+        )
+        assert dep.source_line == 42
+
+    def test_source_line_zero_raises(self) -> None:
+        with pytest.raises(ValueError, match="source_line must be >= 1"):
+            Dependency(
+                file_id=1,
+                repository_id=1,
+                package_name="fastapi",
+                language="python",
+                source_line=0,
+            )
+
+    def test_source_line_negative_raises(self) -> None:
+        with pytest.raises(ValueError, match="source_line must be >= 1"):
+            Dependency(
+                file_id=1,
+                repository_id=1,
+                package_name="fastapi",
+                language="python",
+                source_line=-1,
+            )

@@ -26,6 +26,7 @@ class Dependency:
         is_direct: True for direct dependencies, False for transitives
         parent_dependency_id: Parent dep ID for transitive dependency tree
         extras: Language-specific metadata (JSONB)
+        source_line: 1-based line number in the manifest file where the dep is declared
         indexed_at: When dependency was indexed
     """
 
@@ -40,6 +41,7 @@ class Dependency:
     is_direct: bool = True
     parent_dependency_id: int | None = None
     extras: dict[str, Any] | None = None
+    source_line: int | None = None
     indexed_at: datetime | None = None
 
     def __post_init__(self) -> None:
@@ -53,3 +55,5 @@ class Dependency:
                 f"Invalid dependency type: {self.dependency_type}. "
                 "Must be one of: runtime, dev, optional, build, peer"
             )
+        if self.source_line is not None and self.source_line < 1:
+            raise ValueError("source_line must be >= 1 when set")

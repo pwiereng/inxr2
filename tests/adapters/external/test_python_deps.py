@@ -241,6 +241,45 @@ class TestPipfileLock:
         assert pytest_dep["dependency_type"] == "dev"
 
 
+class TestSourceLine:
+    """Tests for source line number tracking."""
+
+    def test_requirements_txt_source_lines(
+        self, parser: PythonDependencyParser
+    ) -> None:
+        content = """\
+# Requirements
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+# Dev
+pytest>=7.0
+"""
+        deps = parser.parse(content, "requirements.txt")
+        fastapi = next(d for d in deps if d["package_name"] == "fastapi")
+        uvicorn = next(d for d in deps if d["package_name"] == "uvicorn")
+        pytest_dep = next(d for d in deps if d["package_name"] == "pytest")
+
+        assert fastapi["source_line"] == 2
+        assert uvicorn["source_line"] == 3
+        assert pytest_dep["source_line"] == 5
+
+    def test_pyproject_toml_source_lines(self, parser: PythonDependencyParser) -> None:
+        content = """\
+[project]
+name = "myproject"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+]
+"""
+        deps = parser.parse(content, "pyproject.toml")
+        fastapi = next(d for d in deps if d["package_name"] == "fastapi")
+        uvicorn = next(d for d in deps if d["package_name"] == "uvicorn")
+
+        assert fastapi["source_line"] == 4
+        assert uvicorn["source_line"] == 5
+
+
 class TestEdgeCases:
     def test_empty_content(self, parser: PythonDependencyParser) -> None:
         assert parser.parse("", "pyproject.toml") == []

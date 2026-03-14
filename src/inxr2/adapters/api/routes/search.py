@@ -367,6 +367,7 @@ class DependencySearchResultResponse(BaseModel):
     file_path: str | None
     repository_id: int
     repository_name: str
+    source_line: int | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -441,6 +442,7 @@ async def search_dependencies(
                 file_path=r.file_path,
                 repository_id=r.repository_id,
                 repository_name=r.repository_name,
+                source_line=r.source_line,
             )
             for r in response.results
         ],

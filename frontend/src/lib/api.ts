@@ -679,6 +679,7 @@ export interface DependencySearchResult {
   file_path: string | null
   repository_id: number
   repository_name: string
+  source_line: number | null
 }
 
 export interface DependencySearchResponse {
@@ -716,6 +717,7 @@ export interface DependencyItem {
   is_direct: boolean
   file_id: number
   file_path: string | null
+  source_line: number | null
 }
 
 export interface DependenciesListResponse {

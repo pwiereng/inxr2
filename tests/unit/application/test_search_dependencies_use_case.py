@@ -255,3 +255,39 @@ class TestSearchDependenciesUseCase:
         )
         assert response.total == 0
         assert response.results == []
+
+    async def test_search_result_includes_source_line(
+        self,
+        file_repo: InMemoryFileRepository,
+        repository_repo: InMemoryRepositoryRepository,
+    ) -> None:
+        """Search results include source_line when set on the dependency."""
+        dep_repo = InMemoryDependencyRepository()
+        await dep_repo.save(
+            Dependency(
+                file_id=1,
+                repository_id=1,
+                package_name="lodash",
+                language="javascript",
+                version_spec="^4.17.0",
+                dependency_type="runtime",
+                is_direct=True,
+                source_line=15,
+            )
+        )
+        use_case = SearchDependenciesUseCase(
+            dependency_repo=dep_repo,
+            file_repo=file_repo,
+            repository_repo=repository_repo,
+        )
+        response = await use_case.execute(SearchDependenciesRequest(query="lodash"))
+        assert response.total == 1
+        assert response.results[0].source_line == 15
+
+    async def test_search_result_source_line_none_when_not_set(
+        self, use_case: SearchDependenciesUseCase
+    ) -> None:
+        """Search results have source_line=None for deps without line info."""
+        response = await use_case.execute(SearchDependenciesRequest(query="fastapi"))
+        assert response.total == 1
+        assert response.results[0].source_line is None

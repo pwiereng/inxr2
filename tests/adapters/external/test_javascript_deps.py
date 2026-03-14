@@ -216,6 +216,50 @@ packages:
         assert deps == []
 
 
+class TestSourceLine:
+    """Tests for source line number tracking."""
+
+    def test_package_json_source_lines(
+        self, parser: JavaScriptDependencyParser
+    ) -> None:
+        content = """\
+{
+    "dependencies": {
+        "react": "^18.0.0",
+        "lodash": "^4.17.0"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0"
+    }
+}
+"""
+        deps = parser.parse(content, "package.json")
+        react = next(d for d in deps if d["package_name"] == "react")
+        lodash = next(d for d in deps if d["package_name"] == "lodash")
+        ts = next(d for d in deps if d["package_name"] == "typescript")
+
+        assert react["source_line"] == 3
+        assert lodash["source_line"] == 4
+        assert ts["source_line"] == 7
+
+    def test_yarn_lock_source_lines(self, parser: JavaScriptDependencyParser) -> None:
+        content = """\
+# yarn lockfile v1
+
+lodash@^4.17.0:
+  version "4.17.21"
+
+react@^18.0.0:
+  version "18.2.0"
+"""
+        deps = parser.parse(content, "yarn.lock")
+        lodash = next(d for d in deps if d["package_name"] == "lodash")
+        react = next(d for d in deps if d["package_name"] == "react")
+
+        assert lodash["source_line"] == 3
+        assert react["source_line"] == 6
+
+
 class TestEdgeCases:
     def test_empty(self, parser: JavaScriptDependencyParser) -> None:
         assert parser.parse("", "package.json") == []
