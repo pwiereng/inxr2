@@ -301,7 +301,7 @@ export default function Search(): React.ReactElement {
               mode: mode as 'keyword' | 'phrase' | 'regex',
               repo: selectedRepoId,
               branch: branchParam || undefined,
-              commit: commitParam || undefined,
+              commit: selectedRepoId && commitParam ? commitParam : undefined,
               source_types: apiSourceTypes,
               extensions: apiExtensions,
               case_sensitive: caseSensitive,
@@ -572,7 +572,13 @@ export default function Search(): React.ReactElement {
       if (isMarkdownFile(filePath, null)) {
         params.set('view', 'raw')
       }
-      navigate(`/browse/${encodeURIComponent(resultRepoName)}/${filePath}?${params.toString()}`)
+      const encodedFilePath = filePath
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/')
+      navigate(
+        `/browse/${encodeURIComponent(resultRepoName)}/${encodedFilePath}?${params.toString()}`
+      )
     } else {
       // Fallback: navigate to repository root in Browse
       navigate(`/browse/${encodeURIComponent(resultRepoName)}?${params.toString()}`)
