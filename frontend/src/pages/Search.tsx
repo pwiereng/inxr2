@@ -30,6 +30,7 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
+import { isMarkdownFile } from '@/lib/fileUtils'
 import { highlightMatches, sanitizeHeadline } from '@/lib/highlightMatches'
 import {
   searchText,
@@ -271,6 +272,7 @@ export default function Search(): React.ReactElement {
                 q: query,
                 repository_id: selectedRepoId,
                 branch: branchParam || undefined,
+                commit: commitParam || undefined,
                 extensions: apiExtensions,
                 mode: mode === 'regex' ? 'regex' : undefined,
                 case_sensitive: caseSensitive,
@@ -299,6 +301,7 @@ export default function Search(): React.ReactElement {
               mode: mode as 'keyword' | 'phrase' | 'regex',
               repo: selectedRepoId,
               branch: branchParam || undefined,
+              commit: commitParam || undefined,
               source_types: apiSourceTypes,
               extensions: apiExtensions,
               case_sensitive: caseSensitive,
@@ -563,6 +566,10 @@ export default function Search(): React.ReactElement {
       // File-based results navigate to Browse at the specific file/line
       if (result.source_line) {
         params.set('line', result.source_line.toString())
+      }
+      // Show markdown files as raw text so line-number navigation works
+      if (isMarkdownFile(filePath, null)) {
+        params.set('view', 'raw')
       }
       navigate(`/browse/${encodeURIComponent(resultRepoName)}/${filePath}?${params.toString()}`)
     } else {

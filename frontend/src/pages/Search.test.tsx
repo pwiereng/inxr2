@@ -810,6 +810,38 @@ describe('Search', () => {
     })
   })
 
+  it('should pass commit param to searchText and searchSymbols', async () => {
+    mockGetRepositories.mockResolvedValue([
+      {
+        id: 1,
+        name: 'test-repo',
+        url: 'https://github.com/test/repo',
+        description: 'Test repository',
+        default_branch: 'main',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ])
+
+    window.history.pushState({}, '', '?query=test&repo=test-repo&branch=main&commit=abc123def456')
+    render(<Search />)
+
+    await waitFor(() => {
+      expect(mockSearchText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'test',
+          commit: 'abc123def456',
+        })
+      )
+      expect(mockSearchSymbols).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'test',
+          commit: 'abc123def456',
+        })
+      )
+    })
+  })
+
   it('should filter by repository when repo param is in URL', async () => {
     mockGetRepositories.mockResolvedValue([
       {
