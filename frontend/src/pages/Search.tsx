@@ -569,7 +569,7 @@ export default function Search(): React.ReactElement {
         params.set('line', result.source_line.toString())
       }
       // Show markdown files as raw text so line-number navigation works
-      if (isMarkdownFile(filePath, null)) {
+      if (isMarkdownFile(filePath, result.language)) {
         params.set('view', 'raw')
       }
       const encodedFilePath = filePath
