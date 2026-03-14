@@ -1,5 +1,6 @@
 import { Box, Link, Typography } from '@mui/material'
 import NavigateNextIcon from '@mui/icons-material/NavigateNext'
+import { CopyButton } from '@/components/CopyButton/CopyButton'
 
 interface BreadcrumbNavProps {
   /** Repository name (shown as root segment) */
@@ -113,6 +114,10 @@ export function BreadcrumbNav({
           </Box>
         )
       })}
+
+      <Box sx={{ flexShrink: 0, ml: 0.5 }}>
+        <CopyButton value={currentPath} tooltip="Copy path" size={13} />
+      </Box>
     </Box>
   )
 }

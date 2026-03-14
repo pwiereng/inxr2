@@ -117,6 +117,8 @@ export interface TreeNode {
   type: 'file' | 'directory'
   file_id: number | null
   language: string | null
+  size_bytes: number | null
+  line_count: number | null
   children: TreeNode[] | null
 }
 

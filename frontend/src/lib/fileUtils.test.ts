@@ -1,5 +1,24 @@
 import { describe, it, expect } from 'vitest'
-import { isImageFile, isMarkdownFile, detectLanguage } from './fileUtils'
+import { isImageFile, isMarkdownFile, detectLanguage, formatFileSize } from './fileUtils'
+
+describe('formatFileSize', () => {
+  it('formats bytes', () => {
+    expect(formatFileSize(0)).toBe('0 B')
+    expect(formatFileSize(156)).toBe('156 B')
+    expect(formatFileSize(1023)).toBe('1023 B')
+  })
+
+  it('formats kilobytes', () => {
+    expect(formatFileSize(1024)).toBe('1.0 KB')
+    expect(formatFileSize(2458)).toBe('2.4 KB')
+    expect(formatFileSize(512 * 1024)).toBe('512.0 KB')
+  })
+
+  it('formats megabytes', () => {
+    expect(formatFileSize(1024 * 1024)).toBe('1.0 MB')
+    expect(formatFileSize(2.5 * 1024 * 1024)).toBe('2.5 MB')
+  })
+})
 
 describe('isImageFile', () => {
   it('returns true for common image extensions', () => {

@@ -84,6 +84,15 @@ const FILENAME_LANGUAGE_MAP: Record<string, string> = {
 }
 
 /**
+ * Format a file size in bytes to a human-readable string.
+ */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/**
  * Detect language from file path, with API language as priority.
  * Falls back to file extension/name detection when API returns null.
  */

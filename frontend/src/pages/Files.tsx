@@ -23,6 +23,7 @@ import {
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
+import { formatFileSize } from '@/lib/fileUtils'
 
 interface File {
   id: number
@@ -62,12 +63,6 @@ export default function Files(): React.ReactElement {
       fetchFiles()
     }
   }, [repositoryId])
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
 
   const getLanguageColor = (language: string | null): 'primary' | 'secondary' | 'default' => {
     if (!language) return 'default'

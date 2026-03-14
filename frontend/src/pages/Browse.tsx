@@ -331,6 +331,17 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
           </>
         )}
 
+        <Box sx={{ flex: 1 }} />
+
+        {/* Back to root (show when in a subdirectory, viewing a file, or file-level error) */}
+        {(fileContent || rawContent || urlState.directoryPath || (error && filePath)) && (
+          <Tooltip title="Back to root">
+            <IconButton size="small" aria-label="Back to root" onClick={actions.resetToFileTree}>
+              <ArrowBackIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+
         {/* Jump to top of file - visible for all file types */}
         {(fileContent || rawContent) && (
           <Tooltip title="Jump to top of file">
@@ -339,21 +350,6 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
             </IconButton>
           </Tooltip>
         )}
-
-        {/* Back to file browser (show when file is loaded or file-level error) */}
-        {(fileContent || rawContent || (error && filePath)) && (
-          <Tooltip title="Back to file browser">
-            <IconButton
-              size="small"
-              aria-label="Back to file browser"
-              onClick={actions.resetToFileTree}
-            >
-              <ArrowBackIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        )}
-
-        <Box sx={{ flex: 1 }} />
 
         {/* Markdown view toggle (only for markdown files, not in diff mode) */}
         {repoName &&

@@ -2,6 +2,8 @@ import { useMemo } from 'react'
 import { useTheme } from '@mui/material/styles'
 import {
   Box,
+  Chip,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -14,6 +16,7 @@ import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 
 import type { TreeNode } from '@/lib/api'
 import { FileTypeIcon } from '@/components/FileTree/file-icons'
+import { formatFileSize } from '@/lib/fileUtils'
 
 interface DirectoryListingProps {
   /** All tree nodes from the repository */
@@ -48,6 +51,24 @@ function findDirectoryChildren(nodes: TreeNode[], directoryPath: string | null):
   return current
 }
 
+function countImmediateChildren(node: TreeNode): { files: number; dirs: number } {
+  if (!node.children) return { files: 0, dirs: 0 }
+  let files = 0
+  let dirs = 0
+  for (const child of node.children) {
+    if (child.type === 'directory') dirs++
+    else files++
+  }
+  return { files, dirs }
+}
+
+const chipSx = {
+  height: 20,
+  fontSize: '11px',
+  fontFamily: 'monospace',
+  '& .MuiChip-label': { px: 0.75 },
+} as const
+
 export function DirectoryListing({
   treeNodes,
   directoryPath,
@@ -77,6 +98,8 @@ export function DirectoryListing({
     )
   }
 
+  const colSpan = 4
+
   return (
     <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
       <Table size="small" sx={{ tableLayout: 'auto' }}>
@@ -101,11 +124,13 @@ export function DirectoryListing({
                   ..
                 </Typography>
               </TableCell>
+              <TableCell sx={{ width: 140 }} />
+              <TableCell sx={{ width: 80 }} />
             </TableRow>
           )}
           {sorted.length === 0 && (
             <TableRow>
-              <TableCell colSpan={2} sx={{ px: 1.5, py: 2, textAlign: 'center' }}>
+              <TableCell colSpan={colSpan} sx={{ px: 1.5, py: 2, textAlign: 'center' }}>
                 <Typography color="text.secondary">This directory is empty</Typography>
               </TableCell>
             </TableRow>
@@ -159,6 +184,56 @@ export function DirectoryListing({
                     {node.name}
                     {isDirectory ? '/' : ''}
                   </Typography>
+                </TableCell>
+                <TableCell align="right" sx={{ width: 140, px: 0.5, py: 0.75 }}>
+                  {isDirectory ? (
+                    (() => {
+                      const { files, dirs } = countImmediateChildren(node)
+                      if (files === 0 && dirs === 0) return null
+                      return (
+                        <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                          {dirs > 0 && (
+                            <Chip
+                              label={`${dirs} ${dirs === 1 ? 'dir' : 'dirs'}`}
+                              size="small"
+                              variant="outlined"
+                              sx={chipSx}
+                            />
+                          )}
+                          {files > 0 && (
+                            <Chip
+                              label={`${files} ${files === 1 ? 'file' : 'files'}`}
+                              size="small"
+                              variant="outlined"
+                              sx={chipSx}
+                            />
+                          )}
+                        </Stack>
+                      )
+                    })()
+                  ) : node.line_count != null ? (
+                    <Chip
+                      label={`${node.line_count.toLocaleString()} lines`}
+                      size="small"
+                      variant="outlined"
+                      sx={chipSx}
+                    />
+                  ) : null}
+                </TableCell>
+                <TableCell align="right" sx={{ width: 80, px: 1, py: 0.75 }}>
+                  {!isDirectory && node.size_bytes != null && (
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontFamily: 'monospace',
+                        fontSize: '12px',
+                        color: 'text.secondary',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {formatFileSize(node.size_bytes)}
+                    </Typography>
+                  )}
                 </TableCell>
               </TableRow>
             )

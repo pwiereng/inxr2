@@ -25,6 +25,8 @@ class TreeNode:
     node_type: str  # "file" or "directory"
     file_id: int | None = None
     language: str | None = None
+    size_bytes: int | None = None
+    line_count: int | None = None
     children: list["TreeNode"] = field(default_factory=list)
 
 
@@ -223,6 +225,8 @@ class GetRepositoryTreeUseCase:
                         node_type="file" if is_file else "directory",
                         file_id=file.id if is_file else None,
                         language=file.language if is_file else None,
+                        size_bytes=file.size_bytes if is_file else None,
+                        line_count=file.line_count if is_file else None,
                         children=[],
                     )
                     tree_dict[current_path] = node

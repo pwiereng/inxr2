@@ -2037,6 +2037,9 @@ describe('useBrowseState', () => {
             type: 'file',
             file_id: 1,
             language: 'python',
+            size_bytes: null,
+            line_count: null,
+
             children: null,
           },
         ],
@@ -2084,6 +2087,9 @@ describe('useBrowseState', () => {
             type: 'file',
             file_id: 1,
             language: 'python',
+            size_bytes: null,
+            line_count: null,
+
             children: null,
           },
         ],
@@ -2126,6 +2132,9 @@ describe('useBrowseState', () => {
             type: 'file',
             file_id: 1,
             language: 'python',
+            size_bytes: null,
+            line_count: null,
+
             children: null,
           },
           {
@@ -2134,6 +2143,9 @@ describe('useBrowseState', () => {
             type: 'file',
             file_id: 2,
             language: 'python',
+            size_bytes: null,
+            line_count: null,
+
             children: null,
           },
         ],
@@ -2179,6 +2191,9 @@ describe('useBrowseState', () => {
             type: 'file',
             file_id: 1,
             language: 'python',
+            size_bytes: null,
+            line_count: null,
+
             children: null,
           },
         ],
@@ -2221,6 +2236,9 @@ describe('useBrowseState', () => {
             type: 'directory',
             file_id: null,
             language: null,
+            size_bytes: null,
+            line_count: null,
+
             children: [
               {
                 name: 'main.py',
@@ -2228,6 +2246,9 @@ describe('useBrowseState', () => {
                 type: 'file',
                 file_id: 1,
                 language: 'python',
+                size_bytes: null,
+                line_count: null,
+
                 children: null,
               },
             ],

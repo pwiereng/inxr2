@@ -25,6 +25,9 @@ const sampleTree: TreeNode[] = [
     type: 'directory',
     file_id: null,
     language: null,
+    size_bytes: null,
+    line_count: null,
+
     children: [
       {
         name: 'main.py',
@@ -32,6 +35,9 @@ const sampleTree: TreeNode[] = [
         type: 'file',
         file_id: 1,
         language: 'python',
+        size_bytes: 2458,
+        line_count: 87,
+
         children: null,
       },
       {
@@ -40,6 +46,9 @@ const sampleTree: TreeNode[] = [
         type: 'directory',
         file_id: null,
         language: null,
+        size_bytes: null,
+        line_count: null,
+
         children: [
           {
             name: 'helpers.py',
@@ -47,6 +56,9 @@ const sampleTree: TreeNode[] = [
             type: 'file',
             file_id: 2,
             language: 'python',
+            size_bytes: 156,
+            line_count: 12,
+
             children: null,
           },
         ],
@@ -59,6 +71,9 @@ const sampleTree: TreeNode[] = [
     type: 'file',
     file_id: 3,
     language: 'markdown',
+    size_bytes: 1024,
+    line_count: 45,
+
     children: null,
   },
 ]
@@ -142,6 +157,9 @@ describe('DirectoryListing', () => {
             type: 'directory',
             file_id: null,
             language: null,
+            size_bytes: null,
+            line_count: null,
+
             children: [],
           },
         ]}
@@ -163,6 +181,9 @@ describe('DirectoryListing', () => {
             type: 'directory',
             file_id: null,
             language: null,
+            size_bytes: null,
+            line_count: null,
+
             children: [],
           },
         ]}
@@ -170,5 +191,35 @@ describe('DirectoryListing', () => {
       />
     )
     expect(screen.getByText('This directory is empty')).toBeInTheDocument()
+  })
+
+  it('should show file sizes for files but not directories', () => {
+    renderWithTheme(<DirectoryListing {...defaultProps} directoryPath="src" />)
+    // File with 2458 bytes → "2.4 KB"
+    expect(screen.getByText('2.4 KB')).toBeInTheDocument()
+    // Directories should not show a size
+    const dirRow = screen.getByText('utils/').closest('tr')!
+    expect(dirRow).not.toHaveTextContent('KB')
+    expect(dirRow).not.toHaveTextContent(' B')
+  })
+
+  it('should show sizes at root level', () => {
+    renderWithTheme(<DirectoryListing {...defaultProps} />)
+    // README.md is 1024 bytes → "1.0 KB"
+    expect(screen.getByText('1.0 KB')).toBeInTheDocument()
+  })
+
+  it('should show line count chips for files', () => {
+    renderWithTheme(<DirectoryListing {...defaultProps} directoryPath="src" />)
+    // main.py has line_count: 87
+    expect(screen.getByText('87 lines')).toBeInTheDocument()
+  })
+
+  it('should show file and dir count chips for directories', () => {
+    renderWithTheme(<DirectoryListing {...defaultProps} />)
+    // src/ has 1 dir (utils) and 1 file (main.py)
+    const srcRow = screen.getByText('src/').closest('tr')!
+    expect(srcRow).toHaveTextContent('1 dir')
+    expect(srcRow).toHaveTextContent('1 file')
   })
 })

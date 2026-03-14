@@ -63,6 +63,8 @@ class TreeNodeResponse(BaseModel):
     type: str  # "file" or "directory"
     file_id: int | None = None
     language: str | None = None
+    size_bytes: int | None = None
+    line_count: int | None = None
     children: list["TreeNodeResponse"] | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -148,6 +150,8 @@ def _tree_node_to_response(node: TreeNode) -> TreeNodeResponse:
         type=node.node_type,
         file_id=node.file_id,
         language=node.language,
+        size_bytes=node.size_bytes,
+        line_count=node.line_count,
         children=(
             [_tree_node_to_response(child) for child in node.children]
             if node.children
