@@ -130,6 +130,12 @@ EOF
 
 echo "📝 Generated .env (ports: backend=${APP_PORT}, frontend=${FRONTEND_PORT}, playwright=${PLAYWRIGHT_PORT}, mcp=${MCP_PORT})"
 
+# Copy .mcp.json so Claude Code sessions in worktrees connect to main's MCP server
+if [ -f "$MAIN_REPO/.mcp.json" ]; then
+    cp "$MAIN_REPO/.mcp.json" "$WORKTREE_DIR/.mcp.json"
+    echo "📡 Copied .mcp.json (MCP tools available in Claude Code)"
+fi
+
 # ── Register slot (with file locking) ──────────────────────────────────────
 
 (
