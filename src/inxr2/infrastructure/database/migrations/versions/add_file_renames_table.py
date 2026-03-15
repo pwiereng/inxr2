@@ -1,7 +1,7 @@
 """Add file_renames table for tracking file renames during indexing
 
 Revision ID: add_file_renames_001
-Revises: remove_redundant_commit_001
+Revises: add_dep_source_line_001
 Create Date: 2026-03-14
 
 Stores file renames detected via git diff --find-renames during indexing.
@@ -32,7 +32,7 @@ def upgrade() -> None:
         sa.Column(
             "indexed_at",
             sa.DateTime(timezone=False),
-            server_default="now()",
+            server_default=sa.text("now()"),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(

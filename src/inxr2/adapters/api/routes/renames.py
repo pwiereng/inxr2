@@ -10,7 +10,7 @@ from ....infrastructure.dependencies import (
     FileRenameAdapter,
     RepositoryAdapter,
 )
-from ..validation import validate_repo_name
+from ..validation import validate_path, validate_repo_name
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,7 @@ async def get_file_history(
 ) -> FileHistoryResponse:
     """Get rename history for a file path."""
     repo = validate_repo_name(repo)
+    path = validate_path(path)
 
     repository = await repo_adapter.find_by_name(repo)
     if not repository or repository.id is None:

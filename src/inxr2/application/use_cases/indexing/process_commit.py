@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from inxr2.domain.entities import Commit, FileRename, TextContent
+from inxr2.domain.exceptions import DomainException
 from inxr2.domain.services.file_filter import FileFilter
 from inxr2.domain.value_objects import CommitHash, TextSearchSourceType
 
@@ -293,7 +294,7 @@ class ProcessCommitUseCase:
                 ]
                 await self._file_rename_repo.save_renames(renames)
                 result.renames_found += len(renames)
-        except (OSError, RuntimeError) as e:
+        except (OSError, RuntimeError, DomainException) as e:
             result.errors.append(
                 f"Failed to detect renames for commit {commit_hash}: {e}"
             )

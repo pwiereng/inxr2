@@ -25,10 +25,11 @@ class FileRenameRepositoryPort(ABC):
         file_path: str,
         branch: str | None = None,
     ) -> list[FileRename]:
-        """Get rename history for a file path, tracing renames forward and backward.
+        """Get rename history for a file path (single-hop lookup).
 
         Returns renames where the file_path appears as either old_path or new_path,
         optionally filtered to commits on a specific branch.
+        Does not transitively chain renames across multiple commits.
 
         Args:
             repository_id: Repository to search in
