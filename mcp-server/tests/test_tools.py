@@ -1555,6 +1555,78 @@ class TestGetFileStructure:
         assert "def execute" in result
         assert "class MyService" in result
 
+    async def test_denylist_covers_all_variable_like_kinds(self) -> None:
+        """Denylist approach: variable-like kinds are excluded, structural kinds pass through."""
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_file_structure(
+            "my-repo",
+            "src/models.py",
+            symbols=[
+                {
+                    "id": 1,
+                    "name": "MyClass",
+                    "kind": "class",
+                    "start_line": 1,
+                    "end_line": 30,
+                    "signature": None,
+                    "docstring": None,
+                    "parent_symbol_id": None,
+                },
+                # These should all be excluded
+                *[
+                    {
+                        "id": i,
+                        "name": f"noise_{kind}",
+                        "kind": kind,
+                        "start_line": i,
+                        "end_line": i,
+                        "signature": None,
+                        "docstring": None,
+                        "parent_symbol_id": 1,
+                    }
+                    for i, kind in enumerate(
+                        [
+                            "variable",
+                            "constant",
+                            "field",
+                            "enum_value",
+                            "enum_member",
+                            "struct_field",
+                            "union_field",
+                            "instance_variable",
+                            "class_variable",
+                            "class_constant",
+                            "static_field",
+                            "readonly_field",
+                            "interface_property",
+                            "macro",
+                        ],
+                        start=2,
+                    )
+                ],
+                # Unknown future kind — should pass through (not silently dropped)
+                {
+                    "id": 99,
+                    "name": "future_kind_symbol",
+                    "kind": "some_future_kind",
+                    "start_line": 25,
+                    "end_line": 25,
+                    "signature": None,
+                    "docstring": None,
+                    "parent_symbol_id": None,
+                },
+            ],
+        )
+
+        result = await get_file_structure.handle(
+            client, {"file_path": "src/models.py", "repository": "my-repo"}
+        )
+
+        assert "class MyClass" in result
+        assert "future_kind_symbol" in result  # unknown kinds pass through
+        assert "noise_" not in result  # all variable-like kinds excluded
+
     async def test_no_symbols(self) -> None:
         client = FakeInxr2Client()
         client.add_repository(1, "my-repo")

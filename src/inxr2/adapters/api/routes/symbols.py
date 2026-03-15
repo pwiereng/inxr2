@@ -282,10 +282,7 @@ async def get_file_structure(
     )
 
     file = resolved.file
-    if file.id is None:
-        raise HTTPException(status_code=404, detail="File not found")
-
-    symbols = await symbol_adapter.list_by_file(file.id)
+    symbols = await symbol_adapter.list_by_file(file.id or 0)
     symbols_sorted = sorted(symbols, key=lambda s: s.start_line)
 
     return FileStructureResponse(

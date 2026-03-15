@@ -119,23 +119,25 @@ def _render_symbol_tree(
     include_docstrings: bool,
 ) -> list[str]:
     """Render symbols as an indented tree (top-level + one level of children)."""
-    # Keep only structural symbols — classes, methods, functions, interfaces, etc.
-    _KEEP_KINDS = {
-        "class",
-        "method",
-        "function",
-        "async_function",
-        "constructor",
-        "property",
-        "interface",
-        "enum",
-        "module",
-        "namespace",
-        "struct",
-        "trait",
-        "type_alias",
+    # Exclude variable-like and field-like kinds; keep everything structural.
+    # Denylist is safer than an allowlist — new SymbolKind values pass through by default.
+    _EXCLUDE_KINDS = {
+        "variable",
+        "constant",
+        "field",
+        "enum_value",
+        "enum_member",
+        "struct_field",
+        "union_field",
+        "instance_variable",
+        "class_variable",
+        "class_constant",
+        "static_field",
+        "readonly_field",
+        "interface_property",
+        "macro",
     }
-    symbols = [s for s in symbols if s["kind"] in _KEEP_KINDS]
+    symbols = [s for s in symbols if s["kind"] not in _EXCLUDE_KINDS]
 
     # Build parent → children map
     children_by_parent: dict[int, list[dict[str, Any]]] = {}
