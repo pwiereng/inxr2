@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from ....domain.entities import FileRename
 from ....infrastructure.dependencies import (
     CommitAdapter,
     FileRenameAdapter,
@@ -68,17 +69,7 @@ async def get_renames_for_commit(
     commit_hash_str = db_commit.commit_hash.value
 
     return RenamesForCommitResponse(
-        renames=[
-            FileRenameResponse(
-                id=r.id or 0,
-                old_path=r.old_path,
-                new_path=r.new_path,
-                similarity=r.similarity,
-                commit_id=r.commit_id,
-                commit_hash=commit_hash_str,
-            )
-            for r in renames
-        ],
+        renames=[_to_response(r, commit_hash_str) for r in renames],
         total=len(renames),
     )
 
@@ -114,16 +105,19 @@ async def get_file_history(
     }
 
     return FileHistoryResponse(
-        renames=[
-            FileRenameResponse(
-                id=r.id or 0,
-                old_path=r.old_path,
-                new_path=r.new_path,
-                similarity=r.similarity,
-                commit_id=r.commit_id,
-                commit_hash=commit_hash_map.get(r.commit_id, ""),
-            )
-            for r in renames
-        ],
+        renames=[_to_response(r, commit_hash_map[r.commit_id]) for r in renames],
         total=len(renames),
+    )
+
+
+def _to_response(r: FileRename, commit_hash: str) -> FileRenameResponse:
+    """Convert a FileRename entity to an API response."""
+    assert r.id is not None, f"FileRename missing id: {r.old_path} -> {r.new_path}"
+    return FileRenameResponse(
+        id=r.id,
+        old_path=r.old_path,
+        new_path=r.new_path,
+        similarity=r.similarity,
+        commit_id=r.commit_id,
+        commit_hash=commit_hash,
     )

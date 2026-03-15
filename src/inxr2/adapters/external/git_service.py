@@ -887,7 +887,10 @@ class GitService(GitServicePort):
             return []
 
         parent = commit.parents[0]
-        diff = parent.diff(commit, R=True)
+        try:
+            diff = parent.diff(commit, R=True)
+        except GitCommandError as e:
+            raise GitOperationError("get_file_renames_in_commit", str(e)) from e
 
         renames: list[RenameInfo] = []
         for d in diff:
