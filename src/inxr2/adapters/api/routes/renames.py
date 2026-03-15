@@ -177,11 +177,17 @@ async def _walk_rename_chain(
     """Walk the rename chain to find the file's path at target_commit.
 
     Follows rename records transitively (A→B→C) until it finds a path where
-    the file exists at target_commit, or exhausts all possibilities.
+    the file exists at target_commit, or exhausts all rename hops.
 
     Direction is determined by existence checks rather than commit timestamps,
     which avoids false results on non-linear histories (e.g. commits on separate
     branches whose clock times don't reflect git ancestry order).
+
+    Limitation: when multiple rename records involve the same path (e.g. a name
+    was reused across branches), only one candidate next-hop is followed at a
+    time.  In practice rename graphs are linear (each path appears in at most
+    one rename per repo), so this is sufficient.  A BFS/queue approach would be
+    needed to handle genuinely branching rename graphs.
     """
     assert target_commit.id is not None
 

@@ -11,6 +11,7 @@ import {
   getFileRawContent,
   getFileHistory,
   resolveFilePath,
+  ApiError,
   type Repository,
   type TreeNode,
   type FileContent,
@@ -348,8 +349,15 @@ export function useBrowseData({
         setFileSymbols(symbols.symbols)
         setFileReferences(references.references)
       } catch (err) {
-        // When browsing a specific commit, check if the file was renamed.
-        if (urlState.selectedCommit && urlState.repoName && urlState.filePath) {
+        // Only attempt rename resolution on 404 (file not found at this commit).
+        // Other errors (5xx, symbols/references failures) are unrelated to renames.
+        if (
+          err instanceof ApiError &&
+          err.status === 404 &&
+          urlState.selectedCommit &&
+          urlState.repoName &&
+          urlState.filePath
+        ) {
           try {
             const renameInfo = await resolveFilePath(
               urlState.repoName,
@@ -359,6 +367,9 @@ export function useBrowseData({
             if (!renameInfo.found && renameInfo.resolved_path) {
               setFileRenameInfo(renameInfo)
               setError(null)
+              setFileContent(null)
+              setFileSymbols([])
+              setFileReferences([])
               loadedFileKeyRef.current = null
               loadedCommitRef.current = undefined
               return
