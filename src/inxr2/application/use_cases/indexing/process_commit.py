@@ -186,7 +186,11 @@ class ProcessCommitUseCase:
         )
 
         # Shared blob->content_hash mapping
-        blob_to_content_hash = request.blob_to_content_hash or {}
+        blob_to_content_hash = (
+            request.blob_to_content_hash
+            if request.blob_to_content_hash is not None
+            else {}
+        )
 
         # Process each file and collect file IDs for bulk linking
         file_ids: list[int] = []
