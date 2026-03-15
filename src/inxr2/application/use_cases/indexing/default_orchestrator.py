@@ -22,6 +22,7 @@ from ...dtos.indexing import (
 from ...ports.repositories import (
     CommitRepositoryPort,
     DependencyRepositoryPort,
+    FileRenameRepositoryPort,
     FileRepositoryPort,
     IndexStatusRepositoryPort,
     ReferenceRepositoryPort,
@@ -81,6 +82,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
         post_commit_callback: Callable[[], Awaitable[None]] | None = None,
         dependency_parser: DependencyParserServicePort | None = None,
         dependency_repo: DependencyRepositoryPort | None = None,
+        file_rename_repo: FileRenameRepositoryPort | None = None,
     ) -> None:
         self._repository_repo = repository_repo
         self._index_status_repo = index_status_repo
@@ -107,6 +109,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
             git_service=git_service,
             text_content_repo=text_content_repo,
             process_file_use_case=self._process_file_use_case,
+            file_rename_repo=file_rename_repo,
         )
         self._resolve_refs_use_case = ResolveReferencesUseCase(
             reference_repository=reference_repo,

@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
         commits,
         files,
         indexing,
+        renames,
         repositories,
         search,
         symbols,
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(files.router, prefix="/api")
     app.include_router(commits.router, prefix="/api")
     app.include_router(search.router, prefix="/api")
+    app.include_router(renames.router, prefix="/api")
 
     # Health check endpoint
     @app.get("/api/health")

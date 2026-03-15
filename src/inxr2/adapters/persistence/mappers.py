@@ -10,6 +10,7 @@ from ...domain.entities import (
     Commit,
     Dependency,
     File,
+    FileRename,
     IndexStatus,
     Reference,
     Repository,
@@ -21,6 +22,7 @@ from .models import (
     CommitModel,
     DependencyModel,
     FileModel,
+    FileRenameModel,
     IndexStatusModel,
     ReferenceModel,
     RepositoryModel,
@@ -319,6 +321,36 @@ class DependencyMapper:
             parent_dependency_id=entity.parent_dependency_id,
             extras=entity.extras,
             source_line=entity.source_line,
+            indexed_at=entity.indexed_at or datetime.now(UTC).replace(tzinfo=None),
+        )
+
+
+class FileRenameMapper:
+    """Maps between FileRename entity and FileRenameModel."""
+
+    @staticmethod
+    def to_domain(model: FileRenameModel) -> FileRename:
+        """Convert ORM model to domain entity."""
+        return FileRename(
+            id=model.id,
+            repository_id=model.repository_id,
+            commit_id=model.commit_id,
+            old_path=model.old_path,
+            new_path=model.new_path,
+            similarity=model.similarity,
+            indexed_at=model.indexed_at,
+        )
+
+    @staticmethod
+    def to_model(entity: FileRename) -> FileRenameModel:
+        """Convert domain entity to ORM model."""
+        return FileRenameModel(
+            id=entity.id,
+            repository_id=entity.repository_id,
+            commit_id=entity.commit_id,
+            old_path=entity.old_path,
+            new_path=entity.new_path,
+            similarity=entity.similarity,
             indexed_at=entity.indexed_at or datetime.now(UTC).replace(tzinfo=None),
         )
 

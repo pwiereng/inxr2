@@ -3,6 +3,7 @@
 from .commit import Commit
 from .dependency import Dependency
 from .file import File
+from .file_rename import FileRename
 from .index_status import IndexStatus
 from .reference import Reference
 from .repository import Repository
@@ -14,6 +15,7 @@ __all__ = [
     "Commit",
     "Dependency",
     "File",
+    "FileRename",
     "Symbol",
     "Reference",
     "IndexStatus",

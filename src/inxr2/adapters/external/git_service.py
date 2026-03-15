@@ -16,6 +16,7 @@ from ...application.ports.services import (
     ChangedFiles,
     CommitInfo,
     GitServicePort,
+    RenameInfo,
     RepositoryInfo,
 )
 from ...domain.exceptions import (
@@ -864,6 +865,48 @@ class GitService(GitServicePort):
                 line_number += 1
 
         return result
+
+    def get_file_renames_in_commit(
+        self,
+        repo_path: Path,
+        commit_hash: str,
+    ) -> list[RenameInfo]:
+        """Get file renames detected in a single commit (vs its parent).
+
+        Uses GitPython's diff with rename detection to identify renames.
+        """
+        repo = self._get_repo(repo_path)
+        try:
+            commit = repo.commit(commit_hash)
+        except (BadName, ValueError) as e:
+            raise CommitNotFound(commit_hash=commit_hash) from e
+        except GitCommandError as e:
+            raise GitOperationError("get_file_renames_in_commit", str(e)) from e
+
+        if not commit.parents:
+            return []
+
+        parent = commit.parents[0]
+        try:
+            diff = parent.diff(commit, R=True)
+        except GitCommandError as e:
+            raise GitOperationError("get_file_renames_in_commit", str(e)) from e
+
+        renames: list[RenameInfo] = []
+        for d in diff:
+            if d.renamed_file and d.a_path and d.b_path:
+                # GitPython stores similarity as a float 0-100 on d.score
+                # (or as rename_from/rename_to). d.score may be None.
+                similarity = int(d.score) if d.score is not None else 100
+                renames.append(
+                    RenameInfo(
+                        old_path=d.a_path,
+                        new_path=d.b_path,
+                        similarity=similarity,
+                    )
+                )
+
+        return renames
 
     def get_changed_files_in_commit(
         self,
