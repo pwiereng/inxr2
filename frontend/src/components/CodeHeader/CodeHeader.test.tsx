@@ -321,6 +321,62 @@ describe('CodeHeader', () => {
     })
   })
 
+  describe('commit nav buttons', () => {
+    it('should render older and newer commit buttons', async () => {
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /older commit/i })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /newer commit/i })).toBeInTheDocument()
+      })
+    })
+
+    it('should disable newer button when at HEAD', async () => {
+      render(<CodeHeader {...defaultProps} commit={null} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /newer commit/i })).toBeDisabled()
+      })
+    })
+
+    it('should call onCommitChange when older button is clicked', async () => {
+      const onCommitChange = vi.fn()
+
+      render(<CodeHeader {...defaultProps} commit={null} onCommitChange={onCommitChange} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /older commit/i })).not.toBeDisabled()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /older commit/i }))
+
+      expect(onCommitChange).toHaveBeenCalledWith('def456ghi789')
+    })
+
+    it('should not render nav buttons when no repo is selected', async () => {
+      render(<CodeHeader {...defaultProps} repoName={null} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: /browse/i })).toBeInTheDocument()
+      })
+
+      expect(screen.queryByRole('button', { name: /older commit/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /newer commit/i })).not.toBeInTheDocument()
+    })
+
+    it('should not render nav buttons on help tab', async () => {
+      const api = await import('@/lib/api')
+
+      render(<CodeHeader {...defaultProps} currentTab="help" />)
+
+      await waitFor(() => {
+        expect(vi.mocked(api.getCommits)).toHaveBeenCalled()
+      })
+
+      expect(screen.queryByRole('button', { name: /older commit/i })).not.toBeInTheDocument()
+    })
+  })
+
   describe('commit selector', () => {
     it('should load commits for selected repository and branch', async () => {
       const api = await import('@/lib/api')

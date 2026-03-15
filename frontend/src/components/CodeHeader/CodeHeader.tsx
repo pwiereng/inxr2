@@ -8,6 +8,7 @@ import { useRepositorySelector } from '@/hooks/useRepositorySelector'
 import { RepositorySelect } from './RepositorySelect'
 import { BranchSelect } from './BranchSelect'
 import { CommitSelect } from './CommitSelect'
+import { CommitNavButtons } from './CommitNavButtons'
 import { CommitDateIndicator } from './CommitDateIndicator'
 import { NavigationTabs } from './NavigationTabs'
 
@@ -103,6 +104,12 @@ export function CodeHeader({
               branch={branch}
               defaultBranch={defaultBranch}
               onBranchChange={onBranchChange}
+            />
+
+            <CommitNavButtons
+              commits={commits}
+              commitDisplayValue={commitDisplayValue}
+              onCommitChange={onCommitChange}
             />
 
             <CommitSelect
