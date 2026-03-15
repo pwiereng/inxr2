@@ -810,6 +810,52 @@ describe('Search', () => {
     })
   })
 
+  it('should never fire search without commit filter when commit and repo params are both set', async () => {
+    // Regression test for: search fires once without commit filter when
+    // reposLoading=false but selectedRepoId hasn't resolved yet (race condition).
+    let resolveRepos!: (repos: api.Repository[]) => void
+    mockGetRepositories.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRepos = resolve
+      })
+    )
+
+    window.history.pushState({}, '', '?repo=test-repo&branch=main&commit=abc123def456&query=mcp')
+    render(<Search />)
+
+    // Search must NOT fire before repos have loaded
+    expect(mockSearchText).not.toHaveBeenCalled()
+    expect(mockSearchSymbols).not.toHaveBeenCalled()
+
+    // Resolve repos — simulates the state update that sets repositories
+    resolveRepos([
+      {
+        id: 1,
+        name: 'test-repo',
+        url: 'https://github.com/test/repo',
+        description: 'Test repository',
+        default_branch: 'main',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ])
+
+    // After repos load, search must fire WITH the commit filter
+    await waitFor(() => {
+      expect(mockSearchText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: 'mcp',
+          repo: 1,
+          commit: 'abc123def456',
+        })
+      )
+    })
+
+    // Verify no call was ever made without the commit filter
+    const callsWithoutCommit = mockSearchText.mock.calls.filter(([args]) => !args.commit)
+    expect(callsWithoutCommit).toHaveLength(0)
+  })
+
   it('should pass commit param to searchText and searchSymbols', async () => {
     mockGetRepositories.mockResolvedValue([
       {

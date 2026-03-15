@@ -164,6 +164,7 @@ class PostgresReferenceRepository(
         query: str,
         repository_id: int | None = None,
         branch: str | None = None,
+        commit_id: int | None = None,
         scope: str | None = None,
         extensions: list[str] | None = None,
         limit: int = 20,
@@ -182,11 +183,21 @@ class PostgresReferenceRepository(
 
         if repository_id is not None:
             base_query = base_query.where(ReferenceModel.repository_id == repository_id)
-            # Scope to latest files for this repo/branch
-            latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
-            base_query = base_query.where(
-                ReferenceModel.source_file_id.in_(select(latest_sq.c.max_id))
-            )
+            if commit_id is not None:
+                # Commit filter: scope to files present at this specific commit
+                base_query = base_query.where(
+                    ReferenceModel.source_file_id.in_(
+                        select(CommitFileModel.file_id).where(
+                            CommitFileModel.commit_id == commit_id
+                        )
+                    )
+                )
+            else:
+                # Scope to latest files for this repo/branch
+                latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+                base_query = base_query.where(
+                    ReferenceModel.source_file_id.in_(select(latest_sq.c.max_id))
+                )
         elif scope == "latest":
             # Global scope: filter to HEAD files across all repos
             head_fids = head_file_ids_subquery()

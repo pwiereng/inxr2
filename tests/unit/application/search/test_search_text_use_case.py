@@ -600,6 +600,67 @@ class TestSearchTextWithReferences:
         assert response.total == 2
         assert all(r.content == "processFile" for r in response.results)
 
+    @pytest.mark.asyncio
+    async def test_commit_hash_scopes_reference_results(
+        self,
+        use_case: SearchTextUseCase,
+        file_repo: InMemoryFileRepository,
+        commit_repo: InMemoryCommitRepository,
+    ) -> None:
+        """Regression: references from files not at the specified commit are excluded.
+
+        Before the fix, commit_id was never passed to reference_repo.search_by_text,
+        so reference results ignored the commit filter entirely.
+        """
+        # Add a second commit and a file only present at that commit
+        commit2 = await commit_repo.save(
+            Commit(
+                id=None,
+                repository_id=1,
+                commit_hash=CommitHash("def456" + "0" * 34),
+                author_date=datetime(2024, 2, 1, tzinfo=UTC),
+                commit_date=datetime(2024, 2, 1, tzinfo=UTC),
+            )
+        )
+        assert commit2.id is not None
+        future_file = await file_repo.save(
+            File(
+                repository_id=1,
+                path="mcp-server/src/server.py",
+                content_hash="future_hash",
+                size_bytes=200,
+                language="python",
+            )
+        )
+        assert future_file.id is not None
+        await file_repo.link_file_to_commit(future_file.id, commit_id=commit2.id)
+
+        # Add a reference in the future file
+        ref_repo: InMemoryReferenceRepository = use_case._reference_repo  # type: ignore[assignment]
+        await ref_repo.save(
+            Reference(
+                repository_id=1,
+                source_file_id=future_file.id,
+                source_line=1,
+                source_column=0,
+                source_end_column=3,
+                reference_text="mcp",
+                reference_type=ReferenceType.IMPORT,
+            )
+        )
+
+        # Search at commit1 ("abc123") — the future file should be excluded
+        request = SearchTextRequest(
+            query="mcp",
+            source_types=["reference"],
+            repository_id=1,
+            commit_hash="abc123",
+        )
+        response = await use_case.execute(request)
+
+        assert response.total == 0
+        assert len(response.results) == 0
+
 
 class TestSearchTextExtensionFilter:
     """Tests for text search with extension filtering."""

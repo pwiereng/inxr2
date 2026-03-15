@@ -319,6 +319,7 @@ class SearchTextUseCase:
                     query=request.query,
                     repository_id=request.repository_id,
                     branch=request.branch,
+                    commit_id=commit_id,
                     scope=scope,
                     extensions=request.extensions,
                     limit=ref_limit,
