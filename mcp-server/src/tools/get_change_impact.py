@@ -66,6 +66,8 @@ _CONFIG_BASENAMES = frozenset(
 
 _MAX_L2_SYMBOLS = 20
 _MAX_REFS_PER_FILE = 10
+_SYM_PAGE_SIZE = 500
+_SYM_MAX_TOTAL = 10000
 
 
 def _classify_file(path: str) -> str:
@@ -237,29 +239,36 @@ async def handle(
             lines.append("  No level-1 files to analyze transitively.")
         else:
             # Paginate through symbols until all l1_paths are covered or exhausted
-            _PAGE_SIZE = 500
-            _MAX_SYMS = 10000
             all_syms: list[dict[str, Any]] = []
             sym_offset = 0
-            while len(all_syms) < _MAX_SYMS:
+            sym_total: int | None = None
+            while len(all_syms) < _SYM_MAX_TOTAL:
                 sym_params: dict[str, Any] = {
                     "q": ".",
                     "mode": "regex",
-                    "limit": _PAGE_SIZE,
+                    "limit": _SYM_PAGE_SIZE,
                     "offset": sym_offset,
                     "repository_id": repository_id,
                 }
+                if branch:
+                    sym_params["branch"] = branch
                 if commit:
                     sym_params["commit"] = commit
                 page_data = await client.get("/api/symbols", params=sym_params)
                 page_items: list[dict[str, Any]] = page_data.get("items", [])
+                if sym_total is None:
+                    sym_total = int(page_data.get("total", 0))
                 all_syms.extend(page_items)
                 covered = {
                     s["file_path"] for s in all_syms if s.get("file_path") in l1_paths
                 }
-                if covered == l1_paths or len(page_items) < _PAGE_SIZE:
+                if (
+                    covered == l1_paths
+                    or len(page_items) < _SYM_PAGE_SIZE
+                    or sym_offset + _SYM_PAGE_SIZE >= (sym_total or 0)
+                ):
                     break
-                sym_offset += _PAGE_SIZE
+                sym_offset += _SYM_PAGE_SIZE
             # Symbols in level-1 files, excluding the target itself
             l1_symbols = [
                 s
