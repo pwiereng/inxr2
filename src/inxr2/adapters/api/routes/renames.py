@@ -131,6 +131,10 @@ async def resolve_path(
     repo: str = Query(..., description="Repository name"),
     path: str = Query(..., description="File path to resolve"),
     commit: str = Query(..., description="Commit hash"),
+    branch: str | None = Query(
+        None,
+        description="Branch filter — restricts rename lookup to commits on this branch",
+    ),
 ) -> ResolvePathResponse:
     """Resolve a file path at a specific commit, following rename chain if not found.
 
@@ -160,6 +164,7 @@ async def resolve_path(
         repository_id=repository.id,
         path=path,
         target_commit=db_commit,
+        branch=branch,
         file_rename_adapter=file_rename_adapter,
         commit_adapter=commit_adapter,
         file_adapter=file_adapter,
@@ -173,6 +178,7 @@ async def _walk_rename_chain(
     file_rename_adapter: FileRenameRepositoryPort,
     commit_adapter: CommitRepositoryPort,
     file_adapter: FileRepositoryPort,
+    branch: str | None = None,
 ) -> ResolvePathResponse:
     """Walk the rename chain to find the file's path at target_commit.
 
@@ -201,7 +207,7 @@ async def _walk_rename_chain(
         visited.add(current_path)
 
         renames = await file_rename_adapter.get_file_history(
-            repository_id, current_path
+            repository_id, current_path, branch=branch
         )
         if not renames:
             break

@@ -362,7 +362,8 @@ export function useBrowseData({
             const renameInfo = await resolveFilePath(
               urlState.repoName,
               urlState.filePath,
-              urlState.selectedCommit
+              urlState.selectedCommit,
+              urlState.selectedBranch || undefined
             )
             if (!renameInfo.found && renameInfo.resolved_path) {
               setFileRenameInfo(renameInfo)

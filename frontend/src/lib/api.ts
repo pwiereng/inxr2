@@ -771,8 +771,10 @@ export interface ResolvePathResult {
 export async function resolveFilePath(
   repo: string,
   path: string,
-  commit: string
+  commit: string,
+  branch?: string
 ): Promise<ResolvePathResult> {
   const params = new URLSearchParams({ repo, path, commit })
+  if (branch) params.set('branch', branch)
   return fetchApi<ResolvePathResult>(`/renames/resolve-path?${params}`)
 }
