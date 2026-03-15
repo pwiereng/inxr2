@@ -3279,7 +3279,7 @@ class InMemoryFileRenameRepository(FileRenameRepositoryPort):
                 if r.repository_id == repository_id
                 and (r.old_path == file_path or r.new_path == file_path)
             ],
-            key=lambda r: r.id or 0,
+            key=lambda r: r.commit_id,
         )
 
     async def count_by_repository(self, repository_id: int) -> int:

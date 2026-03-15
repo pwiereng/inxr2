@@ -60,7 +60,7 @@ class PostgresFileRenameRepository(FileRenameRepositoryPort):
                 )
             )
 
-        query = query.order_by(FileRenameModel.id)
+        query = query.order_by(FileRenameModel.commit_id)
         result = await self.session.execute(query)
         return [self.mapper.to_domain(m) for m in result.scalars().all()]
 

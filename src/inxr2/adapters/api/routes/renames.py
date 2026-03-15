@@ -25,6 +25,7 @@ class FileRenameResponse(BaseModel):
     new_path: str
     similarity: int
     commit_id: int
+    commit_hash: str
 
 
 class RenamesForCommitResponse(BaseModel):
@@ -64,6 +65,7 @@ async def get_renames_for_commit(
         raise HTTPException(status_code=404, detail="Commit not found")
 
     renames = await file_rename_adapter.get_renames_for_commit(db_commit.id)
+    commit_hash_str = db_commit.commit_hash.value
 
     return RenamesForCommitResponse(
         renames=[
@@ -73,6 +75,7 @@ async def get_renames_for_commit(
                 new_path=r.new_path,
                 similarity=r.similarity,
                 commit_id=r.commit_id,
+                commit_hash=commit_hash_str,
             )
             for r in renames
         ],
@@ -84,6 +87,7 @@ async def get_renames_for_commit(
 async def get_file_history(
     file_rename_adapter: FileRenameAdapter,
     repo_adapter: RepositoryAdapter,
+    commit_adapter: CommitAdapter,
     repo: str = Query(..., description="Repository name"),
     path: str = Query(..., description="File path to trace renames for"),
     branch: str | None = Query(None, description="Branch filter (optional)"),
@@ -102,6 +106,13 @@ async def get_file_history(
         branch=branch,
     )
 
+    # Batch-fetch commit hashes for all renames
+    commit_ids = list({r.commit_id for r in renames})
+    commits = await commit_adapter.find_by_ids(commit_ids) if commit_ids else []
+    commit_hash_map: dict[int, str] = {
+        c.id: c.commit_hash.value for c in commits if c.id is not None
+    }
+
     return FileHistoryResponse(
         renames=[
             FileRenameResponse(
@@ -110,6 +121,7 @@ async def get_file_history(
                 new_path=r.new_path,
                 similarity=r.similarity,
                 commit_id=r.commit_id,
+                commit_hash=commit_hash_map.get(r.commit_id, ""),
             )
             for r in renames
         ],
