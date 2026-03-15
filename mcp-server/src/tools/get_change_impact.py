@@ -260,7 +260,9 @@ async def handle(
                     sym_total = int(page_data.get("total", 0))
                 all_syms.extend(page_items)
                 covered = {
-                    s["file_path"] for s in all_syms if s.get("file_path") in l1_paths
+                    s.get("file_path")
+                    for s in all_syms
+                    if s.get("file_path") in l1_paths
                 }
                 if (
                     covered == l1_paths
