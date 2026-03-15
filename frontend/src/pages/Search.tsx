@@ -236,6 +236,12 @@ export default function Search(): React.ReactElement {
     if (repoNameParam && reposLoading) {
       return
     }
+    // When a commit filter is set, also defer if repoNameParam is present but
+    // selectedRepoId hasn't resolved yet (race: reposLoading=false but
+    // repositories state hasn't propagated to derived selectedRepoId).
+    if (commitParam && repoNameParam && selectedRepoId === undefined) {
+      return
+    }
 
     const performSearch = async () => {
       setLoading(true)
