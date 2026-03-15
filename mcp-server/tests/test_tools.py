@@ -5,6 +5,7 @@ from typing import Any
 from src.tools import (
     find_dead_code,
     find_references,
+    get_change_impact,
     go_to_definition,
     list_repositories,
     review_helper,
@@ -1026,6 +1027,260 @@ class TestReviewHelper:
 
         assert "scanned 2 of 500 symbols" in result
         assert "results may be incomplete" in result
+
+
+# --- get_change_impact ---
+
+
+class TestGetChangeImpact:
+    async def test_shows_symbol_definition_and_direct_references(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1,
+            "MyClass",
+            kind="class",
+            file_path="src/models.py",
+            start_line=10,
+            repository_id=1,
+        )
+        client.add_reference(1, "src/app.py", 20, "usage", "obj = MyClass()")
+        client.add_reference(
+            1, "src/views.py", 5, "import", "from models import MyClass"
+        )
+
+        result = await get_change_impact.handle(
+            client, {"name": "MyClass", "repository": "my-repo"}
+        )
+
+        assert "Change impact for 'MyClass' in 'my-repo'" in result
+        assert "src/models.py:10 [class]" in result
+        assert "Direct references: 2" in result
+        assert "src/app.py" in result
+        assert "src/views.py" in result
+
+    async def test_classifies_test_files(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1, "my_func", kind="function", file_path="src/lib.py", repository_id=1
+        )
+        client.add_reference(1, "src/app.py", 5, "call", "my_func()")
+        client.add_reference(1, "tests/test_app.py", 10, "call", "my_func()")
+
+        result = await get_change_impact.handle(
+            client, {"name": "my_func", "repository": "my-repo"}
+        )
+
+        assert "Source files (1):" in result
+        assert "Test files (1):" in result
+        assert "tests/test_app.py" in result
+        assert "Tests  (1):" in result
+
+    async def test_classifies_config_files(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1, "DB_HOST", kind="variable", file_path="src/config.py", repository_id=1
+        )
+        client.add_reference(1, "src/app.py", 5, "usage", "DB_HOST")
+        client.add_reference(1, "config.yaml", 1, "usage", "db_host")
+
+        result = await get_change_impact.handle(
+            client, {"name": "DB_HOST", "repository": "my-repo"}
+        )
+
+        assert "Source files (1):" in result
+        assert "Config files (1):" in result
+        assert "config.yaml" in result
+        assert "Config (1):" in result
+
+    async def test_no_references_reports_unused(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "orphan_func", kind="function", repository_id=1)
+
+        result = await get_change_impact.handle(
+            client, {"name": "orphan_func", "repository": "my-repo"}
+        )
+
+        assert "Direct references: 0" in result
+        assert "may be unused" in result
+
+    async def test_no_symbol_found(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+
+        result = await get_change_impact.handle(
+            client, {"name": "NonExistent", "repository": "my-repo"}
+        )
+
+        assert "No symbols found" in result
+        assert "NonExistent" in result
+
+    async def test_includes_browse_urls(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1,
+            "MyClass",
+            kind="class",
+            file_path="src/models.py",
+            start_line=10,
+            repository_id=1,
+        )
+        client.add_reference(1, "src/app.py", 20, "usage", "MyClass()")
+
+        result = await get_change_impact.handle(
+            client,
+            {"name": "MyClass", "repository": "my-repo"},
+            frontend_url=FRONTEND_URL,
+        )
+
+        assert "http://localhost:5173/browse/my-repo/src/models.py?line=10" in result
+        assert "http://localhost:5173/browse/my-repo/src/app.py?line=20" in result
+
+    async def test_no_browse_urls_without_frontend_url(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "MyClass", kind="class", repository_id=1)
+        client.add_reference(1, "src/app.py", 20, "usage", "MyClass()")
+
+        result = await get_change_impact.handle(
+            client, {"name": "MyClass", "repository": "my-repo"}
+        )
+
+        assert "http://" not in result
+
+    async def test_staleness_warning_prepended(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+        client.add_symbol(1, "MyClass", kind="class", repository_id=1)
+        client.add_reference(1, "src/app.py", 5, "usage", "MyClass()")
+
+        result = await get_change_impact.handle(
+            client, {"name": "MyClass", "repository": "my-repo"}
+        )
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "Change impact" in result
+
+    async def test_multiple_definitions(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1,
+            "Config",
+            kind="class",
+            file_path="src/config.py",
+            start_line=1,
+            repository_id=1,
+        )
+        client.add_symbol(
+            2,
+            "Config",
+            kind="class",
+            file_path="tests/config.py",
+            start_line=5,
+            repository_id=1,
+        )
+
+        result = await get_change_impact.handle(
+            client, {"name": "Config", "repository": "my-repo"}
+        )
+
+        assert "src/config.py:1 [class]" in result
+        assert "tests/config.py:5 [class]" in result
+
+    async def test_depth_2_finds_transitive_files(self) -> None:
+        """depth=2 follows: target ← l1_symbol ← l2_file."""
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        # Target symbol in lib.py
+        client.add_symbol(
+            1, "my_func", kind="function", file_path="src/lib.py", repository_id=1
+        )
+        # Symbol in level-1 file (app.py) that calls my_func
+        client.add_symbol(
+            2, "helper", kind="function", file_path="src/app.py", repository_id=1
+        )
+        # level-2 file: main.py calls helper
+        client.add_reference(1, "src/app.py", 5, "call", "my_func()")
+        client.add_reference(2, "src/main.py", 10, "call", "helper()")
+
+        result = await get_change_impact.handle(
+            client, {"name": "my_func", "repository": "my-repo", "depth": 2}
+        )
+
+        assert "Transitive impact (depth=2)" in result
+        assert "src/main.py" in result
+        assert "via: helper" in result
+
+    async def test_depth_2_no_additional_files(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1, "my_func", kind="function", file_path="src/lib.py", repository_id=1
+        )
+        client.add_symbol(
+            2, "helper", kind="function", file_path="src/app.py", repository_id=1
+        )
+        # helper has no further callers
+        client.add_reference(1, "src/app.py", 5, "call", "my_func()")
+
+        result = await get_change_impact.handle(
+            client, {"name": "my_func", "repository": "my-repo", "depth": 2}
+        )
+
+        assert "Transitive impact (depth=2)" in result
+        assert "No additional files at depth 2" in result
+
+    async def test_depth_1_no_transitive_section(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "my_func", kind="function", repository_id=1)
+        client.add_reference(1, "src/app.py", 5, "call", "my_func()")
+
+        result = await get_change_impact.handle(
+            client, {"name": "my_func", "repository": "my-repo", "depth": 1}
+        )
+
+        assert "Transitive impact" not in result
+
+    async def test_depth_capped_at_2(self) -> None:
+        """depth=10 should be treated as depth=2."""
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1, "my_func", kind="function", file_path="src/lib.py", repository_id=1
+        )
+        client.add_reference(1, "src/app.py", 5, "call", "my_func()")
+
+        result = await get_change_impact.handle(
+            client, {"name": "my_func", "repository": "my-repo", "depth": 10}
+        )
+
+        # Should show transitive section (depth=2), not crash
+        assert "Transitive impact (depth=2)" in result
+
+    async def test_affected_files_summary(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1, "handler", kind="function", file_path="src/api.py", repository_id=1
+        )
+        client.add_reference(1, "src/router.py", 5, "call", "handler()")
+        client.add_reference(1, "tests/test_api.py", 10, "call", "handler()")
+
+        result = await get_change_impact.handle(
+            client, {"name": "handler", "repository": "my-repo"}
+        )
+
+        assert "Affected files summary:" in result
+        assert "Source (1): src/router.py" in result
+        assert "Tests  (1): tests/test_api.py" in result
 
 
 # --- server creation ---

@@ -300,12 +300,13 @@ class FakeInxr2Client(Inxr2Client):
             if sym_repo_id is not None:
                 matches = [s for s in matches if s["repository_id"] == int(sym_repo_id)]
             total = len(matches)
-            matches = matches[:limit]
+            offset = int(params.get("offset", 0))
+            matches = matches[offset : offset + limit]
             return {
                 "items": matches,
                 "total": total,
                 "limit": limit,
-                "offset": 0,
+                "offset": offset,
             }
 
         # GET /api/search/text
