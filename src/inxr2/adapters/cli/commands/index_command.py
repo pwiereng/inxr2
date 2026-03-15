@@ -340,6 +340,7 @@ async def _run_full_index_async(
                 post_commit_callback=flush_and_expunge,
                 dependency_parser=dep_parser,
                 dependency_repo=dep_repo,
+                file_rename_repo=repos.file_rename_repo,
             )
 
             # Get repository info for display

@@ -42,6 +42,15 @@ class RepositoryInfo:
 
 
 @dataclass(frozen=True)
+class RenameInfo:
+    """A file rename detected in a commit."""
+
+    old_path: str
+    new_path: str
+    similarity: int  # 0-100 rename similarity score
+
+
+@dataclass(frozen=True)
 class BlameLineInfo:
     """Blame information for a single line of a file."""
 
@@ -235,6 +244,25 @@ class GitServicePort(ABC):
             CommitNotFound: If the commit hash cannot be resolved.
             GitOperationError: If the git operation fails.
             FileNotFoundError: If file doesn't exist at commit.
+            InvalidRepositoryPath: If the path is not a valid git repository.
+        """
+        ...
+
+    @abstractmethod
+    def get_file_renames_in_commit(
+        self, repo_path: Path, commit_hash: str
+    ) -> list[RenameInfo]:
+        """Get file renames detected in a single commit (vs its parent).
+
+        Uses git's rename detection (similarity-based) to identify files
+        that were renamed in this commit.
+
+        Returns:
+            List of RenameInfo with old_path, new_path, and similarity score.
+
+        Raises:
+            CommitNotFound: If the commit hash cannot be resolved.
+            GitOperationError: If the git operation fails.
             InvalidRepositoryPath: If the path is not a valid git repository.
         """
         ...

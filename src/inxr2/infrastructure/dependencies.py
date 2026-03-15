@@ -31,6 +31,9 @@ from ..adapters.persistence.repositories.dependency_adapter import (
     PostgresDependencyRepository,
 )
 from ..adapters.persistence.repositories.file_adapter import PostgresFileRepository
+from ..adapters.persistence.repositories.file_rename_adapter import (
+    PostgresFileRenameRepository,
+)
 from ..adapters.persistence.repositories.file_search_adapter import (
     PostgresFileSearchRepository,
 )
@@ -54,6 +57,7 @@ from ..adapters.persistence.repositories.text_content_adapter import (
 from ..application.ports.repositories import (
     CommitRepositoryPort,
     DependencyRepositoryPort,
+    FileRenameRepositoryPort,
     FileRepositoryPort,
     FileSearchPort,
     FileVersionPort,
@@ -162,6 +166,11 @@ def get_text_content_adapter(session: DbSession) -> TextContentRepositoryPort:
     return PostgresTextContentRepository(session)
 
 
+def get_file_rename_adapter(session: DbSession) -> FileRenameRepositoryPort:
+    """Provide file rename repository adapter."""
+    return PostgresFileRenameRepository(session)
+
+
 def get_text_search(session: DbSession) -> TextSearchPort:
     """Provide text search service."""
     return PostgresTextSearch(session)
@@ -171,6 +180,9 @@ def get_text_search(session: DbSession) -> TextSearchPort:
 RepositoryAdapter = Annotated[RepositoryPort, Depends(get_repository_adapter)]
 CommitAdapter = Annotated[CommitRepositoryPort, Depends(get_commit_adapter)]
 DependencyAdapter = Annotated[DependencyRepositoryPort, Depends(get_dependency_adapter)]
+FileRenameAdapter = Annotated[
+    FileRenameRepositoryPort, Depends(get_file_rename_adapter)
+]
 FileAdapter = Annotated[FileRepositoryPort, Depends(get_file_adapter)]
 FileSearchAdapter = Annotated[FileSearchPort, Depends(get_file_search_adapter)]
 FileVersionAdapter = Annotated[FileVersionPort, Depends(get_file_version_adapter)]

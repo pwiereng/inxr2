@@ -17,6 +17,7 @@ from .git_service import (
     ChangedFiles,
     CommitInfo,
     GitServicePort,
+    RenameInfo,
     RepositoryInfo,
 )
 from .indexing_orchestrator import IndexingOrchestratorPort, ProgressCallback
@@ -36,6 +37,7 @@ __all__ = [
     "ParserServicePort",
     "PlaintextParserPort",
     "ProgressCallback",
+    "RenameInfo",
     "RepositoryInfo",
     "TextSearchPort",
     "TextSearchQuery",

@@ -12,12 +12,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from inxr2.domain.entities import Commit, TextContent
+from inxr2.domain.entities import Commit, FileRename, TextContent
 from inxr2.domain.services.file_filter import FileFilter
 from inxr2.domain.value_objects import CommitHash, TextSearchSourceType
 
 from ...ports.repositories import (
     CommitRepositoryPort,
+    FileRenameRepositoryPort,
     FileRepositoryPort,
     TextContentRepositoryPort,
 )
@@ -63,6 +64,7 @@ class ProcessCommitResult:
     docstrings_indexed: int = 0
     commit_messages_indexed: int = 0
     dependencies_found: int = 0
+    renames_found: int = 0
     non_code_files_indexed: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -91,12 +93,14 @@ class ProcessCommitUseCase:
         git_service: GitServicePort,
         text_content_repo: TextContentRepositoryPort,
         process_file_use_case: ProcessFileUseCase,
+        file_rename_repo: FileRenameRepositoryPort | None = None,
     ) -> None:
         self._commit_repo = commit_repo
         self._file_repo = file_repo
         self._git_service = git_service
         self._text_content_repo = text_content_repo
         self._process_file_use_case = process_file_use_case
+        self._file_rename_repo = file_rename_repo
 
     async def execute(
         self,
@@ -220,6 +224,16 @@ class ProcessCommitUseCase:
         if progress_callback and files_seen == 0 and result.files_skipped > 0:
             progress_callback(result)
 
+        # Detect and store file renames
+        if self._file_rename_repo is not None:
+            await self._detect_renames(
+                repository_id=request.repository_id,
+                commit_id=commit_id,
+                commit_hash=request.commit_data.hash,
+                repo_path=request.repo_path,
+                result=result,
+            )
+
         # Bulk-link all file versions to this commit
         if file_ids:
             await self._file_repo.link_files_to_commit(file_ids, commit_id)
@@ -250,6 +264,39 @@ class ProcessCommitUseCase:
             result.non_code_files_indexed += 1
         if file_result.error:
             result.errors.append(file_result.error)
+
+    async def _detect_renames(
+        self,
+        repository_id: int,
+        commit_id: int,
+        commit_hash: str,
+        repo_path: Path,
+        result: ProcessCommitResult,
+    ) -> None:
+        """Detect file renames in a commit and store them."""
+        assert self._file_rename_repo is not None
+        try:
+            rename_infos = self._git_service.get_file_renames_in_commit(
+                repo_path=repo_path,
+                commit_hash=commit_hash,
+            )
+            if rename_infos:
+                renames = [
+                    FileRename(
+                        repository_id=repository_id,
+                        commit_id=commit_id,
+                        old_path=ri.old_path,
+                        new_path=ri.new_path,
+                        similarity=ri.similarity,
+                    )
+                    for ri in rename_infos
+                ]
+                await self._file_rename_repo.save_renames(renames)
+                result.renames_found += len(renames)
+        except (OSError, RuntimeError) as e:
+            result.errors.append(
+                f"Failed to detect renames for commit {commit_hash}: {e}"
+            )
 
     async def _index_commit_message(
         self,

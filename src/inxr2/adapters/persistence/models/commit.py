@@ -17,6 +17,7 @@ from .base import Base
 if TYPE_CHECKING:
     from .branch_commit import BranchCommitModel
     from .commit_file import CommitFileModel
+    from .file_rename import FileRenameModel
     from .repository import RepositoryModel
     from .text_content import TextContentModel
 
@@ -66,6 +67,9 @@ class CommitModel(Base):
     )
     text_contents: Mapped[list["TextContentModel"]] = relationship(
         "TextContentModel", back_populates="commit", cascade="all, delete-orphan"
+    )
+    file_renames: Mapped[list["FileRenameModel"]] = relationship(
+        "FileRenameModel", back_populates="commit", cascade="all, delete-orphan"
     )
 
     @property

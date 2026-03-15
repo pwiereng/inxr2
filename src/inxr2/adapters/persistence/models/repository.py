@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from .commit import CommitModel
     from .dependency import DependencyModel
     from .file import FileModel
+    from .file_rename import FileRenameModel
     from .index_status import IndexStatusModel
     from .reference import ReferenceModel
     from .symbol import SymbolModel
@@ -61,6 +62,9 @@ class RepositoryModel(Base, TimestampMixin):
     )
     dependencies: Mapped[list["DependencyModel"]] = relationship(
         "DependencyModel", back_populates="repository", cascade="all, delete-orphan"
+    )
+    file_renames: Mapped[list["FileRenameModel"]] = relationship(
+        "FileRenameModel", back_populates="repository", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

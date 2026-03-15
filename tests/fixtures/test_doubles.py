@@ -41,6 +41,7 @@ from typing import Any, BinaryIO
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
     DependencyRepositoryPort,
+    FileRenameRepositoryPort,
     FileRepositoryPort,
     FileSearchPort,
     FileVersionPort,
@@ -59,6 +60,7 @@ from inxr2.application.ports.services import (
     GitServicePort,
     ParserServicePort,
     PlaintextParserPort,
+    RenameInfo,
     RepositoryInfo,
     TextSearchPort,
     TextSearchQuery,
@@ -68,6 +70,7 @@ from inxr2.domain.entities import (
     Commit,
     Dependency,
     File,
+    FileRename,
     IndexStatus,
     Reference,
     Repository,
@@ -2556,6 +2559,7 @@ class FakeGitService(GitServicePort):
                 deleted=[],
             ),
         }
+        self.renames_in_commit: dict[str, list[RenameInfo]] = {}
         self._file_contents: dict[tuple[str, str, str], str] = {}
         self._tags: dict[str, list[str]] = {}
         # Tracking for test verification
@@ -2634,6 +2638,11 @@ class FakeGitService(GitServicePort):
             commit_hash,
             ChangedFiles(added=[], modified=[], deleted=[]),
         )
+
+    def get_file_renames_in_commit(
+        self, repo_path: Path, commit_hash: str
+    ) -> list[RenameInfo]:
+        return self.renames_in_commit.get(commit_hash, [])
 
     def get_file_content(
         self, repo_path: Path, commit_hash: str, file_path: str
@@ -3213,6 +3222,80 @@ class InMemoryDependencyRepository(DependencyRepositoryPort):
     def count(self) -> int:
         """Return total stored dependencies."""
         return len(self._dependencies)
+
+
+class InMemoryFileRenameRepository(FileRenameRepositoryPort):
+    """
+    In-memory fake for FileRenameRepositoryPort.
+
+    Stores file renames in a dict keyed by ID.
+    """
+
+    def __init__(self) -> None:
+        self._renames: dict[int, FileRename] = {}
+        self._next_id = 1
+
+    async def save_renames(self, renames: list[FileRename]) -> list[FileRename]:
+        """Bulk save file renames."""
+        saved: list[FileRename] = []
+        for r in renames:
+            new_id = self._next_id
+            self._next_id += 1
+            saved_rename = FileRename(
+                id=new_id,
+                repository_id=r.repository_id,
+                commit_id=r.commit_id,
+                old_path=r.old_path,
+                new_path=r.new_path,
+                similarity=r.similarity,
+                indexed_at=r.indexed_at or datetime(2024, 1, 1),
+            )
+            self._renames[new_id] = saved_rename
+            saved.append(saved_rename)
+        return saved
+
+    async def get_renames_for_commit(self, commit_id: int) -> list[FileRename]:
+        """Get all file renames in a specific commit."""
+        return sorted(
+            [r for r in self._renames.values() if r.commit_id == commit_id],
+            key=lambda r: r.old_path,
+        )
+
+    async def get_file_history(
+        self,
+        repository_id: int,
+        file_path: str,
+        branch: str | None = None,
+    ) -> list[FileRename]:
+        """Get rename history for a file path.
+
+        Note: branch filtering is not implemented in the fake (would require
+        access to commit-branch junction data). Returns all matching renames.
+        """
+        return sorted(
+            [
+                r
+                for r in self._renames.values()
+                if r.repository_id == repository_id
+                and (r.old_path == file_path or r.new_path == file_path)
+            ],
+            key=lambda r: r.id or 0,
+        )
+
+    async def count_by_repository(self, repository_id: int) -> int:
+        """Count total file renames in a repository."""
+        return sum(
+            1 for r in self._renames.values() if r.repository_id == repository_id
+        )
+
+    async def delete_by_repository(self, repository_id: int) -> int:
+        """Delete all file renames for a repository."""
+        to_delete = [
+            rid for rid, r in self._renames.items() if r.repository_id == repository_id
+        ]
+        for rid in to_delete:
+            del self._renames[rid]
+        return len(to_delete)
 
 
 # ============================================================================
