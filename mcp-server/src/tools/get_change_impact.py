@@ -72,7 +72,7 @@ _SYM_MAX_TOTAL = 10000
 
 def _classify_file(path: str) -> str:
     """Classify a file as 'test', 'config', or 'source'."""
-    lower = path.lower()
+    lower = "/" + path.lower()  # leading slash so "/tests/" matches "tests/foo.py"
     for pattern in _TEST_PATTERNS:
         if pattern in lower:
             return "test"

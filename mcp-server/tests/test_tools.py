@@ -1077,6 +1077,23 @@ class TestGetChangeImpact:
         assert "tests/test_app.py" in result
         assert "Tests  (1):" in result
 
+    async def test_classifies_top_level_tests_directory(self) -> None:
+        """tests/conftest.py must classify as test, not source (leading-slash bug)."""
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1, "my_func", kind="function", file_path="src/lib.py", repository_id=1
+        )
+        client.add_reference(1, "tests/conftest.py", 5, "usage", "my_func")
+        client.add_reference(1, "tests/helpers.py", 10, "usage", "my_func")
+
+        result = await get_change_impact.handle(
+            client, {"name": "my_func", "repository": "my-repo"}
+        )
+
+        assert "Test files (2):" in result
+        assert "Source files" not in result
+
     async def test_classifies_config_files(self) -> None:
         client = FakeInxr2Client()
         client.add_repository(1, "my-repo")
