@@ -11,7 +11,6 @@ _SKIP_DIRECTORIES: set[str] = {
     "build",
     "third_party",
     "3rdparty",
-    "external",
     "bower_components",
 }
 

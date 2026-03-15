@@ -19,10 +19,13 @@ from inxr2.adapters.persistence.repositories.commit_adapter import (
     PostgresCommitRepository,
 )
 from inxr2.adapters.persistence.repositories.file_adapter import PostgresFileRepository
+from inxr2.adapters.persistence.repositories.file_rename_adapter import (
+    PostgresFileRenameRepository,
+)
 from inxr2.adapters.persistence.repositories.repository_adapter import (
     PostgresRepositoryAdapter,
 )
-from inxr2.domain.entities import Commit, File, Repository
+from inxr2.domain.entities import Commit, File, FileRename, Repository
 from inxr2.domain.value_objects import CommitHash
 from inxr2.infrastructure.fastapi.app import create_app
 
@@ -2477,3 +2480,491 @@ class TestFileSearchAPI:
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+class TestRenamesResolvePathAPI:
+    """Tests for GET /api/renames/resolve-path endpoint."""
+
+    async def _setup_repo_and_commits(
+        self,
+        db_session: AsyncSession,
+        repo_name: str,
+    ) -> tuple[Repository, Commit, Commit, Commit]:
+        """Create repo and three commits with increasing dates."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repo = await repo_adapter.save(
+            Repository(name=repo_name, url=f"https://github.com/test/{repo_name}.git")
+        )
+        assert repo.id is not None
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit_a = await commit_adapter.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=make_test_commit_hash(f"{repo_name}-a"),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        commit_b = await commit_adapter.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=make_test_commit_hash(f"{repo_name}-b"),
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+            )
+        )
+        commit_c = await commit_adapter.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=make_test_commit_hash(f"{repo_name}-c"),
+                author_date=datetime(2025, 1, 3),
+                commit_date=datetime(2025, 1, 3),
+            )
+        )
+        return repo, commit_a, commit_b, commit_c
+
+    async def test_file_found_at_commit_returns_found_true(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
+        """File exists at path+commit → found: True."""
+        repo, commit_a, _, _ = await self._setup_repo_and_commits(
+            db_session, "resolve-found"
+        )
+        assert repo.id is not None
+        assert commit_a.id is not None
+
+        file_adapter = PostgresFileRepository(db_session)
+        file = await file_adapter.save(
+            File(
+                repository_id=repo.id,
+                path="src/foo.py",
+                content_hash="a" * 40,
+                size_bytes=100,
+                language="python",
+                line_count=10,
+            )
+        )
+        assert file.id is not None
+        await file_adapter.link_files_to_commit([file.id], commit_a.id)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/renames/resolve-path",
+                params={
+                    "repo": repo.name,
+                    "path": "src/foo.py",
+                    "commit": commit_a.commit_hash.value,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["found"] is True
+        assert data["resolved_path"] is None
+
+    async def test_renamed_from_backward_in_time(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
+        """File at commit A browsed under its future name (new.py) → renamed_from old.py."""
+        repo, commit_a, commit_b, _ = await self._setup_repo_and_commits(
+            db_session, "resolve-backward"
+        )
+        assert repo.id is not None
+        assert commit_a.id is not None
+        assert commit_b.id is not None
+
+        # old.py exists at commit A (before the rename at commit B)
+        file_adapter = PostgresFileRepository(db_session)
+        old_file = await file_adapter.save(
+            File(
+                repository_id=repo.id,
+                path="src/old.py",
+                content_hash="b" * 40,
+                size_bytes=200,
+                language="python",
+                line_count=20,
+            )
+        )
+        assert old_file.id is not None
+        await file_adapter.link_files_to_commit([old_file.id], commit_a.id)
+
+        # Rename record: old.py → new.py at commit B (date: 2025-01-02)
+        rename_adapter = PostgresFileRenameRepository(db_session)
+        await rename_adapter.save_renames(
+            [
+                FileRename(
+                    repository_id=repo.id,
+                    commit_id=commit_b.id,
+                    old_path="src/old.py",
+                    new_path="src/new.py",
+                    similarity=100,
+                )
+            ]
+        )
+
+        # Browse new.py at commit A (before rename)
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/renames/resolve-path",
+                params={
+                    "repo": repo.name,
+                    "path": "src/new.py",
+                    "commit": commit_a.commit_hash.value,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["found"] is False
+        assert data["resolved_path"] == "src/old.py"
+        assert data["renamed_from"] == "src/old.py"
+        assert data["renamed_to"] is None
+        assert data["rename_commit_hash"] is not None
+
+    async def test_renamed_to_forward_in_time(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
+        """File at commit C browsed under its old name (old.py) → renamed_to new.py."""
+        repo, _, commit_b, commit_c = await self._setup_repo_and_commits(
+            db_session, "resolve-forward"
+        )
+        assert repo.id is not None
+        assert commit_b.id is not None
+        assert commit_c.id is not None
+
+        # new.py exists at commit C (after the rename at commit B)
+        file_adapter = PostgresFileRepository(db_session)
+        new_file = await file_adapter.save(
+            File(
+                repository_id=repo.id,
+                path="src/new.py",
+                content_hash="c" * 40,
+                size_bytes=300,
+                language="python",
+                line_count=30,
+            )
+        )
+        assert new_file.id is not None
+        await file_adapter.link_files_to_commit([new_file.id], commit_c.id)
+
+        # Rename record: old.py → new.py at commit B (date: 2025-01-02)
+        rename_adapter = PostgresFileRenameRepository(db_session)
+        await rename_adapter.save_renames(
+            [
+                FileRename(
+                    repository_id=repo.id,
+                    commit_id=commit_b.id,
+                    old_path="src/old.py",
+                    new_path="src/new.py",
+                    similarity=100,
+                )
+            ]
+        )
+
+        # Browse old.py at commit C (after rename)
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/renames/resolve-path",
+                params={
+                    "repo": repo.name,
+                    "path": "src/old.py",
+                    "commit": commit_c.commit_hash.value,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["found"] is False
+        assert data["resolved_path"] == "src/new.py"
+        assert data["renamed_to"] == "src/new.py"
+        assert data["renamed_from"] is None
+        assert data["rename_commit_hash"] is not None
+
+    async def test_no_rename_returns_not_found(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
+        """File doesn't exist and no rename record → found: False, resolved_path: None."""
+        repo, commit_a, _, _ = await self._setup_repo_and_commits(
+            db_session, "resolve-no-rename"
+        )
+        assert repo.id is not None
+
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/renames/resolve-path",
+                params={
+                    "repo": repo.name,
+                    "path": "src/ghost.py",
+                    "commit": commit_a.commit_hash.value,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["found"] is False
+        assert data["resolved_path"] is None
+
+    async def test_multi_hop_rename_chain(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
+        """A→B→C renames: browsing A at commit after both renames resolves to C."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repo = await repo_adapter.save(
+            Repository(
+                name="resolve-multihop",
+                url="https://github.com/test/resolve-multihop.git",
+            )
+        )
+        assert repo.id is not None
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit_initial = await commit_adapter.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=make_test_commit_hash("multihop-init"),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        commit_rename1 = await commit_adapter.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=make_test_commit_hash("multihop-r1"),
+                author_date=datetime(2025, 1, 2),
+                commit_date=datetime(2025, 1, 2),
+            )
+        )
+        commit_rename2 = await commit_adapter.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=make_test_commit_hash("multihop-r2"),
+                author_date=datetime(2025, 1, 3),
+                commit_date=datetime(2025, 1, 3),
+            )
+        )
+        commit_final = await commit_adapter.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=make_test_commit_hash("multihop-fin"),
+                author_date=datetime(2025, 1, 4),
+                commit_date=datetime(2025, 1, 4),
+            )
+        )
+        assert commit_initial.id is not None
+        assert commit_rename1.id is not None
+        assert commit_rename2.id is not None
+        assert commit_final.id is not None
+
+        # c.py exists at commit_final (after both renames)
+        file_adapter = PostgresFileRepository(db_session)
+        c_file = await file_adapter.save(
+            File(
+                repository_id=repo.id,
+                path="src/c.py",
+                content_hash="d" * 40,
+                size_bytes=100,
+                language="python",
+                line_count=10,
+            )
+        )
+        assert c_file.id is not None
+        await file_adapter.link_files_to_commit([c_file.id], commit_final.id)
+
+        # a.py existed at commit_initial
+        a_file = await file_adapter.save(
+            File(
+                repository_id=repo.id,
+                path="src/a.py",
+                content_hash="e" * 40,
+                size_bytes=100,
+                language="python",
+                line_count=10,
+            )
+        )
+        assert a_file.id is not None
+        await file_adapter.link_files_to_commit([a_file.id], commit_initial.id)
+
+        # Renames: a.py → b.py at commit_rename1, b.py → c.py at commit_rename2
+        rename_adapter = PostgresFileRenameRepository(db_session)
+        await rename_adapter.save_renames(
+            [
+                FileRename(
+                    repository_id=repo.id,
+                    commit_id=commit_rename1.id,
+                    old_path="src/a.py",
+                    new_path="src/b.py",
+                    similarity=95,
+                ),
+                FileRename(
+                    repository_id=repo.id,
+                    commit_id=commit_rename2.id,
+                    old_path="src/b.py",
+                    new_path="src/c.py",
+                    similarity=95,
+                ),
+            ]
+        )
+
+        # Browse src/a.py at commit_final → should follow a→b→c, resolve to c.py
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/renames/resolve-path",
+                params={
+                    "repo": repo.name,
+                    "path": "src/a.py",
+                    "commit": commit_final.commit_hash.value,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["found"] is False
+        assert data["resolved_path"] == "src/c.py"
+        assert data["renamed_to"] == "src/b.py"  # first hop direction
+        assert data["renamed_from"] is None
+
+    async def test_repo_not_found_returns_404(self, test_app: FastAPI) -> None:
+        """Non-existent repo → 404."""
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/renames/resolve-path",
+                params={
+                    "repo": "nonexistent-repo",
+                    "path": "src/foo.py",
+                    "commit": "a" * 40,
+                },
+            )
+        assert response.status_code == 404
+
+    async def test_rename_resolved_regardless_of_commit_timestamp_order(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
+        """Regression: rename resolved correctly even when timestamps are misleading.
+
+        Simulates a non-linear history (diverging branches) where the rename
+        commit has an earlier clock time than the target commit, yet the target
+        commit is genealogically before the rename.  The old date-based logic
+        compared timestamps and failed to find the rename in this case.
+        The existence-check approach is immune to this: it simply checks whether
+        the candidate path exists at the target commit, regardless of dates.
+        """
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repo = await repo_adapter.save(
+            Repository(
+                name="resolve-nonlinear",
+                url="https://github.com/test/resolve-nonlinear.git",
+            )
+        )
+        assert repo.id is not None
+
+        commit_adapter = PostgresCommitRepository(db_session)
+        # target commit has a LATER timestamp than the rename commit —
+        # simulating a diverging branch where clocks don't reflect ancestry.
+        commit_target = await commit_adapter.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=make_test_commit_hash("nonlinear-target"),
+                author_date=datetime(2025, 6, 15),  # later clock time
+                commit_date=datetime(2025, 6, 15),
+            )
+        )
+        commit_rename = await commit_adapter.save(
+            Commit(
+                repository_id=repo.id,
+                commit_hash=make_test_commit_hash("nonlinear-rename"),
+                author_date=datetime(
+                    2025, 1, 1
+                ),  # earlier clock time, but genealogically after
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        assert commit_target.id is not None
+        assert commit_rename.id is not None
+
+        # old.py exists at commit_target (genealogically before the rename)
+        file_adapter = PostgresFileRepository(db_session)
+        old_file = await file_adapter.save(
+            File(
+                repository_id=repo.id,
+                path="src/old.py",
+                content_hash="f" * 40,
+                size_bytes=100,
+                language="python",
+                line_count=10,
+            )
+        )
+        assert old_file.id is not None
+        await file_adapter.link_files_to_commit([old_file.id], commit_target.id)
+
+        # Rename: old.py → new.py at commit_rename
+        rename_adapter = PostgresFileRenameRepository(db_session)
+        await rename_adapter.save_renames(
+            [
+                FileRename(
+                    repository_id=repo.id,
+                    commit_id=commit_rename.id,
+                    old_path="src/old.py",
+                    new_path="src/new.py",
+                    similarity=100,
+                )
+            ]
+        )
+
+        # Browse new.py at commit_target — rename commit is older by clock but
+        # genealogically in the future, so old.py is the correct resolution.
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/renames/resolve-path",
+                params={
+                    "repo": repo.name,
+                    "path": "src/new.py",
+                    "commit": commit_target.commit_hash.value,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["found"] is False
+        assert data["resolved_path"] == "src/old.py"
+        assert data["renamed_from"] == "src/old.py"
+
+    async def test_commit_not_found_returns_404(
+        self, test_app: FastAPI, db_session: AsyncSession
+    ) -> None:
+        """Existing repo but unknown commit hash → 404."""
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        repo = await repo_adapter.save(
+            Repository(
+                name="resolve-commit-404",
+                url="https://github.com/test/resolve-commit-404.git",
+            )
+        )
+
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/renames/resolve-path",
+                params={
+                    "repo": repo.name,
+                    "path": "src/foo.py",
+                    "commit": "f" * 40,
+                },
+            )
+        assert response.status_code == 404

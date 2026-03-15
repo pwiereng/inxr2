@@ -67,8 +67,16 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
     urlState
   const { repository, treeNodes, fileContent, fileSymbols, fileReferences, rawContent } = dataState
   const { diffContent, diffSymbols, diffReferences, activePanel, treePanel, refPanel } = diffState
-  const { drawerOpen, refsPanelOpen, loading, treeLoading, fileLoading, diffLoading, error } =
-    uiState
+  const {
+    drawerOpen,
+    refsPanelOpen,
+    loading,
+    treeLoading,
+    fileLoading,
+    diffLoading,
+    error,
+    fileRenameInfo,
+  } = uiState
   const { selectedSymbol, isDirectDefinition, searchByName } = refsState
   const {
     comparisonCommit,
@@ -334,7 +342,11 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
         <Box sx={{ flex: 1 }} />
 
         {/* Back to root (show when in a subdirectory, viewing a file, or file-level error) */}
-        {(fileContent || rawContent || urlState.directoryPath || (error && filePath)) && (
+        {(fileContent ||
+          rawContent ||
+          urlState.directoryPath ||
+          (error && filePath) ||
+          (fileRenameInfo?.resolved_path && filePath)) && (
           <Tooltip title="Back to root">
             <IconButton size="small" aria-label="Back to root" onClick={actions.resetToFileTree}>
               <ArrowBackIcon fontSize="small" />
@@ -525,6 +537,43 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                 sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}
               >
                 <CircularProgress />
+              </Box>
+            ) : fileRenameInfo?.resolved_path && filePath ? (
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  flex: 1,
+                  p: 3,
+                  gap: 2,
+                }}
+              >
+                <Alert
+                  severity="info"
+                  sx={{ maxWidth: 500 }}
+                  action={
+                    <Button
+                      color="inherit"
+                      size="small"
+                      onClick={() => actions.navigateToFile(fileRenameInfo.resolved_path!)}
+                    >
+                      Go to file
+                    </Button>
+                  }
+                >
+                  {fileRenameInfo.renamed_from
+                    ? `In this commit, this file was at ${fileRenameInfo.resolved_path}`
+                    : `This file was renamed to ${fileRenameInfo.resolved_path}`}
+                </Alert>
+                <Button
+                  variant="outlined"
+                  startIcon={<ArrowBackIcon />}
+                  onClick={actions.resetToFileTree}
+                >
+                  Back to file browser
+                </Button>
               </Box>
             ) : error && filePath ? (
               <Box

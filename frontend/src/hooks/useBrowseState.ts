@@ -209,6 +209,7 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
     fileLoading: dataResult.fileLoading,
     diffLoading: diffResult.diffLoading,
     error: dataResult.error,
+    fileRenameInfo: dataResult.fileRenameInfo,
     searchQuery: urlResult.urlState.searchQuery,
   }
 

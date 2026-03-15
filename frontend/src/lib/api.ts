@@ -215,12 +215,22 @@ export interface FileBlameResponse {
   total: number
 }
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 // API functions
 async function fetchApi<T>(endpoint: string): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`)
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new Error(error.detail || `HTTP ${response.status}`)
+    throw new ApiError(error.detail || `HTTP ${response.status}`, response.status)
   }
   return response.json()
 }
@@ -748,4 +758,23 @@ export async function getRepositoryDependencies(
   return fetchApi<DependenciesListResponse>(
     `/repositories/by-name/${encodeURIComponent(repoName)}/dependencies${query ? `?${query}` : ''}`
   )
+}
+
+export interface ResolvePathResult {
+  found: boolean
+  resolved_path: string | null
+  renamed_from: string | null
+  renamed_to: string | null
+  rename_commit_hash: string | null
+}
+
+export async function resolveFilePath(
+  repo: string,
+  path: string,
+  commit: string,
+  branch?: string
+): Promise<ResolvePathResult> {
+  const params = new URLSearchParams({ repo, path, commit })
+  if (branch) params.set('branch', branch)
+  return fetchApi<ResolvePathResult>(`/renames/resolve-path?${params}`)
 }

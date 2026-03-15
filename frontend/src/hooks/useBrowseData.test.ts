@@ -4,6 +4,7 @@ import { useBrowseData } from './useBrowseData'
 import type { UseBrowseDataParams, UseBrowseDataResult } from './useBrowseData'
 import type { BrowseUrlState } from './useBrowseTypes'
 import * as api from '@/lib/api'
+import { ApiError } from '@/lib/api'
 
 /**
  * Render useBrowseData wrapped in act() so all async mount effects settle
@@ -21,17 +22,22 @@ async function renderBrowseDataHook(
 }
 
 // Mock the API module
-vi.mock('@/lib/api', () => ({
-  getRepositories: vi.fn(),
-  getRepositoryByName: vi.fn(),
-  getRepositoryTreeByName: vi.fn(),
-  getCommits: vi.fn(),
-  getFileContentByPathAtCommit: vi.fn(),
-  getFileSymbolsByPath: vi.fn(),
-  getFileReferencesByPath: vi.fn(),
-  getFileRawContent: vi.fn(),
-  getFileHistory: vi.fn(),
-}))
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof api>()
+  return {
+    ...actual,
+    getRepositories: vi.fn(),
+    getRepositoryByName: vi.fn(),
+    getRepositoryTreeByName: vi.fn(),
+    getCommits: vi.fn(),
+    getFileContentByPathAtCommit: vi.fn(),
+    getFileSymbolsByPath: vi.fn(),
+    getFileReferencesByPath: vi.fn(),
+    getFileRawContent: vi.fn(),
+    getFileHistory: vi.fn(),
+    resolveFilePath: vi.fn(),
+  }
+})
 
 // Mock fileUtils
 vi.mock('@/lib/fileUtils', () => ({
@@ -46,6 +52,7 @@ const mockGetFileHistory = vi.mocked(api.getFileHistory)
 const mockGetFileContentByPathAtCommit = vi.mocked(api.getFileContentByPathAtCommit)
 const mockGetFileSymbolsByPath = vi.mocked(api.getFileSymbolsByPath)
 const mockGetFileReferencesByPath = vi.mocked(api.getFileReferencesByPath)
+const mockResolveFilePath = vi.mocked(api.resolveFilePath)
 
 function makeUrlState(overrides: Partial<BrowseUrlState> = {}): BrowseUrlState {
   return {
@@ -118,6 +125,13 @@ describe('useBrowseData', () => {
       file_id: 1,
       file_path: 'src/main.py',
       total: 0,
+    })
+    mockResolveFilePath.mockResolvedValue({
+      found: false,
+      resolved_path: null,
+      renamed_from: null,
+      renamed_to: null,
+      rename_commit_hash: null,
     })
   })
 
@@ -300,6 +314,59 @@ describe('useBrowseData', () => {
       // Key assertion: only ONE fetch should have been made (the initial one)
       expect(mockGetFileContentByPathAtCommit).toHaveBeenCalledTimes(1)
       expect(hookResult!.result.current.fileContent).toBe(fileContentObj)
+    })
+  })
+
+  describe('rename banner (#240)', () => {
+    it('sets fileRenameInfo and clears stale content when file returns 404 and rename is found', async () => {
+      // Browsing a renamed file at an old commit: getFileContentByPathAtCommit
+      // returns 404, resolveFilePath finds the old path.
+      const renameInfo = {
+        found: false,
+        resolved_path: 'src/old.py',
+        renamed_from: 'src/old.py',
+        renamed_to: null,
+        rename_commit_hash: 'abc123',
+      }
+      mockGetFileContentByPathAtCommit.mockRejectedValue(new ApiError('Not Found', 404))
+      mockResolveFilePath.mockResolvedValue(renameInfo)
+
+      const urlState = makeUrlState({
+        filePath: 'src/new.py',
+        selectedCommit: 'commit-before-rename',
+        selectedBranch: 'main',
+      })
+      const { result } = await renderBrowseDataHook(makeParams(urlState))
+
+      await vi.waitFor(() => {
+        expect(result.current.fileRenameInfo).toEqual(renameInfo)
+      })
+      // Stale content must be cleared
+      expect(result.current.fileContent).toBeNull()
+      expect(result.current.fileSymbols).toEqual([])
+      expect(result.current.fileReferences).toEqual([])
+      // No error shown — banner replaces it
+      expect(result.current.error).toBeNull()
+      // resolveFilePath called with branch
+      expect(mockResolveFilePath).toHaveBeenCalledWith(
+        'test-repo',
+        'src/new.py',
+        'commit-before-rename',
+        'main'
+      )
+    })
+
+    it('does not call resolveFilePath for non-404 errors', async () => {
+      mockGetFileContentByPathAtCommit.mockRejectedValue(new ApiError('Internal Server Error', 500))
+
+      const urlState = makeUrlState({ selectedCommit: 'some-commit' })
+      const { result } = await renderBrowseDataHook(makeParams(urlState))
+
+      await vi.waitFor(() => {
+        expect(result.current.error).not.toBeNull()
+      })
+      expect(mockResolveFilePath).not.toHaveBeenCalled()
+      expect(result.current.fileRenameInfo).toBeNull()
     })
   })
 })

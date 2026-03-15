@@ -888,7 +888,7 @@ class GitService(GitServicePort):
 
         parent = commit.parents[0]
         try:
-            diff = parent.diff(commit, R=True)
+            diff = parent.diff(commit)
         except GitCommandError as e:
             raise GitOperationError("get_file_renames_in_commit", str(e)) from e
 

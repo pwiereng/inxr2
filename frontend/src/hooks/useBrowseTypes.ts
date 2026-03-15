@@ -12,9 +12,12 @@ import type {
   FileVersion,
   RawFileContent,
   Repository,
+  ResolvePathResult,
   Symbol,
   TreeNode,
 } from '@/lib/api'
+
+export type { ResolvePathResult }
 
 /**
  * State derived from URL parameters for bookmarkability.
@@ -76,6 +79,7 @@ export interface BrowseUIState {
   fileLoading: boolean
   diffLoading: boolean
   error: string | null
+  fileRenameInfo: ResolvePathResult | null
   searchQuery: string
 }
 
