@@ -46,6 +46,7 @@ class ProcessCommitRequest:
     blob_to_content_hash: dict[str, str] | None = None
     # Pre-loaded once by orchestrator, shared across all commits.
     file_version_index: dict[tuple[str, str], int] | None = None
+    exclude_paths: tuple[str, ...] = ()
 
 
 @dataclass
@@ -196,8 +197,10 @@ class ProcessCommitUseCase:
         file_ids: list[int] = []
         files_seen = 0
         for file_path_str, blob_hash in files_with_hashes.items():
-            # Skip vendor/minified/bundled files
-            if FileFilter.should_skip(file_path_str):
+            # Skip minified/bundled files and user-configured excluded directories
+            if FileFilter.should_skip(
+                file_path_str, exclude_paths=request.exclude_paths
+            ):
                 result.files_skipped += 1
                 continue
 

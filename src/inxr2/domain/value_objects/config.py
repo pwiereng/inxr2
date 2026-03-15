@@ -17,6 +17,7 @@ class RepositoryConfig:
     url: str | None = None
     branches: tuple[str, ...] = ("main",)
     exclude_patterns: tuple[str, ...] = ()
+    exclude_paths: tuple[str, ...] = ()
     days: int | None = None
 
     def get_resolved_path(self) -> Path | None:
@@ -31,7 +32,6 @@ class IndexingConfig:
     """Configuration for indexing behavior."""
 
     incremental: bool = True
-    max_commit_history: int = 1000
     batch_size: int = 100
 
 

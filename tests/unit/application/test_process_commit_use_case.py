@@ -372,19 +372,17 @@ class TestProcessCommitUseCase:
         assert len(commit_msgs[0].content.encode("utf-8")) <= MAX_TSVECTOR_CONTENT_BYTES
 
     @pytest.mark.asyncio
-    async def test_vendor_minified_files_skipped(
+    async def test_minified_files_always_skipped(
         self,
         use_case: ProcessCommitUseCase,
         git_service: FakeGitService,
         symbol_repo: InMemorySymbolRepository,
     ) -> None:
-        """Vendor and minified files should be skipped during indexing."""
+        """Minified/bundled files are always skipped regardless of exclude_paths."""
         git_service.files_in_commit["abc123"] = [
             "src/main.py",
-            "node_modules/express/index.js",
-            "vendor/jquery.js",
-            "dist/bundle.js",
             "lib/jquery.min.js",
+            "static/app.bundle.js",
         ]
 
         request = ProcessCommitRequest(
@@ -396,9 +394,66 @@ class TestProcessCommitUseCase:
 
         result = await use_case.execute(request)
 
-        # Only src/main.py should be processed; the other 4 are vendor/minified
+        # Only src/main.py processed; minified/bundled always skipped
         assert result.files_processed == 1
-        assert result.files_skipped == 4
+        assert result.files_skipped == 2
+
+    @pytest.mark.asyncio
+    async def test_exclude_paths_skips_matching_directories(
+        self,
+        use_case: ProcessCommitUseCase,
+        git_service: FakeGitService,
+        symbol_repo: InMemorySymbolRepository,
+    ) -> None:
+        """Files in excluded directories are skipped when exclude_paths is set."""
+        git_service.files_in_commit["abc123"] = [
+            "src/main.py",
+            "node_modules/express/index.js",
+            "vendor/jquery.js",
+            "dist/bundle.js",
+        ]
+
+        request = ProcessCommitRequest(
+            repository_id=1,
+            commit_data=_make_commit(),
+            repo_path=Path("/repos/test-repo"),
+            branch="main",
+            exclude_paths=("node_modules", "vendor", "dist"),
+        )
+
+        result = await use_case.execute(request)
+
+        # Only src/main.py should be processed; the other 3 match exclude_paths
+        assert result.files_processed == 1
+        assert result.files_skipped == 3
+
+    @pytest.mark.asyncio
+    async def test_without_exclude_paths_vendor_dirs_are_indexed(
+        self,
+        use_case: ProcessCommitUseCase,
+        git_service: FakeGitService,
+        symbol_repo: InMemorySymbolRepository,
+    ) -> None:
+        """Without exclude_paths, vendor/dist directories are indexed normally."""
+        git_service.files_in_commit["abc123"] = [
+            "src/main.py",
+            "vendor/jquery.js",
+            "dist/bundle.js",
+        ]
+
+        request = ProcessCommitRequest(
+            repository_id=1,
+            commit_data=_make_commit(),
+            repo_path=Path("/repos/test-repo"),
+            branch="main",
+            # no exclude_paths — vendor/dist are first-party committed code
+        )
+
+        result = await use_case.execute(request)
+
+        # All 3 files should be indexed (none match hardcoded excludes)
+        assert result.files_skipped == 0
+        assert result.files_processed == 3
 
     @pytest.mark.asyncio
     async def test_normal_files_not_skipped(

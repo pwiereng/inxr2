@@ -237,6 +237,7 @@ def run_full_index(
     days: int | None = None,
     base_branch: str | None = None,
     no_deps: bool = False,
+    exclude_paths: tuple[str, ...] = (),
 ) -> IndexingResult | None:
     """
     Run full snapshot indexing of a repository.
@@ -270,6 +271,7 @@ def run_full_index(
                 days=days,
                 base_branch=base_branch,
                 no_deps=no_deps,
+                exclude_paths=exclude_paths,
             )
         )
     except KeyboardInterrupt:
@@ -285,6 +287,7 @@ async def _run_full_index_async(
     days: int | None = None,
     base_branch: str | None = None,
     no_deps: bool = False,
+    exclude_paths: tuple[str, ...] = (),
 ) -> IndexingResult:
     """Async implementation of full indexing using the orchestrator."""
     from sqlalchemy import text
@@ -360,6 +363,7 @@ async def _run_full_index_async(
                 branch=current_branch,
                 days=days,
                 base_branch=base_branch,
+                exclude_paths=exclude_paths,
             )
 
             # Set up progress renderer

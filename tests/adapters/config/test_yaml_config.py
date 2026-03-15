@@ -42,7 +42,6 @@ repositories:
 
 indexing:
   incremental: true
-  max_commit_history: 500
 """
         config_path = temp_dir / "config.yaml"
         config_path.write_text(config_content)
@@ -55,7 +54,6 @@ indexing:
         assert config.repositories[0].path == str(temp_dir)
         assert config.repositories[0].branches == ("main",)
         assert config.indexing.incremental is True
-        assert config.indexing.max_commit_history == 500
 
     def test_load_config_with_defaults(
         self, config_service: YamlConfigService, temp_dir: Path
@@ -74,7 +72,6 @@ repositories:
         # Check defaults
         assert config.repositories[0].branches == ("main",)
         assert config.indexing.incremental is True
-        assert config.indexing.max_commit_history == 1000
         assert config.indexing.batch_size == 100
         assert config.server.host == "0.0.0.0"
         assert config.server.port == 8000
