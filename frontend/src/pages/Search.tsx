@@ -239,7 +239,9 @@ export default function Search(): React.ReactElement {
     // When a commit filter is set, also defer if repoNameParam is present but
     // selectedRepoId hasn't resolved yet (race: reposLoading=false but
     // repositories state hasn't propagated to derived selectedRepoId).
-    if (commitParam && repoNameParam && selectedRepoId === undefined) {
+    // Only defer while repositories haven't been populated yet — if repos are
+    // loaded but the name doesn't match, fall through and search unfiltered.
+    if (commitParam && repoNameParam && selectedRepoId === undefined && repositories.length === 0) {
       return
     }
 
