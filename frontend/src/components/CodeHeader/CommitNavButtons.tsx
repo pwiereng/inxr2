@@ -1,6 +1,7 @@
 import { IconButton, Tooltip } from '@mui/material'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import LastPageIcon from '@mui/icons-material/LastPage'
 import type { CommitInfo } from '@/lib/api'
 
 interface CommitNavButtonsProps {
@@ -43,6 +44,13 @@ export function CommitNavButtons({
     }
   }
 
+  const handleLatest = () => {
+    const latestCommit = commits[0]
+    if (latestCommit) {
+      onCommitChange(latestCommit.hash)
+    }
+  }
+
   return (
     <>
       <Tooltip title="Older commit">
@@ -68,6 +76,19 @@ export function CommitNavButtons({
             sx={{ p: 0.25, color: 'text.secondary' }}
           >
             <ChevronRightIcon fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Tooltip title="Go to latest">
+        <span>
+          <IconButton
+            size="small"
+            onClick={handleLatest}
+            disabled={!canGoNewer}
+            aria-label="Go to latest"
+            sx={{ p: 0.25, color: 'text.secondary' }}
+          >
+            <LastPageIcon fontSize="small" />
           </IconButton>
         </span>
       </Tooltip>
