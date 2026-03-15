@@ -5,6 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
+from ....application.use_cases.files import ResolveFileRequest
 from ....application.use_cases.symbols import (
     GetSymbolReferencesRequest,
     SearchSymbolsRequest,
@@ -12,9 +13,11 @@ from ....application.use_cases.symbols import (
 from ....infrastructure.dependencies import (
     FileAdapter,
     GetSymbolReferencesUseCaseDep,
+    ResolveFileUseCaseDep,
     SearchSymbolsUseCaseDep,
     SymbolAdapter,
 )
+from ..validation import validate_path, validate_repo_name
 from .search import _validate_extensions
 
 router = APIRouter(prefix="/symbols", tags=["symbols"])
@@ -224,6 +227,84 @@ async def get_symbols_by_name(
         total=result.total,
         limit=result.total,
         offset=0,
+    )
+
+
+class FileStructureSymbolResponse(BaseModel):
+    """Symbol entry in a file structure response."""
+
+    id: int
+    name: str
+    kind: str
+    start_line: int
+    end_line: int
+    signature: str | None = None
+    docstring: str | None = None
+    parent_symbol_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FileStructureResponse(BaseModel):
+    """File structure response: file metadata + flat symbol list."""
+
+    file_path: str
+    language: str | None
+    line_count: int | None
+    symbols: list[FileStructureSymbolResponse]
+
+
+@router.get("/file-structure", response_model=FileStructureResponse)
+async def get_file_structure(
+    repo: str,
+    path: str,
+    resolve_file_use_case: ResolveFileUseCaseDep,
+    symbol_adapter: SymbolAdapter,
+    branch: str | None = None,
+    commit: str | None = None,
+) -> FileStructureResponse:
+    """
+    Get the symbol structure of a file.
+
+    Returns file metadata and a flat list of all symbols ordered by start_line.
+    Use parent_symbol_id to reconstruct the hierarchy (methods under classes, etc.).
+    """
+    repo = validate_repo_name(repo)
+    path = validate_path(path)
+
+    resolved = await resolve_file_use_case.execute(
+        ResolveFileRequest(
+            repository_name=repo,
+            file_path=path,
+            commit_hash=commit,
+            branch=branch,
+        )
+    )
+
+    file = resolved.file
+    if file.id is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    symbols = await symbol_adapter.list_by_file(file.id)
+    symbols_sorted = sorted(symbols, key=lambda s: s.start_line)
+
+    return FileStructureResponse(
+        file_path=file.path,
+        language=file.language,
+        line_count=file.line_count,
+        symbols=[
+            FileStructureSymbolResponse(
+                id=s.id or 0,
+                name=s.name,
+                kind=s.kind.value,
+                start_line=s.start_line,
+                end_line=s.end_line,
+                signature=s.signature,
+                docstring=s.docstring,
+                parent_symbol_id=s.parent_symbol_id,
+            )
+            for s in symbols_sorted
+        ],
     )
 
 

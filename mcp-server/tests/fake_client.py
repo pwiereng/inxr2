@@ -24,6 +24,8 @@ class FakeInxr2Client(Inxr2Client):
         self._changed_files: dict[str, list[dict[str, Any]]] = (
             {}
         )  # commit_hash -> files
+        # (repo_name, file_path) -> file structure response
+        self._file_structures: dict[tuple[str, str], dict[str, Any]] = {}
 
     # --- Data population helpers ---
 
@@ -149,6 +151,21 @@ class FakeInxr2Client(Inxr2Client):
                 "children": None,
             }
         )
+
+    def add_file_structure(
+        self,
+        repo_name: str,
+        file_path: str,
+        language: str | None = "python",
+        line_count: int | None = 100,
+        symbols: list[dict[str, Any]] | None = None,
+    ) -> None:
+        self._file_structures[(repo_name, file_path)] = {
+            "file_path": file_path,
+            "language": language,
+            "line_count": line_count,
+            "symbols": symbols or [],
+        }
 
     def add_search_result(
         self,
@@ -330,5 +347,14 @@ class FakeInxr2Client(Inxr2Client):
                 "limit": limit,
                 "offset": 0,
             }
+
+        # GET /api/symbols/file-structure
+        if path == "/api/symbols/file-structure":
+            repo_name = params.get("repo", "")
+            file_path = params.get("path", "")
+            key = (repo_name, file_path)
+            if key not in self._file_structures:
+                raise Exception(f"File structure not found: {repo_name}/{file_path}")
+            return self._file_structures[key]
 
         raise Exception(f"Unhandled path in FakeInxr2Client: {path}")
