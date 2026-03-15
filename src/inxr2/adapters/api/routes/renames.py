@@ -1,7 +1,5 @@
 """File rename API endpoints."""
 
-import logging
-
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -12,8 +10,6 @@ from ....infrastructure.dependencies import (
     RepositoryAdapter,
 )
 from ..validation import validate_path, validate_repo_name
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/renames", tags=["renames"])
 
