@@ -17,6 +17,7 @@ from src.client import HttpInxr2Client, Inxr2Client
 from src.tools import (
     find_dead_code,
     find_references,
+    get_change_impact,
     go_to_definition,
     list_repositories,
     review_helper,
@@ -30,6 +31,7 @@ TOOLS = [
     list_repositories,
     find_dead_code,
     find_references,
+    get_change_impact,
     go_to_definition,
     review_helper,
     search_symbols,
