@@ -1,7 +1,7 @@
 # INXR2 Database Schema Design
 
-**Version:** 5.0
-**Date:** 2026-03-08
+**Version:** 6.0
+**Date:** 2026-03-15
 **Status:** Implemented
 
 ## Overview
@@ -14,6 +14,7 @@ This document defines the PostgreSQL database schema for INXR2, a cross-referenc
 - Efficient search queries
 - Multi-branch support (commits can exist on multiple branches)
 - Dependency tracking (manifest/lock file parsing)
+- File rename tracking (follow files across renames for browse and diff)
 
 ## Design Principles
 
@@ -395,6 +396,10 @@ CREATE TABLE index_status (
     total_symbols_indexed   INTEGER DEFAULT 0,
     total_references_indexed INTEGER DEFAULT 0,
 
+    -- Duration tracking
+    last_indexing_duration_seconds   FLOAT,         -- Time spent parsing/extracting in last run
+    last_resolving_duration_seconds  FLOAT,         -- Time spent resolving references in last run
+
     -- Error tracking
     error_message           TEXT,
     error_count             INTEGER DEFAULT 0,
@@ -418,6 +423,8 @@ CREATE INDEX idx_index_status_status ON index_status(indexing_status);
 - `oldest_indexed_commit`: SHA-1 of oldest indexed commit (defines time-travel range)
 - `indexing_status`: Current state (pending, in_progress, completed, failed)
 - Statistics: Count of indexed entities (for progress tracking)
+- `last_indexing_duration_seconds`: Wall-clock seconds spent in the file parsing/extraction phase of the last run
+- `last_resolving_duration_seconds`: Wall-clock seconds spent in the reference resolution phase of the last run
 - `error_message`: Last error encountered
 - `indexer_version`: Track which version of INXR2 performed indexing
 
@@ -508,9 +515,14 @@ CREATE TABLE dependencies (
     -- Dependency tree
     parent_dependency_id    INTEGER REFERENCES dependencies(id) ON DELETE CASCADE,  -- For transitive deps
 
+    -- Source location
+    source_line             INTEGER,                     -- Line number in manifest file where dep is declared
+
     -- Metadata
     extras                  JSONB,                       -- Language-specific metadata
-    indexed_at              TIMESTAMP NOT NULL DEFAULT NOW()
+    indexed_at              TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT ck_dependencies_source_line_positive CHECK (source_line IS NULL OR source_line >= 1)
 );
 
 CREATE INDEX idx_dependencies_package ON dependencies(package_name, language);
@@ -529,6 +541,7 @@ CREATE INDEX ix_dependencies_parent_dependency_id ON dependencies(parent_depende
 - `dependency_type`: Classification — `runtime`, `dev`, `optional`, `build`, `peer`
 - `is_direct`: `true` for direct dependencies, `false` for transitive
 - `parent_dependency_id`: Self-referencing FK for modeling transitive dependency trees
+- `source_line`: Line number in the manifest/lock file where this dependency is declared (for UI navigation)
 - `extras`: JSONB for language-specific metadata (e.g., npm peer dependency ranges)
 
 **Supported Manifest/Lock Files:**
@@ -550,12 +563,62 @@ CREATE INDEX ix_dependencies_parent_dependency_id ON dependencies(parent_depende
 
 ---
 
+### 11. file_renames
+
+Tracks file renames detected during indexing via `git diff --find-renames`. Each row represents a single rename event in a specific commit — the path changed from `old_path` to `new_path` at that commit.
+
+Used by the browse page (rename banner) and diff viewer to follow files across renames.
+
+```sql
+CREATE TABLE file_renames (
+    id                  SERIAL PRIMARY KEY,
+    repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    commit_id           BIGINT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
+
+    old_path            TEXT NOT NULL,              -- Path before rename
+    new_path            TEXT NOT NULL,              -- Path after rename
+    similarity          SMALLINT NOT NULL,          -- Git rename similarity score (0-100)
+
+    indexed_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_file_renames_commit_paths UNIQUE(commit_id, old_path, new_path)
+);
+
+CREATE INDEX idx_file_renames_repo      ON file_renames(repository_id);
+CREATE INDEX idx_file_renames_commit    ON file_renames(commit_id);
+CREATE INDEX idx_file_renames_old_path  ON file_renames(repository_id, old_path);
+CREATE INDEX idx_file_renames_new_path  ON file_renames(repository_id, new_path);
+```
+
+**Fields:**
+- `old_path`: Repository-relative path before the rename (e.g., `src/old_name.py`)
+- `new_path`: Repository-relative path after the rename (e.g., `src/new_name.py`)
+- `similarity`: Git's rename similarity score (0–100). Git reports a rename when similarity ≥ 50 by default. 100 = identical content, just moved.
+- `commit_id`: The commit in which the rename occurred
+
+**Design Notes:**
+- Populated by `git diff --find-renames` between consecutive commits during indexing
+- The unique constraint is on `(commit_id, old_path, new_path)` — a file can only be renamed once per commit
+- Indexed on both `old_path` and `new_path` to support bidirectional lookup (forward and backward time travel)
+- Used by the browse page: when a file is not found at a commit, the rename table is queried to show a "this file was at `old_path` in this commit" banner with a clickable link
+- Used by the diff viewer (Part 3): auto-resolves the correct path for each side of the diff when a rename occurred between the two compared commits
+
+**Example:**
+```
+commit_id=42  old_path="src/utils.py"  new_path="src/helpers.py"  similarity=95
+```
+Means: in commit 42, `src/utils.py` was renamed to `src/helpers.py` with 95% content similarity.
+
+---
+
 ## Relationships Diagram
 
 ```
 repositories (1) ──────< (N) commits
     │                        │
     │                        ├──< branch_commits (junction)
+    │                        │
+    │                        ├──< file_renames (old_path/new_path per commit)
     │                        │
     │                        └──< commit_files (junction) ──> files
     │                                                           │
@@ -627,7 +690,19 @@ ORDER BY c.commit_date DESC;
 ```
 **Indexes:** `idx_branch_commits_repo_branch`, `idx_commits_repo_date`
 
-### 6. Find latest commit for a branch
+### 6. Look up rename for a file at a commit (bidirectional)
+```sql
+-- Forward: file existed at old_path before this commit, find new name
+SELECT new_path, similarity FROM file_renames
+WHERE repository_id = ? AND commit_id = ? AND old_path = ?;
+
+-- Backward: file exists at new_path after this commit, find old name
+SELECT old_path, similarity FROM file_renames
+WHERE repository_id = ? AND commit_id = ? AND new_path = ?;
+```
+**Indexes:** `idx_file_renames_old_path`, `idx_file_renames_new_path`
+
+### 7. Find latest commit for a branch
 ```sql
 SELECT c.* FROM commits c
 JOIN branch_commits bc ON bc.commit_id = c.id
@@ -684,6 +759,9 @@ Indexing 12 repos across 17 branches (10 days) produced:
 | `add_resolution_performance_indexes` | Add indexes for reference resolution performance |
 | `8c8caa7883cc` | Add indexes to foreign key columns |
 | `add_dependencies_001` | Add dependencies table for manifest/lock file parsing |
+| `add_dep_source_line_001` | Add `source_line` column to dependencies table |
+| `9e60343223f9` | Add `last_indexing_duration_seconds` and `last_resolving_duration_seconds` to index_status |
+| `add_file_renames_table` | Add file_renames table for tracking renames via `git diff --find-renames` |
 
 ---
 
@@ -727,3 +805,4 @@ The schema uses PostgreSQL-native features for optimal performance:
 | 3.0 | 2026-02-09 | Claude + User | Added text_contents table, expanded symbol kinds (C/Java), updated migration history, added observed data volumes |
 | 4.0 | 2026-03-01 | Claude + User | Content-addressable file versions: removed commit_id from files/symbols/references, added commit_files junction table, added extension column, updated indexes, added 5 new migrations |
 | 5.0 | 2026-03-08 | Claude + User | Added dependencies table for manifest/lock file parsing (Python, JS/TS, Java, C#, Go, Ruby), updated relationships diagram, added dependency migration |
+| 6.0 | 2026-03-15 | Claude + User | Added file_renames table (PR #342), source_line to dependencies, duration columns to index_status, updated relationships diagram, query patterns, and migration history |
