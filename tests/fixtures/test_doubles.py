@@ -1826,6 +1826,7 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         query: str,
         repository_id: int | None = None,
         branch: str | None = None,
+        commit_id: int | None = None,
         scope: str | None = None,
         extensions: list[str] | None = None,
         limit: int = 20,
@@ -1854,8 +1855,16 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
 
         if repository_id is not None:
             refs = [r for r in refs if r.repository_id == repository_id]
-            # Scope to latest file versions
-            if self._file_repo is not None:
+            if commit_id is not None and self._file_repo is not None:
+                # Commit filter: scope to files present at this specific commit
+                commit_file_ids = {
+                    fid
+                    for cid, fid in self._file_repo._commit_files
+                    if cid == commit_id
+                }
+                refs = [r for r in refs if r.source_file_id in commit_file_ids]
+            elif self._file_repo is not None:
+                # Scope to latest file versions
                 latest_ids = self._file_repo._compute_latest_file_ids(
                     repository_id, branch=branch
                 )

@@ -214,6 +214,64 @@ class TestFindReferencesByTextContract:
         assert results[0].source_file_id == data["file2_id"]
 
 
+class TestSearchReferencesByTextContract:
+    async def test_commit_filter_scopes_to_that_commit(self, repos: Repos) -> None:
+        """search_by_text with commit_id returns only refs from files at that commit."""
+        data = await _setup_two_commits(repos)
+
+        await create_test_reference(
+            repos,
+            data["repo_id"],
+            data["commit1_id"],
+            data["file1_id"],
+            "bar",
+        )
+        await create_test_reference(
+            repos,
+            data["repo_id"],
+            data["commit2_id"],
+            data["file2_id"],
+            "bar",
+        )
+
+        # Commit 1 filter — should only return ref from file1 (older commit)
+        results, total = await repos.reference.search_by_text(
+            "bar",
+            repository_id=data["repo_id"],
+            commit_id=data["commit1_id"],
+        )
+
+        assert total == 1
+        assert results[0].source_file_id == data["file1_id"]
+
+    async def test_no_commit_filter_returns_latest(self, repos: Repos) -> None:
+        """search_by_text without commit_id returns only latest file version."""
+        data = await _setup_two_commits(repos)
+
+        await create_test_reference(
+            repos,
+            data["repo_id"],
+            data["commit1_id"],
+            data["file1_id"],
+            "bar",
+        )
+        await create_test_reference(
+            repos,
+            data["repo_id"],
+            data["commit2_id"],
+            data["file2_id"],
+            "bar",
+        )
+
+        results, total = await repos.reference.search_by_text(
+            "bar",
+            repository_id=data["repo_id"],
+        )
+
+        assert total == 1
+        assert results[0].source_file_id == data["file2_id"]
+
+
 # ---- File Repository contracts (list_changed_at_commit) ----
 
 

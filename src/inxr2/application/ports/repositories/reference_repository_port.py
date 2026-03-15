@@ -77,6 +77,7 @@ class ReferenceRepositoryPort(ABC):
         query: str,
         repository_id: int | None = None,
         branch: str | None = None,
+        commit_id: int | None = None,
         scope: str | None = None,
         extensions: list[str] | None = None,
         limit: int = 20,
@@ -93,6 +94,9 @@ class ReferenceRepositoryPort(ABC):
             query: Substring or regex pattern to search for in reference_text
             repository_id: Filter by repository (optional)
             branch: Filter by branch name (optional)
+            commit_id: Filter to files present at a specific commit (optional).
+                When set with repository_id, overrides branch-based latest-file
+                scoping and restricts results to files at the given commit.
             scope: Search scope for global search (e.g. "latest") when no
                 repository_id is specified. Ignored when repository_id is set.
             extensions: Filter by file extensions (e.g. [".py", ".ts"]) (optional)
