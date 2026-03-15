@@ -725,3 +725,87 @@ class TestGitServiceExceptionTranslation:
         assert issubclass(CommitNotFound, DomainException)
         assert issubclass(GitOperationError, DomainException)
         assert issubclass(InvalidRepositoryPath, DomainException)
+
+
+@pytest.fixture
+def repo_with_rename(tmp_path: Path) -> tuple[Path, str, str, str]:
+    """Create a git repo with a single file rename commit.
+
+    Returns (repo_path, old_name, new_name, rename_commit_hash).
+    """
+    repo_path = tmp_path / "rename-repo"
+    repo_path.mkdir()
+    repo = Repo.init(repo_path, initial_branch="main")
+    repo.config_writer().set_value("user", "name", "Test User").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+    # Commit 1: add the original file
+    old_name = "old_name.py"
+    (repo_path / old_name).write_text("def foo(): pass\n")
+    repo.index.add([old_name])
+    repo.index.commit("Add old_name.py")
+
+    # Commit 2: rename the file
+    new_name = "new_name.py"
+    repo.index.move([old_name, new_name])
+    rename_commit = repo.index.commit("Rename old_name.py to new_name.py")
+
+    return repo_path, old_name, new_name, str(rename_commit.hexsha)
+
+
+class TestGetFileRenamesInCommit:
+    """Tests for get_file_renames_in_commit."""
+
+    @pytest.fixture
+    def git_service(self) -> GitService:
+        return GitService()
+
+    def test_rename_direction_old_to_new(
+        self,
+        git_service: GitService,
+        repo_with_rename: tuple[Path, str, str, str],
+    ) -> None:
+        """Regression test for issue #351: old_path/new_path must not be swapped.
+
+        old_path = name before the commit (in parent), new_path = name after.
+        Previously R=True was passed to parent.diff() which reversed a_path/b_path,
+        causing every rename to be stored with old and new swapped in the DB.
+        """
+        repo_path, old_name, new_name, rename_commit = repo_with_rename
+        renames = git_service.get_file_renames_in_commit(repo_path, rename_commit)
+
+        assert len(renames) == 1
+        assert (
+            renames[0].old_path == old_name
+        ), f"old_path should be '{old_name}' (name before rename), got '{renames[0].old_path}'"
+        assert (
+            renames[0].new_path == new_name
+        ), f"new_path should be '{new_name}' (name after rename), got '{renames[0].new_path}'"
+
+    def test_no_renames_in_regular_commit(
+        self,
+        git_service: GitService,
+        temp_git_repo: Path,
+    ) -> None:
+        """A commit with no renames returns an empty list."""
+        commit_hash = git_service.get_current_commit(temp_git_repo)
+        renames = git_service.get_file_renames_in_commit(temp_git_repo, commit_hash)
+        assert renames == []
+
+    def test_initial_commit_with_no_parent_returns_empty(
+        self,
+        git_service: GitService,
+        tmp_path: Path,
+    ) -> None:
+        """Initial commit (no parent) returns empty list — nothing to diff against."""
+        repo_path = tmp_path / "fresh"
+        repo_path.mkdir()
+        repo = Repo.init(repo_path, initial_branch="main")
+        repo.config_writer().set_value("user", "name", "T").release()
+        repo.config_writer().set_value("user", "email", "t@t.com").release()
+        (repo_path / "f.py").write_text("x = 1\n")
+        repo.index.add(["f.py"])
+        initial = repo.index.commit("init")
+
+        renames = git_service.get_file_renames_in_commit(repo_path, str(initial.hexsha))
+        assert renames == []
