@@ -749,3 +749,20 @@ export async function getRepositoryDependencies(
     `/repositories/by-name/${encodeURIComponent(repoName)}/dependencies${query ? `?${query}` : ''}`
   )
 }
+
+export interface ResolvePathResult {
+  found: boolean
+  resolved_path: string | null
+  renamed_from: string | null
+  renamed_to: string | null
+  rename_commit_hash: string | null
+}
+
+export async function resolveFilePath(
+  repo: string,
+  path: string,
+  commit: string
+): Promise<ResolvePathResult> {
+  const params = new URLSearchParams({ repo, path, commit })
+  return fetchApi<ResolvePathResult>(`/renames/resolve-path?${params}`)
+}

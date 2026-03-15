@@ -10,6 +10,7 @@ import {
   getFileReferencesByPath,
   getFileRawContent,
   getFileHistory,
+  resolveFilePath,
   type Repository,
   type TreeNode,
   type FileContent,
@@ -17,6 +18,7 @@ import {
   type FileReference,
   type FileVersion,
   type RawFileContent,
+  type ResolvePathResult,
 } from '@/lib/api'
 import { isImageFile } from '@/lib/fileUtils'
 import type { BrowseUrlState } from './useBrowseTypes'
@@ -44,6 +46,7 @@ export interface UseBrowseDataResult {
   treeLoading: boolean
   fileLoading: boolean
   error: string | null
+  fileRenameInfo: ResolvePathResult | null
   setError: (error: string | null) => void
 }
 
@@ -83,6 +86,7 @@ export function useBrowseData({
   const [treeLoading, setTreeLoading] = useState(true)
   const [fileLoading, setFileLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fileRenameInfo, setFileRenameInfo] = useState<ResolvePathResult | null>(null)
 
   // Track previous selectedCommit to detect commit-sync transitions (null → hash)
   // that should NOT trigger a re-fetch.
@@ -283,6 +287,7 @@ export function useBrowseData({
       setFileContent(null)
       setFileSymbols([])
       setFileReferences([])
+      setFileRenameInfo(null)
       prevCommitRef.current = urlState.selectedCommit
       loadedFileKeyRef.current = null
       loadedCommitRef.current = undefined
@@ -337,12 +342,33 @@ export function useBrowseData({
             urlState.selectedBranch || undefined
           ),
         ])
-        setError(null) // Clear any previous error on successful load
+        setError(null)
+        setFileRenameInfo(null)
         setFileContent(content)
         setFileSymbols(symbols.symbols)
         setFileReferences(references.references)
       } catch (err) {
+        // When browsing a specific commit, check if the file was renamed.
+        if (urlState.selectedCommit && urlState.repoName && urlState.filePath) {
+          try {
+            const renameInfo = await resolveFilePath(
+              urlState.repoName,
+              urlState.filePath,
+              urlState.selectedCommit
+            )
+            if (!renameInfo.found && renameInfo.resolved_path) {
+              setFileRenameInfo(renameInfo)
+              setError(null)
+              loadedFileKeyRef.current = null
+              loadedCommitRef.current = undefined
+              return
+            }
+          } catch {
+            // resolve-path call failed; fall through to normal error handling
+          }
+        }
         setError(err instanceof Error ? err.message : 'Failed to load file')
+        setFileRenameInfo(null)
         // Reset refs so a retry isn't blocked by the skip guard
         loadedFileKeyRef.current = null
         loadedCommitRef.current = undefined
@@ -398,6 +424,7 @@ export function useBrowseData({
     treeLoading,
     fileLoading,
     error,
+    fileRenameInfo,
     setError,
   }
 }
