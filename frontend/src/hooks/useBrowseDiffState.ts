@@ -124,7 +124,7 @@ export function useBrowseDiffState({
               urlState.diffCommit,
               urlState.diffBranch || urlState.selectedBranch || undefined
             )
-            if (renameInfo.resolved_path) {
+            if (!renameInfo.found && renameInfo.resolved_path) {
               const [content, symbols, references] = await Promise.all([
                 getFileContentByPathAtCommit(
                   urlState.repoName,
@@ -151,8 +151,15 @@ export function useBrowseDiffState({
               setDiffRenameInfo(renameInfo)
               return
             }
-          } catch {
-            // Resolution failed — fall through to null state below
+          } catch (resolutionErr) {
+            // Log unexpected errors (non-404s) from the resolution attempt
+            if (!(resolutionErr instanceof ApiError) || resolutionErr.status !== 404) {
+              console.error(
+                'Failed to resolve rename or load content at resolved path:',
+                resolutionErr
+              )
+            }
+            // Fall through to null state below
           }
         }
 

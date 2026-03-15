@@ -235,6 +235,47 @@ describe('useBrowseDiffState', () => {
       expect(result.current.diffContent).toBeNull()
     })
 
+    it('does not follow rename when resolveFilePath returns found: true', async () => {
+      mockGetFileContentByPathAtCommit.mockRejectedValue(new ApiError('Not Found', 404))
+      mockResolveFilePath.mockResolvedValue({
+        found: true,
+        resolved_path: 'src/old.py',
+        renamed_from: null,
+        renamed_to: null,
+        rename_commit_hash: null,
+      })
+
+      const urlState = makeUrlState({ diffCommit: 'commit-a' })
+      const { result } = await renderDiffStateHook(makeParams(urlState))
+
+      await vi.waitFor(() => {
+        expect(result.current.diffLoading).toBe(false)
+      })
+      // found: true means no rename needed — do not reload at resolved_path
+      expect(mockGetFileContentByPathAtCommit).toHaveBeenCalledTimes(1)
+      expect(result.current.diffRenameInfo).toBeNull()
+      expect(result.current.diffContent).toBeNull()
+    })
+
+    it('logs unexpected errors from rename resolution attempt', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockGetFileContentByPathAtCommit.mockRejectedValue(new ApiError('Not Found', 404))
+      mockResolveFilePath.mockRejectedValue(new ApiError('Internal Server Error', 500))
+
+      const urlState = makeUrlState({ diffCommit: 'commit-a' })
+      const { result } = await renderDiffStateHook(makeParams(urlState))
+
+      await vi.waitFor(() => {
+        expect(result.current.diffLoading).toBe(false)
+      })
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Failed to resolve rename or load content at resolved path:',
+        expect.any(ApiError)
+      )
+      expect(result.current.diffRenameInfo).toBeNull()
+      consoleSpy.mockRestore()
+    })
+
     it('clears diffRenameInfo on successful load (no rename)', async () => {
       const content: api.FileContent = {
         id: 2,
