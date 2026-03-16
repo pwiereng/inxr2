@@ -283,7 +283,6 @@ async def get_file_structure(
 
     file = resolved.file
     symbols = await symbol_adapter.list_by_file(file.id or 0)
-    symbols_sorted = sorted(symbols, key=lambda s: s.start_line)
 
     return FileStructureResponse(
         file_path=file.path,
@@ -300,7 +299,7 @@ async def get_file_structure(
                 docstring=s.docstring,
                 parent_symbol_id=s.parent_symbol_id,
             )
-            for s in symbols_sorted
+            for s in symbols
         ],
     )
 
