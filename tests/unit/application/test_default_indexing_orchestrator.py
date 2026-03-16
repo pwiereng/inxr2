@@ -2179,3 +2179,55 @@ class TestDaysRangeExpansionReindex:
         assert status.last_indexing_duration_seconds > 0
         assert status.last_resolving_duration_seconds is not None
         assert status.last_resolving_duration_seconds >= 0
+
+
+class TestExcludePaths:
+    """Tests for exclude_paths wired through IndexRepositoryRequest."""
+
+    @pytest.mark.asyncio
+    async def test_exclude_paths_skips_matching_files(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        git_service: FakeGitService,
+    ) -> None:
+        """Files in excluded directories are counted as skipped."""
+        # Add vendor files to the commit
+        git_service.files_in_commit["def456"] = [
+            "src/main.py",
+            "vendor/lodash.js",
+            "node_modules/express/index.js",
+        ]
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            exclude_paths=("vendor", "node_modules"),
+        )
+
+        response = await orchestrator.index_repository(request)
+
+        # vendor/ and node_modules/ files should be skipped
+        assert response.files_skipped == 2
+
+    @pytest.mark.asyncio
+    async def test_no_exclude_paths_indexes_all_files(
+        self,
+        orchestrator: DefaultIndexingOrchestrator,
+        git_service: FakeGitService,
+    ) -> None:
+        """Without exclude_paths, vendor files are indexed normally."""
+        git_service.files_in_commit["def456"] = [
+            "src/main.py",
+            "vendor/lodash.js",
+        ]
+
+        request = IndexRepositoryRequest(
+            repository_path=Path("/repos/test-repo"),
+            branch="main",
+            exclude_paths=(),
+        )
+
+        response = await orchestrator.index_repository(request)
+
+        # Both files processed (no excludes, no minified suffix)
+        assert response.files_skipped == 0

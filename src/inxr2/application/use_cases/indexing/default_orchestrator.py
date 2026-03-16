@@ -221,6 +221,7 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 branch=branch,
                 blob_to_content_hash=blob_to_content_hash,
                 file_version_index=file_version_index,
+                exclude_paths=request.exclude_paths,
             )
 
             def on_file_progress(cr: ProcessCommitResult) -> None:

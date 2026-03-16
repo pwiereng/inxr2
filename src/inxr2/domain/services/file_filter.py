@@ -1,18 +1,6 @@
-"""File filter service for skipping vendor/minified files during indexing."""
+"""File filter service for skipping minified/bundled files during indexing."""
 
 import re
-
-# Directories whose contents should be skipped entirely.
-# Matched as path segments (e.g., "vendor/" anywhere in path).
-_SKIP_DIRECTORIES: set[str] = {
-    "node_modules",
-    "vendor",
-    "dist",
-    "build",
-    "third_party",
-    "3rdparty",
-    "bower_components",
-}
 
 # Suffixes indicating minified files.
 _MINIFIED_SUFFIXES: tuple[str, ...] = (
@@ -33,11 +21,16 @@ class FileFilter:
     """Determines whether a file path should be skipped during indexing."""
 
     @staticmethod
-    def should_skip(file_path: str) -> bool:
-        """Return True if the file should be skipped (vendor/minified/bundled).
+    def should_skip(file_path: str, exclude_paths: tuple[str, ...] = ()) -> bool:
+        """Return True if the file should be skipped.
+
+        Skips minified/bundled files unconditionally. Skips files whose path
+        contains a directory segment matching any entry in ``exclude_paths``.
 
         Args:
             file_path: Repository-relative file path (e.g., "src/main.py").
+            exclude_paths: Directory names to exclude (e.g., ("vendor", "dist")).
+                           Matched case-insensitively against each path segment.
         """
         lower = file_path.lower()
 
@@ -45,14 +38,16 @@ class FileFilter:
         if lower.endswith(_MINIFIED_SUFFIXES):
             return True
 
-        # Check if any path segment is a skip directory
-        parts = lower.replace("\\", "/").split("/")
-        for part in parts:
-            if part in _SKIP_DIRECTORIES:
-                return True
-
         # Check bundler hash pattern (e.g., app.a1b2c3d4.js)
         if _BUNDLE_HASH_RE.search(lower):
             return True
+
+        # Check user-configured excluded directory names
+        if exclude_paths:
+            excluded = {p.lower() for p in exclude_paths}
+            parts = lower.replace("\\", "/").split("/")
+            for part in parts:
+                if part in excluded:
+                    return True
 
         return False

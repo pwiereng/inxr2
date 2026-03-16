@@ -29,6 +29,13 @@ class RepositoryConfigModel(BaseModel):
         default_factory=list,
         description="Glob patterns for files/directories to exclude",
     )
+    exclude_paths: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Directory names to exclude from indexing (e.g. vendor, node_modules). "
+            "Matched case-insensitively against each path segment."
+        ),
+    )
     days: int | None = Field(
         default=None,
         gt=0,
@@ -50,6 +57,7 @@ class RepositoryConfigModel(BaseModel):
             url=self.url,
             branches=tuple(self.branches),
             exclude_patterns=tuple(self.exclude_patterns),
+            exclude_paths=tuple(self.exclude_paths),
             days=self.days,
         )
 
@@ -60,9 +68,6 @@ class IndexingConfigModel(BaseModel):
     incremental: bool = Field(
         default=True, description="Use incremental indexing when possible"
     )
-    max_commit_history: int = Field(
-        default=1000, description="Maximum number of commits to index per branch"
-    )
     batch_size: int = Field(
         default=100, description="Number of files to process per batch"
     )
@@ -71,7 +76,6 @@ class IndexingConfigModel(BaseModel):
         """Convert to domain value object."""
         return IndexingConfig(
             incremental=self.incremental,
-            max_commit_history=self.max_commit_history,
             batch_size=self.batch_size,
         )
 

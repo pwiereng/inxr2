@@ -246,6 +246,7 @@ def _run_config_based_index(
                     "branch": branch,
                     "console": console,
                     "no_deps": no_deps,
+                    "exclude_paths": repo.exclude_paths,
                 }
                 if effective_days is not None:
                     kwargs["days"] = effective_days
@@ -640,7 +641,6 @@ def config_show(config_path: Path) -> None:
     # Show indexing config
     console.print("[bold]Indexing Settings:[/bold]")
     console.print(f"  Incremental: {app_config.indexing.incremental}")
-    console.print(f"  Max commit history: {app_config.indexing.max_commit_history}")
     console.print(f"  Batch size: {app_config.indexing.batch_size}")
     console.print()
 

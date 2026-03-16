@@ -271,12 +271,14 @@ comm -23 /tmp/git_files.txt /tmp/api_files.txt
 **Pass criteria:**
 - `comm -23` output is empty for all repos (no files dropped)
 - `src/inxr2/adapters/external/` files appear in the API response for the `inxr2` repo
-- If any files are listed: check whether their path contains a `FileFilter` skip-directory
-  (`node_modules`, `vendor`, `dist`, `build`, `third_party`, `3rdparty`, `bower_components`)
-  — if the dropped files are *not* genuine vendor code, that is a `FileFilter` regression
+- If any files are listed: they should only be absent due to:
+  1. A minified/bundled pattern match (`.min.js`, `.bundle.js`, bundler hash filenames)
+  2. An explicit `exclude_paths` entry in the repo's config
+  Any other missing file is a `FileFilter` regression
 
-**Note:** Files intentionally filtered (e.g. `node_modules/`, `dist/`) will appear in the
-`comm` diff; verify these are genuine vendor paths, not first-party code.
+**Note:** Directory-based exclusions are opt-in via `exclude_paths` in config — there are
+no hardcoded directory skip rules. If a committed file is missing and its path doesn't
+match a minified/bundled pattern or a configured `exclude_paths` entry, that is a bug.
 
 ---
 

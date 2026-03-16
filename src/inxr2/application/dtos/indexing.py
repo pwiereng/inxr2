@@ -62,6 +62,7 @@ class IndexRepositoryRequest:
     branch: str | None = None
     days: int | None = None
     base_branch: str | None = None
+    exclude_paths: tuple[str, ...] = ()
 
 
 @dataclass
