@@ -383,6 +383,15 @@ describe('CodeHeader', () => {
       expect(onCommitChange).toHaveBeenCalledWith('abc123def456')
     })
 
+    it('should enable go to latest when commit is not in the loaded list', async () => {
+      // Deep-linked commit hash not present in the 500-commit window
+      render(<CodeHeader {...defaultProps} commit="0000000000000000000000000000000000000000" />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /go to latest/i })).not.toBeDisabled()
+      })
+    })
+
     it('should not render nav buttons when no repo is selected', async () => {
       render(<CodeHeader {...defaultProps} repoName={null} />)
 

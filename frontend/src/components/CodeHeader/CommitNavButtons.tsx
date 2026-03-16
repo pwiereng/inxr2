@@ -84,7 +84,7 @@ export function CommitNavButtons({
           <IconButton
             size="small"
             onClick={handleLatest}
-            disabled={!canGoNewer}
+            disabled={commitDisplayValue === commits[0]?.hash}
             aria-label="Go to latest"
             sx={{ p: 0.25, color: 'text.secondary' }}
           >
