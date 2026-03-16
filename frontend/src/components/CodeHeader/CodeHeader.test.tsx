@@ -353,6 +353,45 @@ describe('CodeHeader', () => {
       expect(onCommitChange).toHaveBeenCalledWith('def456ghi789')
     })
 
+    it('should render go to latest button', async () => {
+      render(<CodeHeader {...defaultProps} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /go to latest/i })).toBeInTheDocument()
+      })
+    })
+
+    it('should disable go to latest button when at HEAD', async () => {
+      render(<CodeHeader {...defaultProps} commit={null} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /go to latest/i })).toBeDisabled()
+      })
+    })
+
+    it('should call onCommitChange with latest commit when go to latest is clicked', async () => {
+      const onCommitChange = vi.fn()
+
+      render(<CodeHeader {...defaultProps} commit="def456ghi789" onCommitChange={onCommitChange} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /go to latest/i })).not.toBeDisabled()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /go to latest/i }))
+
+      expect(onCommitChange).toHaveBeenCalledWith('abc123def456')
+    })
+
+    it('should enable go to latest when commit is not in the loaded list', async () => {
+      // Deep-linked commit hash not present in the 500-commit window
+      render(<CodeHeader {...defaultProps} commit="0000000000000000000000000000000000000000" />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /go to latest/i })).not.toBeDisabled()
+      })
+    })
+
     it('should not render nav buttons when no repo is selected', async () => {
       render(<CodeHeader {...defaultProps} repoName={null} />)
 

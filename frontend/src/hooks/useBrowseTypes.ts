@@ -66,6 +66,7 @@ export interface BrowseDiffState {
   diffContent: FileContent | null
   diffSymbols: FileSymbol[]
   diffReferences: FileReference[]
+  diffRenameInfo: ResolvePathResult | null
   activePanel: 'left' | 'right'
   treePanel: 'left' | 'right'
   refPanel: 'left' | 'right'

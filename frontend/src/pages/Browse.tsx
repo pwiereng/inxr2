@@ -66,7 +66,15 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
   const { repoName, filePath, highlightLine, diffMode, diffCommit, diffBranch, selectedBranch } =
     urlState
   const { repository, treeNodes, fileContent, fileSymbols, fileReferences, rawContent } = dataState
-  const { diffContent, diffSymbols, diffReferences, activePanel, treePanel, refPanel } = diffState
+  const {
+    diffContent,
+    diffSymbols,
+    diffReferences,
+    diffRenameInfo,
+    activePanel,
+    treePanel,
+    refPanel,
+  } = diffState
   const {
     drawerOpen,
     refsPanelOpen,
@@ -85,6 +93,19 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
     referenceIsNewer,
     temporalOrderKnown,
   } = computedState
+
+  // Canonical "old → new" rename tooltip for diff panel chips.
+  // Uses renamed_from/renamed_to fields to ensure correct direction regardless of which side needed resolution.
+  // Falls back to diffContent?.path when filePath is transiently null during navigation.
+  const currentPath = filePath ?? diffContent?.path ?? ''
+  const diffRenameTooltip =
+    diffRenameInfo?.resolved_path && currentPath
+      ? diffRenameInfo.renamed_from
+        ? `${diffRenameInfo.renamed_from} → ${currentPath}`
+        : diffRenameInfo.renamed_to
+          ? `${currentPath} → ${diffRenameInfo.renamed_to}`
+          : `${diffRenameInfo.resolved_path} → ${currentPath}`
+      : ''
 
   // Auto-disable blame when entering rendered mode (markdown/images)
   const isRenderedContent =
@@ -652,6 +673,28 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                                 </IconButton>
                               </Tooltip>
                             )}
+                            {diffRenameInfo?.resolved_path && currentPath && (
+                              <Tooltip title={diffRenameTooltip}>
+                                <Chip
+                                  label={
+                                    diffRenameInfo.resolved_path.split('/').pop() ??
+                                    diffRenameInfo.resolved_path
+                                  }
+                                  size="small"
+                                  color="info"
+                                  variant="outlined"
+                                  sx={{
+                                    maxWidth: 160,
+                                    '& .MuiChip-label': {
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      fontFamily: 'monospace',
+                                      fontSize: '0.65rem',
+                                    },
+                                  }}
+                                />
+                              </Tooltip>
+                            )}
                           </Box>
                         }
                         rightHeader={
@@ -686,6 +729,25 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                                 tooltip="Copy commit hash"
                                 size={12}
                               />
+                            )}
+                            {diffRenameInfo?.resolved_path && filePath && (
+                              <Tooltip title={diffRenameTooltip}>
+                                <Chip
+                                  label={filePath.split('/').pop() ?? filePath}
+                                  size="small"
+                                  color="info"
+                                  variant="outlined"
+                                  sx={{
+                                    maxWidth: 160,
+                                    '& .MuiChip-label': {
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      fontFamily: 'monospace',
+                                      fontSize: '0.65rem',
+                                    },
+                                  }}
+                                />
+                              </Tooltip>
                             )}
                           </Box>
                         }

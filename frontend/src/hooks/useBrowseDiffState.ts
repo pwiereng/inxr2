@@ -6,10 +6,13 @@ import {
   getFileSymbolsByPath,
   getFileReferencesByPath,
   getFileHistory,
+  resolveFilePath,
+  ApiError,
   type FileContent,
   type FileSymbol,
   type FileReference,
   type FileVersion,
+  type ResolvePathResult,
 } from '@/lib/api'
 import type { BrowseUrlState } from './useBrowseTypes'
 import { encodeFilePath } from './useBrowseUrlState'
@@ -29,6 +32,7 @@ export interface UseBrowseDiffStateResult {
   diffSymbols: FileSymbol[]
   diffReferences: FileReference[]
   diffFileVersions: FileVersion[]
+  diffRenameInfo: ResolvePathResult | null
   diffLoading: boolean
   enterDiffMode: () => void
   exitDiffMode: () => void
@@ -45,6 +49,7 @@ export function useBrowseDiffState({
   const [diffSymbols, setDiffSymbols] = useState<FileSymbol[]>([])
   const [diffReferences, setDiffReferences] = useState<FileReference[]>([])
   const [diffFileVersions, setDiffFileVersions] = useState<FileVersion[]>([])
+  const [diffRenameInfo, setDiffRenameInfo] = useState<ResolvePathResult | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
 
   // Load diff file versions (for diff mode - either cross-branch or same-branch version comparison)
@@ -75,6 +80,7 @@ export function useBrowseDiffState({
       setDiffContent(null)
       setDiffSymbols([])
       setDiffReferences([])
+      setDiffRenameInfo(null)
       return
     }
 
@@ -104,17 +110,67 @@ export function useBrowseDiffState({
         setDiffContent(content)
         setDiffSymbols(symbols.symbols)
         setDiffReferences(references.references)
+        setDiffRenameInfo(null)
       } catch (err) {
-        // 404 errors are expected when file doesn't exist on the target branch/commit
-        // Only log unexpected errors
-        const isNotFoundError =
-          err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))
+        // 404 errors are expected when file doesn't exist on the target branch/commit.
+        // When we have a specific commit, attempt rename resolution before giving up.
+        const isNotFoundError = err instanceof ApiError && err.status === 404
+
+        if (isNotFoundError && urlState.diffCommit && urlState.repoName && urlState.filePath) {
+          try {
+            const renameInfo = await resolveFilePath(
+              urlState.repoName,
+              urlState.filePath,
+              urlState.diffCommit,
+              urlState.diffBranch || urlState.selectedBranch || undefined
+            )
+            if (!renameInfo.found && renameInfo.resolved_path) {
+              const [content, symbols, references] = await Promise.all([
+                getFileContentByPathAtCommit(
+                  urlState.repoName,
+                  renameInfo.resolved_path,
+                  urlState.diffCommit,
+                  urlState.diffBranch || undefined
+                ),
+                getFileSymbolsByPath(
+                  urlState.repoName,
+                  renameInfo.resolved_path,
+                  urlState.diffCommit,
+                  urlState.diffBranch || undefined
+                ),
+                getFileReferencesByPath(
+                  urlState.repoName,
+                  renameInfo.resolved_path,
+                  urlState.diffCommit,
+                  urlState.diffBranch || undefined
+                ),
+              ])
+              setDiffContent(content)
+              setDiffSymbols(symbols.symbols)
+              setDiffReferences(references.references)
+              setDiffRenameInfo(renameInfo)
+              return
+            }
+          } catch (resolutionErr) {
+            // Log unexpected errors (non-404s) from the resolution attempt
+            if (!(resolutionErr instanceof ApiError) || resolutionErr.status !== 404) {
+              console.error(
+                'Failed to resolve rename or load content at resolved path:',
+                resolutionErr
+              )
+            }
+            // Fall through to null state below
+          }
+        }
+
         if (!isNotFoundError) {
           console.error('Failed to load diff file:', err)
         }
+
         setDiffContent(null)
         setDiffSymbols([])
         setDiffReferences([])
+        setDiffRenameInfo(null)
       } finally {
         setDiffLoading(false)
       }
@@ -127,6 +183,7 @@ export function useBrowseDiffState({
     urlState.diffMode,
     urlState.diffCommit,
     urlState.diffBranch,
+    urlState.selectedBranch,
   ])
 
   // ========== Diff Mode Actions ==========
@@ -252,6 +309,7 @@ export function useBrowseDiffState({
     diffSymbols,
     diffReferences,
     diffFileVersions,
+    diffRenameInfo,
     diffLoading,
     enterDiffMode,
     exitDiffMode,
