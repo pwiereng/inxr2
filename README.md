@@ -550,6 +550,9 @@ repositories:
     exclude_patterns:
       - "**/node_modules/**"
       - "**/__pycache__/**"
+    exclude_paths:            # Directory segments to skip (opt-in)
+      - node_modules
+      - vendor
 
   # Environment variables supported
   - name: "frontend-app"
@@ -566,7 +569,6 @@ repositories:
 
 indexing:
   incremental: true           # Use incremental indexing when possible
-  max_commit_history: 1000    # Max commits to index per branch
   batch_size: 100             # Files per database batch
 
 server:
