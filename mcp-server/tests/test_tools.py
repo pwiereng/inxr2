@@ -6,6 +6,7 @@ from src.tools import (
     find_dead_code,
     find_references,
     get_change_impact,
+    get_file_structure,
     go_to_definition,
     list_repositories,
     review_helper,
@@ -1298,6 +1299,370 @@ class TestGetChangeImpact:
         assert "Affected files summary:" in result
         assert "Source (1): src/router.py" in result
         assert "Tests  (1): tests/test_api.py" in result
+
+
+# --- get_file_structure ---
+
+
+class TestGetFileStructure:
+    async def test_shows_file_header(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_file_structure(
+            "my-repo",
+            "src/models.py",
+            language="python",
+            line_count=80,
+            symbols=[],
+        )
+
+        result = await get_file_structure.handle(
+            client, {"file_path": "src/models.py", "repository": "my-repo"}
+        )
+
+        assert "File: src/models.py" in result
+        assert "Language: python" in result
+        assert "Lines: 80" in result
+
+    async def test_shows_top_level_symbols(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_file_structure(
+            "my-repo",
+            "src/models.py",
+            symbols=[
+                {
+                    "id": 1,
+                    "name": "MyClass",
+                    "kind": "class",
+                    "start_line": 10,
+                    "end_line": 50,
+                    "signature": None,
+                    "docstring": None,
+                    "parent_symbol_id": None,
+                },
+                {
+                    "id": 2,
+                    "name": "helper",
+                    "kind": "function",
+                    "start_line": 55,
+                    "end_line": 60,
+                    "signature": "(x: int) -> str",
+                    "docstring": None,
+                    "parent_symbol_id": None,
+                },
+            ],
+        )
+
+        result = await get_file_structure.handle(
+            client, {"file_path": "src/models.py", "repository": "my-repo"}
+        )
+
+        assert "class MyClass" in result
+        assert "[L10-50]" in result
+        assert "def helper" in result
+        assert "[L55-60]" in result
+
+    async def test_includes_signatures_by_default(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_file_structure(
+            "my-repo",
+            "src/app.py",
+            symbols=[
+                {
+                    "id": 1,
+                    "name": "run",
+                    "kind": "function",
+                    "start_line": 1,
+                    "end_line": 5,
+                    "signature": "(host: str, port: int) -> None",
+                    "docstring": None,
+                    "parent_symbol_id": None,
+                }
+            ],
+        )
+
+        result = await get_file_structure.handle(
+            client, {"file_path": "src/app.py", "repository": "my-repo"}
+        )
+
+        assert "(host: str, port: int) -> None" in result
+
+    async def test_omits_signatures_when_disabled(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_file_structure(
+            "my-repo",
+            "src/app.py",
+            symbols=[
+                {
+                    "id": 1,
+                    "name": "run",
+                    "kind": "function",
+                    "start_line": 1,
+                    "end_line": 5,
+                    "signature": "(host: str, port: int) -> None",
+                    "docstring": None,
+                    "parent_symbol_id": None,
+                }
+            ],
+        )
+
+        result = await get_file_structure.handle(
+            client,
+            {
+                "file_path": "src/app.py",
+                "repository": "my-repo",
+                "include_signatures": False,
+            },
+        )
+
+        assert "(host: str, port: int) -> None" not in result
+        assert "def run" in result
+
+    async def test_shows_child_symbols_indented(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_file_structure(
+            "my-repo",
+            "src/models.py",
+            symbols=[
+                {
+                    "id": 1,
+                    "name": "MyClass",
+                    "kind": "class",
+                    "start_line": 1,
+                    "end_line": 20,
+                    "signature": None,
+                    "docstring": None,
+                    "parent_symbol_id": None,
+                },
+                {
+                    "id": 2,
+                    "name": "__init__",
+                    "kind": "method",
+                    "start_line": 3,
+                    "end_line": 5,
+                    "signature": "(self, x: int)",
+                    "docstring": None,
+                    "parent_symbol_id": 1,
+                },
+            ],
+        )
+
+        result = await get_file_structure.handle(
+            client, {"file_path": "src/models.py", "repository": "my-repo"}
+        )
+
+        result_lines = result.splitlines()
+        class_line = next(ln for ln in result_lines if "class MyClass" in ln)
+        method_line = next(ln for ln in result_lines if "__init__" in ln)
+
+        # Method should be indented more than class
+        assert method_line.startswith("    ")
+        assert class_line.startswith("  ") and not class_line.startswith("    ")
+
+    async def test_includes_docstrings_when_enabled(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_file_structure(
+            "my-repo",
+            "src/app.py",
+            symbols=[
+                {
+                    "id": 1,
+                    "name": "run",
+                    "kind": "function",
+                    "start_line": 1,
+                    "end_line": 5,
+                    "signature": None,
+                    "docstring": "Start the application server.",
+                    "parent_symbol_id": None,
+                }
+            ],
+        )
+
+        result = await get_file_structure.handle(
+            client,
+            {
+                "file_path": "src/app.py",
+                "repository": "my-repo",
+                "include_docstrings": True,
+            },
+        )
+
+        assert "Start the application server." in result
+
+    async def test_filters_non_structural_kinds(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_file_structure(
+            "my-repo",
+            "src/service.py",
+            symbols=[
+                {
+                    "id": 1,
+                    "name": "MyService",
+                    "kind": "class",
+                    "start_line": 1,
+                    "end_line": 20,
+                    "signature": None,
+                    "docstring": None,
+                    "parent_symbol_id": None,
+                },
+                {
+                    "id": 2,
+                    "name": "_repo",
+                    "kind": "instance_variable",
+                    "start_line": 5,
+                    "end_line": 5,
+                    "signature": None,
+                    "docstring": None,
+                    "parent_symbol_id": 1,
+                },
+                {
+                    "id": 3,
+                    "name": "MAX_SIZE",
+                    "kind": "class_variable",
+                    "start_line": 6,
+                    "end_line": 6,
+                    "signature": None,
+                    "docstring": None,
+                    "parent_symbol_id": 1,
+                },
+                {
+                    "id": 4,
+                    "name": "execute",
+                    "kind": "method",
+                    "start_line": 8,
+                    "end_line": 15,
+                    "signature": "(self)",
+                    "docstring": None,
+                    "parent_symbol_id": 1,
+                },
+            ],
+        )
+
+        result = await get_file_structure.handle(
+            client, {"file_path": "src/service.py", "repository": "my-repo"}
+        )
+
+        assert "_repo" not in result
+        assert "MAX_SIZE" not in result
+        assert "instance_variable" not in result
+        assert "class_variable" not in result
+        assert "def execute" in result
+        assert "class MyService" in result
+
+    async def test_denylist_covers_all_variable_like_kinds(self) -> None:
+        """Denylist approach: variable-like kinds are excluded, structural kinds pass through."""
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_file_structure(
+            "my-repo",
+            "src/models.py",
+            symbols=[
+                {
+                    "id": 1,
+                    "name": "MyClass",
+                    "kind": "class",
+                    "start_line": 1,
+                    "end_line": 30,
+                    "signature": None,
+                    "docstring": None,
+                    "parent_symbol_id": None,
+                },
+                # These should all be excluded
+                *[
+                    {
+                        "id": i,
+                        "name": f"noise_{kind}",
+                        "kind": kind,
+                        "start_line": i,
+                        "end_line": i,
+                        "signature": None,
+                        "docstring": None,
+                        "parent_symbol_id": 1,
+                    }
+                    for i, kind in enumerate(
+                        [
+                            "variable",
+                            "constant",
+                            "field",
+                            "enum_value",
+                            "enum_member",
+                            "struct_field",
+                            "union_field",
+                            "instance_variable",
+                            "class_variable",
+                            "class_constant",
+                            "static_field",
+                            "readonly_field",
+                            "interface_property",
+                            "macro",
+                        ],
+                        start=2,
+                    )
+                ],
+                # Unknown future kind — should pass through (not silently dropped)
+                {
+                    "id": 99,
+                    "name": "future_kind_symbol",
+                    "kind": "some_future_kind",
+                    "start_line": 25,
+                    "end_line": 25,
+                    "signature": None,
+                    "docstring": None,
+                    "parent_symbol_id": None,
+                },
+            ],
+        )
+
+        result = await get_file_structure.handle(
+            client, {"file_path": "src/models.py", "repository": "my-repo"}
+        )
+
+        assert "class MyClass" in result
+        assert "future_kind_symbol" in result  # unknown kinds pass through
+        assert "noise_" not in result  # all variable-like kinds excluded
+
+    async def test_no_symbols(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_file_structure("my-repo", "src/empty.py", symbols=[])
+
+        result = await get_file_structure.handle(
+            client, {"file_path": "src/empty.py", "repository": "my-repo"}
+        )
+
+        assert "no symbols found" in result
+
+    async def test_includes_browse_url(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_file_structure("my-repo", "src/models.py", symbols=[])
+
+        result = await get_file_structure.handle(
+            client,
+            {"file_path": "src/models.py", "repository": "my-repo"},
+            frontend_url=FRONTEND_URL,
+        )
+
+        assert "http://localhost:5173/browse/my-repo/src/models.py" in result
+
+    async def test_prepends_staleness_warning(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234")
+        client.add_file_structure("my-repo", "src/models.py", symbols=[])
+
+        result = await get_file_structure.handle(
+            client, {"file_path": "src/models.py", "repository": "my-repo"}
+        )
+
+        assert "Warning" in result
+        assert "stale" in result
 
 
 # --- server creation ---

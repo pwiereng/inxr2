@@ -214,6 +214,70 @@ Flag any row with:
 - Symbol count decrease
 - Reference resolution % decrease
 
+## IX-06: Verify All Git Files at HEAD Are Indexed (FileFilter Completeness)
+
+Regression test for issue #349 — `FileFilter` silently dropping first-party files whose
+path contains a directory name that happens to match a vendor signal (e.g. `external`).
+
+For each indexed repo, compare the files git sees at HEAD against the files the API
+returns. Any file present in git but absent from the API was silently dropped by the
+indexer.
+
+**Steps:**
+```bash
+# DISCOVER: Get HEAD commit hash for the repo
+HEAD_HASH=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> rev-parse HEAD")
+
+# DISCOVER: List all files git sees at HEAD (no filtering)
+docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-tree -r --name-only $HEAD_HASH" | sort > /tmp/git_files.txt
+
+# VERIFY: Get all files the API knows about at that commit (flatten tree response)
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/<repo>/tree?commit=$HEAD_HASH' | python3 -c \"
+import sys, json
+
+def walk(nodes):
+    for n in nodes:
+        if n.get('type') == 'file':
+            print(n['path'])
+        for child in n.get('children') or []:
+            walk([child])
+
+walk(json.load(sys.stdin)['root'])
+\"" | sort > /tmp/api_files.txt
+
+# COMPARE: Files in git but not in API (silently dropped)
+comm -23 /tmp/git_files.txt /tmp/api_files.txt
+```
+
+**For the `inxr2` repo specifically** (known to have `src/inxr2/adapters/external/`):
+```bash
+HEAD_HASH=$(docker exec inxr2-dev bash -c "git -C /workspace rev-parse HEAD")
+docker exec inxr2-dev bash -c "git -C /workspace ls-tree -r --name-only $HEAD_HASH" | sort > /tmp/git_files.txt
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/inxr2/tree?commit=$HEAD_HASH' | python3 -c \"
+import sys, json
+
+def walk(nodes):
+    for n in nodes:
+        if n.get('type') == 'file':
+            print(n['path'])
+        for child in n.get('children') or []:
+            walk([child])
+
+walk(json.load(sys.stdin)['root'])
+\"" | sort > /tmp/api_files.txt
+comm -23 /tmp/git_files.txt /tmp/api_files.txt
+```
+
+**Pass criteria:**
+- `comm -23` output is empty for all repos (no files dropped)
+- `src/inxr2/adapters/external/` files appear in the API response for the `inxr2` repo
+- If any files are listed: check whether their path contains a `FileFilter` skip-directory
+  (`node_modules`, `vendor`, `dist`, `build`, `third_party`, `3rdparty`, `bower_components`)
+  — if the dropped files are *not* genuine vendor code, that is a `FileFilter` regression
+
+**Note:** Files intentionally filtered (e.g. `node_modules/`, `dist/`) will appear in the
+`comm` diff; verify these are genuine vendor paths, not first-party code.
+
 ---
 
 # Phase 2: QA Browser Regression
@@ -1718,7 +1782,7 @@ asyncio.run(main())
 
 ## Summary
 
-### Phase 1: Indexing (7 tests)
+### Phase 1: Indexing (8 tests)
 
 | ID | Test | Validates |
 |----|------|-----------|
@@ -1729,6 +1793,7 @@ asyncio.run(main())
 | IX-04a | Verify reference extraction (bare ids, require, this) | Reference extraction pipeline |
 | IX-04b | Verify ES6 export/re-export references | Export/re-export reference patterns |
 | IX-05 | Compare indexing performance vs history | No timing/count regressions |
+| IX-06 | Verify all git files at HEAD are indexed | FileFilter completeness (no silent drops) |
 
 ### Phase 2: QA Browser (37 tests)
 
@@ -1794,4 +1859,4 @@ asyncio.run(main())
 | MCP-17 | Staleness warning when index behind | Git HEAD vs last indexed commit |
 | MCP-18 | Browse URLs in find_dead_code and review_helper | URL presence with frontend_url |
 
-**Total: 62 test cases** (7 indexing + 37 browser + 18 MCP) — all verified against git/API, no hardcoded data.
+**Total: 63 test cases** (8 indexing + 37 browser + 18 MCP) — all verified against git/API, no hardcoded data.
