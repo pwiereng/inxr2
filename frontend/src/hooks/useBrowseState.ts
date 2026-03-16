@@ -196,6 +196,7 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
     diffContent: diffResult.diffContent,
     diffSymbols: diffResult.diffSymbols,
     diffReferences: diffResult.diffReferences,
+    diffRenameInfo: diffResult.diffRenameInfo,
     activePanel: urlResult.urlState.activePanel,
     treePanel: urlResult.urlState.treePanel,
     refPanel: urlResult.urlState.refPanel,
