@@ -231,8 +231,8 @@ HEAD_HASH=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> rev-p
 # DISCOVER: List all files git sees at HEAD (no filtering)
 docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-tree -r --name-only $HEAD_HASH" | sort > /tmp/git_files.txt
 
-# VERIFY: Get all files the API knows about at that commit
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/<repo>/files?commit=$HEAD_HASH&limit=10000' | python3 -c \"import sys,json; data=json.load(sys.stdin); [print(f['path']) for f in data.get('files', data) if isinstance(f, dict)]\"" | sort > /tmp/api_files.txt
+# VERIFY: Get all files the DB knows about at that commit
+docker exec inxr2-dev bash -c "psql -U postgres -d inxr2_dev -t -A -c \"SELECT f.path FROM files f JOIN commits c ON c.id = f.commit_id JOIN repositories r ON r.id = f.repository_id WHERE r.name = '<repo>' AND c.commit_hash = '$HEAD_HASH' ORDER BY f.path\"" > /tmp/api_files.txt
 
 # COMPARE: Files in git but not in API (silently dropped)
 comm -23 /tmp/git_files.txt /tmp/api_files.txt
@@ -242,7 +242,7 @@ comm -23 /tmp/git_files.txt /tmp/api_files.txt
 ```bash
 HEAD_HASH=$(docker exec inxr2-dev bash -c "git -C /workspace rev-parse HEAD")
 docker exec inxr2-dev bash -c "git -C /workspace ls-tree -r --name-only $HEAD_HASH" | sort > /tmp/git_files.txt
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/inxr2/files?commit=$HEAD_HASH&limit=10000' | python3 -c \"import sys,json; data=json.load(sys.stdin); [print(f['path']) for f in data.get('files', data) if isinstance(f, dict)]\"" | sort > /tmp/api_files.txt
+docker exec inxr2-dev bash -c "psql -U postgres -d inxr2_dev -t -A -c \"SELECT f.path FROM files f JOIN commits c ON c.id = f.commit_id JOIN repositories r ON r.id = f.repository_id WHERE r.name = 'inxr2' AND c.commit_hash = '$HEAD_HASH' ORDER BY f.path\"" > /tmp/api_files.txt
 comm -23 /tmp/git_files.txt /tmp/api_files.txt
 ```
 

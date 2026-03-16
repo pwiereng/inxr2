@@ -451,7 +451,7 @@ class TestProcessCommitUseCase:
 
         result = await use_case.execute(request)
 
-        # All 3 files should be indexed (none match hardcoded excludes)
+        # All 3 files should be indexed (no exclude_paths set, minified filter doesn't match)
         assert result.files_skipped == 0
         assert result.files_processed == 3
 

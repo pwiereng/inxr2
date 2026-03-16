@@ -2207,7 +2207,7 @@ class TestExcludePaths:
         response = await orchestrator.index_repository(request)
 
         # vendor/ and node_modules/ files should be skipped
-        assert response.files_skipped >= 2
+        assert response.files_skipped == 2
 
     @pytest.mark.asyncio
     async def test_no_exclude_paths_indexes_all_files(
