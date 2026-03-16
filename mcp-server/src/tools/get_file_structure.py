@@ -12,9 +12,31 @@ TOOL_NAME = "get_file_structure"
 
 TOOL_DESCRIPTION = (
     "Get a token-efficient symbol structure overview of a file. "
-    "Returns a hierarchical view of all symbols (classes, functions, methods, "
-    "properties, etc.) without the full source code. Useful for understanding "
-    "a file's structure before reading it in detail."
+    "Returns a two-level indented view of structural symbols (classes, functions, "
+    "methods, properties, etc.) without the full source code — top-level symbols "
+    "with their direct children (e.g. methods under a class). Useful for "
+    "understanding a file's structure before reading it in detail."
+)
+
+# Exclude variable-like and field-like kinds; keep everything structural.
+# Denylist is safer than an allowlist — new SymbolKind values pass through by default.
+_EXCLUDE_KINDS: frozenset[str] = frozenset(
+    {
+        "variable",
+        "constant",
+        "field",
+        "enum_value",
+        "enum_member",
+        "struct_field",
+        "union_field",
+        "instance_variable",
+        "class_variable",
+        "class_constant",
+        "static_field",
+        "readonly_field",
+        "interface_property",
+        "macro",
+    }
 )
 
 TOOL_SCHEMA: dict[str, Any] = {
@@ -119,24 +141,6 @@ def _render_symbol_tree(
     include_docstrings: bool,
 ) -> list[str]:
     """Render symbols as an indented tree (top-level + one level of children)."""
-    # Exclude variable-like and field-like kinds; keep everything structural.
-    # Denylist is safer than an allowlist — new SymbolKind values pass through by default.
-    _EXCLUDE_KINDS = {
-        "variable",
-        "constant",
-        "field",
-        "enum_value",
-        "enum_member",
-        "struct_field",
-        "union_field",
-        "instance_variable",
-        "class_variable",
-        "class_constant",
-        "static_field",
-        "readonly_field",
-        "interface_property",
-        "macro",
-    }
     symbols = [s for s in symbols if s["kind"] not in _EXCLUDE_KINDS]
 
     # Build parent → children map
