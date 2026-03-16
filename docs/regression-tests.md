@@ -1043,6 +1043,83 @@ curl "http://localhost:9222/url"
 
 ---
 
+## RT-32: Browse Rename Banner — File Shows Rename Context at Old Commit
+
+Verify that when a user browses a file at a commit where the file existed under a different path
+(i.e., the file was later renamed), the UI shows an informational banner pointing to the new path.
+Also verify the reverse: browsing the new path at an old commit shows the old path.
+
+**Steps:**
+```bash
+# DISCOVER: Find a rename event from the API
+REPO="inxr2"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/$REPO/renames?limit=5' | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+for r in data.get(\"items\", [])[:3]:
+    print(f\"old={r[\"old_path\"]} new={r[\"new_path\"]} commit={r[\"commit_hash\"][:8]}\")
+'"
+# Note an old_path, new_path, and commit_hash from the output above
+
+# NAVIGATE: Browse the new_path at the commit just BEFORE the rename
+# (the commit where old_path still existed)
+# Get the parent commit of the rename commit
+RENAME_COMMIT=<commit_hash_from_discover>
+PARENT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO rev-parse ${RENAME_COMMIT}^")
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/$REPO/<new_path>?commit=${PARENT}"
+curl "http://localhost:9222/wait?timeout=5000"
+
+# VERIFY: Rename banner is visible
+curl "http://localhost:9222/text?selector=body"
+```
+
+**Pass criteria:**
+- When browsing the new path at a commit where it didn't exist yet, a banner appears indicating
+  the file was at a different path at that time, with a link to the old path
+- The link in the banner navigates to the old path at the same commit
+- The browse page does NOT show a generic "file not found" dead end
+
+---
+
+## RT-33: Diff Viewer Rename Following
+
+Verify that when diffing a file across a rename boundary (comparing a commit before the rename
+to a commit after), the diff viewer identifies both paths and shows the diff correctly.
+
+**Steps:**
+```bash
+# DISCOVER: Find a rename event (from RT-32 or re-query)
+REPO="inxr2"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/$REPO/renames?limit=5' | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+for r in data.get(\"items\", [])[:3]:
+    print(f\"old={r[\"old_path\"]} new={r[\"new_path\"]} commit={r[\"commit_hash\"][:8]}\")
+'"
+# Note old_path, new_path, rename_commit
+
+# Get commit just before the rename
+RENAME_COMMIT=<commit_hash>
+PARENT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO rev-parse ${RENAME_COMMIT}^")
+
+# NAVIGATE: Open new_path at rename_commit in diff mode, comparing against parent
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/$REPO/<new_path>?commit=$RENAME_COMMIT&diff=$PARENT"
+curl "http://localhost:9222/wait?selector=table&timeout=8000"
+
+# VERIFY: Both paths appear in the diff header/toolbar
+curl "http://localhost:9222/text?selector=body"
+# Take screenshot for visual verification
+curl "http://localhost:9222/screenshot/save?path=.tmp/rt-33-diff-rename.png"
+```
+
+**Pass criteria:**
+- Diff viewer loads without error even though the file had a different path on the left side
+- The diff header or toolbar shows both the old path and the new path
+- Diff content renders correctly (additions/deletions visible)
+- The diff is not empty — the rename commit's file changes are shown
+
+---
+
 # Phase 3: MCP Server Regression
 
 Verify that the MCP server correctly exposes INXR2 code intelligence via its tool handlers.
@@ -1780,6 +1857,117 @@ asyncio.run(main())
 
 ---
 
+## MCP-19: get_file_structure Returns Correct Symbol Tree
+
+Verify that `get_file_structure` returns the two-level symbol tree for a file that matches
+what the symbols API knows about that file.
+
+**Steps:**
+```bash
+# DISCOVER: Pick a known file with symbols from the API
+REPO="inxr2"
+FILE="src/inxr2/domain/services/file_filter.py"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols/file-structure?repository_name=$REPO&file_path=$FILE' | python3 -m json.tool | head -40"
+
+# VERIFY: MCP tool returns the same structure
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import get_file_structure
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await get_file_structure.handle(client, {
+        'file_path': '$FILE',
+        'repository': '$REPO',
+    })
+    print(result)
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- Output shows a two-level indented symbol tree (classes/functions at top level, methods indented under them)
+- Symbol names in the MCP output match names returned by the symbols API for that file
+- When `include_signatures=True` (default), parameter signatures appear next to function/method names
+- When `include_docstrings=False` (default), no docstring text appears in the output
+- Structural symbols (class, function, method, interface) are present; variable/field-like symbols are excluded
+
+---
+
+## MCP-20: get_change_impact Returns Correct Dependent Files Grouped by Type
+
+Verify that `get_change_impact` finds all files that reference the given symbol and correctly
+categorizes them as source, test, or config files.
+
+**Steps:**
+```bash
+# DISCOVER: Pick a symbol with known references from the API
+REPO="inxr2"
+SYMBOL="FileFilter"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=$SYMBOL&repository_name=$REPO&limit=3' | python3 -c '
+import sys, json
+items = json.load(sys.stdin)[\"items\"]
+for s in items:
+    print(f\"{s[\"name\"]} [{s[\"kind\"]}] id={s[\"id\"]}\")
+'"
+# Get reference count for the symbol from API
+docker exec inxr2-dev bash -c "
+SID=\$(curl -s 'http://localhost:8000/api/symbols?q=$SYMBOL&repository_name=$REPO&limit=1' | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"items\"][0][\"id\"])')
+curl -s \"http://localhost:8000/api/symbols/\$SID/references?by_name=true&limit=20\" | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+print(f\"Total references: {data[\"total\"]}\")
+for r in data[\"items\"][:5]:
+    print(f\"  {r.get(\"source_file_path\",\"?\")}\")
+'
+"
+
+# VERIFY: MCP tool returns correctly grouped dependents at depth=1
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import get_change_impact
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await get_change_impact.handle(client, {
+        'name': '$SYMBOL',
+        'repository': '$REPO',
+        'depth': 1,
+    })
+    print(result)
+    await client.close()
+asyncio.run(main())
+"
+
+# VERIFY: depth=2 includes transitive dependents
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import get_change_impact
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await get_change_impact.handle(client, {
+        'name': '$SYMBOL',
+        'repository': '$REPO',
+        'depth': 2,
+    })
+    print(result)
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- Output groups dependent files into **Source files**, **Test files**, and **Config files** sections
+- Test files (paths containing `test`, `spec`, `__tests__`) appear in the test section
+- Source file count at depth=1 matches the direct reference count from the API
+- depth=2 output contains at least as many files as depth=1 (transitive adds more)
+- Each file entry shows which symbols within it reference the target
+- "No dependents found" message returned gracefully when symbol has zero references
+
+---
+
 ## Summary
 
 ### Phase 1: Indexing (8 tests)
@@ -1795,7 +1983,7 @@ asyncio.run(main())
 | IX-05 | Compare indexing performance vs history | No timing/count regressions |
 | IX-06 | Verify all git files at HEAD are indexed | FileFilter completeness (no silent drops) |
 
-### Phase 2: QA Browser (37 tests)
+### Phase 2: QA Browser (39 tests)
 
 | ID | Test | Validates Against |
 |----|------|-------------------|
@@ -1835,8 +2023,10 @@ asyncio.run(main())
 | RT-29 | Dependencies respects commit picker | URL commit param |
 | RT-30 | Dependencies empty state | Empty state message |
 | RT-31 | References panel → Logical View link | URL navigation |
+| RT-32 | Browse rename banner at old commit | `file_renames` API + rename banner visible |
+| RT-33 | Diff viewer rename following across rename boundary | Both paths in diff header, diff renders |
 
-### Phase 3: MCP Server (18 tests)
+### Phase 3: MCP Server (20 tests)
 
 | ID | Test | Validates Against |
 |----|------|-------------------|
@@ -1858,5 +2048,7 @@ asyncio.run(main())
 | MCP-16 | Review helper changed files only | Changed file count (not all repo) |
 | MCP-17 | Staleness warning when index behind | Git HEAD vs last indexed commit |
 | MCP-18 | Browse URLs in find_dead_code and review_helper | URL presence with frontend_url |
+| MCP-19 | get_file_structure returns correct symbol tree | API file-structure endpoint |
+| MCP-20 | get_change_impact returns dependents grouped by type | API references endpoint, grouping logic |
 
-**Total: 63 test cases** (8 indexing + 37 browser + 18 MCP) — all verified against git/API, no hardcoded data.
+**Total: 67 test cases** (8 indexing + 39 browser + 20 MCP) — all verified against git/API, no hardcoded data.

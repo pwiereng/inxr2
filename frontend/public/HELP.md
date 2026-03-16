@@ -236,6 +236,35 @@ Analyze the blast radius of a specific commit. Shows which files were changed, w
 
 **Example use:** "What's the blast radius of commit abc1234?"
 
+#### `get_file_structure`
+
+Return the symbol structure of a file — classes, functions, interfaces, and their members — without showing full source code. Produces a two-level indented tree that gives a quick view of a file's API surface.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file_path` | string | yes | Path to the file within the repository |
+| `repository` | string | yes | Repository name |
+| `branch` | string | no | Branch to read from (defaults to latest indexed) |
+| `commit` | string | no | Specific commit hash (overrides branch) |
+| `include_signatures` | boolean | no | Include parameter signatures (default: true) |
+| `include_docstrings` | boolean | no | Include docstrings/comments below each symbol (default: false) |
+
+**Example use:** "What classes and functions are defined in src/inxr2/domain/services/file_filter.py?"
+
+#### `get_change_impact`
+
+Analyze the downstream impact of modifying a symbol. Shows which files and symbols directly (and optionally transitively) depend on it, grouped by source files, test files, and config files. Answers: "If I change this, what else needs to change?"
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | yes | Symbol name to analyze |
+| `repository` | string | no | Filter to a specific repository |
+| `branch` | string | no | Branch to analyze (defaults to latest indexed) |
+| `commit` | string | no | Specific commit hash (overrides branch, requires `repository`) |
+| `depth` | integer | no | Traversal depth: 1 = direct dependents only, 2 = transitive (default: 1, max: 2) |
+
+**Example use:** "What would break if I changed the FileFilter class?"
+
 ### Setting Up MCP
 
 #### Claude Desktop
