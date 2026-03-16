@@ -96,13 +96,16 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
 
   // Canonical "old → new" rename tooltip for diff panel chips.
   // Uses renamed_from/renamed_to fields to ensure correct direction regardless of which side needed resolution.
-  const diffRenameTooltip = diffRenameInfo?.resolved_path
-    ? diffRenameInfo.renamed_from
-      ? `${diffRenameInfo.renamed_from} → ${filePath}`
-      : diffRenameInfo.renamed_to
-        ? `${filePath} → ${diffRenameInfo.renamed_to}`
-        : `${diffRenameInfo.resolved_path} → ${filePath}`
-    : ''
+  // Falls back to diffContent?.path when filePath is transiently null during navigation.
+  const currentPath = filePath ?? diffContent?.path ?? ''
+  const diffRenameTooltip =
+    diffRenameInfo?.resolved_path && currentPath
+      ? diffRenameInfo.renamed_from
+        ? `${diffRenameInfo.renamed_from} → ${currentPath}`
+        : diffRenameInfo.renamed_to
+          ? `${currentPath} → ${diffRenameInfo.renamed_to}`
+          : `${diffRenameInfo.resolved_path} → ${currentPath}`
+      : ''
 
   // Auto-disable blame when entering rendered mode (markdown/images)
   const isRenderedContent =
@@ -670,7 +673,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                                 </IconButton>
                               </Tooltip>
                             )}
-                            {diffRenameInfo?.resolved_path && (
+                            {diffRenameInfo?.resolved_path && currentPath && (
                               <Tooltip title={diffRenameTooltip}>
                                 <Chip
                                   label={
