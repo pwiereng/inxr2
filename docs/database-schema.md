@@ -1,7 +1,7 @@
 # INXR2 Database Schema Design
 
-**Version:** 6.0
-**Date:** 2026-03-15
+**Version:** 7.0
+**Date:** 2026-03-16
 **Status:** Implemented
 
 ## Overview
@@ -15,6 +15,7 @@ This document defines the PostgreSQL database schema for INXR2, a cross-referenc
 - Multi-branch support (commits can exist on multiple branches)
 - Dependency tracking (manifest/lock file parsing)
 - File rename tracking (follow files across renames for browse and diff)
+- Activity logging (HTTP request and MCP tool call audit trail)
 
 ## Design Principles
 
@@ -41,12 +42,12 @@ CREATE TABLE repositories (
     url                 TEXT NOT NULL,              -- Local path (e.g., /repos/myproject)
     description         TEXT,
     default_branch      VARCHAR(100) DEFAULT 'main',
-    config              JSONB,                      -- Repository-specific config
+    config              JSON,                       -- Repository-specific config
     created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_repositories_name ON repositories(name);
+CREATE UNIQUE INDEX ix_repositories_name ON repositories(name);
 ```
 
 **Fields:**
@@ -55,10 +56,10 @@ CREATE INDEX idx_repositories_name ON repositories(name);
 - `url`: Local filesystem path to the repository (plain path, not file:// URL)
 - `description`: Optional description
 - `default_branch`: Default branch to index (usually "main" or "master")
-- `config`: JSONB for repository-specific settings
+- `config`: JSON for repository-specific settings
 - `created_at`, `updated_at`: Audit timestamps
 
-**JSONB config example:**
+**JSON config example:**
 ```json
 {
     "branches": ["main", "develop"],
@@ -76,7 +77,7 @@ Stores minimal git commit metadata. Author info, message, and parent hashes are 
 
 ```sql
 CREATE TABLE commits (
-    id                  BIGSERIAL PRIMARY KEY,
+    id                  SERIAL PRIMARY KEY,
     repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
     commit_hash         CHAR(40) NOT NULL,          -- Full SHA-1 hash
     author_date         TIMESTAMP NOT NULL,         -- When authored
@@ -86,8 +87,7 @@ CREATE TABLE commits (
     CONSTRAINT uq_repo_commit_hash UNIQUE(repository_id, commit_hash)
 );
 
-CREATE INDEX idx_commits_hash ON commits(commit_hash);
-CREATE INDEX idx_commits_repo_date ON commits(repository_id, commit_date DESC);
+CREATE INDEX ix_commits_commit_hash ON commits(commit_hash);
 ```
 
 **Fields:**
@@ -121,17 +121,16 @@ Links commits to branches. A commit can exist on multiple branches (reflecting g
 
 ```sql
 CREATE TABLE branch_commits (
-    id                  BIGSERIAL PRIMARY KEY,
+    id                  SERIAL PRIMARY KEY,
     repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
     branch              VARCHAR(255) NOT NULL,
-    commit_id           BIGINT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
+    commit_id           INTEGER NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
 
     CONSTRAINT uq_branch_commit UNIQUE(repository_id, branch, commit_id)
 );
 
-CREATE INDEX idx_branch_commits_branch ON branch_commits(branch);
-CREATE INDEX idx_branch_commits_commit ON branch_commits(commit_id);
-CREATE INDEX idx_branch_commits_repo_branch ON branch_commits(repository_id, branch);
+CREATE INDEX ix_branch_commits_branch ON branch_commits(branch);
+CREATE INDEX ix_branch_commits_commit_id ON branch_commits(commit_id);
 ```
 
 **Fields:**
@@ -153,7 +152,7 @@ Stores file versions using content-addressable storage. A file row represents a 
 
 ```sql
 CREATE TABLE files (
-    id                  BIGSERIAL PRIMARY KEY,
+    id                  SERIAL PRIMARY KEY,
     repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
     path                TEXT NOT NULL,              -- Relative path from repo root
     content_hash        CHAR(40) NOT NULL,          -- SHA-1 of file content (git blob hash)
@@ -165,11 +164,13 @@ CREATE TABLE files (
     line_count          INTEGER,
     indexed_at          TIMESTAMP NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT uq_files_repo_path_hash UNIQUE(repository_id, path, content_hash)
+    CONSTRAINT uq_file_version UNIQUE(repository_id, path, content_hash)
 );
 
 CREATE INDEX ix_files_repo_content_hash ON files(repository_id, content_hash);
-CREATE INDEX idx_files_language ON files(language);
+CREATE INDEX ix_files_language ON files(language);
+CREATE INDEX ix_files_extension ON files(extension);
+CREATE INDEX ix_files_content_hash ON files(content_hash);
 ```
 
 **Fields:**
@@ -194,8 +195,8 @@ Maps commits to the files they contain. A file can appear in multiple commits (r
 
 ```sql
 CREATE TABLE commit_files (
-    commit_id           BIGINT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
-    file_id             BIGINT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    commit_id           INTEGER NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
+    file_id             INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
 
     PRIMARY KEY (commit_id, file_id)
 );
@@ -212,18 +213,18 @@ CREATE INDEX ix_commit_files_file_id ON commit_files(file_id);
 
 ### 6. symbols
 
-Stores extracted code symbols (functions, classes, variables, etc.) linked to file versions.
+Stores extracted code symbols (functions, classes, variables, constants, etc.) linked to file versions.
 
 ```sql
 CREATE TABLE symbols (
-    id                  BIGSERIAL PRIMARY KEY,
-    file_id             BIGINT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    id                  SERIAL PRIMARY KEY,
+    file_id             INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
 
     -- Symbol identification
     name                VARCHAR(500) NOT NULL,      -- Symbol name
     qualified_name      TEXT,                       -- Fully qualified name (e.g., "module.Class.method")
-    kind                VARCHAR(50) NOT NULL,       -- function, class, method, variable, etc.
+    kind                VARCHAR(50) NOT NULL,       -- function, class, method, variable, constant, etc.
 
     -- Location
     start_line          INTEGER NOT NULL,
@@ -232,23 +233,24 @@ CREATE TABLE symbols (
     end_column          INTEGER NOT NULL,
 
     -- Scope and context
-    parent_symbol_id    BIGINT REFERENCES symbols(id) ON DELETE SET NULL,  -- Parent (e.g., class for method)
+    parent_symbol_id    INTEGER REFERENCES symbols(id) ON DELETE SET NULL,
     scope               TEXT,                       -- Scope path (e.g., "Class.method")
 
     -- Language-specific metadata
     signature           TEXT,                       -- Function signature, type annotations
     docstring           TEXT,                       -- Documentation string
-    extra_metadata      JSONB,                      -- Language-specific attributes
+    extra_metadata      JSON,                       -- Language-specific attributes
 
     indexed_at          TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_symbols_file ON symbols(file_id);
 CREATE INDEX idx_symbols_repo_name_file ON symbols(repository_id, name, file_id);
-CREATE INDEX idx_symbols_name ON symbols(name);
-CREATE INDEX idx_symbols_qualified_name ON symbols(qualified_name);
-CREATE INDEX idx_symbols_kind ON symbols(kind);
-CREATE INDEX idx_symbols_parent ON symbols(parent_symbol_id);
+CREATE INDEX ix_symbols_file_id ON symbols(file_id);
+CREATE INDEX ix_symbols_name ON symbols(name);
+CREATE INDEX ix_symbols_qualified_name ON symbols(qualified_name);
+CREATE INDEX ix_symbols_kind ON symbols(kind);
+CREATE INDEX ix_symbols_parent_symbol_id ON symbols(parent_symbol_id);
+CREATE INDEX ix_symbols_repository_id ON symbols(repository_id);
 ```
 
 **Fields:**
@@ -260,7 +262,7 @@ CREATE INDEX idx_symbols_parent ON symbols(parent_symbol_id);
 - `scope`: Scope path for resolution (e.g., "MyClass.my_method")
 - `signature`: Function/method signature with types
 - `docstring`: Extracted documentation
-- `metadata`: JSONB for language-specific attributes
+- `extra_metadata`: JSON for language-specific attributes
 
 **Symbol Kinds:**
 - `function`: Top-level function
@@ -283,7 +285,7 @@ CREATE INDEX idx_symbols_parent ON symbols(parent_symbol_id);
 - `macro`: C preprocessor macro
 - `typedef`: C typedef
 
-**JSONB metadata examples:**
+**JSON metadata examples:**
 
 Python:
 ```json
@@ -316,40 +318,39 @@ Stores symbol references (usages) - links from one location to a symbol definiti
 
 ```sql
 CREATE TABLE "references" (
-    id                      BIGSERIAL PRIMARY KEY,
+    id                      SERIAL PRIMARY KEY,
     repository_id           INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
 
     -- Source location (where the reference occurs)
-    source_file_id          BIGINT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    source_file_id          INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     source_line             INTEGER NOT NULL,
     source_column           INTEGER NOT NULL,
     source_end_column       INTEGER NOT NULL,
     reference_text          VARCHAR(500) NOT NULL,  -- The actual text being referenced
 
     -- Target symbol (what is being referenced)
-    target_symbol_id        BIGINT REFERENCES symbols(id) ON DELETE SET NULL,
+    target_symbol_id        INTEGER REFERENCES symbols(id) ON DELETE SET NULL,
     target_repository_id    INTEGER REFERENCES repositories(id) ON DELETE SET NULL,  -- For cross-repo refs
 
     -- Reference metadata
     reference_type          VARCHAR(50) NOT NULL,   -- call, import, inheritance, type_annotation, usage, etc.
-    is_definition           BOOLEAN DEFAULT FALSE,  -- True if this is the definition site
-    is_write                BOOLEAN DEFAULT FALSE,  -- True if reference modifies the symbol
+    is_definition           BOOLEAN NOT NULL,       -- True if this is the definition site
+    is_write                BOOLEAN NOT NULL,       -- True if reference modifies the symbol
 
     -- Resolution metadata
-    resolution_confidence   FLOAT DEFAULT 1.0,      -- Confidence in symbol resolution (0.0-1.0)
-    extra_metadata          JSONB,                  -- Language-specific reference info
+    resolution_confidence   FLOAT NOT NULL,         -- Confidence in symbol resolution (0.0-1.0)
+    extra_metadata          JSON,                   -- Language-specific reference info
 
-    indexed_at              TIMESTAMP NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT references_confidence_check CHECK (resolution_confidence >= 0.0 AND resolution_confidence <= 1.0)
+    indexed_at              TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_references_source_file ON "references"(source_file_id);
-CREATE INDEX idx_references_target_symbol ON "references"(target_symbol_id);
+CREATE INDEX ix_references_source_file_id ON "references"(source_file_id);
+CREATE INDEX ix_references_target_symbol_id ON "references"(target_symbol_id);
 CREATE INDEX idx_references_repo_unresolved ON "references"(repository_id) WHERE target_symbol_id IS NULL;
-CREATE INDEX idx_references_type ON "references"(reference_type);
-CREATE INDEX idx_references_text ON "references"(reference_text);
-CREATE INDEX idx_references_source_line ON "references"(source_file_id, source_line);
+CREATE INDEX ix_references_reference_type ON "references"(reference_type);
+CREATE INDEX ix_references_reference_text ON "references"(reference_text);
+CREATE INDEX ix_references_repository_id ON "references"(repository_id);
+CREATE INDEX ix_references_target_repository_id ON "references"(target_repository_id);
 ```
 
 **Fields:**
@@ -406,16 +407,15 @@ CREATE TABLE index_status (
 
     -- Metadata
     indexer_version         VARCHAR(50),            -- Version of indexer that ran
-    extra_metadata          JSONB,
+    extra_metadata          JSON,
 
     created_at              TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMP NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT index_status_unique_repo_branch UNIQUE(repository_id, branch)
+    CONSTRAINT uq_index_status_repo_branch UNIQUE(repository_id, branch)
 );
 
-CREATE INDEX idx_index_status_repo ON index_status(repository_id);
-CREATE INDEX idx_index_status_status ON index_status(indexing_status);
+CREATE INDEX ix_index_status_indexing_status ON index_status(indexing_status);
 ```
 
 **Fields:**
@@ -442,9 +442,9 @@ Stores searchable text extracted from code comments, docstrings, commit messages
 
 ```sql
 CREATE TABLE text_contents (
-    id                  BIGSERIAL PRIMARY KEY,
+    id                  SERIAL PRIMARY KEY,
     repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
-    commit_id           BIGINT REFERENCES commits(id) ON DELETE CASCADE,  -- nullable (not used in content-addressable model)
+    commit_id           BIGINT REFERENCES commits(id) ON DELETE CASCADE,  -- nullable for content-addressable model
 
     -- Source information
     source_type         VARCHAR(50) NOT NULL,       -- comment, docstring, commit_message, non_code_file
@@ -453,22 +453,32 @@ CREATE TABLE text_contents (
     source_end_line     INTEGER,                    -- End line in source file
 
     -- Searchable content
-    content             TEXT NOT NULL,               -- Extracted text (stripped of comment markers)
-
-    -- Full-text search vector (PostgreSQL only, managed by triggers)
-    -- content_tsvector tsvector,
+    content             TEXT NOT NULL,              -- Extracted text (stripped of comment markers)
+    content_tsvector    TSVECTOR,                   -- Full-text search vector (managed by trigger)
 
     -- Metadata
     language            VARCHAR(50),                -- Language of source file (NULL for commit messages)
     content_type        VARCHAR(50),                -- single_line_comment, block_comment, docstring, etc.
 
-    indexed_at          TIMESTAMP NOT NULL DEFAULT NOW()
+    indexed_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT text_contents_valid_source CHECK (
+        (source_type = 'commit_message' AND source_file_id IS NULL)
+        OR (source_type != 'commit_message' AND source_file_id IS NOT NULL)
+    )
 );
 
 CREATE INDEX idx_text_contents_source_type ON text_contents(source_type);
 CREATE INDEX idx_text_contents_source_file ON text_contents(source_file_id);
 CREATE INDEX idx_text_contents_language ON text_contents(language);
--- CREATE INDEX idx_text_contents_fts ON text_contents USING GIN(content_tsvector);  -- PostgreSQL only
+CREATE INDEX idx_text_contents_repo_commit ON text_contents(repository_id, commit_id);
+CREATE INDEX idx_text_contents_fts ON text_contents USING GIN(content_tsvector);
+
+-- Trigger to keep content_tsvector in sync
+CREATE TRIGGER text_contents_tsvector_update
+    BEFORE INSERT OR UPDATE ON text_contents
+    FOR EACH ROW EXECUTE FUNCTION
+    tsvector_update_trigger('content_tsvector', 'pg_catalog.english', 'content');
 ```
 
 **Fields:**
@@ -476,6 +486,7 @@ CREATE INDEX idx_text_contents_language ON text_contents(language);
 - `source_file_id`: FK to files table (NULL for commit messages which have no source file)
 - `source_line/source_end_line`: Location in source file (for comments/docstrings)
 - `content`: The extracted text, stripped of comment markers (e.g., `#`, `//`, `/* */`)
+- `content_tsvector`: PostgreSQL full-text search vector, kept in sync by trigger
 - `language`: Programming language of the source file
 - `content_type`: Finer classification — `single_line_comment`, `block_comment`, `docstring`, `jsdoc`, etc.
 
@@ -486,8 +497,9 @@ CREATE INDEX idx_text_contents_language ON text_contents(language);
 - `non_code_file`: Content from markdown, YAML, text files, etc.
 
 **Design Notes:**
-- Full-text search vector (`content_tsvector`) is managed by PostgreSQL triggers, not the ORM
-- The tsvector column is excluded from SQLAlchemy mappings (managed by triggers)
+- Full-text search vector (`content_tsvector`) is managed by a PostgreSQL `BEFORE INSERT OR UPDATE` trigger — not written by the ORM
+- The tsvector column is excluded from SQLAlchemy mappings (managed purely by the trigger)
+- The check constraint enforces that `commit_message` rows have no `source_file_id`, and all other types must have one
 - Comments are deduplicated per-file per-commit (same file at same commit won't have duplicate entries)
 
 ---
@@ -499,7 +511,7 @@ Stores parsed package dependencies from manifest files (package.json, pyproject.
 ```sql
 CREATE TABLE dependencies (
     id                      SERIAL PRIMARY KEY,
-    file_id                 BIGINT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    file_id                 INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     repository_id           INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
 
     -- Package identification
@@ -573,7 +585,7 @@ Used by the browse page (rename banner) and diff viewer to follow files across r
 CREATE TABLE file_renames (
     id                  SERIAL PRIMARY KEY,
     repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
-    commit_id           BIGINT NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
+    commit_id           INTEGER NOT NULL REFERENCES commits(id) ON DELETE CASCADE,
 
     old_path            TEXT NOT NULL,              -- Path before rename
     new_path            TEXT NOT NULL,              -- Path after rename
@@ -581,7 +593,8 @@ CREATE TABLE file_renames (
 
     indexed_at          TIMESTAMP NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT uq_file_renames_commit_paths UNIQUE(commit_id, old_path, new_path)
+    CONSTRAINT uq_file_renames_commit_paths UNIQUE(commit_id, old_path, new_path),
+    CONSTRAINT ck_file_renames_similarity_range CHECK (similarity >= 0 AND similarity <= 100)
 );
 
 CREATE INDEX idx_file_renames_repo      ON file_renames(repository_id);
@@ -601,13 +614,61 @@ CREATE INDEX idx_file_renames_new_path  ON file_renames(repository_id, new_path)
 - The unique constraint is on `(commit_id, old_path, new_path)` — a file can only be renamed once per commit
 - Indexed on both `old_path` and `new_path` to support bidirectional lookup (forward and backward time travel)
 - Used by the browse page: when a file is not found at a commit, the rename table is queried to show a "this file was at `old_path` in this commit" banner with a clickable link
-- Used by the diff viewer (Part 3): auto-resolves the correct path for each side of the diff when a rename occurred between the two compared commits
+- Used by the diff viewer: auto-resolves the correct path for each side of the diff when a rename occurred between the two compared commits
 
 **Example:**
 ```
 commit_id=42  old_path="src/utils.py"  new_path="src/helpers.py"  similarity=95
 ```
 Means: in commit 42, `src/utils.py` was renamed to `src/helpers.py` with 95% content similarity.
+
+---
+
+### 12. query_log
+
+Ring-buffer table storing structured HTTP request and MCP tool call logs. Provides an audit trail for both human (browser) and AI assistant (MCP) usage. Capped at `MAX_QUERY_LOG_ENTRIES` (default 10,000) via application-level cleanup on insert.
+
+```sql
+CREATE TABLE query_log (
+    id              BIGSERIAL PRIMARY KEY,
+    logged_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+    source          VARCHAR(10) NOT NULL,   -- 'http' | 'mcp'
+    tool_or_path    TEXT NOT NULL,          -- MCP tool name or HTTP path
+    params          JSONB,                  -- query params / tool args
+    repository      TEXT,                  -- extracted repo name if present
+    status_code     SMALLINT,              -- HTTP status code (NULL for MCP)
+    duration_ms     INTEGER,               -- request duration in milliseconds
+    result_count    INTEGER,               -- number of results returned
+    session_id      TEXT                   -- future use: correlate a user/AI session
+);
+
+CREATE INDEX ix_query_log_logged_at   ON query_log(logged_at);
+CREATE INDEX ix_query_log_source      ON query_log(source);
+CREATE INDEX ix_query_log_repository  ON query_log(repository);
+```
+
+**Fields:**
+- `source`: Origin of the request — `http` (browser/API client) or `mcp` (AI assistant tool call)
+- `tool_or_path`: For MCP: tool name (e.g., `search_symbols`). For HTTP: request path (e.g., `/api/symbols`)
+- `params`: JSONB of query parameters or tool arguments
+- `repository`: Repository name extracted from path/params (NULL if not determinable)
+- `status_code`: HTTP response status (NULL for MCP calls)
+- `duration_ms`: End-to-end request duration
+- `result_count`: Number of items returned by the query
+- `session_id`: Reserved for future session correlation
+
+**Design Notes:**
+- No foreign keys — query_log is a standalone audit table, intentionally decoupled from the rest of the schema
+- Ring buffer: application middleware deletes the oldest rows when the count exceeds `MAX_QUERY_LOG_ENTRIES`
+- Only `/api/*` paths are logged for HTTP (static assets, health checks excluded)
+- MCP tool calls are logged by middleware wrapping the tool handlers in `mcp-server/`
+- Controlled by env vars: `LOG_HTTP_REQUESTS` and `LOG_MCP_CALLS` (both default `true`)
+
+**Browsing logs:**
+```
+GET /api/activity?source=mcp&repository=inxr2&limit=100
+```
+Returns entries newest-first. Available via the hidden `/activity` page in the UI.
 
 ---
 
@@ -640,6 +701,8 @@ repositories (1) ──────< (N) commits
                                                                     └──> dependencies (parent, self-ref)
 
 index_status (N) ────> (1) repositories
+
+query_log  (standalone — no foreign keys)
 ```
 
 ---
@@ -650,10 +713,9 @@ index_status (N) ────> (1) repositories
 ```sql
 SELECT * FROM symbols
 WHERE repository_id = ? AND name = ?
-ORDER BY commit_date DESC
-LIMIT 10;
+ORDER BY file_id;
 ```
-**Index:** `idx_symbols_repo_name_kind`
+**Index:** `idx_symbols_repo_name_file`
 
 ### 2. Get all symbols in a file
 ```sql
@@ -661,7 +723,7 @@ SELECT * FROM symbols
 WHERE file_id = ?
 ORDER BY start_line, start_column;
 ```
-**Index:** `idx_symbols_file`
+**Index:** `ix_symbols_file_id`
 
 ### 3. Find all references to a symbol
 ```sql
@@ -670,7 +732,7 @@ FROM "references" r
 JOIN files f ON r.source_file_id = f.id
 WHERE r.target_symbol_id = ?;
 ```
-**Index:** `idx_references_target_symbol`
+**Index:** `ix_references_target_symbol_id`
 
 ### 4. Get file at specific commit
 ```sql
@@ -679,7 +741,7 @@ JOIN commit_files cf ON cf.file_id = f.id
 JOIN commits c ON cf.commit_id = c.id
 WHERE f.repository_id = ? AND c.commit_hash = ? AND f.path = ?;
 ```
-**Index:** `uq_files_repo_path_hash`, `ix_commit_files_file_id`
+**Index:** `uq_file_version`, `ix_commit_files_file_id`
 
 ### 5. List commits for a branch
 ```sql
@@ -688,7 +750,7 @@ JOIN branch_commits bc ON bc.commit_id = c.id
 WHERE bc.repository_id = ? AND bc.branch = ?
 ORDER BY c.commit_date DESC;
 ```
-**Indexes:** `idx_branch_commits_repo_branch`, `idx_commits_repo_date`
+**Indexes:** `ix_branch_commits_branch`, `ix_branch_commits_commit_id`
 
 ### 6. Look up rename for a file at a commit (bidirectional)
 ```sql
@@ -712,7 +774,17 @@ WHERE c.repository_id = ?
 ORDER BY c.commit_date DESC
 LIMIT 1;
 ```
-**Indexes:** `idx_branch_commits_repo_branch`
+**Index:** `ix_branch_commits_branch`
+
+### 8. Query recent activity log
+```sql
+SELECT * FROM query_log
+WHERE source = 'mcp'
+  AND repository = 'inxr2'
+ORDER BY logged_at DESC
+LIMIT 100;
+```
+**Indexes:** `ix_query_log_source`, `ix_query_log_repository`, `ix_query_log_logged_at`
 
 ---
 
@@ -732,6 +804,8 @@ For a medium-sized repository (100k LOC):
 - **Total per repo: ~1 GB**
 
 For 10 repositories: ~10 GB database size
+
+**query_log storage:** ~180 bytes/row × 10,000 rows (ring buffer cap) = ~2–3 MB total (negligible)
 
 **Observed data (2026-03-08):**
 Indexing 12 repos across 17 branches (10 days) produced:
@@ -761,7 +835,8 @@ Indexing 12 repos across 17 branches (10 days) produced:
 | `add_dependencies_001` | Add dependencies table for manifest/lock file parsing |
 | `add_dep_source_line_001` | Add `source_line` column to dependencies table |
 | `9e60343223f9` | Add `last_indexing_duration_seconds` and `last_resolving_duration_seconds` to index_status |
-| `add_file_renames_table` | Add file_renames table for tracking renames via `git diff --find-renames` |
+| `add_file_renames_001` | Add file_renames table for tracking renames via `git diff --find-renames` |
+| `add_query_log_001` | Add query_log table for HTTP request and MCP tool call activity logging |
 
 ---
 
@@ -783,9 +858,13 @@ Git's model allows a commit to exist on multiple branches (e.g., after merging).
 - Avoids storing duplicate commits per branch
 - Makes branch filtering queries explicit
 
-### Why `extra_metadata` in ORM but `metadata` in SQL?
+### Why `extra_metadata` (JSON not JSONB) in most tables?
 
-SQLAlchemy reserves `metadata` as an attribute on its `Base` class. The ORM models use `extra_metadata` as the Python attribute name, mapped to the `metadata` column in the database. Domain entities use `metadata` (no conflict). The mapper layer handles the translation. See `adapters/persistence/mappers.py`.
+Most tables use plain `JSON` (not `JSONB`) for `extra_metadata`. This preserves insertion order and is sufficient for metadata that is read back as-is. The `dependencies.extras` column uses `JSONB` because it needs to support operator queries (e.g., key existence checks). `query_log.params` uses `JSONB` for the same reason — it's actively filtered.
+
+### Why `extra_metadata` in ORM but `metadata` in domain entities?
+
+SQLAlchemy reserves `metadata` as an attribute on its `Base` class. The ORM models use `extra_metadata` as both the Python attribute name and the database column name to avoid this conflict. Domain entities use `metadata` (no conflict there). The mapper layer handles the translation. See `adapters/persistence/mappers.py`.
 
 ### Why PostgreSQL-only?
 
@@ -793,6 +872,10 @@ The schema uses PostgreSQL-native features for optimal performance:
 - Full-text search with tsvector and GIN indexes
 - Native ARRAY and JSONB types
 - Tests run against a real PostgreSQL database (`inxr2_test`) for production-accurate behavior
+
+### Why is query_log standalone (no foreign keys)?
+
+Activity logging must never block or fail a real request. Foreign keys would create hard dependencies on repositories existing before a log entry can be written — causing failures on startup or during re-indexing. Using a plain `TEXT` repository name keeps logging decoupled and resilient.
 
 ---
 
@@ -806,3 +889,4 @@ The schema uses PostgreSQL-native features for optimal performance:
 | 4.0 | 2026-03-01 | Claude + User | Content-addressable file versions: removed commit_id from files/symbols/references, added commit_files junction table, added extension column, updated indexes, added 5 new migrations |
 | 5.0 | 2026-03-08 | Claude + User | Added dependencies table for manifest/lock file parsing (Python, JS/TS, Java, C#, Go, Ruby), updated relationships diagram, added dependency migration |
 | 6.0 | 2026-03-15 | Claude + User | Added file_renames table (PR #342), source_line to dependencies, duration columns to index_status, updated relationships diagram, query patterns, and migration history |
+| 7.0 | 2026-03-16 | Claude + User | Added query_log table (PR #362); corrected SERIAL/BIGSERIAL types; corrected JSON/JSONB types; fixed index names throughout; documented content_tsvector column and trigger; added check constraint on text_contents; updated design decisions |
