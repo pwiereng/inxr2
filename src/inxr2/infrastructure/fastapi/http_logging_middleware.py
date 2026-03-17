@@ -141,7 +141,18 @@ class HttpLoggingMiddleware(BaseHTTPMiddleware):
 
         result_count = _extract_result_count(body, response.status_code)
 
-        params: dict[str, Any] = dict(request.query_params)
+        # Use multi_items() to preserve repeated query params (e.g. ?ext=.py&ext=.ts)
+        raw_params = request.query_params.multi_items()
+        params: dict[str, Any] = {}
+        for k, v in raw_params:
+            if k in params:
+                existing = params[k]
+                if isinstance(existing, list):
+                    existing.append(v)
+                else:
+                    params[k] = [existing, v]
+            else:
+                params[k] = v
         repository = _extract_repository(request.url.path, params)
 
         entry = QueryLogEntry(

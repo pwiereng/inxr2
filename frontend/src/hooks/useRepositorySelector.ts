@@ -84,7 +84,7 @@ export function useRepositorySelector({
     }
 
     loadBranches()
-  }, [repoName, repositories])
+  }, [repoName])
 
   // Load commits when repository or branch changes
   useEffect(() => {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import unquote
 
 from src.client import Inxr2Client
 
@@ -254,7 +255,7 @@ class FakeInxr2Client(Inxr2Client):
         if path.endswith("/branches") and "/repositories/" in path:
             parts = path.split("/")
             if "by-name" in parts:
-                repo_name = parts[parts.index("by-name") + 1]
+                repo_name = unquote(parts[parts.index("by-name") + 1])
                 repo_id = next(
                     (r["id"] for r in self._repositories if r["name"] == repo_name),
                     None,
