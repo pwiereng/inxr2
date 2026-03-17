@@ -20,7 +20,7 @@ import {
 import RefreshIcon from '@mui/icons-material/Refresh'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
-import { getActivityLog, type ActivityEntry } from '@/lib/api'
+import { getActivityLog, getRepositories, type ActivityEntry } from '@/lib/api'
 import { useApp } from '@/contexts/AppContext'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -194,6 +194,13 @@ function ActivityContent() {
   const [repos, setRepos] = useState<string[]>([])
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Load the actual repository list once for the filter dropdown
+  useEffect(() => {
+    getRepositories()
+      .then((rs) => setRepos(rs.map((r) => r.name).sort()))
+      .catch(() => {}) // non-fatal — filter just stays empty
+  }, [])
+
   const load = useCallback(async () => {
     try {
       const resp = await getActivityLog({
@@ -202,14 +209,6 @@ function ActivityContent() {
         limit: 200,
       })
       setEntries(resp.entries)
-      // Collect unique repos seen in all entries for the filter dropdown
-      setRepos((prev) => {
-        const seen = new Set(prev)
-        resp.entries.forEach((e) => {
-          if (e.repository) seen.add(e.repository)
-        })
-        return Array.from(seen).sort()
-      })
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load activity log')

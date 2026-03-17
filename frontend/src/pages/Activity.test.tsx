@@ -4,10 +4,12 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Activity from './Activity'
 import * as api from '@/lib/api'
+import type { Repository } from '@/lib/api'
 import { AppProvider } from '@/contexts/AppContext'
 
 vi.mock('@/lib/api', () => ({
   getActivityLog: vi.fn(),
+  getRepositories: vi.fn(),
 }))
 
 const mockEntries = [
@@ -47,9 +49,22 @@ function renderActivity() {
   )
 }
 
+const mockRepositories: Repository[] = [
+  {
+    id: 1,
+    name: 'inxr2',
+    url: 'https://github.com/test/inxr2',
+    description: null,
+    default_branch: 'main',
+    created_at: null,
+    updated_at: null,
+  },
+]
+
 describe('Activity', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(api.getRepositories).mockResolvedValue(mockRepositories)
   })
 
   it('shows loading spinner initially', () => {
