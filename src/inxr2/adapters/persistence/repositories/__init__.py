@@ -9,6 +9,7 @@ from .file_search_adapter import PostgresFileSearchRepository
 from .file_version_adapter import PostgresFileVersionRepository
 from .index_status_adapter import PostgresIndexStatusRepository
 from .postgres_text_search import PostgresTextSearch
+from .query_log_adapter import PostgresQueryLogRepository
 from .reference_adapter import PostgresReferenceRepository
 from .repository_adapter import PostgresRepositoryAdapter
 from .symbol_adapter import PostgresSymbolRepository
@@ -24,6 +25,7 @@ __all__ = [
     "PostgresFileSearchRepository",
     "PostgresFileVersionRepository",
     "PostgresIndexStatusRepository",
+    "PostgresQueryLogRepository",
     "PostgresReferenceRepository",
     "PostgresRepositoryAdapter",
     "PostgresSymbolRepository",

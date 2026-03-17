@@ -17,7 +17,7 @@ import { MENU_PROPS } from '@/lib/menuProps'
 import { CopyButton } from '@/components/CopyButton/CopyButton'
 
 interface BranchSelectorProps {
-  repositoryId: number
+  repositoryName: string
   selectedBranch: string | null
   defaultBranch: string
   onBranchChange: (branchName: string | null) => void
@@ -29,7 +29,7 @@ interface BranchSelectorProps {
 }
 
 export function BranchSelector({
-  repositoryId,
+  repositoryName,
   selectedBranch,
   defaultBranch,
   onBranchChange,
@@ -46,7 +46,7 @@ export function BranchSelector({
   const [branchesWithChanges, setBranchesWithChanges] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    if (!repositoryId) {
+    if (!repositoryName) {
       setBranches([])
       return
     }
@@ -55,7 +55,7 @@ export function BranchSelector({
       setLoading(true)
       setError(null)
       try {
-        const response = await getRepositoryBranches(repositoryId)
+        const response = await getRepositoryBranches(repositoryName)
         // Only show indexed branches (those with a last_indexed_commit)
         const indexedBranches = response.branches.filter((b) => b.last_indexed_commit)
         setBranches(indexedBranches)
@@ -68,7 +68,7 @@ export function BranchSelector({
     }
 
     loadBranches()
-  }, [repositoryId])
+  }, [repositoryName])
 
   // Check which branches have the file and which have changes
   useEffect(() => {

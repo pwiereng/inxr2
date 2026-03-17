@@ -471,8 +471,8 @@ export async function getCommits(
   return fetchApi<CommitListResponse>(`/commits?${params}`)
 }
 
-export async function getRepositoryBranches(repoId: number): Promise<BranchListResponse> {
-  return fetchApi<BranchListResponse>(`/repositories/${repoId}/branches`)
+export async function getRepositoryBranches(repoName: string): Promise<BranchListResponse> {
+  return fetchApi<BranchListResponse>(`/repositories/by-name/${repoName}/branches`)
 }
 
 export async function getFileHistory(

@@ -6,8 +6,12 @@ Supports both stdio and SSE transports.
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import sys
+import time
+from datetime import UTC, datetime
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -26,6 +30,9 @@ from src.tools import (
     search_symbols,
 )
 from src.urls import get_frontend_url
+
+_mcp_logger = logging.getLogger("inxr2.mcp")
+_LOG_MCP_CALLS = os.getenv("LOG_MCP_CALLS", "true").lower() != "false"
 
 # Registry of all tools
 TOOLS = [
@@ -63,10 +70,31 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
         if not tool_module:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
+        start = time.monotonic()
         try:
             result = await tool_module.handle(
                 client, arguments, frontend_url=frontend_url
             )
+            duration_ms = int((time.monotonic() - start) * 1000)
+
+            if _LOG_MCP_CALLS:
+                result_count: int | None = None
+                try:
+                    parsed = json.loads(result)
+                    if isinstance(parsed, list):
+                        result_count = len(parsed)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pass
+                log_data = {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "source": "mcp",
+                    "tool": name,
+                    "args": arguments,
+                    "duration_ms": duration_ms,
+                    "result_count": result_count,
+                }
+                _mcp_logger.info(json.dumps(log_data))
+
             return [TextContent(type="text", text=result)]
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {e}")]

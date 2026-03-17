@@ -184,7 +184,7 @@ describe('useRepositorySelector', () => {
     it('should load branches when repoName is provided', async () => {
       const { result } = await renderRepositorySelectorHook()
 
-      expect(mockGetRepositoryBranches).toHaveBeenCalledWith(1)
+      expect(mockGetRepositoryBranches).toHaveBeenCalledWith('test-repo')
       // Should filter out unindexed branches
       expect(result.current.branches).toHaveLength(2)
       expect(result.current.branches.map((b) => b.name)).toEqual(['main', 'feature-branch'])

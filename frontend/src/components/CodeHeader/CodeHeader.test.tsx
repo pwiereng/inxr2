@@ -205,7 +205,7 @@ describe('CodeHeader', () => {
       render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
-        expect(api.getRepositoryBranches).toHaveBeenCalledWith(1)
+        expect(api.getRepositoryBranches).toHaveBeenCalledWith('test-repo')
       })
     })
 
@@ -495,14 +495,14 @@ describe('CodeHeader', () => {
       const { rerender } = render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
-        expect(api.getRepositoryBranches).toHaveBeenCalledWith(1)
+        expect(api.getRepositoryBranches).toHaveBeenCalledWith('test-repo')
       })
 
       // Change repository
       rerender(<CodeHeader {...defaultProps} repoName="another-repo" />)
 
       await waitFor(() => {
-        expect(api.getRepositoryBranches).toHaveBeenCalledWith(2)
+        expect(api.getRepositoryBranches).toHaveBeenCalledWith('another-repo')
       })
     })
 

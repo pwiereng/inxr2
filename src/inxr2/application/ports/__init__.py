@@ -2,6 +2,8 @@
 
 from .repositories import (
     FileRepositoryPort,
+    QueryLogEntry,
+    QueryLogPort,
     SymbolRepositoryPort,
     TextContentRepositoryPort,
 )
@@ -21,6 +23,8 @@ from .services import (
 __all__ = [
     "SymbolRepositoryPort",
     "FileRepositoryPort",
+    "QueryLogEntry",
+    "QueryLogPort",
     "TextContentRepositoryPort",
     "ParserServicePort",
     "GitServicePort",

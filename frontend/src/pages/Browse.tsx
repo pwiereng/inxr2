@@ -649,7 +649,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                               />
                             )}
                             <BranchSelector
-                              repositoryId={repository.id}
+                              repositoryName={repository.name}
                               selectedBranch={diffBranch || selectedBranch}
                               defaultBranch={repository.default_branch}
                               onBranchChange={actions.changeDiffBranch}
@@ -828,7 +828,7 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
                           }}
                         >
                           <BranchSelector
-                            repositoryId={repository.id}
+                            repositoryName={repository.name}
                             selectedBranch={diffBranch || selectedBranch}
                             defaultBranch={repository.default_branch}
                             onBranchChange={actions.changeDiffBranch}

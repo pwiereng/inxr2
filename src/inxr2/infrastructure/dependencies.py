@@ -44,6 +44,9 @@ from ..adapters.persistence.repositories.index_status_adapter import (
     PostgresIndexStatusRepository,
 )
 from ..adapters.persistence.repositories.postgres_text_search import PostgresTextSearch
+from ..adapters.persistence.repositories.query_log_adapter import (
+    PostgresQueryLogRepository,
+)
 from ..adapters.persistence.repositories.reference_adapter import (
     PostgresReferenceRepository,
 )
@@ -62,6 +65,7 @@ from ..application.ports.repositories import (
     FileSearchPort,
     FileVersionPort,
     IndexStatusRepositoryPort,
+    QueryLogPort,
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
@@ -573,3 +577,16 @@ def get_search_dependencies_use_case(
 SearchDependenciesUseCaseDep = Annotated[
     SearchDependenciesUseCase, Depends(get_search_dependencies_use_case)
 ]
+
+
+# =============================================================================
+# Query Log (Activity Log) Providers
+# =============================================================================
+
+
+def get_query_log_adapter(session: DbSession) -> QueryLogPort:
+    """Provide QueryLogPort adapter."""
+    return PostgresQueryLogRepository(session)
+
+
+QueryLogAdapterDep = Annotated[QueryLogPort, Depends(get_query_log_adapter)]

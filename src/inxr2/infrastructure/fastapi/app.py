@@ -1,7 +1,13 @@
 """FastAPI application factory."""
 
+import os
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+_LOG_HTTP_REQUESTS = os.getenv("LOG_HTTP_REQUESTS", "true").lower() != "false"
 
 
 def create_app() -> FastAPI:
@@ -34,12 +40,32 @@ def create_app() -> FastAPI:
     )
 
     # Initialize database
-    from ..database import init_database
+    from ..database import get_database_connection, init_database
 
     init_database()
 
+    # Add HTTP logging middleware (before CORS so all requests are logged)
+    from ...adapters.persistence.repositories.query_log_adapter import (
+        PostgresQueryLogRepository,
+    )
+    from ...application.ports.repositories.query_log_port import QueryLogPort
+    from .http_logging_middleware import HttpLoggingMiddleware
+
+    @asynccontextmanager
+    async def _query_log_factory() -> AsyncGenerator[QueryLogPort, None]:
+        db = get_database_connection()
+        async with db.session() as session:
+            yield PostgresQueryLogRepository(session)
+
+    app.add_middleware(
+        HttpLoggingMiddleware,
+        port_factory=_query_log_factory,
+        enabled=_LOG_HTTP_REQUESTS,
+    )
+
     # Register routers
     from ...adapters.api.routes import (
+        activity,
         commits,
         files,
         indexing,
@@ -56,6 +82,7 @@ def create_app() -> FastAPI:
     app.include_router(commits.router, prefix="/api")
     app.include_router(search.router, prefix="/api")
     app.include_router(renames.router, prefix="/api")
+    app.include_router(activity.router, prefix="/api")
 
     # Health check endpoint
     @app.get("/api/health")
