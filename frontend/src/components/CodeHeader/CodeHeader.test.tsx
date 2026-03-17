@@ -184,7 +184,9 @@ describe('CodeHeader', () => {
         expect(screen.getByDisplayValue('All Repositories')).toBeInTheDocument()
       })
 
-      // Type a repo name to trigger filtering
+      // Explicitly open the dropdown, then type to trigger filtering
+      const openButton = screen.getByTitle('Open')
+      fireEvent.click(openButton)
       const repoInput = screen.getByDisplayValue('All Repositories')
       fireEvent.change(repoInput, { target: { value: 'test' } })
 
