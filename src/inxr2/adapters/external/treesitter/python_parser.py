@@ -34,7 +34,7 @@ def _is_write_target(node: Node) -> bool:
         if parent.type in ("pattern_list", "tuple_pattern"):
             current = parent
             continue
-        if parent.type == "for_statement":
+        if parent.type in ("for_statement", "for_in_clause"):
             # Target is the node right after "for" keyword
             children = parent.children
             if len(children) >= 2 and current == children[1]:
@@ -630,6 +630,7 @@ class PythonParser(BaseLanguageParser):
                     if (
                         ident_name not in PYTHON_BUILTINS
                         and ident_name not in PYTHON_TYPE_BUILTINS
+                        and ident_name not in ("self", "cls")
                     ):
                         add_reference(
                             self._make_reference(ident_name, "usage", node, scope)

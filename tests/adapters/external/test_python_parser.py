@@ -156,3 +156,55 @@ def foo():
         assert my_type_refs[0]["type"] == "type_annotation"
         assert len(return_type_refs) == 1
         assert return_type_refs[0]["type"] == "type_annotation"
+
+    @pytest.mark.asyncio
+    async def test_does_not_capture_self_or_cls_as_usage(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """self and cls must not emit plain usage references."""
+        code = """\
+class Foo:
+    def method(self):
+        do_something(self)
+        return self
+
+    @classmethod
+    def create(cls):
+        return cls
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        self_refs = [
+            r for r in references if r["text"] == "self" and r["type"] == "usage"
+        ]
+        cls_refs = [
+            r for r in references if r["text"] == "cls" and r["type"] == "usage"
+        ]
+        assert len(self_refs) == 0
+        assert len(cls_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_does_not_capture_tuple_comprehension_loop_vars(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Tuple-unpacking comprehension loop variables must not be captured as usages."""
+        code = """\
+PAIRS = [(1, 2), (3, 4)]
+
+def process():
+    return [a + b for a, b in PAIRS]
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        # Each variable appears once as a usage (in `a + b`), not twice.
+        # The binding position `for a, b in` must NOT be captured as a usage.
+        a_usage_refs = [
+            r for r in references if r["text"] == "a" and r["type"] == "usage"
+        ]
+        b_usage_refs = [
+            r for r in references if r["text"] == "b" and r["type"] == "usage"
+        ]
+        assert len(a_usage_refs) == 1  # only `a + b`, not the `for a, b` binding
+        assert len(b_usage_refs) == 1  # only `a + b`, not the `for a, b` binding
