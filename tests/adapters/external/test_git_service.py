@@ -991,10 +991,10 @@ class TestListCommitsMergeHistory:
         # Verify feature branch commits are present by checking messages
         messages = {c.message for c in commits}
         assert any(
-            "feature-1" in m for m in messages
+            "feature-1:" in m for m in messages
         ), "feature-1 branch commits missing from list_commits result"
         assert any(
-            "feature-2" in m for m in messages
+            "feature-2:" in m for m in messages
         ), "feature-2 branch commits missing from list_commits result"
         assert len(commit_hashes) == total_commits, "Duplicate commits returned"
 
@@ -1026,10 +1026,10 @@ class TestListCommitsMergeHistory:
         )
         messages = {c.message for c in commits}
         assert any(
-            "feature-1" in m for m in messages
+            "feature-1:" in m for m in messages
         ), "feature-1 branch commits missing when using since_days"
         assert any(
-            "feature-2" in m for m in messages
+            "feature-2:" in m for m in messages
         ), "feature-2 branch commits missing when using since_days"
 
     def test_list_commits_with_since_includes_old_branch_commits_merged_recently(
@@ -1067,11 +1067,11 @@ class TestListCommitsMergeHistory:
             f"dropped even though their merge commits are within the window."
         )
         messages = {c.message for c in commits}
-        assert any("feature-1" in m for m in messages), (
+        assert any("feature-1:" in m for m in messages), (
             "feature-1 branch commits (older than since window) missing — "
             "list_commits stops traversal when branch commits predate --since cutoff"
         )
-        assert any("feature-2" in m for m in messages), (
+        assert any("feature-2:" in m for m in messages), (
             "feature-2 branch commits (older than since window) missing — "
             "list_commits stops traversal when branch commits predate --since cutoff"
         )
@@ -1159,7 +1159,7 @@ class TestListCommitsMergeHistory:
             "Merge feature-1" in m for m in messages
         ), "Merge commit missing from results"
         assert any(
-            "feature-1" in m for m in messages
+            "feature-1:" in m for m in messages
         ), "Feature branch commits missing from results"
         # Old first-parent commits are excluded
         assert not any(

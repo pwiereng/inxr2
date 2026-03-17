@@ -65,7 +65,8 @@ run_cmd() {
     fi
 }
 
-CMD="inxr2 index --config ${CONFIG}${DAYS:+ --days $DAYS}${EXTRA_ARGS:+ $EXTRA_ARGS}"
+CONFIG_QUOTED=$(printf '%q' "$CONFIG")
+CMD="inxr2 index --config ${CONFIG_QUOTED}${DAYS:+ --days $DAYS}${EXTRA_ARGS:+ $EXTRA_ARGS}"
 
 echo "🔍 Running: $CMD"
 echo ""
