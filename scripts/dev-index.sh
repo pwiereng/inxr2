@@ -3,7 +3,7 @@
 # Can be run from host (uses docker exec) or inside the dev container directly
 #
 # Usage: ./scripts/dev-index.sh [--config <file>] [--days <n>] [--repo <name>] [-- <extra args>]
-# Defaults: --config config.yaml (no --days = incremental forward-fill only)
+# Defaults: --config config.yaml (no --days = full HEAD index on first run, incremental forward-fill thereafter)
 
 set -e
 
