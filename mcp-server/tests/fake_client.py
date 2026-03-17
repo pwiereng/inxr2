@@ -250,11 +250,22 @@ class FakeInxr2Client(Inxr2Client):
         if path == "/api/repositories":
             return self._repositories
 
-        # GET /api/repositories/{id}/branches
+        # GET /api/repositories/by-name/{name}/branches
         if path.endswith("/branches") and "/repositories/" in path:
             parts = path.split("/")
-            repo_id = int(parts[3])  # /api/repositories/{id}/branches
-            return {"branches": self._branches.get(repo_id, [])}
+            if "by-name" in parts:
+                repo_name = parts[parts.index("by-name") + 1]
+                repo_id = next(
+                    (r["id"] for r in self._repositories if r["name"] == repo_name),
+                    None,
+                )
+            else:
+                repo_id = int(parts[3])
+            return {
+                "branches": (
+                    self._branches.get(repo_id, []) if repo_id is not None else []
+                )
+            }
 
         # GET /api/repositories/{id}/stats
         if path.endswith("/stats") and "/repositories/" in path:
@@ -358,3 +369,7 @@ class FakeInxr2Client(Inxr2Client):
             return self._file_structures[key]
 
         raise Exception(f"Unhandled path in FakeInxr2Client: {path}")
+
+    async def post(self, path: str, json: dict[str, Any]) -> Any:
+        # Fire-and-forget ingest calls are silently dropped in tests
+        return None

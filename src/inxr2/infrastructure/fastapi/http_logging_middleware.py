@@ -21,6 +21,7 @@ PortFactory = Callable[[], AbstractAsyncContextManager[QueryLogPort]]
 # Top-level JSON keys that contain result lists across our API endpoints
 _RESULT_LIST_KEYS = (
     "results",
+    "items",
     "files",
     "entries",
     "symbols",
@@ -31,7 +32,11 @@ _RESULT_LIST_KEYS = (
     "renames",
     "references",
     "dependencies",
+    "versions",
 )
+
+# Paths to skip logging (avoid self-referential noise in the activity log)
+_SKIP_PREFIXES = ("/api/activity",)
 
 
 def _extract_repository(path: str, params: dict[str, Any]) -> str | None:
@@ -90,7 +95,9 @@ class HttpLoggingMiddleware(BaseHTTPMiddleware):
         self._enabled = enabled
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        if not self._enabled:
+        if not self._enabled or any(
+            request.url.path.startswith(p) for p in _SKIP_PREFIXES
+        ):
             result: Response = await call_next(request)
             return result
 

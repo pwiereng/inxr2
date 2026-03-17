@@ -1,11 +1,12 @@
 """Activity log API endpoint."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict
 
+from ....application.ports.repositories.query_log_port import QueryLogEntry
 from ....infrastructure.dependencies import QueryLogAdapterDep
 
 router = APIRouter(prefix="/activity", tags=["activity"])
@@ -34,6 +35,18 @@ class ActivityLogResponse(BaseModel):
     entries: list[QueryLogEntryResponse]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class IngestRequest(BaseModel):
+    """Request body for MCP-side activity ingest."""
+
+    source: str
+    tool_or_path: str
+    params: dict[str, Any] | None = None
+    repository: str | None = None
+    duration_ms: int | None = None
+    result_count: int | None = None
+    session_id: str | None = None
 
 
 @router.get("", response_model=ActivityLogResponse)
@@ -71,4 +84,28 @@ async def list_activity(
             )
             for e in entries
         ]
+    )
+
+
+@router.post("/ingest", status_code=204)
+async def ingest_activity(
+    adapter: QueryLogAdapterDep,
+    body: IngestRequest,
+) -> None:
+    """
+    Ingest an activity entry from an external source (e.g. MCP server).
+
+    Intentionally excluded from HTTP middleware logging to avoid self-referential noise.
+    """
+    await adapter.append(
+        QueryLogEntry(
+            source=body.source,
+            tool_or_path=body.tool_or_path,
+            logged_at=datetime.now(UTC),
+            params=body.params,
+            repository=body.repository,
+            duration_ms=body.duration_ms,
+            result_count=body.result_count,
+            session_id=body.session_id,
+        )
     )

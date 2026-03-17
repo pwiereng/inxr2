@@ -6,6 +6,7 @@ Supports both stdio and SSE transports.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -64,6 +65,29 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
             for tool in TOOLS
         ]
 
+    async def _ingest_mcp_call(
+        name: str,
+        arguments: dict,
+        duration_ms: int,
+        result_count: int | None,
+        repository: str | None,
+    ) -> None:
+        """Fire-and-forget: write MCP tool call to the activity log DB via the API."""
+        try:
+            await client.post(
+                "/api/activity/ingest",
+                {
+                    "source": "mcp",
+                    "tool_or_path": name,
+                    "params": arguments,
+                    "repository": repository,
+                    "duration_ms": duration_ms,
+                    "result_count": result_count,
+                },
+            )
+        except Exception:
+            pass  # Never let logging failure affect tool response
+
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         tool_module = TOOL_MAP.get(name)
@@ -77,14 +101,19 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
             )
             duration_ms = int((time.monotonic() - start) * 1000)
 
+            result_count: int | None = None
+            try:
+                parsed = json.loads(result)
+                if isinstance(parsed, list):
+                    result_count = len(parsed)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+
+            repository: str | None = arguments.get("repository") or arguments.get(
+                "repo"
+            )
+
             if _LOG_MCP_CALLS:
-                result_count: int | None = None
-                try:
-                    parsed = json.loads(result)
-                    if isinstance(parsed, list):
-                        result_count = len(parsed)
-                except (json.JSONDecodeError, TypeError, ValueError):
-                    pass
                 log_data = {
                     "timestamp": datetime.now(UTC).isoformat(),
                     "source": "mcp",
@@ -94,6 +123,10 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
                     "result_count": result_count,
                 }
                 _mcp_logger.info(json.dumps(log_data))
+
+            asyncio.ensure_future(
+                _ingest_mcp_call(name, arguments, duration_ms, result_count, repository)
+            )
 
             return [TextContent(type="text", text=result)]
         except Exception as e:

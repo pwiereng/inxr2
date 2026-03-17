@@ -16,6 +16,11 @@ class Inxr2Client(ABC):
         """Make a GET request to the INXR2 API and return parsed JSON."""
         ...
 
+    @abstractmethod
+    async def post(self, path: str, json: dict[str, Any]) -> Any:
+        """Make a POST request to the INXR2 API and return parsed JSON (or None for 204)."""
+        ...
+
 
 class HttpInxr2Client(Inxr2Client):
     """Real HTTP client that calls the INXR2 API."""
@@ -30,6 +35,13 @@ class HttpInxr2Client(Inxr2Client):
             params = {k: v for k, v in params.items() if v is not None}
         response = await self._client.get(path, params=params)
         response.raise_for_status()
+        return response.json()
+
+    async def post(self, path: str, json: dict[str, Any]) -> Any:
+        response = await self._client.post(path, json=json)
+        response.raise_for_status()
+        if response.status_code == 204:
+            return None
         return response.json()
 
     async def close(self) -> None:

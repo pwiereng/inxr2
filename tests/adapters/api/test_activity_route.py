@@ -114,6 +114,51 @@ class TestActivityRoute:
         assert response.status_code == 200
         assert response.json()["entries"] == []
 
+    async def test_ingest_mcp_entry(self) -> None:
+        port = InMemoryQueryLogRepository()
+        app = _make_app(port)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/activity/ingest",
+                json={
+                    "source": "mcp",
+                    "tool_or_path": "search_code",
+                    "params": {"query": "foo", "repository": "inxr2"},
+                    "repository": "inxr2",
+                    "duration_ms": 123,
+                    "result_count": 7,
+                },
+            )
+
+        assert response.status_code == 204
+        entries = await port.list_recent()
+        assert len(entries) == 1
+        e = entries[0]
+        assert e.source == "mcp"
+        assert e.tool_or_path == "search_code"
+        assert e.repository == "inxr2"
+        assert e.duration_ms == 123
+        assert e.result_count == 7
+
+    async def test_ingest_minimal_entry(self) -> None:
+        port = InMemoryQueryLogRepository()
+        app = _make_app(port)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/activity/ingest",
+                json={"source": "mcp", "tool_or_path": "list_repositories"},
+            )
+
+        assert response.status_code == 204
+        entries = await port.list_recent()
+        assert entries[0].tool_or_path == "list_repositories"
+
     async def test_limit_and_offset(self) -> None:
         port = InMemoryQueryLogRepository()
         for i in range(5):

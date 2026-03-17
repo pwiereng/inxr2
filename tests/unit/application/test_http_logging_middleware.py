@@ -162,3 +162,65 @@ class TestHttpLoggingMiddleware:
 
         entries = await port.list_recent()
         assert entries[0].params == {"q": "foo", "limit": "10"}
+
+    async def test_skips_activity_paths(self) -> None:
+        port = InMemoryQueryLogRepository()
+        app = FastAPI()
+
+        @app.get("/api/activity")
+        async def activity_route() -> dict[str, list]:
+            return {"entries": []}
+
+        @app.post("/api/activity/ingest")
+        async def ingest_route() -> None:
+            return None
+
+        factory = _make_factory(port)
+        app.add_middleware(HttpLoggingMiddleware, port_factory=factory, enabled=True)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            await client.get("/api/activity")
+            await client.post("/api/activity/ingest", json={"source": "mcp"})
+
+        entries = await port.list_recent()
+        assert len(entries) == 0
+
+    async def test_result_count_from_items_key(self) -> None:
+        port = InMemoryQueryLogRepository()
+        app = FastAPI()
+
+        @app.get("/api/symbols")
+        async def symbols_route() -> dict:
+            return {"items": [1, 2], "total": 2}
+
+        factory = _make_factory(port)
+        app.add_middleware(HttpLoggingMiddleware, port_factory=factory, enabled=True)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            await client.get("/api/symbols")
+
+        entries = await port.list_recent()
+        assert entries[0].result_count == 2
+
+    async def test_result_count_from_versions_key(self) -> None:
+        port = InMemoryQueryLogRepository()
+        app = FastAPI()
+
+        @app.get("/api/file/history")
+        async def history_route() -> dict:
+            return {"versions": ["v1", "v2", "v3"], "total": 3}
+
+        factory = _make_factory(port)
+        app.add_middleware(HttpLoggingMiddleware, port_factory=factory, enabled=True)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            await client.get("/api/file/history")
+
+        entries = await port.list_recent()
+        assert entries[0].result_count == 3
