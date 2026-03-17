@@ -31,7 +31,6 @@ class RepositoryConfig:
 class IndexingConfig:
     """Configuration for indexing behavior."""
 
-    incremental: bool = True
     batch_size: int = 100
 
 
