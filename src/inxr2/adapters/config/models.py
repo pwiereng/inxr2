@@ -65,9 +65,6 @@ class RepositoryConfigModel(BaseModel):
 class IndexingConfigModel(BaseModel):
     """Pydantic model for indexing configuration validation."""
 
-    incremental: bool = Field(
-        default=True, description="Use incremental indexing when possible"
-    )
     batch_size: int = Field(
         default=100, description="Number of files to process per batch"
     )
@@ -75,7 +72,6 @@ class IndexingConfigModel(BaseModel):
     def to_domain(self) -> IndexingConfig:
         """Convert to domain value object."""
         return IndexingConfig(
-            incremental=self.incremental,
             batch_size=self.batch_size,
         )
 

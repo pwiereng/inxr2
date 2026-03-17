@@ -640,7 +640,6 @@ def config_show(config_path: Path) -> None:
 
     # Show indexing config
     console.print("[bold]Indexing Settings:[/bold]")
-    console.print(f"  Incremental: {app_config.indexing.incremental}")
     console.print(f"  Batch size: {app_config.indexing.batch_size}")
     console.print()
 

@@ -44,7 +44,6 @@ repositories:
   #     - main
 
 indexing:
-  incremental: true                       # Use incremental indexing when possible
   batch_size: 100                         # Files per database batch
 
 server:

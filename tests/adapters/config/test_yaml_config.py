@@ -39,9 +39,6 @@ repositories:
     path: {temp_dir}
     branches:
       - main
-
-indexing:
-  incremental: true
 """
         config_path = temp_dir / "config.yaml"
         config_path.write_text(config_content)
@@ -53,7 +50,6 @@ indexing:
         assert config.repositories[0].name == "test-repo"
         assert config.repositories[0].path == str(temp_dir)
         assert config.repositories[0].branches == ("main",)
-        assert config.indexing.incremental is True
 
     def test_load_config_with_defaults(
         self, config_service: YamlConfigService, temp_dir: Path
@@ -71,7 +67,6 @@ repositories:
 
         # Check defaults
         assert config.repositories[0].branches == ("main",)
-        assert config.indexing.incremental is True
         assert config.indexing.batch_size == 100
         assert config.server.host == "0.0.0.0"
         assert config.server.port == 8000
@@ -115,7 +110,7 @@ repositories:
         """Test error when repositories field is missing."""
         config_content = """
 indexing:
-  incremental: true
+  batch_size: 100
 """
         config_path = temp_dir / "config.yaml"
         config_path.write_text(config_content)
