@@ -10,7 +10,7 @@
 #   /repos      - External repositories (mounted via INXR2_REPOS_DIR)
 #
 # Usage:
-#   ./scripts/run-inxr2.sh ~/my-repos --config config.yaml
+#   ./scripts/dev-index.sh --config config.yaml
 
 repositories:
   # Repositories from mounted /repos directory
