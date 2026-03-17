@@ -21,6 +21,8 @@ class PostgresQueryLogRepository(QueryLogPort):
     def __init__(
         self, session: AsyncSession, max_entries: int = _DEFAULT_MAX_ENTRIES
     ) -> None:
+        if max_entries < 1:
+            raise ValueError(f"max_entries must be >= 1, got {max_entries}")
         self._session = session
         self._max_entries = max_entries
 

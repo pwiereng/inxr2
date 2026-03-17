@@ -796,7 +796,7 @@ export interface ActivityEntry {
 
 export interface ActivityLogResponse {
   entries: ActivityEntry[]
-  total: number
+  returned_count: number
 }
 
 export async function getActivityLog(params?: {

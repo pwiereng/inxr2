@@ -3352,6 +3352,8 @@ class InMemoryQueryLogRepository(QueryLogPort):
     """In-memory implementation of QueryLogPort for testing."""
 
     def __init__(self, max_entries: int = 10000) -> None:
+        if max_entries < 1:
+            raise ValueError(f"max_entries must be >= 1, got {max_entries}")
         self._entries: list[QueryLogEntry] = []
         self._next_id: int = 1
         self._max_entries = max_entries

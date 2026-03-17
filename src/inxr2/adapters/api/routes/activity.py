@@ -33,7 +33,7 @@ class ActivityLogResponse(BaseModel):
     """Response model for the activity log list."""
 
     entries: list[QueryLogEntryResponse]
-    total: int
+    returned_count: int
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -84,7 +84,9 @@ async def list_activity(
         )
         for e in entries
     ]
-    return ActivityLogResponse(entries=entry_responses, total=len(entry_responses))
+    return ActivityLogResponse(
+        entries=entry_responses, returned_count=len(entry_responses)
+    )
 
 
 @router.post("/ingest", status_code=204)

@@ -95,19 +95,25 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
         start = time.monotonic()
+        result: str | None = None
+        error: Exception | None = None
         try:
             result = await tool_module.handle(
                 client, arguments, frontend_url=frontend_url
             )
+        except Exception as e:
+            error = e
+        finally:
             duration_ms = int((time.monotonic() - start) * 1000)
 
             result_count: int | None = None
-            try:
-                parsed = json.loads(result)
-                if isinstance(parsed, list):
-                    result_count = len(parsed)
-            except (json.JSONDecodeError, TypeError, ValueError):
-                pass
+            if result is not None:
+                try:
+                    parsed = json.loads(result)
+                    if isinstance(parsed, list):
+                        result_count = len(parsed)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pass
 
             repository: str | None = arguments.get("repository") or arguments.get(
                 "repo"
@@ -121,19 +127,18 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
                     "args": arguments,
                     "duration_ms": duration_ms,
                     "result_count": result_count,
+                    "error": str(error) if error else None,
                 }
                 _mcp_logger.info(json.dumps(log_data))
-
-            if _LOG_MCP_CALLS:
                 asyncio.ensure_future(
                     _ingest_mcp_call(
                         name, arguments, duration_ms, result_count, repository
                     )
                 )
 
-            return [TextContent(type="text", text=result)]
-        except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
+        if error is not None:
+            return [TextContent(type="text", text=f"Error: {error}")]
+        return [TextContent(type="text", text=result)]  # type: ignore[arg-type]
 
     return server
 

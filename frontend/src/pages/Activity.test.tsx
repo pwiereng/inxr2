@@ -74,7 +74,7 @@ describe('Activity', () => {
   })
 
   it('renders entries after load', async () => {
-    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, total: 2 })
+    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, returned_count: 2 })
     renderActivity()
 
     await waitFor(() => expect(screen.getByText('/api/search')).toBeInTheDocument())
@@ -84,7 +84,7 @@ describe('Activity', () => {
   })
 
   it('shows empty state when no entries', async () => {
-    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: [], total: 0 })
+    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: [], returned_count: 0 })
     renderActivity()
 
     await waitFor(() => expect(screen.getByText(/No activity recorded yet/)).toBeInTheDocument())
@@ -99,7 +99,7 @@ describe('Activity', () => {
   })
 
   it('filters by source when changed', async () => {
-    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, total: 2 })
+    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, returned_count: 2 })
     const user = userEvent.setup()
     renderActivity()
 
@@ -116,7 +116,7 @@ describe('Activity', () => {
   })
 
   it('filters by repository when changed', async () => {
-    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, total: 2 })
+    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, returned_count: 2 })
     const user = userEvent.setup()
     renderActivity()
 
@@ -136,7 +136,7 @@ describe('Activity', () => {
 
   it('auto-refreshes every 5 seconds', async () => {
     vi.useFakeTimers()
-    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, total: 2 })
+    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, returned_count: 2 })
 
     renderActivity()
 
@@ -158,7 +158,7 @@ describe('Activity', () => {
 
   it('stops auto-refresh when toggle is turned off', async () => {
     vi.useFakeTimers()
-    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, total: 2 })
+    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, returned_count: 2 })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) })
 
     renderActivity()
@@ -183,7 +183,7 @@ describe('Activity', () => {
   })
 
   it('expands params row on click', async () => {
-    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, total: 2 })
+    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, returned_count: 2 })
     const user = userEvent.setup()
     renderActivity()
 
@@ -197,14 +197,14 @@ describe('Activity', () => {
   })
 
   it('shows status chips for HTTP entries', async () => {
-    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, total: 2 })
+    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, returned_count: 2 })
     renderActivity()
 
     await waitFor(() => expect(screen.getByText('200')).toBeInTheDocument())
   })
 
   it('shows entry count in header', async () => {
-    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, total: 2 })
+    vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, returned_count: 2 })
     renderActivity()
 
     await waitFor(() => expect(screen.getByText('2 entries')).toBeInTheDocument())

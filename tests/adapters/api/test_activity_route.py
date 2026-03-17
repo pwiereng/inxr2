@@ -43,7 +43,7 @@ class TestActivityRoute:
         assert response.status_code == 200
         data = response.json()
         assert len(data["entries"]) == 1
-        assert data["total"] == 1
+        assert data["returned_count"] == 1
         e = data["entries"][0]
         assert e["source"] == "http"
         assert e["tool_or_path"] == "/api/symbols"
@@ -115,7 +115,7 @@ class TestActivityRoute:
         assert response.status_code == 200
         body = response.json()
         assert body["entries"] == []
-        assert body["total"] == 0
+        assert body["returned_count"] == 0
 
     async def test_ingest_mcp_entry(self) -> None:
         port = InMemoryQueryLogRepository()
