@@ -3,13 +3,13 @@
 # Can be run from host (uses docker exec) or inside the dev container directly
 #
 # Usage: ./scripts/dev-index.sh [--config <file>] [--days <n>] [--repo <name>] [-- <extra args>]
-# Defaults: --config config.yaml --days 10
+# Defaults: --config config.yaml (no --days = incremental forward-fill only)
 
 set -e
 
 # Parse arguments
 CONFIG="config.yaml"
-DAYS="10"
+DAYS=""
 EXTRA_ARGS=""
 
 while [[ $# -gt 0 ]]; do
@@ -65,7 +65,7 @@ run_cmd() {
     fi
 }
 
-CMD="inxr2 index --config ${CONFIG} --days ${DAYS}${EXTRA_ARGS:+ $EXTRA_ARGS}"
+CMD="inxr2 index --config ${CONFIG}${DAYS:+ --days $DAYS}${EXTRA_ARGS:+ $EXTRA_ARGS}"
 
 echo "🔍 Running: $CMD"
 echo ""
