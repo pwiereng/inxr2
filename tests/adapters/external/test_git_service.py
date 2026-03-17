@@ -1050,7 +1050,7 @@ class TestListCommitsMergeHistory:
         """
         repo_path, total_commits = merge_repo_old_branch_commits
         # Use since_days=30: merge commits are today (inside window),
-        # but feature branch commits are 39-43 days old (outside window).
+        # but feature branch commits are 30.5–35 days old (outside window).
         commits = git_service.list_commits(
             repo_path, "main", max_count=None, since_days=30
         )
@@ -1076,3 +1076,92 @@ class TestListCommitsMergeHistory:
             "list_commits stops traversal when branch commits predate --since cutoff"
         )
         assert len(commit_hashes) == len(commits), "Duplicate commits returned"
+
+    def test_list_commits_with_since_excludes_pre_window_first_parent_commits(
+        self,
+        git_service: GitService,
+        tmp_path: Path,
+    ) -> None:
+        """list_commits boundary logic: commits before the first-parent window
+        boundary are excluded; old merged-branch commits introduced within the
+        window are still included.
+
+        This exercises the boundary_hash code path (boundary_hash is not None),
+        which is the core of the fix for issue #338.
+
+        History (dates in parentheses):
+          main: OLD1(60d) ← OLD2(55d) ← M1(today) ← HEAD
+                                              ↑
+                                    F1a(45d) ← F1b(40d)
+
+        With since_days=30:
+          - First-parent walk: HEAD(today) → M1(today) → OLD2(55d) → STOP
+          - boundary_hash = OLD2
+          - Full traversal of OLD2..HEAD: M1, F1a, F1b = 3 commits
+          - OLD1 and OLD2 are excluded (before the first-parent boundary)
+        """
+        from datetime import UTC, datetime, timedelta
+
+        repo_path = tmp_path / "boundary-repo"
+        repo_path.mkdir()
+        repo = Repo.init(repo_path, initial_branch="main")
+        repo.config_writer().set_value("user", "name", "Test User").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+        def date_str(days_ago: float) -> str:
+            d = datetime.now(UTC) - timedelta(days=days_ago)
+            return d.strftime("%Y-%m-%dT%H:%M:%S")
+
+        def commit_with_date(
+            msg: str, filename: str, content: str, days_ago: float
+        ) -> None:
+            (repo_path / filename).write_text(content)
+            repo.index.add([filename])
+            date = date_str(days_ago)
+            repo.index.commit(msg, author_date=date, commit_date=date)
+
+        # OLD1, OLD2: first-parent commits outside the 30-day window
+        commit_with_date("old: initial", "README.md", "# Old\n", days_ago=60)
+        commit_with_date("old: second", "old.py", "x = 1\n", days_ago=55)
+
+        # Feature branch with commits also outside the window, branched from OLD2
+        repo.create_head("feature-1").checkout()
+        commit_with_date(
+            "feature-1: add foo", "foo.py", "def foo(): pass\n", days_ago=45
+        )
+        commit_with_date(
+            "feature-1: add bar", "bar.py", "def bar(): pass\n", days_ago=40
+        )
+
+        # Merge feature-1 into main TODAY (within 30-day window)
+        repo.git.checkout("main")
+        today = date_str(0)
+        repo.git.merge(
+            "feature-1",
+            "--no-ff",
+            "-m",
+            "Merge feature-1 into main",
+            env={"GIT_AUTHOR_DATE": today, "GIT_COMMITTER_DATE": today},
+        )
+
+        commits = git_service.list_commits(
+            repo_path, "main", max_count=None, since_days=30
+        )
+        messages = {c.message for c in commits}
+
+        # Only M1, F1a, F1b should be returned (3 commits)
+        assert len(commits) == 3, (
+            f"Expected 3 commits (M1 + F1a + F1b), got {len(commits)}: "
+            f"{[c.message for c in commits]}"
+        )
+        # Merge commit and feature branch commits are present
+        assert any(
+            "Merge feature-1" in m for m in messages
+        ), "Merge commit missing from results"
+        assert any(
+            "feature-1" in m for m in messages
+        ), "Feature branch commits missing from results"
+        # Old first-parent commits are excluded
+        assert not any(
+            "old:" in m for m in messages
+        ), f"Pre-boundary first-parent commits should be excluded, got: {messages}"
