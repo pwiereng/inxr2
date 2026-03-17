@@ -247,6 +247,7 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 ### Key Rules
 
 - **Pre-creation:** Ensure main is in sync with GitHub (`git fetch origin main && git status`)
+- **Create worktrees sequentially, never in parallel** — slot allocation is not race-safe; parallel creates will collide on the same slot number
 - **Cleanup (closing a worktree):**
   1. Verify the PR is merged on GitHub
   2. `worktree-remove.sh <branch-name>` to tear down Docker stack and remove worktree
