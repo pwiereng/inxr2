@@ -3,6 +3,7 @@
 from typing import Any
 
 from src.tools import (
+    explain_symbol,
     find_dead_code,
     find_references,
     get_change_impact,
@@ -1663,6 +1664,153 @@ class TestGetFileStructure:
 
         assert "Warning" in result
         assert "stale" in result
+
+
+# --- explain_symbol ---
+
+
+class TestExplainSymbol:
+    async def test_symbol_found_with_references(self) -> None:
+        client = FakeInxr2Client()
+        client.add_symbol(
+            1,
+            "SearchSymbolsUseCase",
+            kind="class",
+            file_path="src/inxr2/application/use_cases/search_symbols.py",
+            start_line=12,
+            signature="class SearchSymbolsUseCase",
+            docstring="Use case for searching symbols across a repository.",
+        )
+        client.add_reference(
+            1,
+            "tests/test_search_symbols.py",
+            5,
+            "import",
+            "from ... import SearchSymbolsUseCase",
+        )
+        client.add_reference(
+            1,
+            "src/inxr2/adapters/api/symbols.py",
+            8,
+            "import",
+            "import SearchSymbolsUseCase",
+        )
+        client.add_reference(
+            1, "src/inxr2/di_container.py", 87, "call", "SearchSymbolsUseCase()"
+        )
+
+        result = await explain_symbol.handle(client, {"name": "SearchSymbolsUseCase"})
+
+        assert "SearchSymbolsUseCase" in result
+        assert "class" in result
+        assert "src/inxr2/application/use_cases/search_symbols.py:12" in result
+        assert "Use case for searching symbols" in result
+        assert "class SearchSymbolsUseCase" in result
+        assert "3 total" in result
+        assert "import" in result
+        assert "call" in result
+
+    async def test_symbol_not_found(self) -> None:
+        client = FakeInxr2Client()
+        result = await explain_symbol.handle(client, {"name": "NonExistent"})
+        assert "not found" in result
+        assert "NonExistent" in result
+
+    async def test_symbol_found_but_no_references(self) -> None:
+        client = FakeInxr2Client()
+        client.add_symbol(
+            1,
+            "OrphanClass",
+            kind="class",
+            file_path="src/orphan.py",
+            start_line=5,
+        )
+
+        result = await explain_symbol.handle(client, {"name": "OrphanClass"})
+
+        assert "OrphanClass" in result
+        assert "src/orphan.py:5" in result
+        assert "none found" in result
+
+    async def test_references_grouped_by_type(self) -> None:
+        client = FakeInxr2Client()
+        client.add_symbol(1, "MyFunc", kind="function", file_path="src/lib.py")
+        client.add_reference(1, "src/a.py", 1, "import", "")
+        client.add_reference(1, "src/b.py", 2, "import", "")
+        client.add_reference(1, "src/c.py", 3, "call", "")
+        client.add_reference(1, "src/d.py", 4, "type_annotation", "")
+
+        result = await explain_symbol.handle(client, {"name": "MyFunc"})
+
+        assert "import (2)" in result
+        assert "call (1)" in result
+        assert "type_annotation (1)" in result
+
+    async def test_truncates_long_reference_lists(self) -> None:
+        client = FakeInxr2Client()
+        client.add_symbol(1, "PopularFunc", kind="function")
+        for i in range(8):
+            client.add_reference(1, f"src/file_{i}.py", i + 1, "call", "")
+
+        result = await explain_symbol.handle(client, {"name": "PopularFunc"})
+
+        assert "and 3 more" in result
+
+    async def test_filters_by_repository(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1, "MyClass", kind="class", file_path="src/m.py", repository_id=1
+        )
+
+        result = await explain_symbol.handle(
+            client, {"name": "MyClass", "repository": "my-repo"}
+        )
+
+        assert "my-repo" in result
+        assert "MyClass" in result
+
+    async def test_commit_requires_repository(self) -> None:
+        client = FakeInxr2Client()
+        result = await explain_symbol.handle(
+            client, {"name": "Foo", "commit": "abc123"}
+        )
+        assert "Error" in result
+        assert "'commit' requires 'repository'" in result
+
+    async def test_includes_browse_url_with_repository(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1,
+            "MyClass",
+            kind="class",
+            file_path="src/models.py",
+            start_line=10,
+            repository_id=1,
+        )
+
+        result = await explain_symbol.handle(
+            client,
+            {"name": "MyClass", "repository": "my-repo"},
+            frontend_url=FRONTEND_URL,
+        )
+
+        assert "http://localhost:5173/browse/my-repo/src/models.py?line=10" in result
+
+    async def test_staleness_warning_prepended(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_stats(1, is_stale=True, last_indexed_commit="abc1234def5678")
+        client.add_symbol(1, "MyClass", kind="class", repository_id=1)
+
+        result = await explain_symbol.handle(
+            client, {"name": "MyClass", "repository": "my-repo"}
+        )
+
+        assert result.startswith("Warning:")
+        assert "stale" in result
+        assert "MyClass" in result
 
 
 # --- server creation ---
