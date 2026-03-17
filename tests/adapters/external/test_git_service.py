@@ -843,9 +843,9 @@ def merge_repo_old_branch_commits(tmp_path: Path) -> tuple[Path, int]:
     repo.config_writer().set_value("user", "email", "test@example.com").release()
 
     def date_str(days_ago: float) -> str:
-        """Return an ISO date string N days in the past."""
+        """Return an ISO date string N days in the past (UTC, with timezone offset)."""
         d = datetime.now(UTC) - timedelta(days=days_ago)
-        return d.strftime("%Y-%m-%dT%H:%M:%S")
+        return d.strftime("%Y-%m-%dT%H:%M:%S+0000")
 
     def commit_with_date(
         msg: str, filename: str, content: str, days_ago: float
@@ -1110,7 +1110,7 @@ class TestListCommitsMergeHistory:
 
         def date_str(days_ago: float) -> str:
             d = datetime.now(UTC) - timedelta(days=days_ago)
-            return d.strftime("%Y-%m-%dT%H:%M:%S")
+            return d.strftime("%Y-%m-%dT%H:%M:%S+0000")
 
         def commit_with_date(
             msg: str, filename: str, content: str, days_ago: float

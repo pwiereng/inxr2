@@ -639,12 +639,14 @@ class GitService(GitServicePort):
                 iter_kwargs: dict[str, Any] = {}
                 if max_count is not None:
                     iter_kwargs["max_count"] = max_count
-                if since_days is not None:
-                    since_date = datetime.now(UTC) - timedelta(days=since_days)
-                    iter_kwargs["since"] = since_date.strftime("%Y-%m-%d")
                 commits = list(
                     repo.iter_commits(f"{merge_base}..{branch_ref}", **iter_kwargs)
                 )
+                # Use Python filtering instead of git --since to avoid DAG sub-graph
+                # pruning (same issue as list_commits — see #338).
+                if since_days is not None:
+                    since_date = datetime.now(UTC) - timedelta(days=since_days)
+                    commits = [c for c in commits if c.committed_datetime >= since_date]
                 commits = list(reversed(commits))
                 return self._commits_to_info(commits)
         except GitCommandError as e:
@@ -682,17 +684,23 @@ class GitService(GitServicePort):
                             iter_kwargs = {}
                             if max_count is not None:
                                 iter_kwargs["max_count"] = max_count
-                            if since_days is not None:
-                                since_date = datetime.now(UTC) - timedelta(
-                                    days=since_days
-                                )
-                                iter_kwargs["since"] = since_date.strftime("%Y-%m-%d")
                             commits = list(
                                 repo.iter_commits(
                                     f"{original_merge_base[0].hexsha}..{merged_branch_head.hexsha}",
                                     **iter_kwargs,
                                 )
                             )
+                            # Use Python filtering instead of git --since to avoid DAG
+                            # sub-graph pruning (same issue as list_commits — see #338).
+                            if since_days is not None:
+                                since_date = datetime.now(UTC) - timedelta(
+                                    days=since_days
+                                )
+                                commits = [
+                                    c
+                                    for c in commits
+                                    if c.committed_datetime >= since_date
+                                ]
                             commits = list(reversed(commits))
                             return self._commits_to_info(commits)
         except GitCommandError as e:
