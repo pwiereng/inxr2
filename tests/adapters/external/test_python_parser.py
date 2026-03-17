@@ -139,3 +139,20 @@ def foo():
         # Should appear exactly once (as a call), not also as a plain usage
         assert len(call_refs) == 1
         assert call_refs[0]["type"] == "call"
+
+    @pytest.mark.asyncio
+    async def test_does_not_duplicate_type_annotation_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Type annotation identifiers must not also emit a plain usage reference."""
+        code = "def foo(x: MyType) -> ReturnType:\n    pass\n"
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        my_type_refs = [r for r in references if r["text"] == "MyType"]
+        return_type_refs = [r for r in references if r["text"] == "ReturnType"]
+        # Each type name should appear exactly once, as type_annotation only
+        assert len(my_type_refs) == 1
+        assert my_type_refs[0]["type"] == "type_annotation"
+        assert len(return_type_refs) == 1
+        assert return_type_refs[0]["type"] == "type_annotation"

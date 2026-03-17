@@ -582,6 +582,9 @@ class PythonParser(BaseLanguageParser):
                     # Import path components (handled by import handlers above)
                     elif parent.type in ("dotted_name", "aliased_import"):
                         skip = True
+                    # Type annotations — handled by the type/generic_type handler above
+                    elif parent.type in ("type", "generic_type"):
+                        skip = True
                     # Parameter lists — names are bindings, not usages
                     elif parent.type in ("parameters", "lambda_parameters"):
                         skip = True
