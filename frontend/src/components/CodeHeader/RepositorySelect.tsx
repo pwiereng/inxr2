@@ -44,16 +44,17 @@ export function RepositorySelect({
         size="small"
         options={options}
         value={value}
-        filterOptions={(opts, params) => {
-          if (!opts.includes(ALL_REPOS_OPTION)) {
-            return baseFilter(opts, params)
-          }
-          const filtered = baseFilter(
-            opts.filter((o) => o !== ALL_REPOS_OPTION),
-            params
-          )
-          return [ALL_REPOS_OPTION, ...filtered]
-        }}
+        filterOptions={
+          currentTab === 'search'
+            ? (opts, params) => [
+                ALL_REPOS_OPTION,
+                ...baseFilter(
+                  opts.filter((o) => o !== ALL_REPOS_OPTION),
+                  params,
+                ),
+              ]
+            : undefined
+        }
         onChange={(_e, newValue) => {
           if (newValue === ALL_REPOS_OPTION) {
             onRepoChange('')
