@@ -396,8 +396,8 @@ class PythonParser(BaseLanguageParser):
             if not var_name:
                 return
 
-            # Only record UPPER_CASE as constants
-            if re.match(r"^[A-Z][A-Z0-9_]*$", var_name):
+            # Record UPPER_CASE and _UPPER_CASE (private constants) as constants
+            if re.match(r"^_?[A-Z][A-Z0-9_]*$", var_name):
                 symbols.append(self._make_symbol(var_name, "constant", node))
 
         def extract_references(node: Node, scope: str | None = None) -> None:
@@ -564,6 +564,73 @@ class PythonParser(BaseLanguageParser):
                                 )
                             )
                         break
+
+            # Plain identifier reads (e.g. `return name in _STD_LIB_PREFIXES`)
+            # Handles usages not covered by call/attribute/import/type handlers.
+            if node.type == "identifier":
+                parent = node.parent
+                skip = False
+                if parent is not None:
+                    # Definition contexts — the identifier IS the name being defined
+                    if parent.type in (
+                        "function_definition",
+                        "class_definition",
+                        "global_statement",
+                        "nonlocal_statement",
+                    ):
+                        skip = True
+                    # Import path components (handled by import handlers above)
+                    elif parent.type in ("dotted_name", "aliased_import"):
+                        skip = True
+                    # Parameter lists — names are bindings, not usages
+                    elif parent.type in ("parameters", "lambda_parameters"):
+                        skip = True
+                    elif (
+                        parent.type
+                        in (
+                            "default_parameter",
+                            "typed_parameter",
+                            "typed_default_parameter",
+                            "list_splat_pattern",
+                            "dictionary_splat_pattern",
+                        )
+                        and parent.children
+                        and node == parent.children[0]
+                    ):
+                        skip = True
+                    # Keyword argument key: foo=bar → skip "foo"
+                    elif (
+                        parent.type == "keyword_argument"
+                        and parent.children
+                        and node == parent.children[0]
+                    ):
+                        skip = True
+                    # Attribute children — handled by attribute handler
+                    elif parent.type == "attribute":
+                        skip = True
+                    # Call function target — handled by call handler
+                    elif parent.type == "call" and node == parent.child_by_field_name(
+                        "function"
+                    ):
+                        skip = True
+                    # Comprehension/generator loop variable
+                    elif (
+                        parent.type == "for_in_clause"
+                        and parent.children
+                        and node == parent.children[1]
+                    ):
+                        skip = True
+                    elif _is_write_target(node):
+                        skip = True
+                if not skip:
+                    ident_name = get_text(node)
+                    if (
+                        ident_name not in PYTHON_BUILTINS
+                        and ident_name not in PYTHON_TYPE_BUILTINS
+                    ):
+                        add_reference(
+                            self._make_reference(ident_name, "usage", node, scope)
+                        )
 
             # Recurse into children
             for child in node.children:

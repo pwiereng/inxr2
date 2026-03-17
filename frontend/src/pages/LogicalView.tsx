@@ -466,6 +466,7 @@ export default function LogicalView(): React.ReactElement {
           branch: branch ?? undefined,
           commit: commit ?? undefined,
           top_level_only: false,
+          language: selectedLanguage ?? undefined,
           limit: KIND_PAGE_SIZE,
           offset: 0,
         })
@@ -483,7 +484,7 @@ export default function LogicalView(): React.ReactElement {
     return () => {
       cancelled = true
     }
-  }, [activeKind, repositoryId, branch, commit])
+  }, [activeKind, repositoryId, branch, commit, selectedLanguage])
 
   // Load more symbols in kind mode
   const loadMoreKindSymbols = useCallback(async () => {
@@ -496,6 +497,7 @@ export default function LogicalView(): React.ReactElement {
         branch: branch ?? undefined,
         commit: commit ?? undefined,
         top_level_only: false,
+        language: selectedLanguage ?? undefined,
         limit: KIND_PAGE_SIZE,
         offset: kindSymbolsOffset,
       })
@@ -507,7 +509,15 @@ export default function LogicalView(): React.ReactElement {
     } finally {
       setKindSymbolsLoading(false)
     }
-  }, [activeKind, repositoryId, branch, commit, kindSymbolsOffset, kindSymbolsLoading])
+  }, [
+    activeKind,
+    repositoryId,
+    branch,
+    commit,
+    kindSymbolsOffset,
+    kindSymbolsLoading,
+    selectedLanguage,
+  ])
 
   // Expand/collapse a symbol in kind mode (fetch children via symbol tree)
   const toggleKindSymbol = useCallback(

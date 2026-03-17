@@ -1308,8 +1308,10 @@ class Point:
         )
         x_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "x"]
         y_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "y"]
-        assert len(x_usages) == 1
-        assert len(y_usages) == 1
+        # 2 usages each: right-hand side of `self.x = x` (param read) +
+        # `self.x` read in `distance` (via attribute handler)
+        assert len(x_usages) == 2
+        assert len(y_usages) == 2
 
     @pytest.mark.asyncio
     async def test_self_tuple_unpacking_not_usage(
