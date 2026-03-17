@@ -113,26 +113,33 @@ class HttpLoggingMiddleware(BaseHTTPMiddleware):
         response: Response = await call_next(request)
         duration_ms = int((time.monotonic() - start) * 1000)
 
-        # Consume response body to inspect result count, then rebuild response.
-        # body_iterator is set by Starlette's call_next at runtime but absent from stubs.
-        # Accumulate into a list to avoid O(n²) reallocation on concatenation.
-        chunks: list[bytes] = []
-        async for chunk in response.body_iterator:  # type: ignore[attr-defined]
-            chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode())
-        body = b"".join(chunks)
+        # Read response body to inspect result count.
+        # FastAPI/Starlette JSONResponse stores the body as response.body (bytes).
+        # Fall back to consuming body_iterator only for streaming responses that don't
+        # pre-buffer (avoids unnecessary memory duplication and response reconstruction).
+        raw_body: bytes | None = getattr(response, "body", None)
+        if raw_body is not None:
+            body = raw_body
+            new_response = response
+        else:
+            # body_iterator is set by Starlette's call_next at runtime but absent from stubs.
+            # Accumulate into a list to avoid O(n²) reallocation on concatenation.
+            chunks: list[bytes] = []
+            async for chunk in response.body_iterator:  # type: ignore[attr-defined]
+                chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode())
+            body = b"".join(chunks)
+            # Rebuild response so the consumed body still reaches the client.
+            # Note: dict(response.headers) coalesces duplicate header names; acceptable
+            # for a JSON API. Preserve background tasks.
+            new_response = Response(
+                content=body,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                media_type=response.media_type,
+            )
+            new_response.background = response.background
 
         result_count = _extract_result_count(body, response.status_code)
-
-        # Rebuild response with the same body so it still reaches the client.
-        # Note: dict(response.headers) coalesces duplicate header names (e.g. multiple
-        # Set-Cookie); this is acceptable for a JSON API. Preserve background tasks.
-        new_response = Response(
-            content=body,
-            status_code=response.status_code,
-            headers=dict(response.headers),
-            media_type=response.media_type,
-        )
-        new_response.background = response.background
 
         params: dict[str, Any] = dict(request.query_params)
         repository = _extract_repository(request.url.path, params)

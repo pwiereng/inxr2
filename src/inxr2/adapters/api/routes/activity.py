@@ -1,7 +1,7 @@
 """Activity log API endpoint."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/activity", tags=["activity"])
 class QueryLogEntryResponse(BaseModel):
     """Response model for a single query log entry."""
 
-    id: int | None
+    id: int
     source: str
     tool_or_path: str
     logged_at: datetime
@@ -41,7 +41,7 @@ class ActivityLogResponse(BaseModel):
 class IngestRequest(BaseModel):
     """Request body for MCP-side activity ingest."""
 
-    source: str
+    source: Literal["http", "mcp"]
     tool_or_path: str
     params: dict[str, Any] | None = None
     repository: str | None = None
@@ -53,7 +53,7 @@ class IngestRequest(BaseModel):
 @router.get("", response_model=ActivityLogResponse)
 async def list_activity(
     adapter: QueryLogAdapterDep,
-    source: str | None = Query(None, description="Filter by source: 'http' or 'mcp'"),
+    source: Literal["http", "mcp"] | None = Query(None, description="Filter by source"),
     repository: str | None = Query(None, description="Filter by repository name"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
@@ -69,21 +69,23 @@ async def list_activity(
         limit=limit,
         offset=offset,
     )
-    entry_responses = [
-        QueryLogEntryResponse(
-            id=e.id,
-            source=e.source,
-            tool_or_path=e.tool_or_path,
-            logged_at=e.logged_at,
-            params=e.params,
-            repository=e.repository,
-            status_code=e.status_code,
-            duration_ms=e.duration_ms,
-            result_count=e.result_count,
-            session_id=e.session_id,
+    entry_responses = []
+    for e in entries:
+        assert e.id is not None, "list_recent only returns persisted entries"
+        entry_responses.append(
+            QueryLogEntryResponse(
+                id=e.id,
+                source=e.source,
+                tool_or_path=e.tool_or_path,
+                logged_at=e.logged_at,
+                params=e.params,
+                repository=e.repository,
+                status_code=e.status_code,
+                duration_ms=e.duration_ms,
+                result_count=e.result_count,
+                session_id=e.session_id,
+            )
         )
-        for e in entries
-    ]
     return ActivityLogResponse(
         entries=entry_responses, returned_count=len(entry_responses)
     )
