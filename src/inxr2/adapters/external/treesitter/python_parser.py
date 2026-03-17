@@ -616,13 +616,6 @@ class PythonParser(BaseLanguageParser):
                         "function"
                     ):
                         skip = True
-                    # Comprehension/generator loop variable
-                    elif (
-                        parent.type == "for_in_clause"
-                        and parent.children
-                        and node == parent.children[1]
-                    ):
-                        skip = True
                     elif _is_write_target(node):
                         skip = True
                 if not skip:
