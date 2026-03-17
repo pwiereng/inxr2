@@ -1,8 +1,10 @@
-import { Box, Autocomplete, TextField, CircularProgress } from '@mui/material'
+import { Box, Autocomplete, TextField, CircularProgress, createFilterOptions } from '@mui/material'
 import FolderIcon from '@mui/icons-material/Folder'
 import PublicIcon from '@mui/icons-material/Public'
 import type { Repository } from '@/lib/api'
 import type { TabValue } from './CodeHeader'
+
+const baseFilter = createFilterOptions<string>()
 
 interface RepositorySelectProps {
   repositories: Repository[]
@@ -42,6 +44,16 @@ export function RepositorySelect({
         size="small"
         options={options}
         value={value}
+        filterOptions={(opts, params) => {
+          if (!opts.includes(ALL_REPOS_OPTION)) {
+            return baseFilter(opts, params)
+          }
+          const filtered = baseFilter(
+            opts.filter((o) => o !== ALL_REPOS_OPTION),
+            params
+          )
+          return [ALL_REPOS_OPTION, ...filtered]
+        }}
         onChange={(_e, newValue) => {
           if (newValue === ALL_REPOS_OPTION) {
             onRepoChange('')

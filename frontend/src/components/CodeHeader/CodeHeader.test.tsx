@@ -177,6 +177,24 @@ describe('CodeHeader', () => {
       expect(comboboxes.length).toBeLessThan(3)
     })
 
+    it('should always show "All Repositories" option at top when typing in search tab', async () => {
+      render(<CodeHeader {...defaultProps} currentTab="search" repoName={null} />)
+
+      await waitFor(() => {
+        expect(screen.getByDisplayValue('All Repositories')).toBeInTheDocument()
+      })
+
+      // Type a repo name to trigger filtering
+      const repoInput = screen.getByDisplayValue('All Repositories')
+      fireEvent.change(repoInput, { target: { value: 'test' } })
+
+      // "All Repositories" must still be the first option in the dropdown
+      await waitFor(() => {
+        const options = screen.getAllByRole('option')
+        expect(options[0]).toHaveTextContent('All Repositories')
+      })
+    })
+
     it('should call onRepoChange when repository is changed', async () => {
       const onRepoChange = vi.fn()
 
