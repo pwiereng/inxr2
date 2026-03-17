@@ -17,7 +17,7 @@ export default defineConfig({
     allowedHosts: true, // Allow all hosts (dev containers, worktree containers, etc.)
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: `http://localhost:${process.env['APP_PORT'] ?? 8000}`,
         changeOrigin: true,
       },
     },
