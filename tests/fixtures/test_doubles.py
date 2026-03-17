@@ -46,11 +46,13 @@ from inxr2.application.ports.repositories import (
     FileSearchPort,
     FileVersionPort,
     IndexStatusRepositoryPort,
+    QueryLogPort,
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
     TextContentRepositoryPort,
 )
+from inxr2.application.ports.repositories.query_log_port import QueryLogEntry
 from inxr2.application.ports.services import (
     BlameLineInfo,
     ChangedFiles,
@@ -3344,3 +3346,36 @@ class InMemoryFileRenameRepository(FileRenameRepositoryPort):
 # - Real implementations whenever possible
 # - Avoid mocking frameworks (unittest.mock, pytest-mock)
 # ============================================================================
+
+
+class InMemoryQueryLogRepository(QueryLogPort):
+    """In-memory implementation of QueryLogPort for testing."""
+
+    def __init__(self, max_entries: int = 10000) -> None:
+        if max_entries < 1:
+            raise ValueError(f"max_entries must be >= 1, got {max_entries}")
+        self._entries: list[QueryLogEntry] = []
+        self._next_id: int = 1
+        self._max_entries = max_entries
+
+    async def append(self, entry: QueryLogEntry) -> None:
+        entry.id = self._next_id
+        self._next_id += 1
+        self._entries.append(entry)
+        # Ring buffer: keep only the newest max_entries
+        if len(self._entries) > self._max_entries:
+            self._entries = self._entries[-self._max_entries :]
+
+    async def list_recent(
+        self,
+        source: str | None = None,
+        repository: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[QueryLogEntry]:
+        results = list(reversed(self._entries))
+        if source is not None:
+            results = [e for e in results if e.source == source]
+        if repository is not None:
+            results = [e for e in results if e.repository == repository]
+        return results[offset : offset + limit]

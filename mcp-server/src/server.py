@@ -6,8 +6,13 @@ Supports both stdio and SSE transports.
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 import os
 import sys
+import time
+from datetime import UTC, datetime
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -26,6 +31,9 @@ from src.tools import (
     search_symbols,
 )
 from src.urls import get_frontend_url
+
+_mcp_logger = logging.getLogger("inxr2.mcp")
+_LOG_MCP_CALLS = os.getenv("LOG_MCP_CALLS", "true").lower() != "false"
 
 # Registry of all tools
 TOOLS = [
@@ -57,19 +65,80 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
             for tool in TOOLS
         ]
 
+    async def _ingest_mcp_call(
+        name: str,
+        arguments: dict,
+        duration_ms: int,
+        result_count: int | None,
+        repository: str | None,
+    ) -> None:
+        """Fire-and-forget: write MCP tool call to the activity log DB via the API."""
+        try:
+            await client.post(
+                "/api/activity/ingest",
+                {
+                    "source": "mcp",
+                    "tool_or_path": name,
+                    "params": arguments,
+                    "repository": repository,
+                    "duration_ms": duration_ms,
+                    "result_count": result_count,
+                },
+            )
+        except Exception:
+            pass  # Never let logging failure affect tool response
+
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         tool_module = TOOL_MAP.get(name)
         if not tool_module:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
+        start = time.monotonic()
+        result: str | None = None
+        error: Exception | None = None
         try:
             result = await tool_module.handle(
                 client, arguments, frontend_url=frontend_url
             )
-            return [TextContent(type="text", text=result)]
         except Exception as e:
-            return [TextContent(type="text", text=f"Error: {e}")]
+            error = e
+        finally:
+            duration_ms = int((time.monotonic() - start) * 1000)
+
+            result_count: int | None = None
+            if result is not None:
+                try:
+                    parsed = json.loads(result)
+                    if isinstance(parsed, list):
+                        result_count = len(parsed)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pass
+
+            repository: str | None = arguments.get("repository") or arguments.get(
+                "repo"
+            )
+
+            if _LOG_MCP_CALLS:
+                log_data = {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "source": "mcp",
+                    "tool": name,
+                    "args": arguments,
+                    "duration_ms": duration_ms,
+                    "result_count": result_count,
+                    "error": str(error) if error else None,
+                }
+                _mcp_logger.info(json.dumps(log_data))
+                asyncio.ensure_future(
+                    _ingest_mcp_call(
+                        name, arguments, duration_ms, result_count, repository
+                    )
+                )
+
+        if error is not None:
+            return [TextContent(type="text", text=f"Error: {error}")]
+        return [TextContent(type="text", text=result)]  # type: ignore[arg-type]
 
     return server
 

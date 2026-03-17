@@ -25,7 +25,7 @@ describe('BranchSelector', () => {
     await act(async () => {
       render(
         <BranchSelector
-          repositoryId={1}
+          repositoryName="inxr2"
           selectedBranch={null}
           defaultBranch="main"
           onBranchChange={mockOnBranchChange}
@@ -52,7 +52,7 @@ describe('BranchSelector', () => {
     await act(async () => {
       render(
         <BranchSelector
-          repositoryId={1}
+          repositoryName="inxr2"
           selectedBranch={null}
           defaultBranch="main"
           onBranchChange={mockOnBranchChange}
@@ -90,7 +90,7 @@ describe('BranchSelector', () => {
     await act(async () => {
       render(
         <BranchSelector
-          repositoryId={1}
+          repositoryName="inxr2"
           selectedBranch={null}
           defaultBranch="main"
           onBranchChange={mockOnBranchChange}
@@ -127,7 +127,7 @@ describe('BranchSelector', () => {
     await act(async () => {
       render(
         <BranchSelector
-          repositoryId={1}
+          repositoryName="inxr2"
           selectedBranch={null}
           defaultBranch="main"
           onBranchChange={mockOnBranchChange}
@@ -176,7 +176,7 @@ describe('BranchSelector', () => {
     await act(async () => {
       render(
         <BranchSelector
-          repositoryId={1}
+          repositoryName="inxr2"
           selectedBranch="feature"
           defaultBranch="main"
           onBranchChange={mockOnBranchChange}
@@ -210,7 +210,7 @@ describe('BranchSelector', () => {
     await act(async () => {
       const result = render(
         <BranchSelector
-          repositoryId={1}
+          repositoryName="inxr2"
           selectedBranch={null}
           defaultBranch="main"
           onBranchChange={mockOnBranchChange}
@@ -246,7 +246,7 @@ describe('BranchSelector', () => {
     await act(async () => {
       render(
         <BranchSelector
-          repositoryId={1}
+          repositoryName="inxr2"
           selectedBranch={null}
           defaultBranch="main"
           onBranchChange={mockOnBranchChange}
@@ -282,7 +282,7 @@ describe('BranchSelector', () => {
     await act(async () => {
       render(
         <BranchSelector
-          repositoryId={1}
+          repositoryName="inxr2"
           selectedBranch={null}
           defaultBranch="main"
           onBranchChange={mockOnBranchChange}
@@ -319,7 +319,7 @@ describe('BranchSelector', () => {
     await act(async () => {
       render(
         <BranchSelector
-          repositoryId={1}
+          repositoryName="inxr2"
           selectedBranch="non-existent-branch" // Branch not in the list
           defaultBranch="main"
           onBranchChange={mockOnBranchChange}
@@ -389,7 +389,7 @@ describe('BranchSelector', () => {
       await act(async () => {
         render(
           <BranchSelector
-            repositoryId={1}
+            repositoryName="inxr2"
             selectedBranch={null}
             defaultBranch="main"
             onBranchChange={mockOnBranchChange}
@@ -445,7 +445,7 @@ describe('BranchSelector', () => {
       await act(async () => {
         render(
           <BranchSelector
-            repositoryId={1}
+            repositoryName="inxr2"
             selectedBranch={null}
             defaultBranch="main"
             onBranchChange={mockOnBranchChange}
@@ -477,7 +477,7 @@ describe('BranchSelector', () => {
       await act(async () => {
         render(
           <BranchSelector
-            repositoryId={1}
+            repositoryName="inxr2"
             selectedBranch={null}
             defaultBranch="main"
             onBranchChange={mockOnBranchChange}

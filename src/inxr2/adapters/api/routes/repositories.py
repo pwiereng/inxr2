@@ -346,20 +346,20 @@ async def get_repository_stats(
     return _stats_to_response(stats)
 
 
-@router.get("/{repository_id}/branches", response_model=BranchListResponse)
+@router.get("/by-name/{name}/branches", response_model=BranchListResponse)
 async def get_repository_branches(
-    repository_id: int,
+    name: str,
     use_case: GetRepositoryBranchesUseCaseDep,
 ) -> BranchListResponse:
     """
-    Get all branches for a repository.
+    Get all branches for a repository by name.
 
     Fetches branches live from the git repository. For each branch,
     also includes indexing status if the branch has been indexed.
     """
     try:
         response = await use_case.execute(
-            GetRepositoryBranchesRequest(repository_id=repository_id)
+            GetRepositoryBranchesRequest(repository_name=name)
         )
     except ValueError as e:
         # Path not found or git error

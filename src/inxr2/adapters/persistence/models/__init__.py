@@ -8,6 +8,7 @@ from .dependency import DependencyModel
 from .file import FileModel
 from .file_rename import FileRenameModel
 from .index_status import IndexStatusModel
+from .query_log import QueryLogModel
 from .reference import ReferenceModel
 from .repository import RepositoryModel
 from .symbol import SymbolModel
@@ -25,5 +26,6 @@ __all__ = [
     "SymbolModel",
     "ReferenceModel",
     "IndexStatusModel",
+    "QueryLogModel",
     "TextContentModel",
 ]

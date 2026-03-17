@@ -71,10 +71,7 @@ export function useRepositorySelector({
     const loadBranches = async () => {
       setLoadingBranches(true)
       try {
-        const repo = repositories.find((r) => r.name === repoName)
-        if (!repo) return
-
-        const response = await getRepositoryBranches(repo.id)
+        const response = await getRepositoryBranches(repoName)
         // Only show indexed branches (those with a last_indexed_commit)
         const indexedBranches = response.branches.filter((b) => b.last_indexed_commit)
         setBranches(indexedBranches)
@@ -87,7 +84,7 @@ export function useRepositorySelector({
     }
 
     loadBranches()
-  }, [repoName, repositories])
+  }, [repoName])
 
   // Load commits when repository or branch changes
   useEffect(() => {

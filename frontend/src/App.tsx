@@ -14,6 +14,7 @@ import History from '@/pages/History'
 import Dependencies from '@/pages/Dependencies'
 import LogicalView from '@/pages/LogicalView'
 import Help from '@/pages/Help'
+import Activity from '@/pages/Activity'
 
 /**
  * App content with routing
@@ -99,6 +100,15 @@ function AppContent() {
             element={
               <ErrorBoundary>
                 <Help />
+              </ErrorBoundary>
+            }
+          />
+          {/* Hidden route — no nav link, access directly via /activity */}
+          <Route
+            path="/activity"
+            element={
+              <ErrorBoundary>
+                <Activity />
               </ErrorBoundary>
             }
           />
