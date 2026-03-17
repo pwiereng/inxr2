@@ -21,10 +21,6 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import { getActivityLog, getRepositories, type ActivityEntry } from '@/lib/api'
-import { useApp } from '@/contexts/AppContext'
-import { ThemeProvider } from '@mui/material/styles'
-import CssBaseline from '@mui/material/CssBaseline'
-import { darkTheme, lightTheme } from '@/theme'
 
 const AUTO_REFRESH_INTERVAL_MS = 5000
 
@@ -378,12 +374,5 @@ function ActivityContent() {
 }
 
 export default function Activity(): React.ReactElement {
-  const { themeMode } = useApp()
-  const theme = themeMode === 'dark' ? darkTheme : lightTheme
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <ActivityContent />
-    </ThemeProvider>
-  )
+  return <ActivityContent />
 }

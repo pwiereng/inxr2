@@ -52,6 +52,11 @@ def _extract_repository(path: str, params: dict[str, Any]) -> str | None:
     repo = params.get("repository") or params.get("repo")
     if repo:
         return str(repo)
+    # Some endpoints use repository_id (numeric); store it as a string so it at
+    # least shows up in the log and is filterable, even without name resolution.
+    repo_id = params.get("repository_id")
+    if repo_id:
+        return str(repo_id)
     parts = path.split("/")
     try:
         idx = parts.index("repositories")
@@ -110,7 +115,43 @@ class HttpLoggingMiddleware(BaseHTTPMiddleware):
             return result
 
         start = time.monotonic()
-        response: Response = await call_next(request)
+        try:
+            response: Response = await call_next(request)
+        except Exception:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            err_params: dict[str, Any] = dict(request.query_params)
+            err_entry = QueryLogEntry(
+                source="http",
+                tool_or_path=request.url.path,
+                logged_at=datetime.now(UTC),
+                params=err_params if err_params else None,
+                repository=_extract_repository(request.url.path, err_params),
+                status_code=500,
+                duration_ms=duration_ms,
+                result_count=None,
+            )
+            logger.info(
+                json.dumps(
+                    {
+                        "timestamp": err_entry.logged_at.isoformat(),
+                        "source": "http",
+                        "method": request.method,
+                        "path": err_entry.tool_or_path,
+                        "params": err_entry.params,
+                        "status": 500,
+                        "duration_ms": duration_ms,
+                        "result_count": None,
+                        "repository": err_entry.repository,
+                    }
+                )
+            )
+            if self._port_factory is not None:
+                try:
+                    async with self._port_factory() as port:
+                        await port.append(err_entry)
+                except Exception:
+                    logger.exception("Failed to write HTTP query log entry to DB")
+            raise
         duration_ms = int((time.monotonic() - start) * 1000)
 
         # Read response body to inspect result count.
