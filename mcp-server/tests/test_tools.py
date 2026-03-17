@@ -1798,6 +1798,45 @@ class TestExplainSymbol:
 
         assert "http://localhost:5173/browse/my-repo/src/models.py?line=10" in result
 
+    async def test_shows_resolved_repo_name_without_repository_arg(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1, "MyFunc", kind="function", file_path="src/lib.py", repository_id=1
+        )
+
+        result = await explain_symbol.handle(client, {"name": "MyFunc"})
+
+        # Repo name should appear in the header even though 'repository' was not passed
+        assert "my-repo" in result
+
+    async def test_disambiguation_note_on_multiple_matches(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "repo-a")
+        client.add_repository(2, "repo-b")
+        client.add_symbol(
+            1,
+            "helper",
+            kind="function",
+            file_path="src/a.py",
+            start_line=1,
+            repository_id=1,
+        )
+        client.add_symbol(
+            2,
+            "helper",
+            kind="function",
+            file_path="src/b.py",
+            start_line=5,
+            repository_id=2,
+        )
+
+        result = await explain_symbol.handle(client, {"name": "helper"})
+
+        assert "2 definitions found" in result
+        assert "src/b.py:5" in result
+        assert "Specify 'repository' to disambiguate" in result
+
     async def test_staleness_warning_prepended(self) -> None:
         client = FakeInxr2Client()
         client.add_repository(1, "my-repo")

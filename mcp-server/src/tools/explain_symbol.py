@@ -108,20 +108,31 @@ async def handle(
         ref_type = ref.get("reference_type", "usage")
         grouped.setdefault(ref_type, []).append(ref)
 
-    # Build browse URL for definition
-    repo_name_for_url: str | None = repository
-    if frontend_url and not repo_name_for_url and sym_repo_id is not None:
+    # Resolve the repo name for the header and browse URL.
+    # Always look it up when not provided so the header is never ambiguous.
+    resolved_repo: str | None = repository
+    if not resolved_repo and sym_repo_id is not None:
         repos = await client.get("/api/repositories")
-        repo_name_for_url = next(
-            (r["name"] for r in repos if r["id"] == sym_repo_id), None
-        )
+        resolved_repo = next((r["name"] for r in repos if r["id"] == sym_repo_id), None)
+    repo_name_for_url: str | None = resolved_repo
 
     # --- Format output ---
     lines: list[str] = []
 
     # Header
-    repo_label = f" — {repository}" if repository else ""
+    repo_label = f" — {resolved_repo}" if resolved_repo else ""
     lines.append(f"**{name}** ({sym_kind}){repo_label}")
+
+    # Disambiguation note when multiple definitions exist
+    if len(items) > 1:
+        other_locs = ", ".join(
+            f"{s.get('file_path', '?')}:{s.get('start_line', '?')}" for s in items[1:4]
+        )
+        more = f" and {len(items) - 4} more" if len(items) > 4 else ""
+        lines.append(
+            f"Note: {len(items)} definitions found; showing first. "
+            f"Others: {other_locs}{more}. Specify 'repository' to disambiguate."
+        )
     lines.append(f"Location: {sym_file}:{sym_line if sym_line is not None else '?'}")
 
     if sym_doc:
