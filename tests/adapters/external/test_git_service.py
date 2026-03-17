@@ -809,3 +809,270 @@ class TestGetFileRenamesInCommit:
 
         renames = git_service.get_file_renames_in_commit(repo_path, str(initial.hexsha))
         assert renames == []
+
+
+@pytest.fixture
+def merge_repo_old_branch_commits(tmp_path: Path) -> tuple[Path, int]:
+    """Create a git repo where feature branches were committed before the window
+    but merged recently (within it).
+
+    This reproduces the real-world scenario for issue #338:
+      - All first-parent commits (I1, I2, M1, M2) are within a 30-day window
+      - Feature branch commits are older than 30 days
+      - Merge commits (M1, M2) are today and bring in the old branch commits
+
+    History (dates in parentheses):
+      main: I1(25d) ← I2(20d) ← M1(today) ← M2(today) ← HEAD
+                        ↑                ↑
+                   F1a(35d) ← F1b(33d)  F2a(32d) ← F2b(31d) ← F2c(30.5d)
+
+    With git --since=30d:
+      - All first-parent commits are within window (returned)
+      - Feature branch commits are older than 30d → git stops traversal
+      - Result: only ~4 commits (I1, I2, M1, M2) — WRONG
+
+    Correct result: all 9 commits — feature branch commits are reachable
+    from the recent merge commits and must be included.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    repo_path = tmp_path / "merge-old-repo"
+    repo_path.mkdir()
+    repo = Repo.init(repo_path, initial_branch="main")
+    repo.config_writer().set_value("user", "name", "Test User").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+    def date_str(days_ago: float) -> str:
+        """Return an ISO date string N days in the past."""
+        d = datetime.now(UTC) - timedelta(days=days_ago)
+        return d.strftime("%Y-%m-%dT%H:%M:%S")
+
+    def commit_with_date(
+        msg: str, filename: str, content: str, days_ago: float
+    ) -> None:
+        (repo_path / filename).write_text(content)
+        repo.index.add([filename])
+        date = date_str(days_ago)
+        repo.index.commit(msg, author_date=date, commit_date=date)
+
+    # I1 and I2: first-parent commits within the 30-day window
+    commit_with_date("main: initial", "README.md", "# Test\n", days_ago=25)
+    commit_with_date("main: second", "main.py", "def main(): pass\n", days_ago=20)
+
+    # Feature branch 1: commits OLDER than 30 days
+    repo.create_head("feature-1").checkout()
+    commit_with_date(
+        "feature-1: add alpha", "alpha.py", "def alpha(): pass\n", days_ago=35
+    )
+    commit_with_date(
+        "feature-1: add beta", "beta.py", "def beta(): pass\n", days_ago=33
+    )
+
+    # Merge feature-1 into main TODAY (recent merge, within 30-day window)
+    repo.git.checkout("main")
+    today = date_str(0)
+    repo.git.merge(
+        "feature-1",
+        "--no-ff",
+        "-m",
+        "Merge feature-1 into main",
+        env={"GIT_AUTHOR_DATE": today, "GIT_COMMITTER_DATE": today},
+    )
+
+    # Feature branch 2: commits OLDER than 30 days
+    repo.create_head("feature-2").checkout()
+    commit_with_date(
+        "feature-2: add gamma", "gamma.py", "def gamma(): pass\n", days_ago=32
+    )
+    commit_with_date(
+        "feature-2: add delta", "delta.py", "def delta(): pass\n", days_ago=31
+    )
+    commit_with_date(
+        "feature-2: add epsilon", "epsilon.py", "def epsilon(): pass\n", days_ago=30.5
+    )
+
+    # Merge feature-2 into main TODAY (recent merge, within 30-day window)
+    repo.git.checkout("main")
+    repo.git.merge(
+        "feature-2",
+        "--no-ff",
+        "-m",
+        "Merge feature-2 into main",
+        env={"GIT_AUTHOR_DATE": today, "GIT_COMMITTER_DATE": today},
+    )
+
+    # Total commits reachable from HEAD: 9
+    # I1(25d) + I2(20d) + F1a(35d) + F1b(33d) + M1(0d) + F2a(32d) + F2b(31d) + F2c(30.5d) + M2(0d)
+    total = 9
+    return repo_path, total
+
+
+@pytest.fixture
+def merge_repo(tmp_path: Path) -> tuple[Path, int]:
+    """Create a git repo with two merged feature branches.
+
+    History (newest → oldest, topological order):
+      main: I1 ← I2 ← M1 ← M2 ← (HEAD)
+                   ↑         ↑
+              F1a ← F1b    F2a ← F2b ← F2c
+
+    Total commits: 2 (main) + 2 (feature-1) + 3 (feature-2) + 2 (merges) = 9
+
+    Returns (repo_path, total_commit_count).
+    """
+    repo_path = tmp_path / "merge-repo"
+    repo_path.mkdir()
+    repo = Repo.init(repo_path, initial_branch="main")
+    repo.config_writer().set_value("user", "name", "Test User").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+    def commit(msg: str, filename: str, content: str) -> None:
+        (repo_path / filename).write_text(content)
+        repo.index.add([filename])
+        repo.index.commit(msg)
+
+    # I1, I2: two commits on main
+    commit("main: initial", "README.md", "# Test\n")
+    commit("main: second", "main.py", "def main(): pass\n")
+
+    # Feature branch 1: F1a, F1b
+    repo.create_head("feature-1").checkout()
+    commit("feature-1: add alpha", "alpha.py", "def alpha(): pass\n")
+    commit("feature-1: add beta", "beta.py", "def beta(): pass\n")
+
+    # Merge feature-1 into main → M1
+    repo.git.checkout("main")
+    repo.git.merge("feature-1", "--no-ff", "-m", "Merge feature-1 into main")
+
+    # Feature branch 2: F2a, F2b, F2c
+    repo.create_head("feature-2").checkout()
+    commit("feature-2: add gamma", "gamma.py", "def gamma(): pass\n")
+    commit("feature-2: add delta", "delta.py", "def delta(): pass\n")
+    commit("feature-2: add epsilon", "epsilon.py", "def epsilon(): pass\n")
+
+    # Merge feature-2 into main → M2
+    repo.git.checkout("main")
+    repo.git.merge("feature-2", "--no-ff", "-m", "Merge feature-2 into main")
+
+    # Total: I1 + I2 + F1a + F1b + M1 + F2a + F2b + F2c + M2 = 9 commits
+    total = 9
+    return repo_path, total
+
+
+class TestListCommitsMergeHistory:
+    """Regression tests for issue #338: list_commits must return all commits
+    reachable from a branch, including commits from merged feature branches
+    (non-first-parent commits).
+    """
+
+    @pytest.fixture
+    def git_service(self) -> GitService:
+        return GitService()
+
+    def test_list_commits_returns_all_commits_without_since(
+        self,
+        git_service: GitService,
+        merge_repo: tuple[Path, int],
+    ) -> None:
+        """list_commits without since_days must include non-first-parent commits.
+
+        Without --since, git log follows all parents.  This test verifies that
+        list_commits returns every reachable commit, not only the 5 commits on
+        the first-parent chain (I1, I2, M1, M2, HEAD).
+        """
+        repo_path, total_commits = merge_repo
+        commits = git_service.list_commits(repo_path, "main", max_count=None)
+
+        commit_hashes = {c.hash for c in commits}
+        assert len(commits) == total_commits, (
+            f"Expected {total_commits} commits (all reachable), "
+            f"got {len(commits)}.  Missing commits suggests first-parent-only traversal."
+        )
+        # Verify feature branch commits are present by checking messages
+        messages = {c.message for c in commits}
+        assert any(
+            "feature-1" in m for m in messages
+        ), "feature-1 branch commits missing from list_commits result"
+        assert any(
+            "feature-2" in m for m in messages
+        ), "feature-2 branch commits missing from list_commits result"
+        assert len(commit_hashes) == total_commits, "Duplicate commits returned"
+
+    def test_list_commits_with_since_returns_all_commits_in_window(
+        self,
+        git_service: GitService,
+        merge_repo: tuple[Path, int],
+    ) -> None:
+        """list_commits with since_days must include non-first-parent commits.
+
+        This is the critical regression test for issue #338.  When --since is
+        passed to git log, GitPython's iter_commits may prune branches that
+        appear to start before the cutoff, silently dropping all commits from
+        merged feature branches.
+
+        All commits in merge_repo were made moments ago, so since_days=1 must
+        return the full set.
+        """
+        repo_path, total_commits = merge_repo
+        commits = git_service.list_commits(
+            repo_path, "main", max_count=None, since_days=1
+        )
+
+        assert len(commits) == total_commits, (
+            f"Expected {total_commits} commits with since_days=1 "
+            f"(all commits are recent), got {len(commits)}.  "
+            f"This indicates list_commits is walking first-parent only when "
+            f"--since is used, skipping merged feature branch commits."
+        )
+        messages = {c.message for c in commits}
+        assert any(
+            "feature-1" in m for m in messages
+        ), "feature-1 branch commits missing when using since_days"
+        assert any(
+            "feature-2" in m for m in messages
+        ), "feature-2 branch commits missing when using since_days"
+
+    def test_list_commits_with_since_includes_old_branch_commits_merged_recently(
+        self,
+        git_service: GitService,
+        merge_repo_old_branch_commits: tuple[Path, int],
+    ) -> None:
+        """list_commits must return feature branch commits that are older than
+        the since_days window but were merged into main within that window.
+
+        This is the exact regression test for issue #338.  In the real codebase,
+        a 30-day backfill misses ~566 commits because the feature branch commits
+        were authored before the 30-day cutoff — even though the merges are recent.
+
+        git log --since=<date> stops traversal when a commit is older than the
+        cutoff.  For merged feature branches this means all branch commits are
+        silently dropped once the oldest one falls outside the window.
+        """
+        repo_path, total_commits = merge_repo_old_branch_commits
+        # Use since_days=30: merge commits are today (inside window),
+        # but feature branch commits are 39-43 days old (outside window).
+        commits = git_service.list_commits(
+            repo_path, "main", max_count=None, since_days=30
+        )
+
+        commit_hashes = {c.hash for c in commits}
+        # The 2 merge commits (M1, M2) are within the 30-day window.
+        # The feature branch commits (F1a, F1b, F2a, F2b, F2c) are outside it.
+        # But they ARE reachable from recent merge commits, so a correct
+        # full-DAG indexer must include them.
+        assert len(commits) == total_commits, (
+            f"Expected {total_commits} commits (all reachable from recent merges), "
+            f"got {len(commits)}.  "
+            f"Feature branch commits older than --since cutoff are being silently "
+            f"dropped even though their merge commits are within the window."
+        )
+        messages = {c.message for c in commits}
+        assert any("feature-1" in m for m in messages), (
+            "feature-1 branch commits (older than since window) missing — "
+            "list_commits stops traversal when branch commits predate --since cutoff"
+        )
+        assert any("feature-2" in m for m in messages), (
+            "feature-2 branch commits (older than since window) missing — "
+            "list_commits stops traversal when branch commits predate --since cutoff"
+        )
+        assert len(commit_hashes) == len(commits), "Duplicate commits returned"
