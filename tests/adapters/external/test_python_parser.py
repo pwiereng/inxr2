@@ -208,3 +208,130 @@ def process():
         ]
         assert len(a_usage_refs) == 1  # only `a + b`, not the `for a, b` binding
         assert len(b_usage_refs) == 1  # only `a + b`, not the `for a, b` binding
+
+
+class TestSymbolDocstrings:
+    """Tests for docstring extraction onto symbol records (Issue #364)."""
+
+    @pytest.mark.asyncio
+    async def test_function_docstring_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = '''\
+def greet(name):
+    """Return a greeting for the given name."""
+    return f"Hello, {name}"
+'''
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        greet = next(s for s in symbols if s["name"] == "greet")
+        assert greet["docstring"] == "Return a greeting for the given name."
+
+    @pytest.mark.asyncio
+    async def test_class_docstring_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = '''\
+class MyClass:
+    """A simple example class."""
+    pass
+'''
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        cls = next(s for s in symbols if s["name"] == "MyClass")
+        assert cls["docstring"] == "A simple example class."
+
+    @pytest.mark.asyncio
+    async def test_method_docstring_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = '''\
+class Greeter:
+    def hello(self):
+        """Say hello."""
+        return "hello"
+'''
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        method = next(s for s in symbols if s["name"] == "hello")
+        assert method["docstring"] == "Say hello."
+
+    @pytest.mark.asyncio
+    async def test_no_docstring_symbol_has_none(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = "def no_doc():\n    return 42\n"
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        func = next(s for s in symbols if s["name"] == "no_doc")
+        assert func.get("docstring") is None
+
+    @pytest.mark.asyncio
+    async def test_multiline_docstring_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = '''\
+def complex_func():
+    """
+    This is a longer docstring
+    that spans multiple lines.
+    """
+    pass
+'''
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        func = next(s for s in symbols if s["name"] == "complex_func")
+        assert func["docstring"] is not None
+        assert "longer docstring" in func["docstring"]
+        assert "multiple lines" in func["docstring"]
+
+    @pytest.mark.asyncio
+    async def test_decorated_function_docstring_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = '''\
+def decorator(f):
+    return f
+
+@decorator
+def decorated():
+    """Decorated function docstring."""
+    pass
+'''
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        func = next(s for s in symbols if s["name"] == "decorated")
+        assert func["docstring"] == "Decorated function docstring."
+
+    @pytest.mark.asyncio
+    async def test_docstring_still_in_text_contents(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Docstrings must remain in text_contents for full-text search."""
+        code = '''\
+def my_func():
+    """This docstring should appear in comments too."""
+    pass
+'''
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        comments = await parser_service.extract_comments(
+            content=code, language="python", file_path="test.py"
+        )
+        func = next(s for s in symbols if s["name"] == "my_func")
+        assert func["docstring"] == "This docstring should appear in comments too."
+        docstring_comments = [
+            c for c in comments if c.get("content_type") == "docstring"
+        ]
+        assert len(docstring_comments) == 1
+        assert (
+            "This docstring should appear in comments too."
+            in docstring_comments[0]["content"]
+        )

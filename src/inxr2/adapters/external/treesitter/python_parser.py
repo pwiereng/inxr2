@@ -56,6 +56,31 @@ class PythonParser(BaseLanguageParser):
     def language_name(self) -> str:
         return "python"
 
+    def _get_docstring_for_node(self, node: Node, content: str) -> str | None:
+        """Return the docstring text for a function/class definition node, or None.
+
+        Looks for the first expression_statement in the body block; if it is a
+        triple-quoted string literal, strips the quotes and returns the text.
+        """
+        for child in node.children:
+            if child.type != "block":
+                continue
+            for stmt in child.children:
+                if stmt.type == "comment":
+                    continue
+                if stmt.type != "expression_statement":
+                    return None
+                for expr_child in stmt.children:
+                    if expr_child.type == "string":
+                        text = self._get_text(expr_child, content)
+                        if text.startswith('"""') and text.endswith('"""'):
+                            return text[3:-3].strip() or None
+                        if text.startswith("'''") and text.endswith("'''"):
+                            return text[3:-3].strip() or None
+                        return None
+                return None
+        return None
+
     def extract(
         self,
         root: Node,
@@ -93,7 +118,10 @@ class PythonParser(BaseLanguageParser):
                 return
 
             class_name = get_text(name_node)
-            symbols.append(self._make_symbol(class_name, "class", node, scope))
+            docstring = self._get_docstring_for_node(node, content)
+            symbols.append(
+                self._make_symbol(class_name, "class", node, scope, docstring=docstring)
+            )
 
             # Extract superclass references (inheritance)
             for child in node.children:
@@ -149,7 +177,12 @@ class PythonParser(BaseLanguageParser):
                 return
 
             method_name = get_text(name_node)
-            symbols.append(self._make_symbol(method_name, "method", node, class_name))
+            docstring = self._get_docstring_for_node(node, content)
+            symbols.append(
+                self._make_symbol(
+                    method_name, "method", node, class_name, docstring=docstring
+                )
+            )
 
             # Look for instance variable assignments and nested functions
             for child in node.children:
@@ -281,6 +314,7 @@ class PythonParser(BaseLanguageParser):
 
             # Use func_def start point (the actual def line), not node
             qualified = f"{class_name}.{func_name}" if class_name else func_name
+            docstring = self._get_docstring_for_node(func_def, content)
             symbols.append(
                 self._make_symbol(
                     func_name,
@@ -290,6 +324,7 @@ class PythonParser(BaseLanguageParser):
                     end_line=node.end_point[0] + 1,
                     end_column=node.end_point[1],
                     qualified_name=qualified,
+                    docstring=docstring,
                 )
             )
 
@@ -314,7 +349,12 @@ class PythonParser(BaseLanguageParser):
                 return
 
             func_name = get_text(name_node)
-            symbols.append(self._make_symbol(func_name, "function", node, scope))
+            docstring = self._get_docstring_for_node(node, content)
+            symbols.append(
+                self._make_symbol(
+                    func_name, "function", node, scope, docstring=docstring
+                )
+            )
 
             # Extract nested functions
             parent_qualified = f"{scope}.{func_name}" if scope else func_name

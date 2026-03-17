@@ -438,6 +438,7 @@ class ProcessFileUseCase:
                 scope=symbol_data.get("scope"),
                 qualified_name=symbol_data.get("qualified_name"),
                 signature=symbol_data.get("signature"),
+                docstring=symbol_data.get("docstring"),
                 metadata=symbol_data.get("metadata", {}),
             )
             for symbol_data in valid_symbols_data
