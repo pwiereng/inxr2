@@ -10,7 +10,7 @@ set -e
 # Parse arguments
 CONFIG="config.yaml"
 DAYS=""
-EXTRA_ARGS=""
+EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -24,11 +24,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --)
             shift
-            EXTRA_ARGS="$*"
+            EXTRA_ARGS=("$@")
             break
             ;;
         *)
-            EXTRA_ARGS="$EXTRA_ARGS $1"
+            EXTRA_ARGS+=("$1")
             shift
             ;;
     esac
@@ -37,10 +37,11 @@ done
 # Detect if we're inside the dev container or on the host
 if [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
     # Inside container — run commands directly
-    RUN=""
+    IN_CONTAINER=true
     WORKDIR="/workspace"
 else
     # On host — run commands via docker exec
+    IN_CONTAINER=false
     CONTAINER_PREFIX="inxr2"
     if [ -f ".env" ]; then
         PREFIX_FROM_ENV=$(sed -n 's/^COMPOSE_CONTAINER_PREFIX=[[:space:]]*//p' .env 2>/dev/null | tr -d '[:space:]"'"'")
@@ -52,23 +53,20 @@ else
         echo "   Run './scripts/dev-start.sh' first"
         exit 1
     fi
-    RUN="docker exec $DEV_CONTAINER bash -c"
     WORKDIR="/workspace"
 fi
 
-# Helper to run a command in the right context
-run_cmd() {
-    if [ -z "$RUN" ]; then
-        bash -c "cd $WORKDIR && $1"
-    else
-        $RUN "cd $WORKDIR && $1"
-    fi
-}
+# Build command as an array to preserve quoting of all arguments
+CMD_ARGS=(inxr2 index --config "$CONFIG")
+[[ -n "$DAYS" ]] && CMD_ARGS+=(--days "$DAYS")
+[[ ${#EXTRA_ARGS[@]} -gt 0 ]] && CMD_ARGS+=("${EXTRA_ARGS[@]}")
 
-CONFIG_QUOTED=$(printf '%q' "$CONFIG")
-CMD="inxr2 index --config ${CONFIG_QUOTED}${DAYS:+ --days $DAYS}${EXTRA_ARGS:+ $EXTRA_ARGS}"
-
-echo "🔍 Running: $CMD"
+echo "🔍 Running: ${CMD_ARGS[*]}"
 echo ""
 
-run_cmd "$CMD"
+if $IN_CONTAINER; then
+    (cd "$WORKDIR" && "${CMD_ARGS[@]}")
+else
+    # Serialize the array to a safely-escaped string for bash -c inside docker exec
+    docker exec "$DEV_CONTAINER" bash -c "cd $WORKDIR && $(printf '%q ' "${CMD_ARGS[@]}")"
+fi
