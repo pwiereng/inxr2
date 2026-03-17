@@ -30,11 +30,14 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "branch": {
             "type": "string",
-            "description": "Branch name to search in (optional, defaults to latest indexed)",
+            "description": (
+                "Branch to filter references by (optional). "
+                "Note: does not affect the symbol definition lookup, only references and browse URLs."
+            ),
         },
         "commit": {
             "type": "string",
-            "description": "Specific commit hash to search at (optional, overrides branch)",
+            "description": "Specific commit hash to search at (optional, takes precedence over branch)",
         },
     },
     "required": ["name"],
@@ -89,11 +92,12 @@ async def handle(
     sym_repo_id = symbol.get("repository_id")
 
     # Step 2: Fetch references
-    ref_params: dict[str, Any] = {"by_name": "true", "limit": 200}
-    if branch:
-        ref_params["branch"] = branch
+    # commit takes precedence over branch; pass both only when commit is absent
+    ref_params: dict[str, Any] = {"by_name": "true", "limit": 500}
     if commit:
         ref_params["commit"] = commit
+    elif branch:
+        ref_params["branch"] = branch
     refs_data = await client.get(f"/api/symbols/{sym_id}/references", params=ref_params)
     all_refs: list[dict[str, Any]] = refs_data.get("items", [])
     total_refs = refs_data.get("total", len(all_refs))
@@ -118,7 +122,7 @@ async def handle(
     # Header
     repo_label = f" — {repository}" if repository else ""
     lines.append(f"**{name}** ({sym_kind}){repo_label}")
-    lines.append(f"Location: {sym_file}:{sym_line}")
+    lines.append(f"Location: {sym_file}:{sym_line if sym_line is not None else '?'}")
 
     if sym_doc:
         doc = sym_doc if len(sym_doc) <= 200 else sym_doc[:200] + "..."
@@ -133,7 +137,7 @@ async def handle(
             repo_name_for_url,
             sym_file,
             line=sym_line,
-            branch=branch,
+            branch=None if commit else branch,
             commit=commit,
         )
         lines.append(f"URL: {url}")
