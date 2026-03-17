@@ -124,9 +124,12 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
                 }
                 _mcp_logger.info(json.dumps(log_data))
 
-            asyncio.ensure_future(
-                _ingest_mcp_call(name, arguments, duration_ms, result_count, repository)
-            )
+            if _LOG_MCP_CALLS:
+                asyncio.ensure_future(
+                    _ingest_mcp_call(
+                        name, arguments, duration_ms, result_count, repository
+                    )
+                )
 
             return [TextContent(type="text", text=result)]
         except Exception as e:

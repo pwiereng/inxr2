@@ -35,7 +35,11 @@ _RESULT_LIST_KEYS = (
     "versions",
 )
 
-# Paths to skip logging (avoid self-referential noise in the activity log)
+# Only log requests under these path prefixes (non-API paths like health checks,
+# static assets, and docs are excluded to keep the activity log focused on API traffic)
+_LOG_PREFIXES = ("/api/",)
+
+# Paths to skip logging even within logged prefixes (avoid self-referential noise)
 _SKIP_PREFIXES = ("/api/activity",)
 
 
@@ -95,9 +99,13 @@ class HttpLoggingMiddleware(BaseHTTPMiddleware):
         self._enabled = enabled
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        if not self._enabled or any(
-            request.url.path.startswith(p) for p in _SKIP_PREFIXES
-        ):
+        path = request.url.path
+        skip = (
+            not self._enabled
+            or not any(path.startswith(p) for p in _LOG_PREFIXES)
+            or any(path.startswith(p) for p in _SKIP_PREFIXES)
+        )
+        if skip:
             result: Response = await call_next(request)
             return result
 

@@ -224,3 +224,27 @@ class TestHttpLoggingMiddleware:
 
         entries = await port.list_recent()
         assert entries[0].result_count == 3
+
+    async def test_skips_non_api_paths(self) -> None:
+        port = InMemoryQueryLogRepository()
+        app = FastAPI()
+
+        @app.get("/health")
+        async def health() -> dict[str, str]:
+            return {"status": "ok"}
+
+        @app.get("/docs")
+        async def docs() -> dict[str, str]:
+            return {}
+
+        factory = _make_factory(port)
+        app.add_middleware(HttpLoggingMiddleware, port_factory=factory, enabled=True)
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            await client.get("/health")
+            await client.get("/docs")
+
+        entries = await port.list_recent()
+        assert len(entries) == 0
