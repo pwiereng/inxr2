@@ -16,24 +16,26 @@ When the MCP server is running (`http://localhost:3000`), **use it as the first 
 
 **Available MCP tools:** `list_repositories`, `search_symbols`, `find_references`, `go_to_definition`, `search_code`
 
-**Calling MCP tools** (from inside the dev container):
+**Calling MCP tools** (via the SSE server at `http://localhost:3000`):
 ```bash
 docker exec inxr2-dev bash -c '
-cd /workspace/mcp-server
-INXR2_API_URL=http://localhost:8000 python -c "
+cd /workspace/mcp-server && python -c "
 import asyncio
-from src.client import HttpInxr2Client
-from src.tools import search_symbols  # or find_references, go_to_definition, etc.
+from mcp import ClientSession
+from mcp.client.sse import sse_client
 
-async def main():
-    client = HttpInxr2Client(\"http://localhost:8000\")
-    result = await search_symbols.handle(client, {\"query\": \"MySymbol\", \"repository\": \"inxr2\"})
-    print(result)
-    await client.close()
+async def call(tool, args):
+    async with sse_client(\"http://localhost:3000/sse\") as (r, w):
+        async with ClientSession(r, w) as s:
+            await s.initialize()
+            res = await s.call_tool(tool, args)
+            print(res.content[0].text)
 
-asyncio.run(main())
+asyncio.run(call(\"search_symbols\", {\"query\": \"MySymbol\", \"repository\": \"inxr2\"}))
 "'
 ```
+
+Replace `search_symbols` and its args with any tool: `list_repositories`, `find_references`, `go_to_definition`, `search_code`, `find_dead_code`, `review_helper`, `get_file_structure`, `get_change_impact`. Use `localhost:3000` for main; use the worktree's MCP port for worktrees (see port table below).
 
 **Reporting:** Whenever you use an MCP tool during your work, briefly mention it to the user — what tool was used, what you found, and whether it was helpful.
 
