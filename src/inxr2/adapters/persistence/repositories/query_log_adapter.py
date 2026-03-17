@@ -3,7 +3,7 @@
 import os
 from datetime import UTC
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories.query_log_port import (
@@ -47,22 +47,19 @@ class PostgresQueryLogRepository(QueryLogPort):
         self._session.add(model)
         await self._session.flush()
 
-        # Ring-buffer: delete oldest rows if over cap
-        count_result = await self._session.execute(
-            select(func.count()).select_from(QueryLogModel)
+        # Ring-buffer: find the (max_entries+1)-th newest id and delete everything at or
+        # below it. One DELETE per insert — a no-op (0 rows) when under cap, eliminates
+        # the separate COUNT(*) query from the original approach.
+        cutoff_subq = (
+            select(QueryLogModel.id)
+            .order_by(QueryLogModel.id.desc())
+            .offset(self._max_entries)
+            .limit(1)
+            .scalar_subquery()
         )
-        count = count_result.scalar_one()
-        if count > self._max_entries:
-            excess = count - self._max_entries
-            subq = (
-                select(QueryLogModel.id)
-                .order_by(QueryLogModel.id.asc())
-                .limit(excess)
-                .scalar_subquery()
-            )
-            await self._session.execute(
-                delete(QueryLogModel).where(QueryLogModel.id.in_(subq))
-            )
+        await self._session.execute(
+            delete(QueryLogModel).where(QueryLogModel.id <= cutoff_subq)
+        )
 
     async def list_recent(
         self,

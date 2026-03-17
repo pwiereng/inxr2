@@ -75,7 +75,13 @@ function ParamsRow({ params }: { params: Record<string, unknown> | null }) {
   if (!params || Object.keys(params).length === 0) return null
   return (
     <Box>
-      <IconButton size="small" onClick={() => setOpen((v) => !v)} sx={{ p: 0.25 }}>
+      <IconButton
+        size="small"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={open ? 'Collapse params' : 'Expand params'}
+        aria-expanded={open}
+        sx={{ p: 0.25 }}
+      >
         {open ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
       </IconButton>
       <Collapse in={open}>

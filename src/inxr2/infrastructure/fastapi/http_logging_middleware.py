@@ -105,21 +105,26 @@ class HttpLoggingMiddleware(BaseHTTPMiddleware):
         response: Response = await call_next(request)
         duration_ms = int((time.monotonic() - start) * 1000)
 
-        # Consume response body to inspect result count, then rebuild response
-        # body_iterator is set by Starlette's call_next at runtime but absent from stubs
-        body = b""
+        # Consume response body to inspect result count, then rebuild response.
+        # body_iterator is set by Starlette's call_next at runtime but absent from stubs.
+        # Accumulate into a list to avoid O(n²) reallocation on concatenation.
+        chunks: list[bytes] = []
         async for chunk in response.body_iterator:  # type: ignore[attr-defined]
-            body += chunk if isinstance(chunk, bytes) else chunk.encode()
+            chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode())
+        body = b"".join(chunks)
 
         result_count = _extract_result_count(body, response.status_code)
 
-        # Rebuild response with the same body so it still reaches the client
+        # Rebuild response with the same body so it still reaches the client.
+        # Note: dict(response.headers) coalesces duplicate header names (e.g. multiple
+        # Set-Cookie); this is acceptable for a JSON API. Preserve background tasks.
         new_response = Response(
             content=body,
             status_code=response.status_code,
             headers=dict(response.headers),
             media_type=response.media_type,
         )
+        new_response.background = response.background
 
         params: dict[str, Any] = dict(request.query_params)
         repository = _extract_repository(request.url.path, params)

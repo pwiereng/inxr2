@@ -472,7 +472,9 @@ export async function getCommits(
 }
 
 export async function getRepositoryBranches(repoName: string): Promise<BranchListResponse> {
-  return fetchApi<BranchListResponse>(`/repositories/by-name/${repoName}/branches`)
+  return fetchApi<BranchListResponse>(
+    `/repositories/by-name/${encodeURIComponent(repoName)}/branches`
+  )
 }
 
 export async function getFileHistory(

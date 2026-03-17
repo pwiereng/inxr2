@@ -190,7 +190,7 @@ describe('Activity', () => {
     await waitFor(() => expect(screen.getByText('/api/search')).toBeInTheDocument())
 
     // Click the first expand button (first entry has params { q: 'hello' })
-    const expandButtons = screen.getAllByRole('button', { name: '' })
+    const expandButtons = screen.getAllByRole('button', { name: 'Expand params' })
     await user.click(expandButtons[0]!)
 
     await waitFor(() => expect(screen.getByText(/"q"/)).toBeInTheDocument())

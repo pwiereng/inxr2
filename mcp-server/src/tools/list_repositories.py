@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from src.client import Inxr2Client
 
@@ -37,9 +38,10 @@ async def handle(
 
     if repository:
         # Single repo detail
-        repo = await client.get(f"/api/repositories/by-name/{repository}")
+        encoded = quote(repository, safe="")
+        repo = await client.get(f"/api/repositories/by-name/{encoded}")
         branches_data = await client.get(
-            f"/api/repositories/by-name/{repository}/branches"
+            f"/api/repositories/by-name/{encoded}/branches"
         )
         indexed = [
             b for b in branches_data.get("branches", []) if b.get("commit_count", 0) > 0
@@ -58,8 +60,9 @@ async def handle(
     repos = await client.get("/api/repositories")
 
     async def fetch_branches(repo: dict[str, Any]) -> dict[str, Any]:
+        encoded_name = quote(repo["name"], safe="")
         branches_data = await client.get(
-            f"/api/repositories/by-name/{repo['name']}/branches"
+            f"/api/repositories/by-name/{encoded_name}/branches"
         )
         return {"repo": repo, "branches": branches_data.get("branches", [])}
 

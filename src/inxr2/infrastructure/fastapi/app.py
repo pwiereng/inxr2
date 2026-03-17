@@ -44,7 +44,8 @@ def create_app() -> FastAPI:
 
     init_database()
 
-    # Add HTTP logging middleware (before CORS so all requests are logged)
+    # Add HTTP logging middleware. Starlette wraps middleware in reverse registration
+    # order, so this (registered after CORS) is the outermost layer and runs first.
     from ...adapters.persistence.repositories.query_log_adapter import (
         PostgresQueryLogRepository,
     )
