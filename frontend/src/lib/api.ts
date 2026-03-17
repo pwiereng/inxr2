@@ -778,3 +778,36 @@ export async function resolveFilePath(
   if (branch) params.set('branch', branch)
   return fetchApi<ResolvePathResult>(`/renames/resolve-path?${params}`)
 }
+
+export interface ActivityEntry {
+  id: number
+  source: string
+  tool_or_path: string
+  logged_at: string
+  params: Record<string, unknown> | null
+  repository: string | null
+  status_code: number | null
+  duration_ms: number | null
+  result_count: number | null
+  session_id: string | null
+}
+
+export interface ActivityLogResponse {
+  entries: ActivityEntry[]
+  total: number
+}
+
+export async function getActivityLog(params?: {
+  source?: string
+  repository?: string
+  limit?: number
+  offset?: number
+}): Promise<ActivityLogResponse> {
+  const searchParams = new URLSearchParams()
+  if (params?.source) searchParams.set('source', params.source)
+  if (params?.repository) searchParams.set('repository', params.repository)
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
+  if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString())
+  const query = searchParams.toString()
+  return fetchApi<ActivityLogResponse>(`/activity${query ? `?${query}` : ''}`)
+}
