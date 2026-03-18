@@ -374,12 +374,14 @@ class PythonParser(BaseLanguageParser):
                                 break
                     if name_node:
                         func_name = get_text(name_node)
+                        docstring = self._get_docstring_for_node(child, content)
                         symbols.append(
                             self._make_symbol(
                                 func_name,
                                 "function",
                                 child,
                                 parent_qualified_name,
+                                docstring=docstring,
                             )
                         )
                         nested_qualified = f"{parent_qualified_name}.{func_name}"
@@ -401,6 +403,7 @@ class PythonParser(BaseLanguageParser):
                                     break
                         if name_node:
                             func_name = get_text(name_node)
+                            docstring = self._get_docstring_for_node(func_def, content)
                             symbols.append(
                                 self._make_symbol(
                                     func_name,
@@ -409,6 +412,7 @@ class PythonParser(BaseLanguageParser):
                                     parent_qualified_name,
                                     end_line=child.end_point[0] + 1,
                                     end_column=child.end_point[1],
+                                    docstring=docstring,
                                 )
                             )
                             nested_qualified = f"{parent_qualified_name}.{func_name}"

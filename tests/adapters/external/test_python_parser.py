@@ -310,6 +310,23 @@ def decorated():
         assert func["docstring"] == "Decorated function docstring."
 
     @pytest.mark.asyncio
+    async def test_nested_function_docstring_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = '''\
+def outer():
+    """Outer docstring."""
+    def inner():
+        """Inner docstring."""
+        pass
+'''
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        inner = next(s for s in symbols if s["name"] == "inner")
+        assert inner["docstring"] == "Inner docstring."
+
+    @pytest.mark.asyncio
     async def test_docstring_still_in_text_contents(
         self, parser_service: TreeSitterService
     ) -> None:
