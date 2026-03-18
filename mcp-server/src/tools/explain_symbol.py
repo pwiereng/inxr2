@@ -12,9 +12,10 @@ TOOL_NAME = "explain_symbol"
 
 TOOL_DESCRIPTION = (
     "Get rich context about a symbol in one call: definition location, docstring, "
-    "signature, and all references grouped by type (imports, calls, type annotations, "
-    "etc.). Ideal for understanding what a symbol is and how it's used across the "
-    "codebase. Use this instead of calling search_symbols + find_references separately."
+    "signature, and references grouped by type (imports, calls, type annotations, etc.). "
+    "Shows up to 500 references total and up to 5 per type in the output. "
+    "Ideal for understanding what a symbol is and how it's used across the codebase. "
+    "Use this instead of calling search_symbols + find_references separately."
 )
 
 TOOL_SCHEMA: dict[str, Any] = {
@@ -112,8 +113,8 @@ async def handle(
     # Always look it up when not provided so the header is never ambiguous.
     resolved_repo: str | None = repository
     if not resolved_repo and sym_repo_id is not None:
-        repos = await client.get("/api/repositories")
-        resolved_repo = next((r["name"] for r in repos if r["id"] == sym_repo_id), None)
+        repo_data = await client.get(f"/api/repositories/{sym_repo_id}")
+        resolved_repo = repo_data.get("name") if isinstance(repo_data, dict) else None
     repo_name_for_url: str | None = resolved_repo
 
     # --- Format output ---
