@@ -1891,6 +1891,20 @@ class TestExplainSymbol:
         assert "600 total" in result
         assert "showing first 10" in result
 
+    async def test_truncation_when_fetch_limit_hit(self) -> None:
+        """Backend returns total==len(items) when limit is hit; tool should still detect truncation."""
+        client = FakeInxr2Client()
+        client.add_symbol(1, "HotFunc", kind="function")
+        # Simulate exactly 500 refs returned (the fetch limit) with total also == 500
+        for i in range(500):
+            client.add_reference(1, f"src/file_{i}.py", i + 1, "call", "")
+
+        result = await explain_symbol.handle(client, {"name": "HotFunc"})
+
+        assert "at least 500 total" in result
+        assert "showing first 500" in result
+        assert "per-type counts" in result
+
     async def test_staleness_warning_prepended(self) -> None:
         client = FakeInxr2Client()
         client.add_repository(1, "my-repo")

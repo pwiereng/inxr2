@@ -45,6 +45,7 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 _MAX_REFS_PER_TYPE = 5
+_MAX_REFS_TOTAL = 500
 
 
 async def handle(
@@ -94,7 +95,7 @@ async def handle(
 
     # Step 2: Fetch references
     # commit takes precedence over branch; pass both only when commit is absent
-    ref_params: dict[str, Any] = {"by_name": "true", "limit": 500}
+    ref_params: dict[str, Any] = {"by_name": "true", "limit": _MAX_REFS_TOTAL}
     if commit:
         ref_params["commit"] = commit
     elif branch:
@@ -164,8 +165,17 @@ async def handle(
     if not all_refs:
         lines.append("References: none found")
     else:
-        globally_truncated = total_refs > len(all_refs)
-        ref_header = f"References ({total_refs} total):"
+        # Treat as truncated if the API signals it OR if we hit the fetch limit
+        # (backends often return total == len(items) even when limit is applied)
+        globally_truncated = (
+            total_refs > len(all_refs) or len(all_refs) >= _MAX_REFS_TOTAL
+        )
+        display_total = (
+            f"at least {len(all_refs)}"
+            if globally_truncated and total_refs <= len(all_refs)
+            else str(total_refs)
+        )
+        ref_header = f"References ({display_total} total):"
         if globally_truncated:
             ref_header += f" (showing first {len(all_refs)}; per-type counts and lists are for this subset only)"
         lines.append(ref_header)
