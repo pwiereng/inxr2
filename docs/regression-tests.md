@@ -1970,6 +1970,45 @@ asyncio.run(main())
 
 ---
 
+## MCP-21: explain_symbol Returns Rich Symbol Context
+
+Verify that `explain_symbol` returns definition location, docstring, signature, and references grouped by type for a known well-documented symbol.
+
+**Steps:**
+```bash
+# DISCOVER: Pick a documented symbol with known references
+REPO="inxr2"
+SYMBOL="SearchSymbolsUseCase"
+
+# VERIFY: explain_symbol returns definition, docstring, and grouped references
+docker exec inxr2-dev bash -c '
+cd /workspace/mcp-server
+python3 -c "
+import asyncio
+from mcp import ClientSession
+from mcp.client.sse import sse_client
+
+async def call(tool, args):
+    async with sse_client(\"http://localhost:3000/sse\") as (r, w):
+        async with ClientSession(r, w) as s:
+            await s.initialize()
+            res = await s.call_tool(tool, args)
+            print(res.content[0].text)
+
+asyncio.run(call(\"explain_symbol\", {\"name\": \"SearchSymbolsUseCase\", \"repository\": \"inxr2\"}))
+"'
+```
+
+**Pass criteria:**
+- Output header contains symbol name, kind (e.g. `class`), and repository name
+- `Location:` line shows a file path and line number
+- `Docstring:` line is present (non-null) for a well-documented Python class
+- `References (N total):` section lists at least one reference type (e.g. `import`, `call`)
+- Calling with an unknown symbol name returns `Symbol 'X' not found.` gracefully
+- Calling without `repository` when symbol exists in multiple repos includes a disambiguation note
+
+---
+
 ## Summary
 
 ### Phase 1: Indexing (8 tests)
@@ -2028,7 +2067,7 @@ asyncio.run(main())
 | RT-32 | Browse rename banner at old commit | `file_renames` API + rename banner visible |
 | RT-33 | Diff viewer rename following across rename boundary | Both paths in diff header, diff renders |
 
-### Phase 3: MCP Server (20 tests)
+### Phase 3: MCP Server (21 tests)
 
 | ID | Test | Validates Against |
 |----|------|-------------------|
@@ -2052,5 +2091,6 @@ asyncio.run(main())
 | MCP-18 | Browse URLs in find_dead_code and review_helper | URL presence with frontend_url |
 | MCP-19 | get_file_structure returns correct symbol tree | API file-structure endpoint |
 | MCP-20 | get_change_impact returns dependents grouped by type | API references endpoint, grouping logic |
+| MCP-21 | explain_symbol returns rich symbol context | API by-name + references endpoints |
 
-**Total: 67 test cases** (8 indexing + 39 browser + 20 MCP) — all verified against git/API, no hardcoded data.
+**Total: 68 test cases** (8 indexing + 39 browser + 21 MCP) — all verified against git/API, no hardcoded data.

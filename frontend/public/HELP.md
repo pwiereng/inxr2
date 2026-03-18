@@ -265,6 +265,19 @@ Analyze the downstream impact of modifying a symbol. Shows which files and symbo
 
 **Example use:** "What would break if I changed the FileFilter class?"
 
+#### `explain_symbol`
+
+Get rich context about a symbol in one call: definition location, docstring, signature, and all references grouped by type (imports, calls, type annotations, etc.). Ideal for understanding what a symbol is and how it's used across the codebase. Use this instead of calling `search_symbols` + `find_references` separately.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | yes | Exact symbol name to explain (e.g. `SearchSymbolsUseCase`) |
+| `repository` | string | no | Filter to a specific repository |
+| `branch` | string | no | Branch to filter references by (defaults to latest indexed) |
+| `commit` | string | no | Specific commit hash (overrides branch, requires `repository`) |
+
+**Example use:** "Explain the SearchSymbolsUseCase class — what it does and where it's used."
+
 ### Setting Up MCP
 
 #### Claude Desktop
