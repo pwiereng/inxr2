@@ -20,6 +20,7 @@ from mcp.types import TextContent, Tool
 
 from src.client import HttpInxr2Client, Inxr2Client
 from src.tools import (
+    explain_symbol,
     find_dead_code,
     find_references,
     get_change_impact,
@@ -38,6 +39,7 @@ _LOG_MCP_CALLS = os.getenv("LOG_MCP_CALLS", "true").lower() != "false"
 # Registry of all tools
 TOOLS = [
     list_repositories,
+    explain_symbol,
     find_dead_code,
     find_references,
     get_change_impact,

@@ -281,6 +281,17 @@ class FakeInxr2Client(Inxr2Client):
                 },
             )
 
+        # GET /api/repositories/{id}
+        if path.startswith("/api/repositories/") and path.count("/") == 3:
+            try:
+                repo_id = int(path.split("/")[-1])
+                for repo in self._repositories:
+                    if repo["id"] == repo_id:
+                        return repo
+                return {}  # Not found — caller checks for "name" key
+            except ValueError:
+                pass  # Not an integer ID — fall through to by-name handler
+
         # GET /api/repositories/by-name/{name}
         if path.startswith("/api/repositories/by-name/"):
             name = path.split("/")[-1]
