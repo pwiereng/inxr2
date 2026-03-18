@@ -1837,6 +1837,60 @@ class TestExplainSymbol:
         assert "src/b.py:5" in result
         assert "Specify 'repository' to disambiguate" in result
 
+    async def test_disambiguation_hint_differs_when_repo_provided(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(
+            1,
+            "helper",
+            kind="function",
+            file_path="src/a.py",
+            start_line=1,
+            repository_id=1,
+        )
+        client.add_symbol(
+            2,
+            "helper",
+            kind="function",
+            file_path="src/b.py",
+            start_line=5,
+            repository_id=1,
+        )
+
+        result = await explain_symbol.handle(
+            client, {"name": "helper", "repository": "my-repo"}
+        )
+
+        assert "2 definitions found" in result
+        assert "Specify 'repository'" not in result
+        assert "Specify 'commit'" in result
+
+    async def test_references_truncation_note_when_api_total_exceeds_fetched(
+        self,
+    ) -> None:
+        client = FakeInxr2Client()
+        client.add_symbol(1, "BigFunc", kind="function")
+        for i in range(10):
+            client.add_reference(1, f"src/file_{i}.py", i + 1, "call", "")
+
+        original_get = client.get
+
+        async def patched_get(
+            path: str, params: dict[str, Any] | None = None
+        ) -> dict[str, Any]:
+            result = await original_get(path, params)
+            if "/references" in path and isinstance(result, dict):
+                result = dict(result)
+                result["total"] = 600
+            return result
+
+        client.get = patched_get  # type: ignore[method-assign]
+
+        result = await explain_symbol.handle(client, {"name": "BigFunc"})
+
+        assert "600 total" in result
+        assert "showing first 10" in result
+
     async def test_staleness_warning_prepended(self) -> None:
         client = FakeInxr2Client()
         client.add_repository(1, "my-repo")

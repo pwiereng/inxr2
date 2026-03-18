@@ -129,9 +129,13 @@ async def handle(
             f"{s.get('file_path', '?')}:{s.get('start_line', '?')}" for s in items[1:4]
         )
         more = f" and {len(items) - 4} more" if len(items) > 4 else ""
+        if repository:
+            hint = "Specify 'commit' or a more specific name to narrow results."
+        else:
+            hint = "Specify 'repository' to disambiguate."
         lines.append(
             f"Note: {len(items)} definitions found; showing first. "
-            f"Others: {other_locs}{more}. Specify 'repository' to disambiguate."
+            f"Others: {other_locs}{more}. {hint}"
         )
     lines.append(f"Location: {sym_file}:{sym_line if sym_line is not None else '?'}")
 
@@ -158,7 +162,10 @@ async def handle(
     if not all_refs:
         lines.append("References: none found")
     else:
-        lines.append(f"References ({total_refs} total):")
+        ref_header = f"References ({total_refs} total):"
+        if total_refs > len(all_refs):
+            ref_header += f" (showing first {len(all_refs)})"
+        lines.append(ref_header)
         for ref_type, refs in sorted(grouped.items()):
             shown = refs[:_MAX_REFS_PER_TYPE]
             remainder = len(refs) - len(shown)
