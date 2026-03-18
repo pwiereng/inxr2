@@ -50,7 +50,7 @@ export function RepositorySelect({
                 ALL_REPOS_OPTION,
                 ...baseFilter(
                   opts.filter((o) => o !== ALL_REPOS_OPTION),
-                  params,
+                  params
                 ),
               ]
             : undefined
