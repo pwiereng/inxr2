@@ -127,7 +127,8 @@ async def handle(
     # Disambiguation note when multiple definitions exist
     if len(items) > 1:
         other_locs = ", ".join(
-            f"{s.get('file_path', '?')}:{s.get('start_line', '?')}" for s in items[1:4]
+            f"{s.get('file_path', '?')}:{s.get('start_line') if s.get('start_line') is not None else '?'}"
+            for s in items[1:4]
         )
         more = f" and {len(items) - 4} more" if len(items) > 4 else ""
         if repository:
@@ -163,9 +164,10 @@ async def handle(
     if not all_refs:
         lines.append("References: none found")
     else:
+        globally_truncated = total_refs > len(all_refs)
         ref_header = f"References ({total_refs} total):"
-        if total_refs > len(all_refs):
-            ref_header += f" (showing first {len(all_refs)})"
+        if globally_truncated:
+            ref_header += f" (showing first {len(all_refs)}; per-type counts and lists are for this subset only)"
         lines.append(ref_header)
         for ref_type, refs in sorted(grouped.items()):
             shown = refs[:_MAX_REFS_PER_TYPE]
@@ -176,7 +178,14 @@ async def handle(
                 ref_line = ref.get("source_line")
                 loc = f"{ref_file}:{ref_line}" if ref_line else ref_file
                 entries.append(loc)
-            suffix = f" ... and {remainder} more" if remainder > 0 else ""
+            if remainder > 0:
+                suffix = (
+                    f" ... and at least {remainder} more"
+                    if globally_truncated
+                    else f" ... and {remainder} more"
+                )
+            else:
+                suffix = ""
             lines.append(f"  {ref_type} ({len(refs)}): {', '.join(entries)}{suffix}")
 
     return prepend_warning("\n".join(lines), staleness_warning)
