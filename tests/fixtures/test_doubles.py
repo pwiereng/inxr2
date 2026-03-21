@@ -60,7 +60,11 @@ from inxr2.application.ports.services import (
     FileStat,
     FileSystemPort,
     GitServicePort,
+    ParsedComment,
+    ParsedReference,
+    ParsedSymbol,
     ParserServicePort,
+    PlaintextChunk,
     PlaintextParserPort,
     RenameInfo,
     RepositoryInfo,
@@ -2461,16 +2465,16 @@ class StubParserService(ParserServicePort):
 
     Example:
         parser = StubParserService()
-        parser.set_results_for_file("main.py", ([symbol_dict], [ref_dict]))
+        parser.set_results_for_file("main.py", ([parsed_symbol], [parsed_ref]))
         symbols, refs = await parser.parse_file("content", "python", "main.py")
     """
 
     def __init__(self) -> None:
         """Initialize with empty responses."""
         self._parse_responses: dict[
-            str, tuple[list[dict[str, Any]], list[dict[str, Any]]]
+            str, tuple[list[ParsedSymbol], list[ParsedReference]]
         ] = {}
-        self._comment_responses: dict[str, list[dict[str, Any]]] = {}
+        self._comment_responses: dict[str, list[ParsedComment]] = {}
         self._supported_languages: set[str] = {"python", "typescript", "javascript"}
 
     def supports_language(self, language: str) -> bool:
@@ -2479,13 +2483,13 @@ class StubParserService(ParserServicePort):
 
     async def parse_file(
         self, content: str, language: str, file_path: str
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
         """Return predefined symbols and references for the file."""
         return self._parse_responses.get(file_path, ([], []))
 
     async def extract_comments(
         self, content: str, language: str, file_path: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[ParsedComment]:
         """Return predefined comments for the file."""
         return self._comment_responses.get(file_path, [])
 
@@ -2493,13 +2497,13 @@ class StubParserService(ParserServicePort):
     def set_results_for_file(
         self,
         file_path: str,
-        results: tuple[list[dict[str, Any]], list[dict[str, Any]]],
+        results: tuple[list[ParsedSymbol], list[ParsedReference]],
     ) -> None:
         """Set what symbols/references should be returned for a file."""
         self._parse_responses[file_path] = results
 
     def set_comments_for_file(
-        self, file_path: str, comments: list[dict[str, Any]]
+        self, file_path: str, comments: list[ParsedComment]
     ) -> None:
         """Set what comments should be returned for a file."""
         self._comment_responses[file_path] = comments
@@ -2767,17 +2771,17 @@ class FakePlaintextParser(PlaintextParserPort):
             return True
         return False
 
-    def parse(self, content: str, file_path: str) -> list[dict[str, Any]]:
+    def parse(self, content: str, file_path: str) -> list[PlaintextChunk]:
         """Parse file content into a single chunk."""
         if not content or not content.strip():
             return []
         return [
-            {
-                "content": content,
-                "content_type": "plain_text",
-                "source_line": 1,
-                "source_end_line": content.count("\n") + 1,
-            }
+            PlaintextChunk(
+                content=content,
+                content_type="plain_text",
+                source_line=1,
+                source_end_line=content.count("\n") + 1,
+            )
         ]
 
 

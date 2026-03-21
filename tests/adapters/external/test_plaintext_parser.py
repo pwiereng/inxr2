@@ -68,20 +68,20 @@ Another paragraph here.
 
         # Verify structure
         for chunk in chunks:
-            assert "content" in chunk
-            assert "content_type" in chunk
-            assert "source_line" in chunk
-            assert "source_end_line" in chunk
+            assert chunk.content is not None
+            assert chunk.content_type is not None
+            assert chunk.source_line is not None
+            assert chunk.source_end_line is not None
 
         # First chunk should be the heading
-        assert chunks[0]["content"] == "# Introduction"
-        assert chunks[0]["source_line"] == 1
-        assert chunks[0]["source_end_line"] == 1
-        assert chunks[0]["content_type"] == "markdown_paragraph"
+        assert chunks[0].content == "# Introduction"
+        assert chunks[0].source_line == 1
+        assert chunks[0].source_end_line == 1
+        assert chunks[0].content_type == "markdown_paragraph"
 
         # Second chunk should be the first paragraph
-        assert "first paragraph" in chunks[1]["content"]
-        assert chunks[1]["source_line"] == 3
+        assert "first paragraph" in chunks[1].content
+        assert chunks[1].source_line == 3
 
     def test_parse_yaml_extracts_meaningful_lines(
         self, parser: PlaintextParser
@@ -103,13 +103,13 @@ services:
         assert len(chunks) > 0
 
         # Should have content from various YAML lines
-        all_content = " ".join(c["content"] for c in chunks)
+        all_content = " ".join(c.content for c in chunks)
         assert "version" in all_content
         assert "services" in all_content
         assert "nginx" in all_content
 
         # Verify content type
-        assert all(c["content_type"] == "yaml_content" for c in chunks)
+        assert all(c.content_type == "yaml_content" for c in chunks)
 
     def test_parse_dockerfile_extracts_instructions(
         self, parser: PlaintextParser
@@ -131,13 +131,13 @@ CMD ["python", "app.py"]
         assert len(chunks) > 0
 
         # Verify content includes instructions
-        all_content = " ".join(c["content"] for c in chunks)
+        all_content = " ".join(c.content for c in chunks)
         assert "FROM python" in all_content
         assert "RUN pip install" in all_content
         assert "WORKDIR" in all_content
 
         # Verify content type
-        assert all(c["content_type"] == "dockerfile_instruction" for c in chunks)
+        assert all(c.content_type == "dockerfile_instruction" for c in chunks)
 
     def test_parse_text_file_extracts_lines(self, parser: PlaintextParser) -> None:
         """Test that plain text files are chunked reasonably."""
@@ -153,8 +153,8 @@ And another paragraph.
         assert len(chunks) > 0
 
         # Should extract paragraphs
-        assert any("plain text" in c["content"] for c in chunks)
-        assert any("another paragraph" in c["content"] for c in chunks)
+        assert any("plain text" in c.content for c in chunks)
+        assert any("another paragraph" in c.content for c in chunks)
 
     def test_parse_skips_blank_lines(self, parser: PlaintextParser) -> None:
         """Test that blank lines are not indexed as separate chunks."""
@@ -167,7 +167,7 @@ Line 2
 
         # Should only have 2 chunks (the two lines with content)
         # Blank lines should be skipped
-        non_empty_chunks = [c for c in chunks if c["content"].strip()]
+        non_empty_chunks = [c for c in chunks if c.content.strip()]
         assert len(non_empty_chunks) == 2
 
     def test_parse_long_content_is_chunked(self, parser: PlaintextParser) -> None:
@@ -187,7 +187,7 @@ Short paragraph.
         # Verify no chunk exceeds max length (500 chars per design doc)
         # Note: We'll implement this as a stretch goal
         # For now, just verify chunks exist
-        assert all(len(c["content"]) > 0 for c in chunks)
+        assert all(len(c.content) > 0 for c in chunks)
 
     def test_parse_json_extracts_content(self, parser: PlaintextParser) -> None:
         """Test that JSON files are indexed as plain text."""
@@ -202,7 +202,7 @@ Short paragraph.
         assert len(chunks) > 0
 
         # Should extract meaningful content
-        all_content = " ".join(c["content"] for c in chunks)
+        all_content = " ".join(c.content for c in chunks)
         assert "my-package" in all_content
         assert "description" in all_content
 
@@ -215,8 +215,8 @@ Short paragraph.
         for file_path in ["deploy.sh", "styles.css", "schema.sql"]:
             chunks = parser.parse(content, file_path)
             assert len(chunks) > 0, f"Expected chunks for {file_path}"
-            assert chunks[0]["content_type"] == "plain_text"
-            assert "hello world" in chunks[0]["content"]
+            assert chunks[0].content_type == "plain_text"
+            assert "hello world" in chunks[0].content
 
     def test_parse_empty_file_returns_empty_list(self, parser: PlaintextParser) -> None:
         """Test that empty files return no chunks."""

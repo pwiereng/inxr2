@@ -37,9 +37,9 @@ public class HelloWorld {
             content=code, language="csharp", file_path="HelloWorld.cs"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "HelloWorld"]
+        class_symbols = [s for s in symbols if s.name == "HelloWorld"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["kind"] == "class"
+        assert class_symbols[0].kind == "class"
 
     @pytest.mark.asyncio
     async def test_parse_abstract_class(
@@ -55,10 +55,10 @@ public abstract class Shape {
             content=code, language="csharp", file_path="Shape.cs"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "Shape"]
+        class_symbols = [s for s in symbols if s.name == "Shape"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["kind"] == "class"
-        assert class_symbols[0]["is_abstract"] is True
+        assert class_symbols[0].kind == "class"
+        assert class_symbols[0].metadata["is_abstract"] is True
 
     @pytest.mark.asyncio
     async def test_parse_sealed_class(self, parser_service: TreeSitterService) -> None:
@@ -71,9 +71,9 @@ public sealed class Singleton {
             content=code, language="csharp", file_path="Singleton.cs"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "Singleton"]
+        class_symbols = [s for s in symbols if s.name == "Singleton"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["is_sealed"] is True
+        assert class_symbols[0].metadata["is_sealed"] is True
 
     @pytest.mark.asyncio
     async def test_parse_static_class(self, parser_service: TreeSitterService) -> None:
@@ -86,9 +86,9 @@ public static class MathHelper {
             content=code, language="csharp", file_path="MathHelper.cs"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "MathHelper"]
+        class_symbols = [s for s in symbols if s.name == "MathHelper"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["is_static"] is True
+        assert class_symbols[0].metadata["is_static"] is True
 
     @pytest.mark.asyncio
     async def test_parse_inner_class(self, parser_service: TreeSitterService) -> None:
@@ -103,13 +103,13 @@ public class Outer {
             content=code, language="csharp", file_path="Outer.cs"
         )
 
-        outer = [s for s in symbols if s["name"] == "Outer" and s["kind"] == "class"]
+        outer = [s for s in symbols if s.name == "Outer" and s.kind == "class"]
         assert len(outer) == 1
 
-        inner = [s for s in symbols if s["name"] == "Inner" and s["kind"] == "class"]
+        inner = [s for s in symbols if s.name == "Inner" and s.kind == "class"]
         assert len(inner) == 1
-        assert inner[0]["scope"] == "Outer"
-        assert inner[0]["is_inner"] is True
+        assert inner[0].scope == "Outer"
+        assert inner[0].metadata["is_inner"] is True
 
     @pytest.mark.asyncio
     async def test_parse_partial_class(self, parser_service: TreeSitterService) -> None:
@@ -122,9 +122,9 @@ public partial class MyService {
             content=code, language="csharp", file_path="MyService.cs"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "MyService"]
+        class_symbols = [s for s in symbols if s.name == "MyService"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["is_partial"] is True
+        assert class_symbols[0].metadata["is_partial"] is True
 
     @pytest.mark.asyncio
     async def test_parse_generic_class(self, parser_service: TreeSitterService) -> None:
@@ -137,9 +137,9 @@ public class Repository<T> where T : class {
             content=code, language="csharp", file_path="Repository.cs"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["name"] == "Repository"
+        assert class_symbols[0].name == "Repository"
 
     @pytest.mark.asyncio
     async def test_parse_class_with_inheritance(
@@ -155,11 +155,11 @@ public class Dog : Animal, IMovable {
             content=code, language="csharp", file_path="Dog.cs"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "Dog"]
+        class_symbols = [s for s in symbols if s.name == "Dog"]
         assert len(class_symbols) == 1
 
-        inheritance_refs = [r for r in references if r["type"] == "inheritance"]
-        inheritance_texts = [r["text"] for r in inheritance_refs]
+        inheritance_refs = [r for r in references if r.reference_type == "inheritance"]
+        inheritance_texts = [r.reference_text for r in inheritance_refs]
         assert "Animal" in inheritance_texts
         assert "IMovable" in inheritance_texts
 
@@ -183,9 +183,9 @@ public struct Point {
             content=code, language="csharp", file_path="Point.cs"
         )
 
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
         assert len(struct_symbols) == 1
-        assert struct_symbols[0]["name"] == "Point"
+        assert struct_symbols[0].name == "Point"
 
     @pytest.mark.asyncio
     async def test_parse_readonly_struct(
@@ -201,9 +201,9 @@ public readonly struct Vector2D {
             content=code, language="csharp", file_path="Vector2D.cs"
         )
 
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
         assert len(struct_symbols) == 1
-        assert struct_symbols[0]["is_readonly"] is True
+        assert struct_symbols[0].metadata["is_readonly"] is True
 
     @pytest.mark.asyncio
     async def test_parse_record(self, parser_service: TreeSitterService) -> None:
@@ -214,13 +214,13 @@ public record Person(string FirstName, string LastName);
             content=code, language="csharp", file_path="Person.cs"
         )
 
-        record_symbols = [s for s in symbols if s["kind"] == "record"]
+        record_symbols = [s for s in symbols if s.kind == "record"]
         assert len(record_symbols) == 1
-        assert record_symbols[0]["name"] == "Person"
+        assert record_symbols[0].name == "Person"
 
         # Record parameters should appear as properties
-        props = [s for s in symbols if s["kind"] == "property"]
-        prop_names = [s["name"] for s in props]
+        props = [s for s in symbols if s.kind == "property"]
+        prop_names = [s.name for s in props]
         assert "FirstName" in prop_names
         assert "LastName" in prop_names
 
@@ -233,9 +233,9 @@ public record struct Coordinate(double Latitude, double Longitude);
             content=code, language="csharp", file_path="Coordinate.cs"
         )
 
-        record_symbols = [s for s in symbols if s["kind"] == "record"]
+        record_symbols = [s for s in symbols if s.kind == "record"]
         assert len(record_symbols) == 1
-        assert record_symbols[0]["name"] == "Coordinate"
+        assert record_symbols[0].name == "Coordinate"
 
 
 class TestCSharpInterfaces:
@@ -259,12 +259,12 @@ public interface IDrawable {
             content=code, language="csharp", file_path="IDrawable.cs"
         )
 
-        interface_symbols = [s for s in symbols if s["name"] == "IDrawable"]
+        interface_symbols = [s for s in symbols if s.name == "IDrawable"]
         assert len(interface_symbols) == 1
-        assert interface_symbols[0]["kind"] == "interface"
+        assert interface_symbols[0].kind == "interface"
 
-        methods = [s for s in symbols if s["kind"] == "method"]
-        method_names = [s["name"] for s in methods]
+        methods = [s for s in symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
         assert "Draw" in method_names
         assert "Resize" in method_names
 
@@ -282,9 +282,9 @@ public interface IRepository<T> {
             content=code, language="csharp", file_path="IRepository.cs"
         )
 
-        interface_symbols = [s for s in symbols if s["kind"] == "interface"]
+        interface_symbols = [s for s in symbols if s.kind == "interface"]
         assert len(interface_symbols) == 1
-        assert interface_symbols[0]["name"] == "IRepository"
+        assert interface_symbols[0].name == "IRepository"
 
     @pytest.mark.asyncio
     async def test_parse_interface_with_default_method(
@@ -302,8 +302,8 @@ public interface ILogger {
             content=code, language="csharp", file_path="ILogger.cs"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
-        method_names = [s["name"] for s in methods]
+        methods = [s for s in symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
         assert "Log" in method_names
         assert "LogError" in method_names
 
@@ -328,12 +328,12 @@ public enum Color {
             content=code, language="csharp", file_path="Color.cs"
         )
 
-        enum_symbols = [s for s in symbols if s["kind"] == "enum"]
+        enum_symbols = [s for s in symbols if s.kind == "enum"]
         assert len(enum_symbols) == 1
-        assert enum_symbols[0]["name"] == "Color"
+        assert enum_symbols[0].name == "Color"
 
-        enum_values = [s for s in symbols if s["kind"] == "enum_value"]
-        value_names = [s["name"] for s in enum_values]
+        enum_values = [s for s in symbols if s.kind == "enum_value"]
+        value_names = [s.name for s in enum_values]
         assert "Red" in value_names
         assert "Green" in value_names
         assert "Blue" in value_names
@@ -353,11 +353,11 @@ public enum HttpStatusCode {
             content=code, language="csharp", file_path="HttpStatusCode.cs"
         )
 
-        enum_symbols = [s for s in symbols if s["kind"] == "enum"]
+        enum_symbols = [s for s in symbols if s.kind == "enum"]
         assert len(enum_symbols) == 1
 
-        enum_values = [s for s in symbols if s["kind"] == "enum_value"]
-        value_names = [s["name"] for s in enum_values]
+        enum_values = [s for s in symbols if s.kind == "enum_value"]
+        value_names = [s.name for s in enum_values]
         assert "OK" in value_names
         assert "NotFound" in value_names
         assert "InternalServerError" in value_names
@@ -378,12 +378,12 @@ public enum Permission {
             content=code, language="csharp", file_path="Permission.cs"
         )
 
-        enum_symbols = [s for s in symbols if s["kind"] == "enum"]
+        enum_symbols = [s for s in symbols if s.kind == "enum"]
         assert len(enum_symbols) == 1
-        assert enum_symbols[0]["name"] == "Permission"
+        assert enum_symbols[0].name == "Permission"
 
-        enum_values = [s for s in symbols if s["kind"] == "enum_value"]
-        value_names = [s["name"] for s in enum_values]
+        enum_values = [s for s in symbols if s.kind == "enum_value"]
+        value_names = [s.name for s in enum_values]
         assert "None" in value_names
         assert "Read" in value_names
         assert "All" in value_names
@@ -399,9 +399,9 @@ public enum Direction {
             content=code, language="csharp", file_path="Direction.cs"
         )
 
-        enum_values = [s for s in symbols if s["kind"] == "enum_value"]
+        enum_values = [s for s in symbols if s.kind == "enum_value"]
         for value in enum_values:
-            assert value["scope"] == "Direction"
+            assert value.scope == "Direction"
 
 
 class TestCSharpMethods:
@@ -430,14 +430,14 @@ public class Calculator {
             content=code, language="csharp", file_path="Calculator.cs"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
-        method_names = [s["name"] for s in methods]
+        methods = [s for s in symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
         assert "Add" in method_names
         assert "Multiply" in method_names
 
-        add_method = [s for s in methods if s["name"] == "Add"][0]
-        assert add_method["scope"] == "Calculator"
-        assert add_method["is_static"] is False
+        add_method = [s for s in methods if s.name == "Add"][0]
+        assert add_method.scope == "Calculator"
+        assert add_method.metadata["is_static"] is False
 
     @pytest.mark.asyncio
     async def test_parse_static_method(self, parser_service: TreeSitterService) -> None:
@@ -452,9 +452,9 @@ public class MathUtils {
             content=code, language="csharp", file_path="MathUtils.cs"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
-        assert methods[0]["is_static"] is True
+        assert methods[0].metadata["is_static"] is True
 
     @pytest.mark.asyncio
     async def test_parse_async_method(self, parser_service: TreeSitterService) -> None:
@@ -469,10 +469,10 @@ public class DataService {
             content=code, language="csharp", file_path="DataService.cs"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
-        assert methods[0]["name"] == "FetchDataAsync"
-        assert methods[0]["is_async"] is True
+        assert methods[0].name == "FetchDataAsync"
+        assert methods[0].metadata["is_async"] is True
 
     @pytest.mark.asyncio
     async def test_parse_abstract_method(
@@ -488,9 +488,9 @@ public abstract class Animal {
             content=code, language="csharp", file_path="Animal.cs"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         for method in methods:
-            assert method["is_abstract"] is True
+            assert method.metadata["is_abstract"] is True
 
     @pytest.mark.asyncio
     async def test_parse_virtual_method(
@@ -506,9 +506,9 @@ public class Base {
             content=code, language="csharp", file_path="Base.cs"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
-        assert methods[0]["is_virtual"] is True
+        assert methods[0].metadata["is_virtual"] is True
 
     @pytest.mark.asyncio
     async def test_parse_override_method(
@@ -525,9 +525,9 @@ public class Derived : Base {
             content=code, language="csharp", file_path="Derived.cs"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
-        assert methods[0]["is_override"] is True
+        assert methods[0].metadata["is_override"] is True
 
     @pytest.mark.asyncio
     async def test_method_signature(self, parser_service: TreeSitterService) -> None:
@@ -542,10 +542,10 @@ public class Service {
             content=code, language="csharp", file_path="Service.cs"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
-        assert "signature" in methods[0]
-        assert "ProcessData" in methods[0]["signature"]
+        assert methods[0].signature is not None
+        assert methods[0].signature is not None and "ProcessData" in methods[0].signature
 
     @pytest.mark.asyncio
     async def test_parse_constructor(self, parser_service: TreeSitterService) -> None:
@@ -567,11 +567,11 @@ public class Person {
             content=code, language="csharp", file_path="Person.cs"
         )
 
-        constructors = [s for s in symbols if s["kind"] == "constructor"]
+        constructors = [s for s in symbols if s.kind == "constructor"]
         assert len(constructors) == 2
         for constructor in constructors:
-            assert constructor["name"] == "Person"
-            assert constructor["scope"] == "Person"
+            assert constructor.name == "Person"
+            assert constructor.scope == "Person"
 
 
 class TestCSharpProperties:
@@ -593,8 +593,8 @@ public class User {
             content=code, language="csharp", file_path="User.cs"
         )
 
-        props = [s for s in symbols if s["kind"] == "property"]
-        prop_names = [s["name"] for s in props]
+        props = [s for s in symbols if s.kind == "property"]
+        prop_names = [s.name for s in props]
         assert "Name" in prop_names
         assert "Age" in prop_names
 
@@ -612,8 +612,8 @@ public class Circle {
             content=code, language="csharp", file_path="Circle.cs"
         )
 
-        props = [s for s in symbols if s["kind"] == "property"]
-        prop_names = [s["name"] for s in props]
+        props = [s for s in symbols if s.kind == "property"]
+        prop_names = [s.name for s in props]
         assert "Radius" in prop_names
         assert "Area" in prop_names
 
@@ -630,9 +630,9 @@ public class Config {
             content=code, language="csharp", file_path="Config.cs"
         )
 
-        props = [s for s in symbols if s["kind"] == "property"]
+        props = [s for s in symbols if s.kind == "property"]
         assert len(props) == 1
-        assert props[0]["is_static"] is True
+        assert props[0].metadata["is_static"] is True
 
     @pytest.mark.asyncio
     async def test_parse_indexer(self, parser_service: TreeSitterService) -> None:
@@ -650,10 +650,10 @@ public class StringCollection {
             content=code, language="csharp", file_path="StringCollection.cs"
         )
 
-        indexers = [s for s in symbols if s["kind"] == "indexer"]
+        indexers = [s for s in symbols if s.kind == "indexer"]
         assert len(indexers) == 1
-        assert indexers[0]["name"] == "this[]"
-        assert indexers[0]["scope"] == "StringCollection"
+        assert indexers[0].name == "this[]"
+        assert indexers[0].scope == "StringCollection"
 
 
 class TestCSharpFields:
@@ -678,14 +678,14 @@ public class User {
             content=code, language="csharp", file_path="User.cs"
         )
 
-        fields = [s for s in symbols if s["kind"] == "field"]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if s.kind == "field"]
+        field_names = [s.name for s in fields]
         assert "_username" in field_names
         assert "_email" in field_names
         assert "_age" in field_names
 
         for field in fields:
-            assert field["scope"] == "User"
+            assert field.scope == "User"
 
     @pytest.mark.asyncio
     async def test_parse_const_fields(self, parser_service: TreeSitterService) -> None:
@@ -699,8 +699,8 @@ public class Constants {
             content=code, language="csharp", file_path="Constants.cs"
         )
 
-        constants = [s for s in symbols if s["kind"] == "constant"]
-        constant_names = [s["name"] for s in constants]
+        constants = [s for s in symbols if s.kind == "constant"]
+        constant_names = [s.name for s in constants]
         assert "MaxValue" in constant_names
         assert "AppName" in constant_names
 
@@ -718,9 +718,9 @@ public class Config {
             content=code, language="csharp", file_path="Config.cs"
         )
 
-        fields = [s for s in symbols if s["kind"] == "field"]
+        fields = [s for s in symbols if s.kind == "field"]
         for field in fields:
-            assert field["is_readonly"] is True
+            assert field.metadata["is_readonly"] is True
 
     @pytest.mark.asyncio
     async def test_parse_static_fields(self, parser_service: TreeSitterService) -> None:
@@ -733,9 +733,9 @@ public class Counter {
             content=code, language="csharp", file_path="Counter.cs"
         )
 
-        fields = [s for s in symbols if s["kind"] == "field"]
+        fields = [s for s in symbols if s.kind == "field"]
         assert len(fields) == 1
-        assert fields[0]["is_static"] is True
+        assert fields[0].metadata["is_static"] is True
 
 
 class TestCSharpNamespacesAndUsings:
@@ -760,13 +760,13 @@ public class UserService {
             content=code, language="csharp", file_path="UserService.cs"
         )
 
-        ns_symbols = [s for s in symbols if s["kind"] == "namespace"]
+        ns_symbols = [s for s in symbols if s.kind == "namespace"]
         assert len(ns_symbols) == 1
-        assert ns_symbols[0]["name"] == "MyApp.Services"
+        assert ns_symbols[0].name == "MyApp.Services"
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["scope"] == "MyApp.Services"
+        assert class_symbols[0].scope == "MyApp.Services"
 
     @pytest.mark.asyncio
     async def test_parse_block_namespace(
@@ -783,13 +783,13 @@ namespace MyApp.Models {
             content=code, language="csharp", file_path="User.cs"
         )
 
-        ns_symbols = [s for s in symbols if s["kind"] == "namespace"]
+        ns_symbols = [s for s in symbols if s.kind == "namespace"]
         assert len(ns_symbols) == 1
-        assert ns_symbols[0]["name"] == "MyApp.Models"
+        assert ns_symbols[0].name == "MyApp.Models"
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["scope"] == "MyApp.Models"
+        assert class_symbols[0].scope == "MyApp.Models"
 
     @pytest.mark.asyncio
     async def test_parse_using_directives(
@@ -807,8 +807,8 @@ public class App {
             content=code, language="csharp", file_path="App.cs"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_texts = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_texts = [r.reference_text for r in import_refs]
         assert "System" in import_texts
         assert "System.Collections.Generic" in import_texts
         assert "System.Linq" in import_texts
@@ -825,9 +825,9 @@ public class App {
             content=code, language="csharp", file_path="App.cs"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
+        import_refs = [r for r in references if r.reference_type == "import"]
         assert len(import_refs) >= 1
-        static_imports = [r for r in import_refs if r.get("is_static")]
+        static_imports = [r for r in import_refs if r.metadata.get("is_static")]
         assert len(static_imports) >= 1
 
 
@@ -853,8 +853,8 @@ public class Service {
             content=code, language="csharp", file_path="Service.cs"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "Initialize" in call_texts
         assert "Calculate" in call_texts
         assert "Cleanup" in call_texts
@@ -877,8 +877,8 @@ public class Test {
             content=code, language="csharp", file_path="Test.cs"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "ToString" not in call_texts
         assert "Equals" not in call_texts
         assert "MyMethod" in call_texts
@@ -897,8 +897,8 @@ public class Factory {
             content=code, language="csharp", file_path="Factory.cs"
         )
 
-        instantiation_refs = [r for r in references if r["type"] == "instantiation"]
-        instantiation_texts = [r["text"] for r in instantiation_refs]
+        instantiation_refs = [r for r in references if r.reference_type == "instantiation"]
+        instantiation_texts = [r.reference_text for r in instantiation_refs]
         assert "Person" in instantiation_texts
         assert "MyObject" in instantiation_texts
 
@@ -916,8 +916,8 @@ public class Repository {
             content=code, language="csharp", file_path="Repository.cs"
         )
 
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "UserService" in type_texts
         assert "DataMapper" in type_texts
 
@@ -939,8 +939,8 @@ public class Calculator {
             content=code, language="csharp", file_path="Calculator.cs"
         )
 
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "int" not in type_texts
         assert "double" not in type_texts
         assert "bool" not in type_texts
@@ -962,8 +962,8 @@ public class Controller {
             content=code, language="csharp", file_path="Controller.cs"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "HttpGet" in usage_texts
         assert "Route" in usage_texts
 
@@ -980,8 +980,8 @@ public class Container {
             content=code, language="csharp", file_path="Container.cs"
         )
 
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "CustomList" in type_texts
         assert "MyItem" in type_texts
 
@@ -1002,8 +1002,8 @@ public interface IExtended : IBase, ISerializable {
             content=code, language="csharp", file_path="Types.cs"
         )
 
-        inheritance_refs = [r for r in references if r["type"] == "inheritance"]
-        inheritance_texts = [r["text"] for r in inheritance_refs]
+        inheritance_refs = [r for r in references if r.reference_type == "inheritance"]
+        inheritance_texts = [r.reference_text for r in inheritance_refs]
         assert "Animal" in inheritance_texts
         assert "IBase" in inheritance_texts
         assert "ISerializable" in inheritance_texts
@@ -1028,10 +1028,10 @@ public class Foo {
         )
 
         single_line = [
-            c for c in comments if c["content_type"] == "single_line_comment"
+            c for c in comments if c.content_type == "single_line_comment"
         ]
         assert len(single_line) >= 1
-        assert any("single line comment" in c["content"] for c in single_line)
+        assert any("single line comment" in c.content for c in single_line)
 
     @pytest.mark.asyncio
     async def test_block_comment(self, parser_service: TreeSitterService) -> None:
@@ -1044,9 +1044,9 @@ public class Foo {
             content=code, language="csharp", file_path="Foo.cs"
         )
 
-        block = [c for c in comments if c["content_type"] == "block_comment"]
+        block = [c for c in comments if c.content_type == "block_comment"]
         assert len(block) >= 1
-        assert any("block comment" in c["content"] for c in block)
+        assert any("block comment" in c.content for c in block)
 
     @pytest.mark.asyncio
     async def test_xml_doc_comment(self, parser_service: TreeSitterService) -> None:
@@ -1061,7 +1061,7 @@ public class Foo {
             content=code, language="csharp", file_path="Foo.cs"
         )
 
-        xml_docs = [c for c in comments if c["content_type"] == "xml_doc_comment"]
+        xml_docs = [c for c in comments if c.content_type == "xml_doc_comment"]
         assert len(xml_docs) >= 1
 
 
@@ -1096,8 +1096,8 @@ class Utility {
             content=code, language="csharp", file_path="Main.cs"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
-        class_names = [s["name"] for s in class_symbols]
+        class_symbols = [s for s in symbols if s.kind == "class"]
+        class_names = [s.name for s in class_symbols]
         assert "Main" in class_names
         assert "Helper" in class_names
         assert "Utility" in class_names
@@ -1114,8 +1114,8 @@ public delegate int Transformer(int input);
             content=code, language="csharp", file_path="Delegates.cs"
         )
 
-        delegates = [s for s in symbols if s["kind"] == "delegate"]
-        delegate_names = [s["name"] for s in delegates]
+        delegates = [s for s in symbols if s.kind == "delegate"]
+        delegate_names = [s.name for s in delegates]
         assert "MyCallback" in delegate_names
         assert "Transformer" in delegate_names
 
@@ -1133,8 +1133,8 @@ public class Button {
             content=code, language="csharp", file_path="Button.cs"
         )
 
-        events = [s for s in symbols if s["kind"] == "event"]
-        event_names = [s["name"] for s in events]
+        events = [s for s in symbols if s.kind == "event"]
+        event_names = [s.name for s in events]
         assert "Click" in event_names
         assert "DoubleClick" in event_names
 
@@ -1152,12 +1152,12 @@ public class Derived : Base {
             content=code, language="csharp", file_path="Derived.cs"
         )
 
-        constructors = [s for s in symbols if s["kind"] == "constructor"]
+        constructors = [s for s in symbols if s.kind == "constructor"]
         assert len(constructors) == 1
-        assert constructors[0]["name"] == "Derived"
+        assert constructors[0].name == "Derived"
 
-        inheritance_refs = [r for r in references if r["type"] == "inheritance"]
-        assert any(r["text"] == "Base" for r in inheritance_refs)
+        inheritance_refs = [r for r in references if r.reference_type == "inheritance"]
+        assert any(r.reference_text == "Base" for r in inheritance_refs)
 
     @pytest.mark.asyncio
     async def test_class_symbol_line_points_to_name(
@@ -1171,10 +1171,10 @@ public class MyClass {
             content=code, language="csharp", file_path="MyClass.cs"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "MyClass"]
+        class_symbols = [s for s in symbols if s.name == "MyClass"]
         assert len(class_symbols) == 1
         # The class name "MyClass" is on line 2, not line 1 where the attribute is
-        assert class_symbols[0]["start_line"] == 2
+        assert class_symbols[0].start_line == 2
 
     @pytest.mark.asyncio
     async def test_method_symbol_line_points_to_name(
@@ -1190,10 +1190,10 @@ public class MyClass {
             content=code, language="csharp", file_path="Test.cs"
         )
 
-        method_symbols = [s for s in symbols if s["name"] == "MyMethod"]
+        method_symbols = [s for s in symbols if s.name == "MyMethod"]
         assert len(method_symbols) == 1
         # The method name "MyMethod" is on line 3
-        assert method_symbols[0]["start_line"] == 3
+        assert method_symbols[0].start_line == 3
 
     @pytest.mark.asyncio
     async def test_namespace_scoped_types(
@@ -1214,13 +1214,13 @@ namespace MyApp {
             content=code, language="csharp", file_path="Services.cs"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "ServiceA"]
+        class_symbols = [s for s in symbols if s.name == "ServiceA"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["scope"] == "MyApp"
+        assert class_symbols[0].scope == "MyApp"
 
-        interface_symbols = [s for s in symbols if s["name"] == "IServiceB"]
+        interface_symbols = [s for s in symbols if s.name == "IServiceB"]
         assert len(interface_symbols) == 1
-        assert interface_symbols[0]["scope"] == "MyApp"
+        assert interface_symbols[0].scope == "MyApp"
 
     @pytest.mark.asyncio
     async def test_struct_with_interface(
@@ -1236,9 +1236,9 @@ public struct Money : IEquatable<Money> {
             content=code, language="csharp", file_path="Money.cs"
         )
 
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
         assert len(struct_symbols) == 1
-        assert struct_symbols[0]["name"] == "Money"
+        assert struct_symbols[0].name == "Money"
 
     @pytest.mark.asyncio
     async def test_record_with_body(self, parser_service: TreeSitterService) -> None:
@@ -1253,11 +1253,11 @@ public record Employee(string Name, int Age) {
             content=code, language="csharp", file_path="Employee.cs"
         )
 
-        record_symbols = [s for s in symbols if s["kind"] == "record"]
+        record_symbols = [s for s in symbols if s.kind == "record"]
         assert len(record_symbols) == 1
 
-        methods = [s for s in symbols if s["kind"] == "method"]
-        assert any(m["name"] == "Greeting" for m in methods)
+        methods = [s for s in symbols if s.kind == "method"]
+        assert any(m.name == "Greeting" for m in methods)
 
     @pytest.mark.asyncio
     async def test_empty_file(self, parser_service: TreeSitterService) -> None:
@@ -1282,7 +1282,7 @@ public class App {
             content=code, language="csharp", file_path="App.cs"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
-        assert "void" in methods[0]["signature"]
-        assert "DoWork" in methods[0]["signature"]
+        assert methods[0].signature is not None and "void" in methods[0].signature
+        assert methods[0].signature is not None and "DoWork" in methods[0].signature

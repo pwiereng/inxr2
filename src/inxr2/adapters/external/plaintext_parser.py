@@ -6,7 +6,7 @@ Handles markdown, YAML, config files, Dockerfiles, and other text-based formats.
 
 from pathlib import Path
 
-from inxr2.application.ports.services import PlaintextParserPort
+from inxr2.application.ports.services import PlaintextChunk, PlaintextParserPort
 
 
 class PlaintextParser(PlaintextParserPort):
@@ -75,7 +75,7 @@ class PlaintextParser(PlaintextParserPort):
 
         return False
 
-    def parse(self, content: str, file_path: str) -> list[dict]:
+    def parse(self, content: str, file_path: str) -> list[PlaintextChunk]:
         """
         Parse file into searchable chunks.
 
@@ -84,11 +84,8 @@ class PlaintextParser(PlaintextParserPort):
             file_path: Path to the file (for type detection)
 
         Returns:
-            List of dicts with keys:
-            - content: The chunk text
-            - content_type: Type of content (markdown_paragraph, yaml_content, etc.)
-            - source_line: Starting line number (1-indexed)
-            - source_end_line: Ending line number (1-indexed)
+            List of PlaintextChunk with content, content_type, source_line,
+            source_end_line
         """
         if not content or not content.strip():
             return []
@@ -108,13 +105,13 @@ class PlaintextParser(PlaintextParserPort):
             # Default: treat as plain text
             return self._parse_plain_text(content)
 
-    def _parse_markdown(self, content: str) -> list[dict]:
+    def _parse_markdown(self, content: str) -> list[PlaintextChunk]:
         """
         Parse markdown content into paragraph chunks.
 
         Splits by blank lines to create logical paragraphs.
         """
-        chunks: list[dict] = []
+        chunks: list[PlaintextChunk] = []
         lines = content.split("\n")
         current_paragraph: list[str] = []
         current_start_line = 1
@@ -126,12 +123,12 @@ class PlaintextParser(PlaintextParserPort):
                 # Blank line - end current paragraph
                 if current_paragraph:
                     chunks.append(
-                        {
-                            "content": "\n".join(current_paragraph),
-                            "content_type": "markdown_paragraph",
-                            "source_line": current_start_line,
-                            "source_end_line": i - 1,
-                        }
+                        PlaintextChunk(
+                            content="\n".join(current_paragraph),
+                            content_type="markdown_paragraph",
+                            source_line=current_start_line,
+                            source_end_line=i - 1,
+                        )
                     )
                     current_paragraph = []
             else:
@@ -143,23 +140,23 @@ class PlaintextParser(PlaintextParserPort):
         # Don't forget the last paragraph
         if current_paragraph:
             chunks.append(
-                {
-                    "content": "\n".join(current_paragraph),
-                    "content_type": "markdown_paragraph",
-                    "source_line": current_start_line,
-                    "source_end_line": len(lines),
-                }
+                PlaintextChunk(
+                    content="\n".join(current_paragraph),
+                    content_type="markdown_paragraph",
+                    source_line=current_start_line,
+                    source_end_line=len(lines),
+                )
             )
 
         return chunks
 
-    def _parse_yaml(self, content: str) -> list[dict]:
+    def _parse_yaml(self, content: str) -> list[PlaintextChunk]:
         """
         Parse YAML content into meaningful chunks.
 
         Groups related lines together (e.g., key-value pairs).
         """
-        chunks: list[dict] = []
+        chunks: list[PlaintextChunk] = []
         lines = content.split("\n")
         current_chunk: list[str] = []
         current_start_line = 1
@@ -171,12 +168,12 @@ class PlaintextParser(PlaintextParserPort):
                 # Blank line or comment - end current chunk
                 if current_chunk:
                     chunks.append(
-                        {
-                            "content": "\n".join(current_chunk),
-                            "content_type": "yaml_content",
-                            "source_line": current_start_line,
-                            "source_end_line": i - 1,
-                        }
+                        PlaintextChunk(
+                            content="\n".join(current_chunk),
+                            content_type="yaml_content",
+                            source_line=current_start_line,
+                            source_end_line=i - 1,
+                        )
                     )
                     current_chunk = []
             else:
@@ -188,23 +185,23 @@ class PlaintextParser(PlaintextParserPort):
         # Don't forget the last chunk
         if current_chunk:
             chunks.append(
-                {
-                    "content": "\n".join(current_chunk),
-                    "content_type": "yaml_content",
-                    "source_line": current_start_line,
-                    "source_end_line": len(lines),
-                }
+                PlaintextChunk(
+                    content="\n".join(current_chunk),
+                    content_type="yaml_content",
+                    source_line=current_start_line,
+                    source_end_line=len(lines),
+                )
             )
 
         return chunks
 
-    def _parse_dockerfile(self, content: str) -> list[dict]:
+    def _parse_dockerfile(self, content: str) -> list[PlaintextChunk]:
         """
         Parse Dockerfile content into instruction chunks.
 
         Each Dockerfile instruction (FROM, RUN, COPY, etc.) becomes a chunk.
         """
-        chunks: list[dict] = []
+        chunks: list[PlaintextChunk] = []
         lines = content.split("\n")
         current_instruction: list[str] = []
         current_start_line = 1
@@ -217,12 +214,12 @@ class PlaintextParser(PlaintextParserPort):
                 if current_instruction:
                     # Blank line ends current instruction
                     chunks.append(
-                        {
-                            "content": "\n".join(current_instruction),
-                            "content_type": "dockerfile_instruction",
-                            "source_line": current_start_line,
-                            "source_end_line": i - 1,
-                        }
+                        PlaintextChunk(
+                            content="\n".join(current_instruction),
+                            content_type="dockerfile_instruction",
+                            source_line=current_start_line,
+                            source_end_line=i - 1,
+                        )
                     )
                     current_instruction = []
                 continue
@@ -241,12 +238,12 @@ class PlaintextParser(PlaintextParserPort):
             if is_new_instruction and current_instruction:
                 # Save previous instruction
                 chunks.append(
-                    {
-                        "content": "\n".join(current_instruction),
-                        "content_type": "dockerfile_instruction",
-                        "source_line": current_start_line,
-                        "source_end_line": i - 1,
-                    }
+                    PlaintextChunk(
+                        content="\n".join(current_instruction),
+                        content_type="dockerfile_instruction",
+                        source_line=current_start_line,
+                        source_end_line=i - 1,
+                    )
                 )
                 current_instruction = []
 
@@ -258,23 +255,23 @@ class PlaintextParser(PlaintextParserPort):
         # Don't forget the last instruction
         if current_instruction:
             chunks.append(
-                {
-                    "content": "\n".join(current_instruction),
-                    "content_type": "dockerfile_instruction",
-                    "source_line": current_start_line,
-                    "source_end_line": len(lines),
-                }
+                PlaintextChunk(
+                    content="\n".join(current_instruction),
+                    content_type="dockerfile_instruction",
+                    source_line=current_start_line,
+                    source_end_line=len(lines),
+                )
             )
 
         return chunks
 
-    def _parse_structured_text(self, content: str, content_type: str) -> list[dict]:
+    def _parse_structured_text(self, content: str, content_type: str) -> list[PlaintextChunk]:
         """
         Parse structured text (JSON, XML) line by line.
 
         Skips blank lines, groups meaningful content.
         """
-        chunks: list[dict] = []
+        chunks: list[PlaintextChunk] = []
         lines = content.split("\n")
         current_chunk: list[str] = []
         current_start_line = 1
@@ -286,12 +283,12 @@ class PlaintextParser(PlaintextParserPort):
                 # Blank line - end current chunk
                 if current_chunk:
                     chunks.append(
-                        {
-                            "content": "\n".join(current_chunk),
-                            "content_type": content_type,
-                            "source_line": current_start_line,
-                            "source_end_line": i - 1,
-                        }
+                        PlaintextChunk(
+                            content="\n".join(current_chunk),
+                            content_type=content_type,
+                            source_line=current_start_line,
+                            source_end_line=i - 1,
+                        )
                     )
                     current_chunk = []
             else:
@@ -303,27 +300,30 @@ class PlaintextParser(PlaintextParserPort):
         # Don't forget the last chunk
         if current_chunk:
             chunks.append(
-                {
-                    "content": "\n".join(current_chunk),
-                    "content_type": content_type,
-                    "source_line": current_start_line,
-                    "source_end_line": len(lines),
-                }
+                PlaintextChunk(
+                    content="\n".join(current_chunk),
+                    content_type=content_type,
+                    source_line=current_start_line,
+                    source_end_line=len(lines),
+                )
             )
 
         return chunks
 
-    def _parse_plain_text(self, content: str) -> list[dict]:
+    def _parse_plain_text(self, content: str) -> list[PlaintextChunk]:
         """
         Parse plain text into paragraph chunks.
 
         Similar to markdown but simpler.
         """
-        # Reuse markdown parsing for plain text
-        chunks = self._parse_markdown(content)
-
-        # Change content_type to plain_text
-        for chunk in chunks:
-            chunk["content_type"] = "plain_text"
-
-        return chunks
+        # Reuse markdown parsing for plain text, then change content_type
+        markdown_chunks = self._parse_markdown(content)
+        return [
+            PlaintextChunk(
+                content=chunk.content,
+                content_type="plain_text",
+                source_line=chunk.source_line,
+                source_end_line=chunk.source_end_line,
+            )
+            for chunk in markdown_chunks
+        ]

@@ -33,19 +33,19 @@ def hello():
         assert len(comments) == 3
 
         # First comment - module level
-        assert comments[0]["content"] == "This is a module-level comment"
-        assert comments[0]["content_type"] == "single_line_comment"
-        assert comments[0]["source_line"] == 2
+        assert comments[0].content == "This is a module-level comment"
+        assert comments[0].content_type == "single_line_comment"
+        assert comments[0].source_line == 2
 
         # Second comment - inside function
-        assert comments[1]["content"] == "This is an inline comment"
-        assert comments[1]["content_type"] == "single_line_comment"
-        assert comments[1]["source_line"] == 4
+        assert comments[1].content == "This is an inline comment"
+        assert comments[1].content_type == "single_line_comment"
+        assert comments[1].source_line == 4
 
         # Third comment - after code
-        assert comments[2]["content"] == "Comment after code"
-        assert comments[2]["content_type"] == "single_line_comment"
-        assert comments[2]["source_line"] == 6
+        assert comments[2].content == "Comment after code"
+        assert comments[2].content_type == "single_line_comment"
+        assert comments[2].source_line == 6
 
     @pytest.mark.asyncio
     async def test_extract_docstrings(self, parser_service: TreeSitterService) -> None:
@@ -69,28 +69,28 @@ class MyClass:
         )
 
         # Should find 4 docstrings
-        docstrings = [c for c in comments if c["content_type"] == "docstring"]
+        docstrings = [c for c in comments if c.content_type == "docstring"]
         assert len(docstrings) == 4
 
         # Module docstring
-        module_doc = [c for c in docstrings if c["content"] == "Module docstring."]
+        module_doc = [c for c in docstrings if c.content == "Module docstring."]
         assert len(module_doc) == 1
-        assert module_doc[0]["source_line"] == 2
+        assert module_doc[0].source_line == 2
 
         # Function docstring
-        func_doc = [c for c in docstrings if c["content"] == "Function docstring."]
+        func_doc = [c for c in docstrings if c.content == "Function docstring."]
         assert len(func_doc) == 1
-        assert func_doc[0]["source_line"] == 5
+        assert func_doc[0].source_line == 5
 
         # Class docstring
-        class_doc = [c for c in docstrings if c["content"] == "Class docstring."]
+        class_doc = [c for c in docstrings if c.content == "Class docstring."]
         assert len(class_doc) == 1
-        assert class_doc[0]["source_line"] == 9
+        assert class_doc[0].source_line == 9
 
         # Method docstring
-        method_doc = [c for c in docstrings if c["content"] == "Method docstring."]
+        method_doc = [c for c in docstrings if c.content == "Method docstring."]
         assert len(method_doc) == 1
-        assert method_doc[0]["source_line"] == 12
+        assert method_doc[0].source_line == 12
 
     @pytest.mark.asyncio
     async def test_extract_multiline_comments(
@@ -114,7 +114,7 @@ def foo():
         # Each line is a separate inline comment
         assert len(comments) >= 5
 
-        inline = [c for c in comments if c["content_type"] == "single_line_comment"]
+        inline = [c for c in comments if c.content_type == "single_line_comment"]
         assert len(inline) >= 5
 
     @pytest.mark.asyncio
@@ -132,11 +132,11 @@ def foo():
 
         # Comments should not contain # or """
         for comment in comments:
-            assert not comment["content"].startswith("#")
-            assert not comment["content"].startswith('"""')
-            assert not comment["content"].endswith('"""')
-            assert not comment["content"].startswith("'''")
-            assert not comment["content"].endswith("'''")
+            assert not comment.content.startswith("#")
+            assert not comment.content.startswith('"""')
+            assert not comment.content.endswith('"""')
+            assert not comment.content.startswith("'''")
+            assert not comment.content.endswith("'''")
 
     @pytest.mark.asyncio
     async def test_skip_shebangs(self, parser_service: TreeSitterService) -> None:
@@ -152,7 +152,7 @@ def foo():
 
         # Should only find the real comment, not the shebang
         assert len(comments) == 1
-        assert comments[0]["content"] == "This is a real comment"
+        assert comments[0].content == "This is a real comment"
 
     @pytest.mark.asyncio
     async def test_skip_encoding_declarations(
@@ -170,7 +170,7 @@ def foo():
 
         # Should skip encoding declaration
         encoding_comments = [
-            c for c in comments if "coding" in c["content"] and "utf-8" in c["content"]
+            c for c in comments if "coding" in c.content and "utf-8" in c.content
         ]
         assert len(encoding_comments) == 0
 
@@ -191,17 +191,18 @@ def complex_function():
             content=code, language="python", file_path="test.py"
         )
 
-        docstrings = [c for c in comments if c["content_type"] == "docstring"]
+        docstrings = [c for c in comments if c.content_type == "docstring"]
         assert len(docstrings) == 1
 
         # Should capture full docstring
-        content = docstrings[0]["content"]
+        content = docstrings[0].content
         assert "multi-line docstring" in content
         assert "multiple paragraphs" in content
 
         # Should have start and end lines
-        assert docstrings[0]["source_line"] == 3
-        assert docstrings[0]["source_end_line"] >= 7
+        assert docstrings[0].source_line == 3
+        assert docstrings[0].source_end_line is not None
+        assert docstrings[0].source_end_line >= 7
 
     @pytest.mark.asyncio
     async def test_string_not_first_statement_is_not_docstring(
@@ -228,7 +229,7 @@ class Bar:
         )
 
         # Should NOT find any docstrings since neither string is first
-        docstrings = [c for c in comments if c["content_type"] == "docstring"]
+        docstrings = [c for c in comments if c.content_type == "docstring"]
         assert len(docstrings) == 0
 
     @pytest.mark.asyncio
@@ -250,9 +251,9 @@ class Bar:
             content=code, language="python", file_path="test.py"
         )
 
-        docstrings = [c for c in comments if c["content_type"] == "docstring"]
+        docstrings = [c for c in comments if c.content_type == "docstring"]
         assert len(docstrings) == 2
 
         # Verify content
-        assert any("This IS a docstring" in d["content"] for d in docstrings)
-        assert any("This IS a class docstring" in d["content"] for d in docstrings)
+        assert any("This IS a docstring" in d.content for d in docstrings)
+        assert any("This IS a class docstring" in d.content for d in docstrings)

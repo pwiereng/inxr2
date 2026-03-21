@@ -41,9 +41,9 @@ func main() {}
             content=code, language="go", file_path="main.go"
         )
 
-        pkg_symbols = [s for s in symbols if s["kind"] == "package"]
+        pkg_symbols = [s for s in symbols if s.kind == "package"]
         assert len(pkg_symbols) == 1
-        assert pkg_symbols[0]["name"] == "main"
+        assert pkg_symbols[0].name == "main"
 
 
 class TestGoFunctions:
@@ -68,9 +68,9 @@ func Hello() {
             content=code, language="go", file_path="main.go"
         )
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        func_symbols = [s for s in symbols if s.kind == "function"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["name"] == "Hello"
+        assert func_symbols[0].name == "Hello"
 
     @pytest.mark.asyncio
     async def test_parse_function_with_params(
@@ -87,11 +87,11 @@ func Add(a int, b int) int {
             content=code, language="go", file_path="math.go"
         )
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        func_symbols = [s for s in symbols if s.kind == "function"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["name"] == "Add"
-        assert "signature" in func_symbols[0]
-        assert "Add" in func_symbols[0]["signature"]
+        assert func_symbols[0].name == "Add"
+        assert func_symbols[0].signature is not None
+        assert func_symbols[0].signature is not None and "Add" in func_symbols[0].signature
 
     @pytest.mark.asyncio
     async def test_parse_exported_and_unexported_functions(
@@ -108,8 +108,8 @@ func privateFunc() {}
             content=code, language="go", file_path="funcs.go"
         )
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
-        func_names = [s["name"] for s in func_symbols]
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        func_names = [s.name for s in func_symbols]
         assert "PublicFunc" in func_names
         assert "privateFunc" in func_names
 
@@ -131,9 +131,9 @@ func Divide(a, b float64) (float64, error) {
             content=code, language="go", file_path="math.go"
         )
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        func_symbols = [s for s in symbols if s.kind == "function"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["name"] == "Divide"
+        assert func_symbols[0].name == "Divide"
 
 
 class TestGoMethods:
@@ -163,10 +163,10 @@ func (s Server) Address() string {
             content=code, language="go", file_path="server.go"
         )
 
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
+        method_symbols = [s for s in symbols if s.kind == "method"]
         assert len(method_symbols) == 1
-        assert method_symbols[0]["name"] == "Address"
-        assert method_symbols[0]["scope"] == "Server"
+        assert method_symbols[0].name == "Address"
+        assert method_symbols[0].scope == "Server"
 
     @pytest.mark.asyncio
     async def test_parse_pointer_receiver_method(
@@ -191,13 +191,13 @@ func (s *Server) Stop() {
             content=code, language="go", file_path="server.go"
         )
 
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
-        method_names = [s["name"] for s in method_symbols]
+        method_symbols = [s for s in symbols if s.kind == "method"]
+        method_names = [s.name for s in method_symbols]
         assert "Start" in method_names
         assert "Stop" in method_names
 
         for method in method_symbols:
-            assert method["scope"] == "Server"
+            assert method.scope == "Server"
 
     @pytest.mark.asyncio
     async def test_method_signature(self, parser_service: TreeSitterService) -> None:
@@ -214,11 +214,11 @@ func (c *Calculator) Add(a, b int) int {
             content=code, language="go", file_path="calc.go"
         )
 
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
+        method_symbols = [s for s in symbols if s.kind == "method"]
         assert len(method_symbols) == 1
-        assert "signature" in method_symbols[0]
-        assert "Calculator" in method_symbols[0]["signature"]
-        assert "Add" in method_symbols[0]["signature"]
+        assert method_symbols[0].signature is not None
+        assert method_symbols[0].signature is not None and "Calculator" in method_symbols[0].signature
+        assert method_symbols[0].signature is not None and "Add" in method_symbols[0].signature
 
 
 class TestGoStructs:
@@ -243,17 +243,17 @@ type Person struct {
             content=code, language="go", file_path="person.go"
         )
 
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
         assert len(struct_symbols) == 1
-        assert struct_symbols[0]["name"] == "Person"
+        assert struct_symbols[0].name == "Person"
 
-        fields = [s for s in symbols if s["kind"] == "field"]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if s.kind == "field"]
+        field_names = [s.name for s in fields]
         assert "Name" in field_names
         assert "Age" in field_names
 
         for field in fields:
-            assert field["scope"] == "Person"
+            assert field.scope == "Person"
 
     @pytest.mark.asyncio
     async def test_parse_struct_with_embedded_type(
@@ -276,16 +276,16 @@ type Extended struct {
         )
 
         # Extended struct should exist
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
-        struct_names = [s["name"] for s in struct_symbols]
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
+        struct_names = [s.name for s in struct_symbols]
         assert "Base" in struct_names
         assert "Extended" in struct_names
 
         # Base should be an embedded field in Extended
         extended_fields = [
-            s for s in symbols if s["kind"] == "field" and s["scope"] == "Extended"
+            s for s in symbols if s.kind == "field" and s.scope == "Extended"
         ]
-        field_names = [s["name"] for s in extended_fields]
+        field_names = [s.name for s in extended_fields]
         assert "Base" in field_names
         assert "Extra" in field_names
 
@@ -313,15 +313,15 @@ type Reader interface {
             content=code, language="go", file_path="reader.go"
         )
 
-        interface_symbols = [s for s in symbols if s["kind"] == "interface"]
+        interface_symbols = [s for s in symbols if s.kind == "interface"]
         assert len(interface_symbols) == 1
-        assert interface_symbols[0]["name"] == "Reader"
+        assert interface_symbols[0].name == "Reader"
 
         # Interface methods are "property" kind (consistent with other parsers)
-        methods = [s for s in symbols if s["kind"] == "property"]
+        methods = [s for s in symbols if s.kind == "property"]
         assert len(methods) == 1
-        assert methods[0]["name"] == "Read"
-        assert methods[0]["scope"] == "Reader"
+        assert methods[0].name == "Read"
+        assert methods[0].scope == "Reader"
 
     @pytest.mark.asyncio
     async def test_parse_interface_with_multiple_methods(
@@ -340,12 +340,12 @@ type ReadWriter interface {
             content=code, language="go", file_path="rw.go"
         )
 
-        interface_symbols = [s for s in symbols if s["kind"] == "interface"]
+        interface_symbols = [s for s in symbols if s.kind == "interface"]
         assert len(interface_symbols) == 1
-        assert interface_symbols[0]["name"] == "ReadWriter"
+        assert interface_symbols[0].name == "ReadWriter"
 
-        methods = [s for s in symbols if s["kind"] == "property"]
-        method_names = [s["name"] for s in methods]
+        methods = [s for s in symbols if s.kind == "property"]
+        method_names = [s.name for s in methods]
         assert "Read" in method_names
         assert "Write" in method_names
         assert "Close" in method_names
@@ -363,9 +363,9 @@ type Empty interface{}
             content=code, language="go", file_path="empty.go"
         )
 
-        interface_symbols = [s for s in symbols if s["kind"] == "interface"]
+        interface_symbols = [s for s in symbols if s.kind == "interface"]
         assert len(interface_symbols) == 1
-        assert interface_symbols[0]["name"] == "Empty"
+        assert interface_symbols[0].name == "Empty"
 
 
 class TestGoConstants:
@@ -387,9 +387,9 @@ const MaxSize = 100
             content=code, language="go", file_path="const.go"
         )
 
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
         assert len(const_symbols) == 1
-        assert const_symbols[0]["name"] == "MaxSize"
+        assert const_symbols[0].name == "MaxSize"
 
     @pytest.mark.asyncio
     async def test_parse_const_block(self, parser_service: TreeSitterService) -> None:
@@ -406,8 +406,8 @@ const (
             content=code, language="go", file_path="const.go"
         )
 
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
         assert "StatusOK" in const_names
         assert "StatusError" in const_names
         assert "AppName" in const_names
@@ -439,8 +439,8 @@ var (
             content=code, language="go", file_path="vars.go"
         )
 
-        var_symbols = [s for s in symbols if s["kind"] == "variable"]
-        var_names = [s["name"] for s in var_symbols]
+        var_symbols = [s for s in symbols if s.kind == "variable"]
+        var_names = [s.name for s in var_symbols]
         assert "GlobalCounter" in var_names
         assert "AppVersion" in var_names
         assert "Debug" in var_names
@@ -467,8 +467,8 @@ func main() {}
             content=code, language="go", file_path="main.go"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_texts = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_texts = [r.reference_text for r in import_refs]
         assert "fmt" in import_texts
 
     @pytest.mark.asyncio
@@ -491,8 +491,8 @@ func main() {}
             content=code, language="go", file_path="main.go"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_texts = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_texts = [r.reference_text for r in import_refs]
         assert "fmt" in import_texts
         assert "os" in import_texts
         assert "net/http" in import_texts
@@ -525,8 +525,8 @@ func process() {
             content=code, language="go", file_path="main.go"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "helper" in call_texts
         assert "doWork" in call_texts
 
@@ -549,8 +549,8 @@ func process() {
             content=code, language="go", file_path="main.go"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         # Builtins should be filtered
         assert "make" not in call_texts
         assert "len" not in call_texts
@@ -577,8 +577,8 @@ func main() {
             content=code, language="go", file_path="main.go"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "Start" in call_texts
 
     @pytest.mark.asyncio
@@ -597,8 +597,8 @@ func main() {
             content=code, language="go", file_path="main.go"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "fmt.Println" in call_texts
         assert "fmt.Sprintf" in call_texts
 
@@ -618,8 +618,8 @@ type Config struct {
             content=code, language="go", file_path="config.go"
         )
 
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "CustomLogger" in type_texts
         assert "RequestHandler" in type_texts
 
@@ -639,8 +639,8 @@ func compute(a int, b float64) string {
             content=code, language="go", file_path="compute.go"
         )
 
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "int" not in type_texts
         assert "float64" not in type_texts
         assert "string" not in type_texts
@@ -667,8 +667,8 @@ type HandlerFunc func(w ResponseWriter, r *Request)
             content=code, language="go", file_path="types.go"
         )
 
-        type_symbols = [s for s in symbols if s["kind"] == "type"]
-        type_names = [s["name"] for s in type_symbols]
+        type_symbols = [s for s in symbols if s.kind == "type"]
+        type_names = [s.name for s in type_symbols]
         assert "StringSlice" in type_names
         assert "HandlerFunc" in type_names
 
@@ -708,37 +708,37 @@ func (c *Config) Address() string {
         )
 
         # Package
-        pkg = [s for s in symbols if s["kind"] == "package"]
+        pkg = [s for s in symbols if s.kind == "package"]
         assert len(pkg) == 1
-        assert pkg[0]["name"] == "server"
+        assert pkg[0].name == "server"
 
         # Constant
-        consts = [s for s in symbols if s["kind"] == "constant"]
-        assert any(c["name"] == "DefaultPort" for c in consts)
+        consts = [s for s in symbols if s.kind == "constant"]
+        assert any(c.name == "DefaultPort" for c in consts)
 
         # Variable
-        vars_ = [s for s in symbols if s["kind"] == "variable"]
-        assert any(v["name"] == "globalConfig" for v in vars_)
+        vars_ = [s for s in symbols if s.kind == "variable"]
+        assert any(v.name == "globalConfig" for v in vars_)
 
         # Struct
-        structs = [s for s in symbols if s["kind"] == "struct"]
-        assert any(s["name"] == "Config" for s in structs)
+        structs = [s for s in symbols if s.kind == "struct"]
+        assert any(s.name == "Config" for s in structs)
 
         # Interface
-        interfaces = [s for s in symbols if s["kind"] == "interface"]
-        assert any(i["name"] == "Handler" for i in interfaces)
+        interfaces = [s for s in symbols if s.kind == "interface"]
+        assert any(i.name == "Handler" for i in interfaces)
 
         # Function
-        funcs = [s for s in symbols if s["kind"] == "function"]
-        assert any(f["name"] == "NewConfig" for f in funcs)
+        funcs = [s for s in symbols if s.kind == "function"]
+        assert any(f.name == "NewConfig" for f in funcs)
 
         # Method
-        methods = [s for s in symbols if s["kind"] == "method"]
-        assert any(m["name"] == "Address" and m["scope"] == "Config" for m in methods)
+        methods = [s for s in symbols if s.kind == "method"]
+        assert any(m.name == "Address" and m.scope == "Config" for m in methods)
 
         # Imports
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_texts = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_texts = [r.reference_text for r in import_refs]
         assert "fmt" in import_texts
         assert "net/http" in import_texts
 
@@ -769,14 +769,14 @@ func (c *Cat) Speak() string {
             content=code, language="go", file_path="animals.go"
         )
 
-        structs = [s for s in symbols if s["kind"] == "struct"]
-        struct_names = [s["name"] for s in structs]
+        structs = [s for s in symbols if s.kind == "struct"]
+        struct_names = [s.name for s in structs]
         assert "Dog" in struct_names
         assert "Cat" in struct_names
 
-        methods = [s for s in symbols if s["kind"] == "method"]
-        assert any(m["name"] == "Speak" and m["scope"] == "Dog" for m in methods)
-        assert any(m["name"] == "Speak" and m["scope"] == "Cat" for m in methods)
+        methods = [s for s in symbols if s.kind == "method"]
+        assert any(m.name == "Speak" and m.scope == "Dog" for m in methods)
+        assert any(m.name == "Speak" and m.scope == "Cat" for m in methods)
 
 
 class TestGoEdgeCases:
@@ -831,10 +831,10 @@ func MyFunction() {
             content=code, language="go", file_path="main.go"
         )
 
-        func_symbols = [s for s in symbols if s["name"] == "MyFunction"]
+        func_symbols = [s for s in symbols if s.name == "MyFunction"]
         assert len(func_symbols) == 1
         # The function name is on line 3
-        assert func_symbols[0]["start_line"] == 3
+        assert func_symbols[0].start_line == 3
 
     @pytest.mark.asyncio
     async def test_struct_with_tags(self, parser_service: TreeSitterService) -> None:
@@ -851,12 +851,12 @@ type User struct {
             content=code, language="go", file_path="user.go"
         )
 
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
         assert len(struct_symbols) == 1
-        assert struct_symbols[0]["name"] == "User"
+        assert struct_symbols[0].name == "User"
 
-        fields = [s for s in symbols if s["kind"] == "field" and s["scope"] == "User"]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if s.kind == "field" and s.scope == "User"]
+        field_names = [s.name for s in fields]
         assert "Name" in field_names
         assert "Email" in field_names
         assert "Age" in field_names
@@ -883,8 +883,8 @@ func main() {
             content=code, language="go", file_path="main.go"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         # Both method names in the chain should be captured
         assert "GetService" in call_texts
         assert "Process" in call_texts
@@ -907,8 +907,8 @@ func main() {
             content=code, language="go", file_path="main.go"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         # Stdlib chained call should be qualified
         assert "http.DefaultClient.Do" in call_texts
         # Simple stdlib call should also be qualified
@@ -931,8 +931,8 @@ func main() {
             content=code, language="go", file_path="main.go"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         # Should use function name, not full call text with args
         assert "http.NewRequest.Body.Close" in call_texts
         # Should NOT contain argument text in the reference
@@ -956,8 +956,8 @@ func main() {
             content=code, language="go", file_path="main.go"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         # Stdlib field access should not appear as bare usage refs
         assert "Transport" not in usage_texts
 
@@ -980,8 +980,8 @@ func main() {
             content=code, language="go", file_path="main.go"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         # The outermost field "Value" should be captured
         assert "Value" in usage_texts
 
@@ -1001,8 +1001,8 @@ const (
             content=code, language="go", file_path="days.go"
         )
 
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
         assert "Sunday" in const_names
         assert "Monday" in const_names
         assert "Tuesday" in const_names

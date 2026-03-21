@@ -46,9 +46,9 @@ int add(int a, int b) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        func_symbols = [s for s in symbols if s["name"] == "add"]
+        func_symbols = [s for s in symbols if s.name == "add"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["kind"] == "function"
+        assert func_symbols[0].kind == "function"
 
     @pytest.mark.asyncio
     async def test_parse_void_function(self, parser_service: TreeSitterService) -> None:
@@ -60,9 +60,9 @@ void print_hello(void) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        func_symbols = [s for s in symbols if s["name"] == "print_hello"]
+        func_symbols = [s for s in symbols if s.name == "print_hello"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["kind"] == "function"
+        assert func_symbols[0].kind == "function"
 
     @pytest.mark.asyncio
     async def test_parse_function_with_pointer_return(
@@ -76,9 +76,9 @@ char* get_message(void) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        func_symbols = [s for s in symbols if s["name"] == "get_message"]
+        func_symbols = [s for s in symbols if s.name == "get_message"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["kind"] == "function"
+        assert func_symbols[0].kind == "function"
 
     @pytest.mark.asyncio
     async def test_parse_function_declaration(
@@ -92,7 +92,7 @@ char* get_name(const char* prefix);
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.h"
         )
-        func_names = [s["name"] for s in symbols if s["kind"] == "function"]
+        func_names = [s.name for s in symbols if s.kind == "function"]
         assert "calculate" in func_names
         assert "process" in func_names
         assert "get_name" in func_names
@@ -110,9 +110,9 @@ my_function(int arg) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        func_symbols = [s for s in symbols if s["name"] == "my_function"]
+        func_symbols = [s for s in symbols if s.name == "my_function"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["start_line"] == 2
+        assert func_symbols[0].start_line == 2
 
 
 class TestCStructs:
@@ -133,12 +133,12 @@ struct Point {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
         assert len(struct_symbols) == 1
-        assert struct_symbols[0]["name"] == "Point"
+        assert struct_symbols[0].name == "Point"
 
-        fields = [s for s in symbols if s["kind"] == "struct_field"]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if s.kind == "struct_field"]
+        field_names = [s.name for s in fields]
         assert "x" in field_names
         assert "y" in field_names
 
@@ -156,12 +156,12 @@ struct Node {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
         assert len(struct_symbols) == 1
-        assert struct_symbols[0]["name"] == "Node"
+        assert struct_symbols[0].name == "Node"
 
-        fields = [s for s in symbols if s["kind"] == "struct_field"]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if s.kind == "struct_field"]
+        field_names = [s.name for s in fields]
         assert "value" in field_names
         assert "next" in field_names
         assert "name" in field_names
@@ -179,8 +179,8 @@ struct Buffer {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        fields = [s for s in symbols if s["kind"] == "struct_field"]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if s.kind == "struct_field"]
+        field_names = [s.name for s in fields]
         assert "data" in field_names
         assert "size" in field_names
 
@@ -195,10 +195,10 @@ struct Person {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        fields = [s for s in symbols if s["kind"] == "struct_field"]
+        fields = [s for s in symbols if s.kind == "struct_field"]
         for field in fields:
-            assert field["scope"] == "Person"
-            assert field["qualified_name"].startswith("Person.")
+            assert field.scope == "Person"
+            assert field.qualified_name is not None and field.qualified_name.startswith("Person.")
 
 
 class TestCUnions:
@@ -220,12 +220,12 @@ union Data {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        union_symbols = [s for s in symbols if s["kind"] == "union"]
+        union_symbols = [s for s in symbols if s.kind == "union"]
         assert len(union_symbols) == 1
-        assert union_symbols[0]["name"] == "Data"
+        assert union_symbols[0].name == "Data"
 
-        fields = [s for s in symbols if s["kind"] == "union_field"]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if s.kind == "union_field"]
+        field_names = [s.name for s in fields]
         assert "i" in field_names
         assert "f" in field_names
         assert "c" in field_names
@@ -241,9 +241,9 @@ union Value {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        fields = [s for s in symbols if s["kind"] == "union_field"]
+        fields = [s for s in symbols if s.kind == "union_field"]
         for field in fields:
-            assert field["scope"] == "Value"
+            assert field.scope == "Value"
 
 
 class TestCEnums:
@@ -265,12 +265,12 @@ enum Color {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        enum_symbols = [s for s in symbols if s["kind"] == "enum"]
+        enum_symbols = [s for s in symbols if s.kind == "enum"]
         assert len(enum_symbols) == 1
-        assert enum_symbols[0]["name"] == "Color"
+        assert enum_symbols[0].name == "Color"
 
-        values = [s for s in symbols if s["kind"] == "enum_value"]
-        value_names = [s["name"] for s in values]
+        values = [s for s in symbols if s.kind == "enum_value"]
+        value_names = [s.name for s in values]
         assert "RED" in value_names
         assert "GREEN" in value_names
         assert "BLUE" in value_names
@@ -289,8 +289,8 @@ enum Status {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        values = [s for s in symbols if s["kind"] == "enum_value"]
-        value_names = [s["name"] for s in values]
+        values = [s for s in symbols if s.kind == "enum_value"]
+        value_names = [s.name for s in values]
         assert "OK" in value_names
         assert "ERROR" in value_names
         assert "PENDING" in value_names
@@ -306,9 +306,9 @@ enum Direction {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        values = [s for s in symbols if s["kind"] == "enum_value"]
+        values = [s for s in symbols if s.kind == "enum_value"]
         for value in values:
-            assert value["scope"] == "Direction"
+            assert value.scope == "Direction"
 
 
 class TestCTypedefs:
@@ -329,8 +329,8 @@ typedef unsigned char Byte;
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        typedef_symbols = [s for s in symbols if s["kind"] == "typedef"]
-        typedef_names = [s["name"] for s in typedef_symbols]
+        typedef_symbols = [s for s in symbols if s.kind == "typedef"]
+        typedef_names = [s.name for s in typedef_symbols]
         assert "Integer" in typedef_names
         assert "Byte" in typedef_names
 
@@ -347,8 +347,8 @@ typedef struct {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        typedef_symbols = [s for s in symbols if s["kind"] == "typedef"]
-        typedef_names = [s["name"] for s in typedef_symbols]
+        typedef_symbols = [s for s in symbols if s.kind == "typedef"]
+        typedef_names = [s.name for s in typedef_symbols]
         assert "Point" in typedef_names
 
     @pytest.mark.asyncio
@@ -362,8 +362,8 @@ typedef void* Pointer;
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        typedef_symbols = [s for s in symbols if s["kind"] == "typedef"]
-        typedef_names = [s["name"] for s in typedef_symbols]
+        typedef_symbols = [s for s in symbols if s.kind == "typedef"]
+        typedef_names = [s.name for s in typedef_symbols]
         assert "String" in typedef_names
         assert "Pointer" in typedef_names
 
@@ -378,8 +378,8 @@ typedef void (*Callback)(int);
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        typedef_symbols = [s for s in symbols if s["kind"] == "typedef"]
-        typedef_names = [s["name"] for s in typedef_symbols]
+        typedef_symbols = [s for s in symbols if s.kind == "typedef"]
+        typedef_names = [s.name for s in typedef_symbols]
         assert "Comparator" in typedef_names
         assert "Callback" in typedef_names
 
@@ -403,8 +403,8 @@ class TestCMacros:
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
         assert "MAX_SIZE" in const_names
         assert "PI" in const_names
         assert "VERSION" in const_names
@@ -421,8 +421,8 @@ class TestCMacros:
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
         assert "MAX" in const_names
         assert "MIN" in const_names
         assert "SQUARE" in const_names
@@ -436,8 +436,8 @@ class TestCMacros:
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
         assert "DEBUG" in const_names
         assert "FEATURE_ENABLED" in const_names
 
@@ -461,8 +461,8 @@ char buffer[256];
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        var_symbols = [s for s in symbols if s["kind"] == "variable"]
-        var_names = [s["name"] for s in var_symbols]
+        var_symbols = [s for s in symbols if s.kind == "variable"]
+        var_names = [s.name for s in var_symbols]
         assert "counter" in var_names
         assert "rate" in var_names
         assert "buffer" in var_names
@@ -479,8 +479,8 @@ void* data;
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        var_symbols = [s for s in symbols if s["kind"] == "variable"]
-        var_names = [s["name"] for s in var_symbols]
+        var_symbols = [s for s in symbols if s.kind == "variable"]
+        var_names = [s.name for s in var_symbols]
         assert "ptr" in var_names
         assert "message" in var_names
         assert "data" in var_names
@@ -506,8 +506,8 @@ class TestCReferences:
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        include_refs = [r for r in references if r["type"] == "include"]
-        include_texts = [r["text"] for r in include_refs]
+        include_refs = [r for r in references if r.reference_type == "include"]
+        include_texts = [r.reference_text for r in include_refs]
         assert "stdio.h" in include_texts
         assert "stdlib.h" in include_texts
         assert "myheader.h" in include_texts
@@ -527,8 +527,8 @@ void process(void) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "initialize" in call_texts
         assert "calculate" in call_texts
         assert "cleanup" in call_texts
@@ -547,8 +547,8 @@ void test(void) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "printf" not in call_texts
         assert "malloc" not in call_texts
         assert "my_function" in call_texts
@@ -566,8 +566,8 @@ void process(Point p, Node* n) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "Point" in type_texts
         assert "Node" in type_texts
         assert "MyStruct" in type_texts
@@ -587,8 +587,8 @@ void test(int x, char c) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "int" not in type_texts
         assert "char" not in type_texts
         assert "float" not in type_texts
@@ -608,8 +608,8 @@ void test(void) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "MyState" in usage_texts
         assert "OtherState" in usage_texts
 
@@ -626,8 +626,8 @@ FuncTable table[] = {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "handler1" in usage_texts
         assert "callback1" in usage_texts
         assert "handler2" in usage_texts
@@ -646,8 +646,8 @@ void test(void) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "config" in usage_texts
         assert "numberOfNodes" in usage_texts
         assert "ptr" in usage_texts
@@ -667,13 +667,13 @@ void test(void) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        method_refs = [r for r in references if r["text"] == "method"]
+        method_refs = [r for r in references if r.reference_text == "method"]
         assert len(method_refs) == 1
-        assert method_refs[0]["type"] == "call"
+        assert method_refs[0].reference_type == "call"
 
-        callback_refs = [r for r in references if r["text"] == "callback"]
+        callback_refs = [r for r in references if r.reference_text == "callback"]
         assert len(callback_refs) == 1
-        assert callback_refs[0]["type"] == "call"
+        assert callback_refs[0].reference_type == "call"
 
     @pytest.mark.asyncio
     async def test_ifdef_ifndef_identifier_references(
@@ -693,8 +693,8 @@ int debug_level;
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.h"
         )
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "MY_HEADER_H" in usage_texts
         assert "DEBUG_MODE" in usage_texts
 
@@ -721,8 +721,8 @@ struct Node {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
-        assert any(s["name"] == "Node" for s in struct_symbols)
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
+        assert any(s.name == "Node" for s in struct_symbols)
 
     @pytest.mark.asyncio
     async def test_parse_nested_struct(self, parser_service: TreeSitterService) -> None:
@@ -738,8 +738,8 @@ struct Container {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
-        assert any(s["name"] == "Container" for s in struct_symbols)
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
+        assert any(s.name == "Container" for s in struct_symbols)
 
     @pytest.mark.asyncio
     async def test_parse_complex_typedef(
@@ -754,10 +754,10 @@ typedef struct ListNode {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
-        typedef_symbols = [s for s in symbols if s["kind"] == "typedef"]
-        assert any(s["name"] == "ListNode" for s in struct_symbols)
-        assert any(s["name"] == "ListNode" for s in typedef_symbols)
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
+        typedef_symbols = [s for s in symbols if s.kind == "typedef"]
+        assert any(s.name == "ListNode" for s in struct_symbols)
+        assert any(s.name == "ListNode" for s in typedef_symbols)
 
     @pytest.mark.asyncio
     async def test_struct_type_ref_in_field_generates_reference(
@@ -773,8 +773,8 @@ typedef struct _Actor {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         # The struct tag used as a type in the field should be a reference
         assert "_Actor" in type_texts
 
@@ -791,12 +791,12 @@ typedef struct _Desc {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        typedef_sym = next(s for s in symbols if s["kind"] == "typedef")
-        assert typedef_sym["name"] == "Desc"
+        typedef_sym = next(s for s in symbols if s.kind == "typedef")
+        assert typedef_sym.name == "Desc"
         # The name "Desc" is on line 3, not line 1 where "typedef" starts
-        assert typedef_sym["start_line"] == 3
+        assert typedef_sym.start_line == 3
         # end_line should span the whole typedef
-        assert typedef_sym["end_line"] == 3
+        assert typedef_sym.end_line == 3
 
     @pytest.mark.asyncio
     async def test_parse_static_function(
@@ -810,9 +810,9 @@ static int helper(int x) {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        func_symbols = [s for s in symbols if s["name"] == "helper"]
+        func_symbols = [s for s in symbols if s.name == "helper"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["kind"] == "function"
+        assert func_symbols[0].kind == "function"
 
     @pytest.mark.asyncio
     async def test_parse_header_file(self, parser_service: TreeSitterService) -> None:
@@ -837,21 +837,21 @@ void destroy_item(Item* item);
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="mylib.h"
         )
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
         assert "MYLIB_H" in const_names
         assert "MAX_ITEMS" in const_names
 
-        typedef_symbols = [s for s in symbols if s["kind"] == "typedef"]
-        assert any(s["name"] == "Item" for s in typedef_symbols)
+        typedef_symbols = [s for s in symbols if s.kind == "typedef"]
+        assert any(s.name == "Item" for s in typedef_symbols)
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
-        func_names = [s["name"] for s in func_symbols]
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        func_names = [s.name for s in func_symbols]
         assert "create_item" in func_names
         assert "destroy_item" in func_names
 
-        include_refs = [r for r in references if r["type"] == "include"]
-        assert any(r["text"] == "stdint.h" for r in include_refs)
+        include_refs = [r for r in references if r.reference_type == "include"]
+        assert any(r.reference_text == "stdint.h" for r in include_refs)
 
     @pytest.mark.asyncio
     async def test_parse_function_pointer_field(
@@ -866,15 +866,15 @@ struct Handler {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
-        assert any(s["name"] == "Handler" for s in struct_symbols)
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
+        assert any(s.name == "Handler" for s in struct_symbols)
 
-        fields = [s for s in symbols if s["kind"] == "struct_field"]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if s.kind == "struct_field"]
+        field_names = [s.name for s in fields]
         assert "process" in field_names
         assert "cleanup" in field_names
         for field in fields:
-            assert field["scope"] == "Handler"
+            assert field.scope == "Handler"
 
     @pytest.mark.asyncio
     async def test_parse_extern_c_block(
@@ -905,25 +905,25 @@ int another_function(int a, int b);
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.h"
         )
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
         assert "MY_HEADER_H" in const_names
 
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
-        struct_names = [s["name"] for s in struct_symbols]
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
+        struct_names = [s.name for s in struct_symbols]
         assert "_MyStruct" in struct_names
 
-        fields = [s for s in symbols if s["kind"] == "struct_field"]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if s.kind == "struct_field"]
+        field_names = [s.name for s in fields]
         assert "x" in field_names
         assert "y" in field_names
 
-        typedef_symbols = [s for s in symbols if s["kind"] == "typedef"]
-        typedef_names = [s["name"] for s in typedef_symbols]
+        typedef_symbols = [s for s in symbols if s.kind == "typedef"]
+        typedef_names = [s.name for s in typedef_symbols]
         assert "MyStruct" in typedef_names
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
-        func_names = [s["name"] for s in func_symbols]
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        func_names = [s.name for s in func_symbols]
         assert "my_function" in func_names
         assert "another_function" in func_names
 
@@ -958,11 +958,11 @@ void process() {
         symbols, references = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        var_symbols = [s for s in symbols if s["kind"] == "variable"]
-        assert any(s["name"] == "globals" for s in var_symbols)
+        var_symbols = [s for s in symbols if s.kind == "variable"]
+        assert any(s.name == "globals" for s in var_symbols)
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        globals_usages = [r for r in usage_refs if r["text"] == "globals"]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        globals_usages = [r for r in usage_refs if r.reference_text == "globals"]
         assert len(globals_usages) == 5
 
 
@@ -986,14 +986,14 @@ namespace MyNamespace {
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="example.cpp"
         )
-        ns_symbols = [s for s in symbols if s["kind"] == "namespace"]
+        ns_symbols = [s for s in symbols if s.kind == "namespace"]
         assert len(ns_symbols) == 1
-        assert ns_symbols[0]["name"] == "MyNamespace"
+        assert ns_symbols[0].name == "MyNamespace"
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        func_symbols = [s for s in symbols if s.kind == "function"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["name"] == "helper"
-        assert func_symbols[0]["scope"] == "MyNamespace"
+        assert func_symbols[0].name == "helper"
+        assert func_symbols[0].scope == "MyNamespace"
 
     @pytest.mark.asyncio
     async def test_parse_nested_namespaces(
@@ -1009,18 +1009,18 @@ namespace Outer {
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="example.cpp"
         )
-        ns_symbols = [s for s in symbols if s["kind"] == "namespace"]
-        ns_names = [s["name"] for s in ns_symbols]
+        ns_symbols = [s for s in symbols if s.kind == "namespace"]
+        ns_names = [s.name for s in ns_symbols]
         assert "Outer" in ns_names
         assert "Inner" in ns_names
 
-        inner_ns = next(s for s in ns_symbols if s["name"] == "Inner")
-        assert inner_ns["scope"] == "Outer"
+        inner_ns = next(s for s in ns_symbols if s.name == "Inner")
+        assert inner_ns.scope == "Outer"
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        func_symbols = [s for s in symbols if s.kind == "function"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["name"] == "nested_func"
-        assert func_symbols[0]["scope"] == "Outer.Inner"
+        assert func_symbols[0].name == "nested_func"
+        assert func_symbols[0].scope == "Outer.Inner"
 
 
 class TestCppClasses:
@@ -1042,17 +1042,17 @@ public:
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="person.cpp"
         )
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["name"] == "Person"
+        assert class_symbols[0].name == "Person"
 
-        field_symbols = [s for s in symbols if s["kind"] == "field"]
-        field_names = [s["name"] for s in field_symbols]
+        field_symbols = [s for s in symbols if s.kind == "field"]
+        field_names = [s.name for s in field_symbols]
         assert "age" in field_names
 
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
+        method_symbols = [s for s in symbols if s.kind == "method"]
         assert any(
-            m["name"] == "greet" and m["scope"] == "Person" for m in method_symbols
+            m.name == "greet" and m.scope == "Person" for m in method_symbols
         )
 
     @pytest.mark.asyncio
@@ -1073,13 +1073,13 @@ public:
         symbols, references = await parser_service.parse_file(
             content=code, language="cpp", file_path="inherit.cpp"
         )
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
-        class_names = [s["name"] for s in class_symbols]
+        class_symbols = [s for s in symbols if s.kind == "class"]
+        class_names = [s.name for s in class_symbols]
         assert "Base" in class_names
         assert "Derived" in class_names
 
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "Base" in type_texts
 
 
@@ -1101,14 +1101,14 @@ struct Point {
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="point.cpp"
         )
-        struct_symbols = [s for s in symbols if s["kind"] == "struct"]
+        struct_symbols = [s for s in symbols if s.kind == "struct"]
         assert len(struct_symbols) == 1
-        assert struct_symbols[0]["name"] == "Point"
+        assert struct_symbols[0].name == "Point"
 
         fields = [
-            s for s in symbols if s["kind"] == "field" and s.get("scope") == "Point"
+            s for s in symbols if s.kind == "field" and s.scope == "Point"
         ]
-        field_names = [s["name"] for s in fields]
+        field_names = [s.name for s in fields]
         assert "x" in field_names
         assert "y" in field_names
 
@@ -1131,9 +1131,9 @@ void hello() {
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="main.cpp"
         )
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        func_symbols = [s for s in symbols if s.kind == "function"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["name"] == "hello"
+        assert func_symbols[0].name == "hello"
 
     @pytest.mark.asyncio
     async def test_parse_function_with_params(
@@ -1147,11 +1147,11 @@ int add(int a, int b) {
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="math.cpp"
         )
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        func_symbols = [s for s in symbols if s.kind == "function"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["name"] == "add"
-        assert "signature" in func_symbols[0]
-        assert "add" in func_symbols[0]["signature"]
+        assert func_symbols[0].name == "add"
+        assert func_symbols[0].signature is not None
+        assert func_symbols[0].signature is not None and "add" in func_symbols[0].signature
 
     @pytest.mark.asyncio
     async def test_parse_multiple_functions(
@@ -1165,8 +1165,8 @@ double baz(double a, double b) { return a + b; }
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="funcs.cpp"
         )
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
-        func_names = [s["name"] for s in func_symbols]
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        func_names = [s.name for s in func_symbols]
         assert "foo" in func_names
         assert "bar" in func_names
         assert "baz" in func_names
@@ -1192,11 +1192,11 @@ public:
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="calc.cpp"
         )
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
+        method_symbols = [s for s in symbols if s.kind == "method"]
         assert len(method_symbols) == 1
-        assert method_symbols[0]["name"] == "add"
-        assert method_symbols[0]["scope"] == "Calculator"
-        assert "signature" in method_symbols[0]
+        assert method_symbols[0].name == "add"
+        assert method_symbols[0].scope == "Calculator"
+        assert method_symbols[0].signature is not None
 
     @pytest.mark.asyncio
     async def test_parse_constructor_destructor(
@@ -1212,12 +1212,12 @@ public:
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="resource.cpp"
         )
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
-        method_names = [s["name"] for s in method_symbols]
+        method_symbols = [s for s in symbols if s.kind == "method"]
+        method_names = [s.name for s in method_symbols]
         assert "Resource" in method_names
         assert "~Resource" in method_names
         for m in method_symbols:
-            assert m["scope"] == "Resource"
+            assert m.scope == "Resource"
 
     @pytest.mark.asyncio
     async def test_parse_multiple_methods(
@@ -1234,13 +1234,13 @@ public:
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="container.cpp"
         )
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
-        method_names = [s["name"] for s in method_symbols]
+        method_symbols = [s for s in symbols if s.kind == "method"]
+        method_names = [s.name for s in method_symbols]
         assert "push" in method_names
         assert "pop" in method_names
         assert "size" in method_names
         for m in method_symbols:
-            assert m["scope"] == "Container"
+            assert m.scope == "Container"
 
 
 class TestCppFields:
@@ -1262,9 +1262,9 @@ class Config {
             content=code, language="cpp", file_path="config.cpp"
         )
         fields = [
-            s for s in symbols if s["kind"] == "field" and s.get("scope") == "Config"
+            s for s in symbols if s.kind == "field" and s.scope == "Config"
         ]
-        field_names = [s["name"] for s in fields]
+        field_names = [s.name for s in fields]
         assert "timeout" in field_names
         assert "enabled" in field_names
 
@@ -1288,12 +1288,12 @@ enum Color {
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="color.cpp"
         )
-        enum_symbols = [s for s in symbols if s["kind"] == "enum"]
+        enum_symbols = [s for s in symbols if s.kind == "enum"]
         assert len(enum_symbols) == 1
-        assert enum_symbols[0]["name"] == "Color"
+        assert enum_symbols[0].name == "Color"
 
-        enum_values = [s for s in symbols if s["kind"] == "enum_value"]
-        value_names = [s["name"] for s in enum_values]
+        enum_values = [s for s in symbols if s.kind == "enum_value"]
+        value_names = [s.name for s in enum_values]
         assert "Red" in value_names
         assert "Green" in value_names
         assert "Blue" in value_names
@@ -1310,12 +1310,12 @@ enum class Status {
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="status.cpp"
         )
-        enum_symbols = [s for s in symbols if s["kind"] == "enum"]
+        enum_symbols = [s for s in symbols if s.kind == "enum"]
         assert len(enum_symbols) == 1
-        assert enum_symbols[0]["name"] == "Status"
+        assert enum_symbols[0].name == "Status"
 
-        enum_values = [s for s in symbols if s["kind"] == "enum_value"]
-        value_names = [s["name"] for s in enum_values]
+        enum_values = [s for s in symbols if s.kind == "enum_value"]
+        value_names = [s.name for s in enum_values]
         assert "Active" in value_names
         assert "Inactive" in value_names
         assert "Pending" in value_names
@@ -1336,8 +1336,8 @@ typedef unsigned long ulong;
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="types.cpp"
         )
-        typedef_symbols = [s for s in symbols if s["kind"] == "typedef"]
-        assert any(s["name"] == "ulong" for s in typedef_symbols)
+        typedef_symbols = [s for s in symbols if s.kind == "typedef"]
+        assert any(s.name == "ulong" for s in typedef_symbols)
 
     @pytest.mark.asyncio
     async def test_parse_using_alias(self, parser_service: TreeSitterService) -> None:
@@ -1347,8 +1347,8 @@ using StringVec = int;
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="types.cpp"
         )
-        type_symbols = [s for s in symbols if s["kind"] == "type"]
-        assert any(s["name"] == "StringVec" for s in type_symbols)
+        type_symbols = [s for s in symbols if s.kind == "type"]
+        assert any(s.name == "StringVec" for s in type_symbols)
 
 
 class TestCppTemplates:
@@ -1372,13 +1372,13 @@ public:
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="container.cpp"
         )
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["name"] == "Container"
+        assert class_symbols[0].name == "Container"
 
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
+        method_symbols = [s for s in symbols if s.kind == "method"]
         assert any(
-            m["name"] == "add" and m["scope"] == "Container" for m in method_symbols
+            m.name == "add" and m.scope == "Container" for m in method_symbols
         )
 
     @pytest.mark.asyncio
@@ -1394,8 +1394,8 @@ T maximum(T a, T b) {
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="util.cpp"
         )
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
-        assert any(s["name"] == "maximum" for s in func_symbols)
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        assert any(s.name == "maximum" for s in func_symbols)
 
 
 class TestCppReferences:
@@ -1420,8 +1420,8 @@ void process() {
         _, references = await parser_service.parse_file(
             content=code, language="cpp", file_path="main.cpp"
         )
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "helper" in call_texts
         assert "doWork" in call_texts
 
@@ -1438,8 +1438,8 @@ void main() {}
         _, references = await parser_service.parse_file(
             content=code, language="cpp", file_path="main.cpp"
         )
-        include_refs = [r for r in references if r["type"] == "include"]
-        include_texts = [r["text"] for r in include_refs]
+        include_refs = [r for r in references if r.reference_type == "include"]
+        include_texts = [r.reference_text for r in include_refs]
         assert "iostream" in include_texts
         assert "myheader.h" in include_texts
 
@@ -1454,8 +1454,8 @@ void process(Widget w) {
         _, references = await parser_service.parse_file(
             content=code, language="cpp", file_path="proc.cpp"
         )
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "Widget" in type_texts
 
     @pytest.mark.asyncio
@@ -1471,8 +1471,8 @@ void process() {
         _, references = await parser_service.parse_file(
             content=code, language="cpp", file_path="main.cpp"
         )
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "sizeof" not in call_texts
         assert "customFunc" in call_texts
 
@@ -1488,8 +1488,8 @@ void compute(int a, double b) {
         _, references = await parser_service.parse_file(
             content=code, language="cpp", file_path="compute.cpp"
         )
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "int" not in type_texts
         assert "double" not in type_texts
         assert "bool" not in type_texts
@@ -1514,8 +1514,8 @@ void foo() {}
             content=code, language="cpp", file_path="example.cpp"
         )
         assert len(comments) >= 1
-        assert any(c["content"] == "This is a comment" for c in comments)
-        assert any(c["content_type"] == "single_line_comment" for c in comments)
+        assert any(c.content == "This is a comment" for c in comments)
+        assert any(c.content_type == "single_line_comment" for c in comments)
 
     @pytest.mark.asyncio
     async def test_parse_block_comment(self, parser_service: TreeSitterService) -> None:
@@ -1527,8 +1527,8 @@ void foo() {}
             content=code, language="cpp", file_path="example.cpp"
         )
         assert len(comments) >= 1
-        assert any(c["content"] == "Block comment" for c in comments)
-        assert any(c["content_type"] == "block_comment" for c in comments)
+        assert any(c.content == "Block comment" for c in comments)
+        assert any(c.content_type == "block_comment" for c in comments)
 
 
 class TestCppComplexStructures:
@@ -1567,37 +1567,37 @@ void initialize() {}
             content=code, language="cpp", file_path="app.cpp"
         )
 
-        ns = [s for s in symbols if s["kind"] == "namespace"]
-        assert any(s["name"] == "App" for s in ns)
+        ns = [s for s in symbols if s.kind == "namespace"]
+        assert any(s.name == "App" for s in ns)
 
-        consts = [s for s in symbols if s["kind"] == "constant"]
-        assert any(c["name"] == "MAX_SIZE" for c in consts)
+        consts = [s for s in symbols if s.kind == "constant"]
+        assert any(c.name == "MAX_SIZE" for c in consts)
 
-        enums = [s for s in symbols if s["kind"] == "enum"]
-        assert any(e["name"] == "LogLevel" for e in enums)
+        enums = [s for s in symbols if s.kind == "enum"]
+        assert any(e.name == "LogLevel" for e in enums)
 
-        enum_vals = [s for s in symbols if s["kind"] == "enum_value"]
-        ev_names = [s["name"] for s in enum_vals]
+        enum_vals = [s for s in symbols if s.kind == "enum_value"]
+        ev_names = [s.name for s in enum_vals]
         assert "Debug" in ev_names
         assert "Info" in ev_names
         assert "Error" in ev_names
 
-        classes = [s for s in symbols if s["kind"] == "class"]
-        assert any(c["name"] == "Logger" for c in classes)
+        classes = [s for s in symbols if s.kind == "class"]
+        assert any(c.name == "Logger" for c in classes)
 
-        methods = [s for s in symbols if s["kind"] == "method"]
-        assert any(m["name"] == "log" and m["scope"] == "App.Logger" for m in methods)
+        methods = [s for s in symbols if s.kind == "method"]
+        assert any(m.name == "log" and m.scope == "App.Logger" for m in methods)
 
-        fields = [s for s in symbols if s["kind"] == "field"]
+        fields = [s for s in symbols if s.kind == "field"]
         assert any(
-            f["name"] == "count" and f.get("scope") == "App.Logger" for f in fields
+            f.name == "count" and f.scope == "App.Logger" for f in fields
         )
 
-        funcs = [s for s in symbols if s["kind"] == "function"]
-        assert any(f["name"] == "initialize" and f.get("scope") == "App" for f in funcs)
+        funcs = [s for s in symbols if s.kind == "function"]
+        assert any(f.name == "initialize" and f.scope == "App" for f in funcs)
 
-        include_refs = [r for r in references if r["type"] == "include"]
-        include_texts = [r["text"] for r in include_refs]
+        include_refs = [r for r in references if r.reference_type == "include"]
+        include_texts = [r.reference_text for r in include_refs]
         assert "iostream" in include_texts
 
     @pytest.mark.asyncio
@@ -1610,8 +1610,8 @@ constexpr int BUFFER_SIZE = 4096;
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="config.cpp"
         )
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        assert any(s["name"] == "BUFFER_SIZE" for s in const_symbols)
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        assert any(s.name == "BUFFER_SIZE" for s in const_symbols)
 
     @pytest.mark.asyncio
     async def test_parse_define_macro(self, parser_service: TreeSitterService) -> None:
@@ -1622,8 +1622,8 @@ constexpr int BUFFER_SIZE = 4096;
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="config.cpp"
         )
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
         assert "MAX_RETRIES" in const_names
         assert "PI" in const_names
 
@@ -1647,12 +1647,12 @@ union Data {
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="data.cpp"
         )
-        unions = [s for s in symbols if s["kind"] == "union"]
+        unions = [s for s in symbols if s.kind == "union"]
         assert len(unions) == 1
-        assert unions[0]["name"] == "Data"
+        assert unions[0].name == "Data"
 
-        fields = [s for s in symbols if s["kind"] == "field"]
-        field_names = [f["name"] for f in fields]
+        fields = [s for s in symbols if s.kind == "field"]
+        field_names = [f.name for f in fields]
         assert "i" in field_names
         assert "f" in field_names
         assert "c" in field_names
@@ -1668,8 +1668,8 @@ typedef union {
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="variant.cpp"
         )
-        typedefs = [s for s in symbols if s["kind"] == "typedef"]
-        assert any(t["name"] == "Variant" for t in typedefs)
+        typedefs = [s for s in symbols if s.kind == "typedef"]
+        assert any(t.name == "Variant" for t in typedefs)
 
 
 class TestCppEdgeCases:
@@ -1716,10 +1716,10 @@ void N::f() {}
             content=code, language="cpp", file_path="ns_func.cpp"
         )
         out_of_class = [
-            s for s in symbols if s["name"] == "f" and s["kind"] == "function"
+            s for s in symbols if s.name == "f" and s.kind == "function"
         ]
         assert len(out_of_class) >= 1
-        methods = [s for s in symbols if s["name"] == "f" and s["kind"] == "method"]
+        methods = [s for s in symbols if s.name == "f" and s.kind == "method"]
         assert len(methods) == 0
 
     @pytest.mark.asyncio
@@ -1737,7 +1737,7 @@ void MyClass::doWork() {}
             content=code, language="cpp", file_path="class_method.cpp"
         )
         methods = [
-            s for s in symbols if s["name"] == "doWork" and s["kind"] == "method"
+            s for s in symbols if s.name == "doWork" and s.kind == "method"
         ]
         assert len(methods) >= 1
 
@@ -1752,7 +1752,7 @@ using MyFloat = float;
         _, references = await parser_service.parse_file(
             content=code, language="cpp", file_path="aliases.cpp"
         )
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "MyInt" not in ref_texts
         assert "MyFloat" not in ref_texts
 
@@ -1771,8 +1771,8 @@ void foo() {
         _, references = await parser_service.parse_file(
             content=code, language="cpp", file_path="calls.cpp"
         )
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "helper" in call_texts
         assert "NS::helper" not in call_texts
 
@@ -1793,14 +1793,14 @@ private:
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="widget.h"
         )
-        methods = [s for s in symbols if s["kind"] == "method"]
-        method_names = [m["name"] for m in methods]
+        methods = [s for s in symbols if s.kind == "method"]
+        method_names = [m.name for m in methods]
         assert "draw" in method_names
         assert "width" in method_names
         assert "resize" in method_names
 
-        fields = [s for s in symbols if s["kind"] == "field"]
-        assert any(f["name"] == "m_width" for f in fields)
+        fields = [s for s in symbols if s.kind == "field"]
+        assert any(f.name == "m_width" for f in fields)
 
     @pytest.mark.asyncio
     async def test_pure_c_header_parsed_as_cpp(
@@ -1832,8 +1832,8 @@ void print_point(const Point *p);
         symbols, references = await parser_service.parse_file(
             content=code, language="cpp", file_path="utils.h"
         )
-        sym_names = [s["name"] for s in symbols]
-        sym_kinds = {s["name"]: s["kind"] for s in symbols}
+        sym_names = [s.name for s in symbols]
+        sym_kinds = {s.name: s.kind for s in symbols}
 
         assert "MY_HEADER_H" in sym_names
         assert "BUFFER_SIZE" in sym_names
@@ -1845,8 +1845,8 @@ void print_point(const Point *p);
         assert "add" in sym_names
         assert "print_point" in sym_names
 
-        include_refs = [r for r in references if r["type"] == "include"]
-        assert any(r["text"] == "stdio.h" for r in include_refs)
+        include_refs = [r for r in references if r.reference_type == "include"]
+        assert any(r.reference_text == "stdio.h" for r in include_refs)
 
     @pytest.mark.asyncio
     async def test_function_symbol_line_points_to_name(
@@ -1858,9 +1858,9 @@ void print_point(const Point *p);
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="main.cpp"
         )
-        func_symbols = [s for s in symbols if s["name"] == "MyFunction"]
+        func_symbols = [s for s in symbols if s.name == "MyFunction"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["start_line"] == 1
+        assert func_symbols[0].start_line == 1
 
 
 # ── Identifier usage references ────────────────────────────────
@@ -1889,7 +1889,7 @@ void test() {
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r["text"] == "TIMER_ONESHOT" and r["type"] == "usage"
+            r for r in refs if r.reference_text == "TIMER_ONESHOT" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -1907,7 +1907,7 @@ void test() {
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r["text"] == "VALUE_A" and r["type"] == "usage"
+            r for r in refs if r.reference_text == "VALUE_A" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -1925,7 +1925,7 @@ void test(State s) {
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r["text"] == "STATE_INIT" and r["type"] == "usage"
+            r for r in refs if r.reference_text == "STATE_INIT" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -1944,7 +1944,7 @@ void test() {
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r["text"] == "MAX_SIZE" and r["type"] == "usage"
+            r for r in refs if r.reference_text == "MAX_SIZE" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -1960,7 +1960,7 @@ int myGlobal = 42;
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r["text"] == "myGlobal" and r["type"] == "usage"
+            r for r in refs if r.reference_text == "myGlobal" and r.reference_type == "usage"
         ]
         assert len(usage_refs) == 0
 
@@ -1977,7 +1977,7 @@ Status get_status() {
         _, refs = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        usage_refs = [r for r in refs if r["text"] == "OK" and r["type"] == "usage"]
+        usage_refs = [r for r in refs if r.reference_text == "OK" and r.reference_type == "usage"]
         assert len(usage_refs) >= 1
 
     @pytest.mark.asyncio
@@ -1993,7 +1993,7 @@ int arr[ARRAY_SIZE];
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r["text"] == "ARRAY_SIZE" and r["type"] == "usage"
+            r for r in refs if r.reference_text == "ARRAY_SIZE" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -2014,7 +2014,7 @@ void test(int x) {
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r["text"] == "MY_CONST" and r["type"] == "usage"
+            r for r in refs if r.reference_text == "MY_CONST" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -2030,7 +2030,7 @@ void foo(int myParam) {}
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r["text"] == "myParam" and r["type"] == "usage"
+            r for r in refs if r.reference_text == "myParam" and r.reference_type == "usage"
         ]
         assert len(usage_refs) == 0
 
@@ -2045,7 +2045,7 @@ enum Color { RED, GREEN, BLUE };
         _, refs = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        usage_refs = [r for r in refs if r["text"] == "RED" and r["type"] == "usage"]
+        usage_refs = [r for r in refs if r.reference_text == "RED" and r.reference_type == "usage"]
         assert len(usage_refs) == 0
 
     @pytest.mark.asyncio
@@ -2069,10 +2069,10 @@ void MyClass::doWork() {}
             content=code, language="cpp", file_path="test.cpp"
         )
         # "f" and "doWork" should not get spurious usage refs from qualified_identifier
-        f_usage = [r for r in refs if r["text"] == "f" and r["type"] == "usage"]
+        f_usage = [r for r in refs if r.reference_text == "f" and r.reference_type == "usage"]
         assert len(f_usage) == 0
         dowork_usage = [
-            r for r in refs if r["text"] == "doWork" and r["type"] == "usage"
+            r for r in refs if r.reference_text == "doWork" and r.reference_type == "usage"
         ]
         assert len(dowork_usage) == 0
 
@@ -2091,8 +2091,8 @@ void test() {
         _, refs = await parser_service.parse_file(
             content=code, language="cpp", file_path="test.cpp"
         )
-        make_refs = [r for r in refs if r["text"] == "make"]
-        call_refs = [r for r in make_refs if r["type"] == "call"]
-        usage_refs = [r for r in make_refs if r["type"] == "usage"]
+        make_refs = [r for r in refs if r.reference_text == "make"]
+        call_refs = [r for r in make_refs if r.reference_type == "call"]
+        usage_refs = [r for r in make_refs if r.reference_type == "usage"]
         assert len(call_refs) == 1
         assert len(usage_refs) == 0

@@ -64,9 +64,9 @@ def hello_world():
         )
 
         # Should find the function
-        func_symbols = [s for s in symbols if s["name"] == "hello_world"]
+        func_symbols = [s for s in symbols if s.name == "hello_world"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["kind"] == "function"
+        assert func_symbols[0].kind == "function"
 
     @pytest.mark.asyncio
     async def test_parse_class_with_methods(
@@ -94,12 +94,12 @@ class Calculator:
         )
 
         # Should find the class
-        class_symbols = [s for s in symbols if s["name"] == "Calculator"]
+        class_symbols = [s for s in symbols if s.name == "Calculator"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["kind"] == "class"
+        assert class_symbols[0].kind == "class"
 
         # Should find methods
-        method_names = [s["name"] for s in symbols if s["kind"] == "method"]
+        method_names = [s.name for s in symbols if s.kind == "method"]
         assert "__init__" in method_names
         assert "add" in method_names
         assert "subtract" in method_names
@@ -118,8 +118,8 @@ from typing import List, Dict, Optional
         )
 
         # Should find import references
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_texts = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_texts = [r.reference_text for r in import_refs]
 
         assert "os" in import_texts
         assert "sys" in import_texts
@@ -141,8 +141,8 @@ BUFFER_SIZE = 4096
         )
 
         # Should find constants
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
 
         assert "MAX_SIZE" in const_names
         assert "DEFAULT_NAME" in const_names
@@ -164,9 +164,9 @@ async def fetch_data(url):
         )
 
         # Should find the async function
-        func_symbols = [s for s in symbols if s["name"] == "fetch_data"]
+        func_symbols = [s for s in symbols if s.name == "fetch_data"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["kind"] == "function"
+        assert func_symbols[0].kind == "function"
 
 
 class TestTypeScriptParsing:
@@ -189,9 +189,9 @@ function greet(name: string): string {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        func_symbols = [s for s in symbols if s["name"] == "greet"]
+        func_symbols = [s for s in symbols if s.name == "greet"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["kind"] == "function"
+        assert func_symbols[0].kind == "function"
 
     @pytest.mark.asyncio
     async def test_parse_arrow_function(
@@ -207,9 +207,9 @@ export const add = (a: number, b: number): number => {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        func_symbols = [s for s in symbols if s["name"] == "add"]
+        func_symbols = [s for s in symbols if s.name == "add"]
         assert len(func_symbols) == 1
-        assert func_symbols[0]["kind"] == "function"
+        assert func_symbols[0].kind == "function"
 
     @pytest.mark.asyncio
     async def test_parse_class(self, parser_service: TreeSitterService) -> None:
@@ -231,9 +231,9 @@ export class UserService {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "UserService"]
+        class_symbols = [s for s in symbols if s.name == "UserService"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["kind"] == "class"
+        assert class_symbols[0].kind == "class"
 
     @pytest.mark.asyncio
     async def test_parse_interface(self, parser_service: TreeSitterService) -> None:
@@ -249,9 +249,9 @@ export interface User {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        interface_symbols = [s for s in symbols if s["name"] == "User"]
+        interface_symbols = [s for s in symbols if s.name == "User"]
         assert len(interface_symbols) == 1
-        assert interface_symbols[0]["kind"] == "interface"
+        assert interface_symbols[0].kind == "interface"
 
     @pytest.mark.asyncio
     async def test_parse_type_alias(self, parser_service: TreeSitterService) -> None:
@@ -264,8 +264,8 @@ export type UserMap = Record<string, User>;
             content=code, language="typescript", file_path="test.ts"
         )
 
-        type_symbols = [s for s in symbols if s["kind"] == "type"]
-        type_names = [s["name"] for s in type_symbols]
+        type_symbols = [s for s in symbols if s.kind == "type"]
+        type_names = [s.name for s in type_symbols]
 
         assert "UserId" in type_names
         assert "UserMap" in type_names
@@ -282,8 +282,8 @@ import type { User } from './types';
             content=code, language="typescript", file_path="test.ts"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_texts = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_texts = [r.reference_text for r in import_refs]
 
         assert "React" in import_texts
         assert "useState" in import_texts
@@ -300,8 +300,8 @@ export const API_URL = 'https://api.example.com';
             content=code, language="typescript", file_path="test.ts"
         )
 
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
 
         assert "MAX_RETRIES" in const_names
         assert "API_URL" in const_names
@@ -332,8 +332,8 @@ class User:
         )
 
         # Should find instance variables
-        instance_vars = [s for s in symbols if s["kind"] == "instance_variable"]
-        var_names = [s["name"] for s in instance_vars]
+        instance_vars = [s for s in symbols if s.kind == "instance_variable"]
+        var_names = [s.name for s in instance_vars]
 
         assert "name" in var_names
         assert "email" in var_names
@@ -341,7 +341,7 @@ class User:
 
         # Should have correct scope
         for var in instance_vars:
-            assert var["scope"] == "User"
+            assert var.scope == "User"
 
     @pytest.mark.asyncio
     async def test_parse_class_variables(
@@ -359,8 +359,8 @@ class Config:
         )
 
         # Should find class variables
-        class_vars = [s for s in symbols if s["kind"] == "class_variable"]
-        var_names = [s["name"] for s in class_vars]
+        class_vars = [s for s in symbols if s.kind == "class_variable"]
+        var_names = [s.name for s in class_vars]
 
         assert "default_timeout" in var_names
         assert "max_retries" in var_names
@@ -382,8 +382,8 @@ class Constants:
         )
 
         # Should find class constants
-        class_consts = [s for s in symbols if s["kind"] == "class_constant"]
-        const_names = [s["name"] for s in class_consts]
+        class_consts = [s for s in symbols if s.kind == "class_constant"]
+        const_names = [s.name for s in class_consts]
 
         assert "MAX_SIZE" in const_names
         assert "DEFAULT_NAME" in const_names
@@ -415,8 +415,8 @@ class Rectangle:
         )
 
         # Should find properties
-        properties = [s for s in symbols if s["kind"] == "property"]
-        prop_names = [s["name"] for s in properties]
+        properties = [s for s in symbols if s.kind == "property"]
+        prop_names = [s.name for s in properties]
 
         assert "width" in prop_names
         assert "height" in prop_names
@@ -440,8 +440,8 @@ class MathUtils:
         )
 
         # Should find static methods
-        static_methods = [s for s in symbols if s["kind"] == "staticmethod"]
-        method_names = [s["name"] for s in static_methods]
+        static_methods = [s for s in symbols if s.kind == "staticmethod"]
+        method_names = [s.name for s in static_methods]
 
         assert "add" in method_names
         assert "multiply" in method_names
@@ -464,8 +464,8 @@ class Factory:
         )
 
         # Should find class methods
-        class_methods = [s for s in symbols if s["kind"] == "classmethod"]
-        method_names = [s["name"] for s in class_methods]
+        class_methods = [s for s in symbols if s.kind == "classmethod"]
+        method_names = [s.name for s in class_methods]
 
         assert "create" in method_names
         assert "from_dict" in method_names
@@ -497,8 +497,8 @@ interface User {
         )
 
         # Should find interface properties
-        interface_props = [s for s in symbols if s["kind"] == "interface_property"]
-        prop_names = [s["name"] for s in interface_props]
+        interface_props = [s for s in symbols if s.kind == "interface_property"]
+        prop_names = [s.name for s in interface_props]
 
         assert "id" in prop_names
         assert "name" in prop_names
@@ -522,8 +522,8 @@ interface Repository {
         )
 
         # Should find interface methods
-        interface_methods = [s for s in symbols if s["kind"] == "interface_method"]
-        method_names = [s["name"] for s in interface_methods]
+        interface_methods = [s for s in symbols if s.kind == "interface_method"]
+        method_names = [s.name for s in interface_methods]
 
         assert "find" in method_names
         assert "findAll" in method_names
@@ -550,15 +550,15 @@ enum Status {
         )
 
         # Should find enums
-        enums = [s for s in symbols if s["kind"] == "enum"]
-        enum_names = [s["name"] for s in enums]
+        enums = [s for s in symbols if s.kind == "enum"]
+        enum_names = [s.name for s in enums]
 
         assert "Color" in enum_names
         assert "Status" in enum_names
 
         # Should find enum members
-        members = [s for s in symbols if s["kind"] == "enum_member"]
-        member_names = [s["name"] for s in members]
+        members = [s for s in symbols if s.kind == "enum_member"]
+        member_names = [s.name for s in members]
 
         assert "Red" in member_names
         assert "Green" in member_names
@@ -584,8 +584,8 @@ class Service {
         )
 
         # Should find various field types
-        fields = [s for s in symbols if "field" in s["kind"]]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if "field" in s.kind]
+        field_names = [s.name for s in fields]
 
         assert "apiKey" in field_names
         assert "name" in field_names
@@ -594,11 +594,11 @@ class Service {
         assert "count" in field_names
 
         # Check specific kinds
-        static_fields = [s for s in symbols if s["kind"] == "static_field"]
-        assert any(s["name"] == "count" for s in static_fields)
+        static_fields = [s for s in symbols if s.kind == "static_field"]
+        assert any(s.name == "count" for s in static_fields)
 
-        readonly_fields = [s for s in symbols if s["kind"] == "readonly_field"]
-        assert any(s["name"] == "id" for s in readonly_fields)
+        readonly_fields = [s for s in symbols if s.kind == "readonly_field"]
+        assert any(s.name == "id" for s in readonly_fields)
 
     @pytest.mark.asyncio
     async def test_parse_static_methods(
@@ -621,8 +621,8 @@ class Utils {
         )
 
         # Should find static methods
-        static_methods = [s for s in symbols if s["kind"] == "staticmethod"]
-        method_names = [s["name"] for s in static_methods]
+        static_methods = [s for s in symbols if s.kind == "staticmethod"]
+        method_names = [s.name for s in static_methods]
 
         assert "formatDate" in method_names
         assert "parseNumber" in method_names
@@ -683,8 +683,8 @@ def main():
             content=code, language="python", file_path="test.py"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_names = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_names = [r.reference_text for r in call_refs]
         assert "setup_logging" in call_names
 
     @pytest.mark.asyncio
@@ -710,8 +710,8 @@ def cli(verbose, log_level):
             content=code, language="python", file_path="test.py"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_names = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_names = [r.reference_text for r in call_refs]
         assert "setup_logging" in call_names
         assert "do_work" in call_names
 
@@ -727,8 +727,8 @@ def process():
             content=code, language="python", file_path="test.py"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_names = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_names = [r.reference_text for r in call_refs]
         assert "fetch_data" in call_names
         assert "transform" in call_names
 
@@ -752,8 +752,8 @@ class MyService:
             content=code, language="python", file_path="test.py"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_names = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_names = [r.reference_text for r in call_refs]
         assert "helper" in call_names
         assert "validate" in call_names
         assert "compute_value" in call_names
@@ -769,8 +769,8 @@ def process():
             content=code, language="python", file_path="test.py"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_names = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_names = [r.reference_text for r in call_refs]
         assert "outer" in call_names
         assert "inner" in call_names
 
@@ -786,10 +786,10 @@ def process():
             content=code, language="python", file_path="test.py"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        setup_ref = [r for r in call_refs if r["text"] == "setup_logging"]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        setup_ref = [r for r in call_refs if r.reference_text == "setup_logging"]
         assert len(setup_ref) == 1
-        assert setup_ref[0]["source_line"] == 2
+        assert setup_ref[0].source_line == 2
 
     @pytest.mark.asyncio
     async def test_call_references_after_multibyte_characters(
@@ -810,8 +810,8 @@ def process():
             content=code, language="python", file_path="test.py"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_names = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_names = [r.reference_text for r in call_refs]
         assert (
             "setup_logging" in call_names
         ), f"Expected 'setup_logging' in call references but got: {call_names}"
@@ -829,7 +829,7 @@ def my_function():
             content=code, language="python", file_path="test.py"
         )
 
-        func_names = [s["name"] for s in symbols if s["kind"] == "function"]
+        func_names = [s.name for s in symbols if s.kind == "function"]
         assert (
             "my_function" in func_names
         ), f"Expected 'my_function' but got: {func_names}"
@@ -863,8 +863,8 @@ function create() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inst_refs = [r for r in references if r["type"] == "instantiation"]
-        inst_names = [r["text"] for r in inst_refs]
+        inst_refs = [r for r in references if r.reference_type == "instantiation"]
+        inst_names = [r.reference_text for r in inst_refs]
         assert "Foo" in inst_names
 
     @pytest.mark.asyncio
@@ -881,8 +881,8 @@ function create() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inst_refs = [r for r in references if r["type"] == "instantiation"]
-        inst_names = [r["text"] for r in inst_refs]
+        inst_refs = [r for r in references if r.reference_type == "instantiation"]
+        inst_names = [r.reference_text for r in inst_refs]
         assert "Foo" in inst_names
 
     @pytest.mark.asyncio
@@ -901,8 +901,8 @@ function create() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inst_refs = [r for r in references if r["type"] == "instantiation"]
-        inst_names = [r["text"] for r in inst_refs]
+        inst_refs = [r for r in references if r.reference_type == "instantiation"]
+        inst_names = [r.reference_text for r in inst_refs]
         # Map and Set are builtins and should be excluded
         assert "Map" not in inst_names
         assert "Set" not in inst_names
@@ -922,11 +922,11 @@ function create() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inst_refs = [r for r in references if r["type"] == "instantiation"]
-        foo_ref = [r for r in inst_refs if r["text"] == "Foo"]
+        inst_refs = [r for r in references if r.reference_type == "instantiation"]
+        foo_ref = [r for r in inst_refs if r.reference_text == "Foo"]
         assert len(foo_ref) == 1
-        assert foo_ref[0]["source_line"] == 2
-        assert foo_ref[0]["source_column"] == 18
+        assert foo_ref[0].source_line == 2
+        assert foo_ref[0].source_column == 18
 
     @pytest.mark.asyncio
     async def test_new_expression_not_confused_with_call(
@@ -943,11 +943,11 @@ function test() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inst_refs = [r for r in references if r["type"] == "instantiation"]
-        call_refs = [r for r in references if r["type"] == "call"]
+        inst_refs = [r for r in references if r.reference_type == "instantiation"]
+        call_refs = [r for r in references if r.reference_type == "call"]
 
-        inst_names = [r["text"] for r in inst_refs]
-        call_names = [r["text"] for r in call_refs]
+        inst_names = [r.reference_text for r in inst_refs]
+        call_names = [r.reference_text for r in call_refs]
 
         assert "Foo" in inst_names
         assert "Foo" not in call_names
@@ -976,15 +976,15 @@ class TestPythonNestedFunctions:
             content=code, language="python", file_path="test.py"
         )
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
-        func_names = [s["name"] for s in func_symbols]
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        func_names = [s.name for s in func_symbols]
 
         assert "outer" in func_names
         assert "inner" in func_names
 
-        inner = next(s for s in func_symbols if s["name"] == "inner")
-        assert inner["scope"] == "outer"
-        assert inner["qualified_name"] == "outer.inner"
+        inner = next(s for s in func_symbols if s.name == "inner")
+        assert inner.scope == "outer"
+        assert inner.qualified_name == "outer.inner"
 
     @pytest.mark.asyncio
     async def test_nested_function_in_class_method(
@@ -1002,19 +1002,19 @@ class TestPythonNestedFunctions:
             content=code, language="python", file_path="test.py"
         )
 
-        nested = [s for s in symbols if s["kind"] == "function"]
-        nested_names = [s["name"] for s in nested]
+        nested = [s for s in symbols if s.kind == "function"]
+        nested_names = [s.name for s in nested]
 
         assert "process_item" in nested_names
         assert "handle_error" in nested_names
 
-        process_item = next(s for s in nested if s["name"] == "process_item")
-        assert process_item["scope"] == "MyClass.extract"
-        assert process_item["qualified_name"] == "MyClass.extract.process_item"
+        process_item = next(s for s in nested if s.name == "process_item")
+        assert process_item.scope == "MyClass.extract"
+        assert process_item.qualified_name == "MyClass.extract.process_item"
 
-        handle_error = next(s for s in nested if s["name"] == "handle_error")
-        assert handle_error["scope"] == "MyClass.extract"
-        assert handle_error["qualified_name"] == "MyClass.extract.handle_error"
+        handle_error = next(s for s in nested if s.name == "handle_error")
+        assert handle_error.scope == "MyClass.extract"
+        assert handle_error.qualified_name == "MyClass.extract.handle_error"
 
     @pytest.mark.asyncio
     async def test_multiple_nested_functions_at_same_level(
@@ -1034,9 +1034,9 @@ class TestPythonNestedFunctions:
         )
 
         nested = [
-            s for s in symbols if s["kind"] == "function" and s["scope"] == "process"
+            s for s in symbols if s.kind == "function" and s.scope == "process"
         ]
-        nested_names = [s["name"] for s in nested]
+        nested_names = [s.name for s in nested]
 
         assert len(nested) == 3
         assert "validate" in nested_names
@@ -1057,18 +1057,18 @@ class TestPythonNestedFunctions:
             content=code, language="python", file_path="test.py"
         )
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
+        func_symbols = [s for s in symbols if s.kind == "function"]
 
-        level0 = next(s for s in func_symbols if s["name"] == "level0")
-        assert level0["scope"] is None
+        level0 = next(s for s in func_symbols if s.name == "level0")
+        assert level0.scope is None
 
-        level1 = next(s for s in func_symbols if s["name"] == "level1")
-        assert level1["scope"] == "level0"
-        assert level1["qualified_name"] == "level0.level1"
+        level1 = next(s for s in func_symbols if s.name == "level1")
+        assert level1.scope == "level0"
+        assert level1.qualified_name == "level0.level1"
 
-        level2 = next(s for s in func_symbols if s["name"] == "level2")
-        assert level2["scope"] == "level0.level1"
-        assert level2["qualified_name"] == "level0.level1.level2"
+        level2 = next(s for s in func_symbols if s.name == "level2")
+        assert level2.scope == "level0.level1"
+        assert level2.qualified_name == "level0.level1.level2"
 
     @pytest.mark.asyncio
     async def test_nested_function_with_decorator(
@@ -1084,10 +1084,10 @@ class TestPythonNestedFunctions:
             content=code, language="python", file_path="test.py"
         )
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
-        inner = next(s for s in func_symbols if s["name"] == "inner")
-        assert inner["scope"] == "outer"
-        assert inner["qualified_name"] == "outer.inner"
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        inner = next(s for s in func_symbols if s.name == "inner")
+        assert inner.scope == "outer"
+        assert inner.qualified_name == "outer.inner"
 
     @pytest.mark.asyncio
     async def test_nested_function_in_decorated_method(
@@ -1104,10 +1104,10 @@ class TestPythonNestedFunctions:
             content=code, language="python", file_path="test.py"
         )
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
-        helper = next(s for s in func_symbols if s["name"] == "helper")
-        assert helper["scope"] == "MyClass.process"
-        assert helper["qualified_name"] == "MyClass.process.helper"
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        helper = next(s for s in func_symbols if s.name == "helper")
+        assert helper.scope == "MyClass.process"
+        assert helper.qualified_name == "MyClass.process.helper"
 
     @pytest.mark.asyncio
     async def test_nested_function_inside_control_structure(
@@ -1125,10 +1125,10 @@ class TestPythonNestedFunctions:
             content=code, language="python", file_path="test.py"
         )
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
-        handle = next(s for s in func_symbols if s["name"] == "handle")
-        assert handle["scope"] == "Parser.process"
-        assert handle["qualified_name"] == "Parser.process.handle"
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        handle = next(s for s in func_symbols if s.name == "handle")
+        assert handle.scope == "Parser.process"
+        assert handle.qualified_name == "Parser.process.handle"
 
     @pytest.mark.asyncio
     async def test_nested_function_coexists_with_instance_variables(
@@ -1149,16 +1149,16 @@ class TestPythonNestedFunctions:
             content=code, language="python", file_path="test.py"
         )
 
-        instance_vars = [s for s in symbols if s["kind"] == "instance_variable"]
-        var_names = [s["name"] for s in instance_vars]
+        instance_vars = [s for s in symbols if s.kind == "instance_variable"]
+        var_names = [s.name for s in instance_vars]
         assert "config" in var_names
         assert "_cache" in var_names
         assert "_key_builder" in var_names
 
-        func_symbols = [s for s in symbols if s["kind"] == "function"]
-        build_key = next(s for s in func_symbols if s["name"] == "build_key")
-        assert build_key["scope"] == "Service.__init__"
-        assert build_key["qualified_name"] == "Service.__init__.build_key"
+        func_symbols = [s for s in symbols if s.kind == "function"]
+        build_key = next(s for s in func_symbols if s.name == "build_key")
+        assert build_key.scope == "Service.__init__"
+        assert build_key.qualified_name == "Service.__init__.build_key"
 
 
 class TestSelfAttributeReferences:
@@ -1189,7 +1189,7 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "name"]
+        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "name"]
         assert len(usage_refs) == 1
 
     @pytest.mark.asyncio
@@ -1205,7 +1205,7 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "name"]
+        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "name"]
         assert len(usage_refs) == 0
 
     @pytest.mark.asyncio
@@ -1224,9 +1224,9 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        call_refs = [r for r in refs if r["type"] == "call" and r["text"] == "validate"]
+        call_refs = [r for r in refs if r.reference_type == "call" and r.reference_text == "validate"]
         usage_refs = [
-            r for r in refs if r["type"] == "usage" and r["text"] == "validate"
+            r for r in refs if r.reference_type == "usage" and r.reference_text == "validate"
         ]
         assert len(call_refs) == 1
         assert len(usage_refs) == 0
@@ -1247,7 +1247,7 @@ class Counter:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "count"]
+        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "count"]
         assert len(usage_refs) == 1
 
     @pytest.mark.asyncio
@@ -1267,7 +1267,7 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "value"]
+        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "value"]
         assert len(usage_refs) == 1
 
     @pytest.mark.asyncio
@@ -1286,7 +1286,7 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "name"]
+        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "name"]
         assert len(usage_refs) == 1
 
     @pytest.mark.asyncio
@@ -1306,8 +1306,8 @@ class Point:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        x_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "x"]
-        y_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "y"]
+        x_usages = [r for r in refs if r.reference_type == "usage" and r.reference_text == "x"]
+        y_usages = [r for r in refs if r.reference_type == "usage" and r.reference_text == "y"]
         # 1 usage each: `self.x` read in `distance` (via attribute handler).
         # The `self.x = x` param read is lowercase and no longer emitted by the
         # plain identifier handler (which now only captures UPPER_CASE constants).
@@ -1327,8 +1327,8 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        x_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "x"]
-        y_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "y"]
+        x_usages = [r for r in refs if r.reference_type == "usage" and r.reference_text == "x"]
+        y_usages = [r for r in refs if r.reference_type == "usage" and r.reference_text == "y"]
         assert len(x_usages) == 0
         assert len(y_usages) == 0
 
@@ -1346,7 +1346,7 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "item"]
+        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "item"]
         assert len(usage_refs) == 0
 
     @pytest.mark.asyncio
@@ -1360,7 +1360,7 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "cache"]
+        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "cache"]
         assert len(usage_refs) == 0
 
     @pytest.mark.asyncio
@@ -1377,7 +1377,7 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r["type"] == "usage" and r["text"] == "handle"]
+        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "handle"]
         assert len(usage_refs) == 0
 
 
@@ -1408,13 +1408,13 @@ class TestInstanceVariableColumnPositions:
         ivar = [
             s
             for s in symbols
-            if s["name"] == "_bar" and s["kind"] == "instance_variable"
+            if s.name == "_bar" and s.kind == "instance_variable"
         ]
         assert len(ivar) == 1
         # "        self._bar = 42"
         #  01234567890123
         # self starts at col 8, _bar starts at col 13
-        assert ivar[0]["start_column"] == 13
+        assert ivar[0].start_column == 13
 
     @pytest.mark.asyncio
     async def test_instance_variable_end_column_matches_attr_name(
@@ -1431,11 +1431,11 @@ class TestInstanceVariableColumnPositions:
         ivar = [
             s
             for s in symbols
-            if s["name"] == "_bar" and s["kind"] == "instance_variable"
+            if s.name == "_bar" and s.kind == "instance_variable"
         ]
         assert len(ivar) == 1
         # _bar ends at col 17 (13 + len("_bar"))
-        assert ivar[0]["end_column"] == 17
+        assert ivar[0].end_column == 17
 
     @pytest.mark.asyncio
     async def test_usage_reference_column_points_to_attr_name(
@@ -1451,12 +1451,12 @@ class TestInstanceVariableColumnPositions:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r["text"] == "_bar" and r["type"] == "usage"]
+        usage_refs = [r for r in refs if r.reference_text == "_bar" and r.reference_type == "usage"]
         assert len(usage_refs) == 1
         # "        return self._bar"
         #  0123456789012345678
         # self starts at col 15, _bar starts at col 20
-        assert usage_refs[0]["source_column"] == 20
+        assert usage_refs[0].source_column == 20
 
     @pytest.mark.asyncio
     async def test_multiple_instance_variables_not_duplicated(
@@ -1471,8 +1471,8 @@ class TestInstanceVariableColumnPositions:
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        ivars = [s for s in symbols if s["kind"] == "instance_variable"]
-        names = [s["name"] for s in ivars]
+        ivars = [s for s in symbols if s.kind == "instance_variable"]
+        names = [s.name for s in ivars]
         assert "_x" in names
         assert "_y" in names
         assert names.count("_x") == 1
@@ -1503,8 +1503,8 @@ class Child extends Parent {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "Parent" in inherit_names
 
     @pytest.mark.asyncio
@@ -1523,8 +1523,8 @@ class Impl implements IFoo {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "IFoo" in inherit_names
 
     @pytest.mark.asyncio
@@ -1541,8 +1541,8 @@ class Multi extends Base implements IFoo, IBar {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "Base" in inherit_names
         assert "IFoo" in inherit_names
         assert "IBar" in inherit_names
@@ -1563,8 +1563,8 @@ class CustomError extends Error {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "Error" not in inherit_names
 
     @pytest.mark.asyncio
@@ -1577,9 +1577,9 @@ class Child extends Parent {}
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        parent_ref = next(r for r in inherit_refs if r["text"] == "Parent")
-        assert parent_ref["scope"] == "Child"
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        parent_ref = next(r for r in inherit_refs if r.reference_text == "Parent")
+        assert parent_ref.scope == "Child"
 
     @pytest.mark.asyncio
     async def test_javascript_class_extends(
@@ -1597,8 +1597,8 @@ class Child extends Parent {
             content=code, language="javascript", file_path="test.js"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "Parent" in inherit_names
 
     @pytest.mark.asyncio
@@ -1614,12 +1614,12 @@ class Child extends Parent implements IFoo {}
         )
 
         # Should have inheritance refs
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
         assert len(inherit_refs) >= 2
 
         # Parent should NOT also appear as type_annotation
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_names = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_names = [r.reference_text for r in type_refs]
         assert "Parent" not in type_names
 
     @pytest.mark.asyncio
@@ -1632,13 +1632,13 @@ class Child extends ns.Parent {}
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "Parent" in inherit_names
 
         # Parent should NOT also appear as a usage reference
         usage_refs = [
-            r for r in references if r["type"] == "usage" and r["text"] == "Parent"
+            r for r in references if r.reference_type == "usage" and r.reference_text == "Parent"
         ]
         assert len(usage_refs) == 0
 
@@ -1654,13 +1654,13 @@ class Child extends ns.sub.Parent {}
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "Parent" in inherit_names
 
         # Neither sub nor Parent should appear as usage references
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "sub" not in usage_names
         assert "Parent" not in usage_names
 
@@ -1674,13 +1674,13 @@ class Impl implements IFoo<Bar> {}
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "IFoo" in inherit_names
 
         # IFoo should NOT also appear as type_annotation
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_names = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_names = [r.reference_text for r in type_refs]
         assert "IFoo" not in type_names
         # But the type argument Bar should still be captured as a type_annotation
         assert "Bar" in type_names
@@ -1699,8 +1699,8 @@ export default class extends Base {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "Base" in inherit_names
 
     @pytest.mark.asyncio
@@ -1715,8 +1715,8 @@ const X = class extends Base {};
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "Base" in inherit_names
 
 
@@ -1742,8 +1742,8 @@ class Child(Parent):
             content=code, language="python", file_path="test.py"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "Parent" in inherit_names
 
     @pytest.mark.asyncio
@@ -1759,8 +1759,8 @@ class C(A, B):
             content=code, language="python", file_path="test.py"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "A" in inherit_names
         assert "B" in inherit_names
 
@@ -1775,8 +1775,8 @@ class C(abc.ABC):
             content=code, language="python", file_path="test.py"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "abc.ABC" in inherit_names
 
     @pytest.mark.asyncio
@@ -1792,8 +1792,8 @@ class MyClass(object):
             content=code, language="python", file_path="test.py"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         # `object` is in PYTHON_TYPE_BUILTINS, so should be excluded
         assert "object" not in inherit_names
 
@@ -1810,9 +1810,9 @@ class Child(Parent):
             content=code, language="python", file_path="test.py"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        parent_ref = next(r for r in inherit_refs if r["text"] == "Parent")
-        assert parent_ref["scope"] == "Child"
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        parent_ref = next(r for r in inherit_refs if r.reference_text == "Parent")
+        assert parent_ref.scope == "Child"
 
     @pytest.mark.asyncio
     async def test_metaclass_keyword_arg_excluded(
@@ -1827,8 +1827,8 @@ class MyClass(metaclass=ABCMeta):
             content=code, language="python", file_path="test.py"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
-        inherit_names = [r["text"] for r in inherit_refs]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
+        inherit_names = [r.reference_text for r in inherit_refs]
         assert "ABCMeta" not in inherit_names
 
 
@@ -1860,17 +1860,17 @@ module.exports = class JiminnyApiClient {
             content=code, language="javascript", file_path="test.js"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["name"] == "JiminnyApiClient"
+        assert class_symbols[0].name == "JiminnyApiClient"
 
-        methods = [s for s in symbols if s["kind"] == "method"]
-        method_names = {s["name"] for s in methods}
+        methods = [s for s in symbols if s.kind == "method"]
+        method_names = {s.name for s in methods}
         assert "constructor" in method_names
         assert "fetchContent" in method_names
         # Methods should be scoped to the class
         for m in methods:
-            assert m["scope"] == "JiminnyApiClient"
+            assert m.scope == "JiminnyApiClient"
 
     @pytest.mark.asyncio
     async def test_const_class_expression(
@@ -1886,14 +1886,14 @@ const MyClass = class {
             content=code, language="javascript", file_path="test.js"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["name"] == "MyClass"
+        assert class_symbols[0].name == "MyClass"
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
-        assert methods[0]["name"] == "method"
-        assert methods[0]["scope"] == "MyClass"
+        assert methods[0].name == "method"
+        assert methods[0].scope == "MyClass"
 
     @pytest.mark.asyncio
     async def test_exports_dot_class_expression(
@@ -1909,14 +1909,14 @@ exports.MyClass = class MyClass {
             content=code, language="javascript", file_path="test.js"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["name"] == "MyClass"
+        assert class_symbols[0].name == "MyClass"
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
-        assert methods[0]["name"] == "bar"
-        assert methods[0]["scope"] == "MyClass"
+        assert methods[0].name == "bar"
+        assert methods[0].scope == "MyClass"
 
     @pytest.mark.asyncio
     async def test_exports_dot_class_expression_aliased(
@@ -1932,13 +1932,13 @@ exports.Foo = class Bar {
             content=code, language="javascript", file_path="test.js"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["name"] == "Foo"
+        assert class_symbols[0].name == "Foo"
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
-        assert methods[0]["scope"] == "Foo"
+        assert methods[0].scope == "Foo"
 
     @pytest.mark.asyncio
     async def test_non_export_assignment_ignored(
@@ -1954,7 +1954,7 @@ foo.bar = class {
             content=code, language="javascript", file_path="test.js"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 0
 
     @pytest.mark.asyncio
@@ -1969,9 +1969,9 @@ module.exports = function createServer() { }
             content=code, language="javascript", file_path="test.js"
         )
 
-        fn_symbols = [s for s in symbols if s["kind"] == "function"]
+        fn_symbols = [s for s in symbols if s.kind == "function"]
         assert len(fn_symbols) == 1
-        assert fn_symbols[0]["name"] == "createServer"
+        assert fn_symbols[0].name == "createServer"
 
     @pytest.mark.asyncio
     async def test_exports_dot_function_expression(
@@ -1985,9 +1985,9 @@ exports.create = function createImpl() { }
             content=code, language="javascript", file_path="test.js"
         )
 
-        fn_symbols = [s for s in symbols if s["kind"] == "function"]
+        fn_symbols = [s for s in symbols if s.kind == "function"]
         assert len(fn_symbols) == 1
-        assert fn_symbols[0]["name"] == "create"
+        assert fn_symbols[0].name == "create"
 
     @pytest.mark.asyncio
     async def test_exports_dot_anonymous_function(
@@ -2001,9 +2001,9 @@ exports.handler = function() { }
             content=code, language="javascript", file_path="test.js"
         )
 
-        fn_symbols = [s for s in symbols if s["kind"] == "function"]
+        fn_symbols = [s for s in symbols if s.kind == "function"]
         assert len(fn_symbols) == 1
-        assert fn_symbols[0]["name"] == "handler"
+        assert fn_symbols[0].name == "handler"
 
     @pytest.mark.asyncio
     async def test_class_expression_with_fields(
@@ -2020,13 +2020,13 @@ const Widget = class {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["name"] == "Widget"
+        assert class_symbols[0].name == "Widget"
 
-        static_fields = [s for s in symbols if s["kind"] == "static_field"]
-        assert any(s["name"] == "count" for s in static_fields)
-        assert all(s["scope"] == "Widget" for s in static_fields)
+        static_fields = [s for s in symbols if s.kind == "static_field"]
+        assert any(s.name == "count" for s in static_fields)
+        assert all(s.scope == "Widget" for s in static_fields)
 
     @pytest.mark.asyncio
     async def test_class_expression_inherits_scope_for_references(
@@ -2042,10 +2042,10 @@ const Child = class extends Parent {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inherit_refs = [r for r in references if r["type"] == "inheritance"]
+        inherit_refs = [r for r in references if r.reference_type == "inheritance"]
         assert len(inherit_refs) == 1
-        assert inherit_refs[0]["text"] == "Parent"
-        assert inherit_refs[0].get("scope") == "Child"
+        assert inherit_refs[0].reference_text == "Parent"
+        assert inherit_refs[0].scope == "Child"
 
 
 class TestTypeScriptMemberAccessReferences:
@@ -2068,8 +2068,8 @@ function test() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "field" in usage_names
 
     @pytest.mark.asyncio
@@ -2086,13 +2086,13 @@ function test() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_names = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_names = [r.reference_text for r in call_refs]
         assert "method" in call_names
 
         # Should NOT also have a usage reference for the same method
         usage_refs = [
-            r for r in references if r["type"] == "usage" and r["text"] == "method"
+            r for r in references if r.reference_type == "usage" and r.reference_text == "method"
         ]
         assert len(usage_refs) == 0
 
@@ -2110,12 +2110,12 @@ function test() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        inst_refs = [r for r in references if r["type"] == "instantiation"]
-        inst_names = [r["text"] for r in inst_refs]
+        inst_refs = [r for r in references if r.reference_type == "instantiation"]
+        inst_names = [r.reference_text for r in inst_refs]
         assert "Foo" in inst_names
 
         usage_refs = [
-            r for r in references if r["type"] == "usage" and r["text"] == "Foo"
+            r for r in references if r.reference_type == "usage" and r.reference_text == "Foo"
         ]
         assert len(usage_refs) == 0
 
@@ -2133,8 +2133,8 @@ function test() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "b" in usage_names
         assert "c" in usage_names
 
@@ -2152,8 +2152,8 @@ function test() {
             content=code, language="javascript", file_path="test.js"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "value" in usage_names
 
 
@@ -2188,8 +2188,8 @@ function paginate(count) {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "MAX_PAGES" in usage_names
 
     @pytest.mark.asyncio
@@ -2208,8 +2208,8 @@ function init() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "config" in usage_names
 
     @pytest.mark.asyncio
@@ -2228,8 +2228,8 @@ function getValue() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "defaultValue" in usage_names
 
     @pytest.mark.asyncio
@@ -2249,8 +2249,8 @@ function copy() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "source" in usage_names
 
     @pytest.mark.asyncio
@@ -2269,8 +2269,8 @@ function test() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "x" not in usage_names
         assert "y" not in usage_names
 
@@ -2290,8 +2290,8 @@ function test() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "undefined" not in usage_names
         assert "console" not in usage_names
 
@@ -2313,10 +2313,10 @@ function main() {
 
         # doWork should appear as a "call" ref, NOT also as a "usage" ref
         call_refs = [
-            r for r in references if r["text"] == "doWork" and r["type"] == "call"
+            r for r in references if r.reference_text == "doWork" and r.reference_type == "call"
         ]
         usage_refs = [
-            r for r in references if r["text"] == "doWork" and r["type"] == "usage"
+            r for r in references if r.reference_text == "doWork" and r.reference_type == "usage"
         ]
         assert len(call_refs) >= 1
         assert len(usage_refs) == 0
@@ -2336,8 +2336,8 @@ const pipeline = [handler, middleware];
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "handler" in usage_names
         assert "middleware" in usage_names
 
@@ -2358,8 +2358,8 @@ function getLevel() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "DEBUG" in usage_names
         assert "verbose" in usage_names
 
@@ -2377,8 +2377,8 @@ const routes = { path: handler };
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         # 'handler' is a value in the object literal — should be usage
         assert "handler" in usage_names
         # 'path' is a key — should NOT be usage
@@ -2402,13 +2402,13 @@ function process() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         # 'items' is used as the iterable — should be a usage ref
         assert "items" in usage_names
         # 'item' should only appear once as usage (from the call argument),
         # not from the binding site
-        item_usage_refs = [r for r in usage_refs if r["text"] == "item"]
+        item_usage_refs = [r for r in usage_refs if r.reference_text == "item"]
         assert len(item_usage_refs) == 1
 
     @pytest.mark.asyncio
@@ -2424,13 +2424,13 @@ const { name, count } = data;
             content=code, language="typescript", file_path="test.ts"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         # 'data' on the RHS is a usage ref
         assert "data" in usage_names
         # 'name' and 'count' in the destructuring pattern are bindings, not usage
-        name_usage = [r for r in usage_refs if r["text"] == "name"]
-        count_usage = [r for r in usage_refs if r["text"] == "count"]
+        name_usage = [r for r in usage_refs if r.reference_text == "name"]
+        count_usage = [r for r in usage_refs if r.reference_text == "count"]
         assert len(name_usage) == 0
         assert len(count_usage) == 0
 
@@ -2458,8 +2458,8 @@ const { Router, Request, Response } = require('express');
             content=code, language="javascript", file_path="test.js"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_names = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_names = [r.reference_text for r in import_refs]
         assert "Router" in import_names
         assert "Request" in import_names
         assert "Response" in import_names
@@ -2477,10 +2477,10 @@ const { readFile } = require('fs');
         )
 
         import_refs = [
-            r for r in references if r["type"] == "import" and r["text"] == "readFile"
+            r for r in references if r.reference_type == "import" and r.reference_text == "readFile"
         ]
         assert len(import_refs) == 1
-        assert import_refs[0].get("from_module") == "fs"
+        assert import_refs[0].metadata.get("from_module") == "fs"
 
     @pytest.mark.asyncio
     async def test_simple_require_not_destructured(
@@ -2494,8 +2494,8 @@ const express = require('express');
             content=code, language="javascript", file_path="test.js"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_names = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_names = [r.reference_text for r in import_refs]
         assert "express" in import_names
 
     @pytest.mark.asyncio
@@ -2510,8 +2510,8 @@ const { join, resolve } = require('path');
             content=code, language="typescript", file_path="test.ts"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_names = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_names = [r.reference_text for r in import_refs]
         assert "join" in import_names
         assert "resolve" in import_names
 
@@ -2525,8 +2525,8 @@ var express = require('express');
             content=code, language="javascript", file_path="test.js"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_names = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_names = [r.reference_text for r in import_refs]
         assert "express" in import_names
 
     @pytest.mark.asyncio
@@ -2541,8 +2541,8 @@ const { readFile: readF, writeFile: writeF } = require('fs');
             content=code, language="javascript", file_path="test.js"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_names = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_names = [r.reference_text for r in import_refs]
         # Should extract the local binding names, not the original keys
         assert "readF" in import_names
         assert "writeF" in import_names
@@ -2580,8 +2580,8 @@ class Logger {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        prop_symbols = [s for s in symbols if s["kind"] == "property"]
-        prop_names = [s["name"] for s in prop_symbols]
+        prop_symbols = [s for s in symbols if s.kind == "property"]
+        prop_names = [s.name for s in prop_symbols]
         assert "level" in prop_names
         assert "messages" in prop_names
 
@@ -2602,9 +2602,9 @@ class Service {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        prop_symbols = [s for s in symbols if s["kind"] == "property"]
+        prop_symbols = [s for s in symbols if s.kind == "property"]
         for prop in prop_symbols:
-            assert prop["scope"] == "Service"
+            assert prop.scope == "Service"
 
     @pytest.mark.asyncio
     async def test_constructor_property_not_duplicated_with_field(
@@ -2626,8 +2626,8 @@ class Timer {
         )
 
         # 'elapsed' is a field, 'start' is a constructor property
-        field_names = [s["name"] for s in symbols if s["kind"] == "field"]
-        prop_names = [s["name"] for s in symbols if s["kind"] == "property"]
+        field_names = [s.name for s in symbols if s.kind == "field"]
+        prop_names = [s.name for s in symbols if s.kind == "property"]
         assert "elapsed" in field_names
         assert "start" in prop_names
         # Constructor assigns this.elapsed but field already declared — no duplicate
@@ -2653,8 +2653,8 @@ class Counter {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        prop_symbols = [s for s in symbols if s["kind"] == "property"]
-        prop_names = [s["name"] for s in prop_symbols]
+        prop_symbols = [s for s in symbols if s.kind == "property"]
+        prop_names = [s.name for s in prop_symbols]
         # 'count' should appear once as property from constructor
         assert prop_names.count("count") == 1
 
@@ -2675,8 +2675,8 @@ class EventEmitter {
             content=code, language="javascript", file_path="test.js"
         )
 
-        prop_symbols = [s for s in symbols if s["kind"] == "property"]
-        prop_names = [s["name"] for s in prop_symbols]
+        prop_symbols = [s for s in symbols if s.kind == "property"]
+        prop_names = [s.name for s in prop_symbols]
         assert "listeners" in prop_names
         assert "maxListeners" in prop_names
 
@@ -2699,8 +2699,8 @@ class Wrapper {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        prop_symbols = [s for s in symbols if s["kind"] == "property"]
-        prop_names = [s["name"] for s in prop_symbols]
+        prop_symbols = [s for s in symbols if s.kind == "property"]
+        prop_names = [s.name for s in prop_symbols]
         # 'name' and 'greet' are direct constructor assignments
         assert "name" in prop_names
         assert "greet" in prop_names
@@ -2730,15 +2730,15 @@ export { foo, bar } from './module'
             content=code, language="typescript", file_path="test.ts"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_names = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_names = [r.reference_text for r in import_refs]
         assert "foo" in import_names
         assert "bar" in import_names
 
         # Each should have from_module set
         for ref in import_refs:
-            if ref["text"] in ("foo", "bar"):
-                assert ref.get("from_module") == "./module"
+            if ref.reference_text in ("foo", "bar"):
+                assert ref.metadata.get("from_module") == "./module"
 
     @pytest.mark.asyncio
     async def test_local_named_export_references(
@@ -2755,13 +2755,13 @@ export { baz }
 
         # baz should appear as a usage reference from the export
         usage_refs = [
-            r for r in references if r["type"] == "usage" and r["text"] == "baz"
+            r for r in references if r.reference_type == "usage" and r.reference_text == "baz"
         ]
         assert len(usage_refs) == 1
 
         # Should NOT have from_module
         for ref in usage_refs:
-            assert ref.get("from_module") is None
+            assert ref.metadata.get("from_module") is None
 
     @pytest.mark.asyncio
     async def test_named_reexport_with_alias(
@@ -2775,8 +2775,8 @@ export { foo as bar } from './module'
             content=code, language="typescript", file_path="test.ts"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_names = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_names = [r.reference_text for r in import_refs]
         # The reference should be to the original name 'foo', not the alias 'bar'
         assert "foo" in import_names
         assert "bar" not in import_names
@@ -2795,7 +2795,7 @@ export default myFunction
         )
 
         usage_refs = [
-            r for r in references if r["type"] == "usage" and r["text"] == "myFunction"
+            r for r in references if r.reference_type == "usage" and r.reference_text == "myFunction"
         ]
         assert len(usage_refs) == 1
 
@@ -2809,10 +2809,10 @@ export * from './utils'
             content=code, language="typescript", file_path="test.ts"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        module_refs = [r for r in import_refs if r["text"] == "./utils"]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        module_refs = [r for r in import_refs if r.reference_text == "./utils"]
         assert len(module_refs) == 1
-        assert module_refs[0].get("from_module") == "./utils"
+        assert module_refs[0].metadata.get("from_module") == "./utils"
 
     @pytest.mark.asyncio
     async def test_namespace_reexport(self, parser_service: TreeSitterService) -> None:
@@ -2824,10 +2824,10 @@ export * as ns from './helpers'
             content=code, language="typescript", file_path="test.ts"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        ns_refs = [r for r in import_refs if r["text"] == "ns"]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        ns_refs = [r for r in import_refs if r.reference_text == "ns"]
         assert len(ns_refs) == 1
-        assert ns_refs[0].get("from_module") == "./helpers"
+        assert ns_refs[0].metadata.get("from_module") == "./helpers"
 
     @pytest.mark.asyncio
     async def test_reexport_no_duplicate_usage_refs(
@@ -2845,7 +2845,7 @@ export { foo, bar } from './module'
         usage_refs = [
             r
             for r in references
-            if r["type"] == "usage" and r["text"] in ("foo", "bar")
+            if r.reference_type == "usage" and r.reference_text in ("foo", "bar")
         ]
         assert len(usage_refs) == 0
 
@@ -2865,8 +2865,8 @@ module.exports = { sync, connect }
             content=code, language="javascript", file_path="test.js"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "sync" in usage_names
         assert "connect" in usage_names
 
@@ -2884,8 +2884,8 @@ const obj = { foo, bar, baz: 3 }
             content=code, language="javascript", file_path="test.js"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "foo" in usage_names
         assert "bar" in usage_names
 
@@ -2902,8 +2902,8 @@ exports.foo = handler
             content=code, language="javascript", file_path="test.js"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "handler" in usage_names
 
     @pytest.mark.asyncio
@@ -2919,8 +2919,8 @@ module.exports = singleFn
             content=code, language="javascript", file_path="test.js"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "singleFn" in usage_names
 
     @pytest.mark.asyncio
@@ -2934,8 +2934,8 @@ module.exports = { ...defaults, override: true }
             content=code, language="javascript", file_path="test.js"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_names = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_names = [r.reference_text for r in usage_refs]
         assert "defaults" in usage_names
 
 
@@ -2960,8 +2960,8 @@ const name = "hello";
             content=code, language="typescript", file_path="test.ts"
         )
 
-        var_symbols = [s for s in symbols if s["kind"] == "variable"]
-        var_names = [s["name"] for s in var_symbols]
+        var_symbols = [s for s in symbols if s.kind == "variable"]
+        var_names = [s.name for s in var_symbols]
         assert "count" in var_names
         assert "name" in var_names
 
@@ -2978,8 +2978,8 @@ let message = "world";
             content=code, language="typescript", file_path="test.ts"
         )
 
-        var_symbols = [s for s in symbols if s["kind"] == "variable"]
-        var_names = [s["name"] for s in var_symbols]
+        var_symbols = [s for s in symbols if s.kind == "variable"]
+        var_names = [s.name for s in var_symbols]
         assert "counter" in var_names
         assert "message" in var_names
 
@@ -2996,8 +2996,8 @@ var label = "test";
             content=code, language="javascript", file_path="test.js"
         )
 
-        var_symbols = [s for s in symbols if s["kind"] == "variable"]
-        var_names = [s["name"] for s in var_symbols]
+        var_symbols = [s for s in symbols if s.kind == "variable"]
+        var_names = [s.name for s in var_symbols]
         assert "total" in var_names
         assert "label" in var_names
 
@@ -3014,13 +3014,13 @@ const count = 0;
             content=code, language="typescript", file_path="test.ts"
         )
 
-        add_sym = [s for s in symbols if s["name"] == "add"]
+        add_sym = [s for s in symbols if s.name == "add"]
         assert len(add_sym) == 1
-        assert add_sym[0]["kind"] == "function"
+        assert add_sym[0].kind == "function"
 
-        count_sym = [s for s in symbols if s["name"] == "count"]
+        count_sym = [s for s in symbols if s.name == "count"]
         assert len(count_sym) == 1
-        assert count_sym[0]["kind"] == "variable"
+        assert count_sym[0].kind == "variable"
 
     @pytest.mark.asyncio
     async def test_upper_case_still_constant_kind(
@@ -3035,13 +3035,13 @@ const count = 0;
             content=code, language="typescript", file_path="test.ts"
         )
 
-        max_sym = [s for s in symbols if s["name"] == "MAX_RETRIES"]
+        max_sym = [s for s in symbols if s.name == "MAX_RETRIES"]
         assert len(max_sym) == 1
-        assert max_sym[0]["kind"] == "constant"
+        assert max_sym[0].kind == "constant"
 
-        count_sym = [s for s in symbols if s["name"] == "count"]
+        count_sym = [s for s in symbols if s.name == "count"]
         assert len(count_sym) == 1
-        assert count_sym[0]["kind"] == "variable"
+        assert count_sym[0].kind == "variable"
 
     @pytest.mark.asyncio
     async def test_exported_variable_declaration(
@@ -3056,8 +3056,8 @@ export let timeout = 3000;
             content=code, language="typescript", file_path="test.ts"
         )
 
-        var_symbols = [s for s in symbols if s["kind"] == "variable"]
-        var_names = [s["name"] for s in var_symbols]
+        var_symbols = [s for s in symbols if s.kind == "variable"]
+        var_names = [s.name for s in var_symbols]
         assert "baseUrl" in var_names
         assert "timeout" in var_names
 
@@ -3075,17 +3075,17 @@ const count = 0;
             content=code, language="javascript", file_path="test.js"
         )
 
-        fn_sym = [s for s in symbols if s["name"] == "fn"]
+        fn_sym = [s for s in symbols if s.name == "fn"]
         assert len(fn_sym) == 1
-        assert fn_sym[0]["kind"] == "function"
+        assert fn_sym[0].kind == "function"
 
-        gen_sym = [s for s in symbols if s["name"] == "gen"]
+        gen_sym = [s for s in symbols if s.name == "gen"]
         assert len(gen_sym) == 1
-        assert gen_sym[0]["kind"] == "function"
+        assert gen_sym[0].kind == "function"
 
-        count_sym = [s for s in symbols if s["name"] == "count"]
+        count_sym = [s for s in symbols if s.name == "count"]
         assert len(count_sym) == 1
-        assert count_sym[0]["kind"] == "variable"
+        assert count_sym[0].kind == "variable"
 
     @pytest.mark.asyncio
     async def test_destructured_object_produces_individual_symbols(
@@ -3100,18 +3100,18 @@ const { MAX_SIZE, name: localName } = config;
             content=code, language="typescript", file_path="test.ts"
         )
 
-        var_symbols = [s for s in symbols if s["kind"] == "variable"]
-        var_names = [s["name"] for s in var_symbols]
+        var_symbols = [s for s in symbols if s.kind == "variable"]
+        var_names = [s.name for s in var_symbols]
         assert "alpha" in var_names
         assert "beta" in var_names
         assert "localName" in var_names
 
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
         assert "MAX_SIZE" in const_names
 
         # Should NOT have a symbol named "{ alpha, beta }"
-        all_names = [s["name"] for s in symbols]
+        all_names = [s.name for s in symbols]
         assert not any("{" in n for n in all_names)
 
     @pytest.mark.asyncio
@@ -3126,8 +3126,8 @@ const [first, second] = getItems();
             content=code, language="typescript", file_path="test.ts"
         )
 
-        var_symbols = [s for s in symbols if s["kind"] == "variable"]
-        var_names = [s["name"] for s in var_symbols]
+        var_symbols = [s for s in symbols if s.kind == "variable"]
+        var_names = [s.name for s in var_symbols]
         assert "first" in var_names
         assert "second" in var_names
 
@@ -3143,8 +3143,8 @@ const { a: { b, c }, d } = obj;
             content=code, language="typescript", file_path="test.ts"
         )
 
-        var_symbols = [s for s in symbols if s["kind"] == "variable"]
-        var_names = [s["name"] for s in var_symbols]
+        var_symbols = [s for s in symbols if s.kind == "variable"]
+        var_names = [s.name for s in var_symbols]
         assert "b" in var_names
         assert "c" in var_names
         assert "d" in var_names
@@ -3177,20 +3177,20 @@ function MyComponent() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        sym_names = [s["name"] for s in symbols]
+        sym_names = [s.name for s in symbols]
         assert "MyComponent" in sym_names
 
-        handler_sym = [s for s in symbols if s["name"] == "handler"]
+        handler_sym = [s for s in symbols if s.name == "handler"]
         assert len(handler_sym) == 1
-        assert handler_sym[0]["kind"] == "function"
+        assert handler_sym[0].kind == "function"
 
-        load_sym = [s for s in symbols if s["name"] == "loadData"]
+        load_sym = [s for s in symbols if s.name == "loadData"]
         assert len(load_sym) == 1
-        assert load_sym[0]["kind"] == "function"
+        assert load_sym[0].kind == "function"
 
-        add_sym = [s for s in symbols if s["name"] == "add"]
+        add_sym = [s for s in symbols if s.name == "add"]
         assert len(add_sym) == 1
-        assert add_sym[0]["kind"] == "function"
+        assert add_sym[0].kind == "function"
 
     @pytest.mark.asyncio
     async def test_nested_arrow_function_in_js_function_body(
@@ -3207,16 +3207,16 @@ function setup() {
             content=code, language="javascript", file_path="test.js"
         )
 
-        sym_names = [s["name"] for s in symbols]
+        sym_names = [s.name for s in symbols]
         assert "setup" in sym_names
 
-        onclick_sym = [s for s in symbols if s["name"] == "onClick"]
+        onclick_sym = [s for s in symbols if s.name == "onClick"]
         assert len(onclick_sym) == 1
-        assert onclick_sym[0]["kind"] == "function"
+        assert onclick_sym[0].kind == "function"
 
-        fetch_sym = [s for s in symbols if s["name"] == "fetchItems"]
+        fetch_sym = [s for s in symbols if s.name == "fetchItems"]
         assert len(fetch_sym) == 1
-        assert fetch_sym[0]["kind"] == "function"
+        assert fetch_sym[0].kind == "function"
 
     @pytest.mark.asyncio
     async def test_nested_arrow_in_arrow_function(
@@ -3233,13 +3233,13 @@ const outer = () => {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        outer_sym = [s for s in symbols if s["name"] == "outer"]
+        outer_sym = [s for s in symbols if s.name == "outer"]
         assert len(outer_sym) == 1
-        assert outer_sym[0]["kind"] == "function"
+        assert outer_sym[0].kind == "function"
 
-        inner_sym = [s for s in symbols if s["name"] == "inner"]
+        inner_sym = [s for s in symbols if s.name == "inner"]
         assert len(inner_sym) == 1
-        assert inner_sym[0]["kind"] == "function"
+        assert inner_sym[0].kind == "function"
 
     @pytest.mark.asyncio
     async def test_nested_regular_variables_also_extracted(
@@ -3257,17 +3257,17 @@ function init() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        max_sym = [s for s in symbols if s["name"] == "MAX_RETRIES"]
+        max_sym = [s for s in symbols if s.name == "MAX_RETRIES"]
         assert len(max_sym) == 1
-        assert max_sym[0]["kind"] == "constant"
+        assert max_sym[0].kind == "constant"
 
-        name_sym = [s for s in symbols if s["name"] == "name"]
+        name_sym = [s for s in symbols if s.name == "name"]
         assert len(name_sym) == 1
-        assert name_sym[0]["kind"] == "variable"
+        assert name_sym[0].kind == "variable"
 
-        handler_sym = [s for s in symbols if s["name"] == "handler"]
+        handler_sym = [s for s in symbols if s.name == "handler"]
         assert len(handler_sym) == 1
-        assert handler_sym[0]["kind"] == "function"
+        assert handler_sym[0].kind == "function"
 
 
 class TestAttributeAccessReceiverReferences:
@@ -3298,13 +3298,13 @@ def process(file_path):
             content=code, language="python", file_path="test.py"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "should_skip" in ref_texts, "method call reference missing"
         assert "FileFilter" in ref_texts, "receiver reference missing"
 
-        ff_ref = [r for r in references if r["text"] == "FileFilter"]
+        ff_ref = [r for r in references if r.reference_text == "FileFilter"]
         assert len(ff_ref) == 1
-        assert ff_ref[0]["type"] == "usage"
+        assert ff_ref[0].reference_type == "usage"
 
     @pytest.mark.asyncio
     async def test_python_variable_method_call_receiver(
@@ -3319,7 +3319,7 @@ def process():
             content=code, language="python", file_path="test.py"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "fetch_data" in ref_texts
         assert "client" in ref_texts, "receiver reference missing"
 
@@ -3336,7 +3336,7 @@ def process():
             content=code, language="python", file_path="test.py"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "value" in ref_texts
         assert "config" in ref_texts, "receiver reference missing"
 
@@ -3354,7 +3354,7 @@ class Foo:
             content=code, language="python", file_path="test.py"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "self" not in ref_texts
 
     # --- TypeScript ---
@@ -3375,7 +3375,7 @@ function process(filePath: string) {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "shouldSkip" in ref_texts, "method call reference missing"
         assert "FileFilter" in ref_texts, "receiver reference missing"
 
@@ -3393,7 +3393,7 @@ function process() {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "value" in ref_texts
         assert "config" in ref_texts, "receiver reference missing"
 
@@ -3413,7 +3413,7 @@ class Foo {
             content=code, language="typescript", file_path="test.ts"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "this" not in ref_texts
 
     # --- Go ---
@@ -3434,7 +3434,7 @@ func process(filter FileFilter) {
             content=code, language="go", file_path="test.go"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "ShouldSkip" in ref_texts, "method call reference missing"
         assert "filter" in ref_texts, "receiver reference missing"
 
@@ -3454,7 +3454,7 @@ func process(config Config) {
             content=code, language="go", file_path="test.go"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "Value" in ref_texts
         assert "config" in ref_texts, "receiver reference missing"
 
@@ -3476,7 +3476,7 @@ public class Main {
             content=code, language="java", file_path="Test.java"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "shouldSkip" in ref_texts, "method call reference missing"
         assert "FileFilter" in ref_texts, "receiver reference missing"
 
@@ -3498,7 +3498,7 @@ public class Main {
             content=code, language="csharp", file_path="Test.cs"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "ShouldSkip" in ref_texts, "method call reference missing"
         assert "FileFilter" in ref_texts, "receiver reference missing"
 
@@ -3518,6 +3518,6 @@ public class Main {
             content=code, language="csharp", file_path="Test.cs"
         )
 
-        ref_texts = [r["text"] for r in references]
+        ref_texts = [r.reference_text for r in references]
         assert "FetchData" in ref_texts
         assert "client" in ref_texts, "receiver reference missing"

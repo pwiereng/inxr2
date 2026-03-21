@@ -1,7 +1,58 @@
-"""Parser service port interfaces."""
+"""Parser service port interfaces and typed return structures."""
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any
+
+
+@dataclass(frozen=True)
+class ParsedSymbol:
+    """A symbol extracted from source code by a parser."""
+
+    name: str
+    kind: str
+    start_line: int
+    start_column: int
+    end_line: int
+    end_column: int
+    scope: str | None = None
+    qualified_name: str | None = None
+    signature: str | None = None
+    docstring: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ParsedReference:
+    """A reference (usage, call, import, etc.) extracted from source code."""
+
+    reference_text: str
+    reference_type: str
+    source_line: int
+    source_column: int
+    source_end_column: int | None = None
+    scope: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ParsedComment:
+    """A comment or docstring extracted from source code."""
+
+    content: str
+    content_type: str
+    source_line: int
+    source_end_line: int | None = None
+
+
+@dataclass(frozen=True)
+class PlaintextChunk:
+    """A searchable chunk of text extracted from a non-code file."""
+
+    content: str
+    content_type: str
+    source_line: int
+    source_end_line: int | None = None
 
 
 class ParserServicePort(ABC):
@@ -27,7 +78,7 @@ class ParserServicePort(ABC):
     @abstractmethod
     async def parse_file(
         self, content: str, language: str, file_path: str
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
         """Parse file content and return extracted symbols and references.
 
         Args:
@@ -36,14 +87,14 @@ class ParserServicePort(ABC):
             file_path: Path to file (for context/error reporting)
 
         Returns:
-            Tuple of (symbols_data, references_data) as lists of dicts
+            Tuple of (symbols, references)
         """
         pass
 
     @abstractmethod
     async def extract_comments(
         self, content: str, language: str, file_path: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[ParsedComment]:
         """Extract comments and docstrings from file content.
 
         Args:
@@ -52,8 +103,8 @@ class ParserServicePort(ABC):
             file_path: Path to file (for context/error reporting)
 
         Returns:
-            List of comment dicts with keys: content, content_type,
-            source_line, source_end_line
+            List of ParsedComment with content, content_type, source_line,
+            source_end_line
         """
         pass
 
@@ -67,6 +118,6 @@ class PlaintextParserPort(ABC):
         pass
 
     @abstractmethod
-    def parse(self, content: str, file_path: str) -> list[dict[str, Any]]:
+    def parse(self, content: str, file_path: str) -> list[PlaintextChunk]:
         """Parse file content into searchable chunks."""
         pass

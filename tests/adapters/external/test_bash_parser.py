@@ -40,9 +40,9 @@ class TestBashFunctionSymbols:
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        funcs = [s for s in symbols if s["kind"] == "function"]
+        funcs = [s for s in symbols if s.kind == "function"]
         assert len(funcs) == 1
-        assert funcs[0]["name"] == "greet"
+        assert funcs[0].name == "greet"
 
     @pytest.mark.asyncio
     async def test_shorthand_function_definition(
@@ -56,9 +56,9 @@ class TestBashFunctionSymbols:
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        funcs = [s for s in symbols if s["kind"] == "function"]
+        funcs = [s for s in symbols if s.kind == "function"]
         assert len(funcs) == 1
-        assert funcs[0]["name"] == "greet"
+        assert funcs[0].name == "greet"
 
     @pytest.mark.asyncio
     async def test_multiple_functions(self, parser_service: TreeSitterService) -> None:
@@ -78,9 +78,9 @@ function run_tests() {
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        funcs = [s for s in symbols if s["kind"] == "function"]
+        funcs = [s for s in symbols if s.kind == "function"]
         assert len(funcs) == 3
-        names = {f["name"] for f in funcs}
+        names = {f.name for f in funcs}
         assert names == {"setup", "teardown", "run_tests"}
 
     @pytest.mark.asyncio
@@ -96,10 +96,10 @@ function run_tests() {
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        funcs = [s for s in symbols if s["kind"] == "function"]
+        funcs = [s for s in symbols if s.kind == "function"]
         assert len(funcs) == 1
-        assert funcs[0]["start_line"] == 1
-        assert funcs[0]["end_line"] == 4
+        assert funcs[0].start_line == 1
+        assert funcs[0].end_line == 4
 
 
 class TestBashVariableSymbols:
@@ -121,8 +121,8 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        variables = [s for s in symbols if s["kind"] == "variable"]
-        names = {v["name"] for v in variables}
+        variables = [s for s in symbols if s.kind == "variable"]
+        names = {v.name for v in variables}
         assert "MY_VAR" in names
         assert "ANOTHER" in names
 
@@ -135,8 +135,8 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        consts = [s for s in symbols if s["kind"] == "constant"]
-        assert any(s["name"] == "MAX_RETRIES" for s in consts)
+        consts = [s for s in symbols if s.kind == "constant"]
+        assert any(s.name == "MAX_RETRIES" for s in consts)
 
     @pytest.mark.asyncio
     async def test_export_variable(self, parser_service: TreeSitterService) -> None:
@@ -145,7 +145,7 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        variables = [s for s in symbols if s["name"] == "PATH"]
+        variables = [s for s in symbols if s.name == "PATH"]
         assert len(variables) >= 1
 
     @pytest.mark.asyncio
@@ -162,10 +162,10 @@ ANOTHER=42
             content=code, language="bash", file_path="test.sh"
         )
         locals_ = [
-            s for s in symbols if s["kind"] == "variable" and s["name"] == "name"
+            s for s in symbols if s.kind == "variable" and s.name == "name"
         ]
         assert len(locals_) == 1
-        assert locals_[0]["scope"] == "greet"
+        assert locals_[0].scope == "greet"
 
     @pytest.mark.asyncio
     async def test_declare_r_is_constant(
@@ -176,8 +176,8 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        consts = [s for s in symbols if s["kind"] == "constant"]
-        assert any(s["name"] == "CONST_VAR" for s in consts)
+        consts = [s for s in symbols if s.kind == "constant"]
+        assert any(s.name == "CONST_VAR" for s in consts)
 
     @pytest.mark.asyncio
     async def test_declare_x_is_variable(
@@ -188,8 +188,8 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        variables = [s for s in symbols if s["kind"] == "variable"]
-        assert any(s["name"] == "EXPORTED" for s in variables)
+        variables = [s for s in symbols if s.kind == "variable"]
+        assert any(s.name == "EXPORTED" for s in variables)
 
     @pytest.mark.asyncio
     async def test_multi_variable_export(
@@ -200,7 +200,7 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        names = {s["name"] for s in symbols if s["kind"] == "variable"}
+        names = {s.name for s in symbols if s.kind == "variable"}
         assert "A" in names
         assert "B" in names
 
@@ -213,7 +213,7 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        consts = {s["name"] for s in symbols if s["kind"] == "constant"}
+        consts = {s.name for s in symbols if s.kind == "constant"}
         assert "X" in consts
         assert "Y" in consts
 
@@ -224,7 +224,7 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        names = {s["name"] for s in symbols if s["kind"] == "variable"}
+        names = {s.name for s in symbols if s.kind == "variable"}
         assert "FOO" in names
 
     @pytest.mark.asyncio
@@ -234,7 +234,7 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        consts = {s["name"] for s in symbols if s["kind"] == "constant"}
+        consts = {s.name for s in symbols if s.kind == "constant"}
         assert "BAR" in consts
 
     @pytest.mark.asyncio
@@ -246,7 +246,7 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        consts = {s["name"] for s in symbols if s["kind"] == "constant"}
+        consts = {s.name for s in symbols if s.kind == "constant"}
         assert "COMBO" in consts
 
     @pytest.mark.asyncio
@@ -261,8 +261,8 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        consts = [s for s in symbols if s["kind"] == "constant"]
-        assert any(s["name"] == "CONST_VAL" for s in consts)
+        consts = [s for s in symbols if s.kind == "constant"]
+        assert any(s.name == "CONST_VAL" for s in consts)
 
     @pytest.mark.asyncio
     async def test_bare_local_in_function(
@@ -278,9 +278,9 @@ ANOTHER=42
             content=code, language="bash", file_path="test.sh"
         )
         local_names = {
-            s["name"]
+            s.name
             for s in symbols
-            if s["kind"] == "variable" and s.get("scope") == "init"
+            if s.kind == "variable" and s.scope == "init"
         }
         assert "foo" in local_names
         assert "bar" in local_names
@@ -299,9 +299,9 @@ ANOTHER=42
             content=code, language="bash", file_path="test.sh"
         )
         local_names = {
-            s["name"]
+            s.name
             for s in symbols
-            if s["kind"] == "variable" and s.get("scope") == "setup"
+            if s.kind == "variable" and s.scope == "setup"
         }
         assert "a" in local_names
         assert "b" in local_names
@@ -325,13 +325,13 @@ ANOTHER=42
             content=code, language="bash", file_path="test.sh"
         )
         # local_var should be scoped to init
-        local_syms = [s for s in symbols if s["name"] == "local_var"]
+        local_syms = [s for s in symbols if s.name == "local_var"]
         assert len(local_syms) == 1
-        assert local_syms[0].get("scope") == "init"
+        assert local_syms[0].scope == "init"
 
         # GLOBAL_VAR should not appear as a function-scoped symbol
         global_syms = [
-            s for s in symbols if s["name"] == "GLOBAL_VAR" and s.get("scope") == "init"
+            s for s in symbols if s.name == "GLOBAL_VAR" and s.scope == "init"
         ]
         assert len(global_syms) == 0
 
@@ -344,7 +344,7 @@ ANOTHER=42
         _, refs = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        calls = [r for r in refs if r["text"] == "expr" and r["type"] == "call"]
+        calls = [r for r in refs if r.reference_text == "expr" and r.reference_type == "call"]
         assert len(calls) == 1
 
 
@@ -367,7 +367,7 @@ echo $MY_VAR
         _, refs = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        usage = [r for r in refs if r["text"] == "MY_VAR" and r["type"] == "usage"]
+        usage = [r for r in refs if r.reference_text == "MY_VAR" and r.reference_type == "usage"]
         assert len(usage) >= 1
 
     @pytest.mark.asyncio
@@ -381,7 +381,7 @@ echo "${MY_VAR}"
         _, refs = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        usage = [r for r in refs if r["text"] == "MY_VAR" and r["type"] == "usage"]
+        usage = [r for r in refs if r.reference_text == "MY_VAR" and r.reference_type == "usage"]
         assert len(usage) >= 1
 
     @pytest.mark.asyncio
@@ -393,7 +393,7 @@ echo "${MY_VAR}"
         _, refs = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        usage = [r for r in refs if r["text"] == "MY_VAR" and r["type"] == "usage"]
+        usage = [r for r in refs if r.reference_text == "MY_VAR" and r.reference_type == "usage"]
         assert len(usage) == 1
 
     @pytest.mark.asyncio
@@ -407,7 +407,7 @@ greet
         _, refs = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        calls = [r for r in refs if r["text"] == "greet" and r["type"] == "call"]
+        calls = [r for r in refs if r.reference_text == "greet" and r.reference_type == "call"]
         assert len(calls) >= 1
 
     @pytest.mark.asyncio
@@ -419,9 +419,9 @@ greet
         _, refs = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        imports = [r for r in refs if r["type"] == "import"]
+        imports = [r for r in refs if r.reference_type == "import"]
         assert len(imports) == 2
-        import_texts = {r["text"] for r in imports}
+        import_texts = {r.reference_text for r in imports}
         assert "./lib.sh" in import_texts
         assert "./utils.sh" in import_texts
 
@@ -439,7 +439,7 @@ greet
         special = [
             r
             for r in refs
-            if r["text"] in ("1", "2", "@", "#", "?", "$") and r["type"] == "usage"
+            if r.reference_text in ("1", "2", "@", "#", "?", "$") and r.reference_type == "usage"
         ]
         assert len(special) == 0
 
@@ -458,7 +458,7 @@ pwd
         builtins = [
             r
             for r in refs
-            if r["text"] in ("echo", "cd", "pwd") and r["type"] == "call"
+            if r.reference_text in ("echo", "cd", "pwd") and r.reference_type == "call"
         ]
         assert len(builtins) == 0
 
@@ -473,7 +473,7 @@ pwd
             content=code, language="bash", file_path="test.sh"
         )
         calls = [
-            r for r in refs if r["text"] == "my_custom_func" and r["type"] == "call"
+            r for r in refs if r.reference_text == "my_custom_func" and r.reference_type == "call"
         ]
         assert len(calls) == 1
 
@@ -490,10 +490,10 @@ pwd
             content=code, language="bash", file_path="test.sh"
         )
         config_refs = [
-            r for r in refs if r["text"] == "CONFIG_PATH" and r["type"] == "usage"
+            r for r in refs if r.reference_text == "CONFIG_PATH" and r.reference_type == "usage"
         ]
         assert len(config_refs) == 1
-        assert config_refs[0].get("scope") == "setup"
+        assert config_refs[0].scope == "setup"
 
 
 class TestBashComments:
@@ -514,7 +514,7 @@ MY_VAR=1
             content=code, language="bash", file_path="test.sh"
         )
         assert len(comments) >= 1
-        assert any(c["content"] == "This is a comment" for c in comments)
+        assert any(c.content == "This is a comment" for c in comments)
 
     @pytest.mark.asyncio
     async def test_shebang_extracted_as_comment(
@@ -527,7 +527,7 @@ echo "hello"
         comments = await parser_service.extract_comments(
             content=code, language="bash", file_path="test.sh"
         )
-        shebang = [c for c in comments if "bin/bash" in c["content"]]
+        shebang = [c for c in comments if "bin/bash" in c.content]
         assert len(shebang) == 1
 
     @pytest.mark.asyncio
@@ -542,7 +542,7 @@ echo "hello"
         comments = await parser_service.extract_comments(
             content=code, language="bash", file_path="test.sh"
         )
-        assert all(c["content"] for c in comments)
+        assert all(c.content for c in comments)
 
 
 class TestBashComplexStructures:
@@ -581,25 +581,25 @@ setup
         )
 
         # Check symbols
-        funcs = [s for s in symbols if s["kind"] == "function"]
+        funcs = [s for s in symbols if s.kind == "function"]
         assert len(funcs) == 2
-        func_names = {f["name"] for f in funcs}
+        func_names = {f.name for f in funcs}
         assert func_names == {"log", "setup"}
 
-        consts = [s for s in symbols if s["kind"] == "constant"]
-        assert any(s["name"] == "CONFIG_DIR" for s in consts)
+        consts = [s for s in symbols if s.kind == "constant"]
+        assert any(s.name == "CONFIG_DIR" for s in consts)
 
-        variables = [s for s in symbols if s["kind"] == "variable"]
-        var_names = {v["name"] for v in variables}
+        variables = [s for s in symbols if s.kind == "variable"]
+        var_names = {v.name for v in variables}
         assert "LOG_LEVEL" in var_names
         assert "VERSION" in var_names
 
         # Check references
-        imports = [r for r in refs if r["type"] == "import"]
-        assert any(r["text"] == "./config.sh" for r in imports)
+        imports = [r for r in refs if r.reference_type == "import"]
+        assert any(r.reference_text == "./config.sh" for r in imports)
 
-        calls = [r for r in refs if r["type"] == "call"]
-        call_names = {c["text"] for c in calls}
+        calls = [r for r in refs if r.reference_type == "call"]
+        call_names = {c.reference_text for c in calls}
         assert "log" in call_names
         assert "setup" in call_names
 
@@ -644,6 +644,6 @@ class TestBashEdgeCases:
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="script.bash"
         )
-        funcs = [s for s in symbols if s["kind"] == "function"]
+        funcs = [s for s in symbols if s.kind == "function"]
         assert len(funcs) == 1
-        assert funcs[0]["name"] == "hello"
+        assert funcs[0].name == "hello"

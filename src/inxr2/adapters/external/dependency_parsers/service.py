@@ -1,9 +1,8 @@
 """Dependency parser service — dispatches to per-language parsers."""
 
 import logging
-from typing import Any
 
-from ....application.ports.services import DependencyParserServicePort
+from ....application.ports.services import DependencyParserServicePort, ParsedDependency
 from .base import BaseDependencyParser
 from .csharp_deps import CSharpDependencyParser
 from .go_deps import GoDependencyParser
@@ -42,14 +41,27 @@ class DependencyParserService(DependencyParserServicePort):
         parsers = self._ensure_initialized()
         return any(p.supports_file(file_path) for p in parsers)
 
-    def parse(self, content: str, file_path: str) -> list[dict[str, Any]]:
+    def parse(self, content: str, file_path: str) -> list[ParsedDependency]:
         """Parse a manifest/lock file, delegating to the appropriate parser."""
         parsers = self._ensure_initialized()
 
         for parser in parsers:
             if parser.supports_file(file_path):
                 try:
-                    return parser.parse(content, file_path)
+                    raw_deps = parser.parse(content, file_path)
+                    return [
+                        ParsedDependency(
+                            package_name=d["package_name"],
+                            language=d["language"],
+                            version_spec=d.get("version_spec"),
+                            resolved_version=d.get("resolved_version"),
+                            dependency_type=d.get("dependency_type", "runtime"),
+                            is_direct=d.get("is_direct", True),
+                            extras=d.get("extras"),
+                            source_line=d.get("source_line"),
+                        )
+                        for d in raw_deps
+                    ]
                 except Exception:
                     logger.exception(
                         "Failed to parse dependency file %s with %s",
