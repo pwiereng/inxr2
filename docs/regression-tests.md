@@ -44,6 +44,31 @@ This is because `localhost` inside the playwright container refers to itself, no
 
 All `docker exec` commands (git, API curls inside the dev container) still use `localhost` since the backend listens inside that container.
 
+## Browse URL Format
+
+**Critical:** Browse URLs always use this exact structure:
+
+```
+/browse/{repo}/{filepath}?branch={branch}
+```
+
+- `{repo}` — repository name (e.g. `inxr2`)
+- `{filepath}` — file path **without any branch prefix** (e.g. `src/inxr2/domain/entities.py`)
+- `{branch}` — branch name goes in the **`?branch=` query param**, never in the path
+
+**Correct:**
+```bash
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/inxr2/src/inxr2/domain/entities.py?branch=main"
+```
+
+**Wrong — branch must NOT be a path segment:**
+```bash
+# BAD: "main" is in the path — this will return "File not found"
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/inxr2/main/src/inxr2/domain/entities.py"
+```
+
+When substituting `<repo>`, `<file>`, and `<branch>` placeholders in test steps below, always verify the resulting URL matches the correct pattern before navigating.
+
 ---
 
 # Phase 1: Indexing Regression
