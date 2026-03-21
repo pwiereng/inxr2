@@ -334,13 +334,13 @@ class TreeSitterService(ParserServicePort):
 
         try:
             raw_symbols, raw_references = language_parser.extract(tree.root_node, content)
+            symbols = [self._dict_to_parsed_symbol(s) for s in raw_symbols]
+            references = [self._dict_to_parsed_reference(r) for r in raw_references]
         except (AttributeError, IndexError, KeyError, TypeError, RuntimeError) as e:
-            # AST traversal errors from unexpected node structures
+            # AST traversal errors from unexpected node structures or malformed dicts
             logger.error("Failed to extract symbols from %s: %s", file_path, e)
             return [], []
 
-        symbols = [self._dict_to_parsed_symbol(s) for s in raw_symbols]
-        references = [self._dict_to_parsed_reference(r) for r in raw_references]
         return symbols, references
 
     async def extract_comments(
@@ -386,9 +386,8 @@ class TreeSitterService(ParserServicePort):
 
         try:
             raw_comments = language_parser.extract_comments(tree.root_node, content)
+            return [self._dict_to_parsed_comment(c) for c in raw_comments]
         except (AttributeError, IndexError, KeyError, TypeError, RuntimeError) as e:
-            # AST traversal errors from unexpected node structures
+            # AST traversal errors from unexpected node structures or malformed dicts
             logger.error("Failed to extract comments from %s: %s", file_path, e)
             return []
-
-        return [self._dict_to_parsed_comment(c) for c in raw_comments]
