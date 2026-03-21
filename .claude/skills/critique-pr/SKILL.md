@@ -222,7 +222,11 @@ For every issue you previously raised, determine one of:
 - ⚠️ **Partially addressed** — something changed but the concern is not fully resolved; explain what remains
 - ❌ **Not addressed** — the code is unchanged or the fix introduces a new problem; explain concisely
 
-Also do a **fresh scan** of the updated diff for any new issues introduced by the fix commits (regressions, new bugs, new code that wasn't in the original diff).
+## Step 5bR: Fresh Full Scan
+
+Treat the PR as if you are seeing it for the first time. Re-read the **full diff** and all changed files end-to-end with fresh eyes — do not rely on memory of the first review. Apply the same checklist from Step 5 (Bugs, Architecture, Tests, Type Safety, Error Handling, Security, Code Quality) across the entire change set.
+
+The goal is to catch anything that was missed in the first review pass, regardless of whether it was introduced before or after the fix commits. Flag any issues found here as new findings in the re-review body.
 
 ## Step 6R: Post Follow-up Review
 
