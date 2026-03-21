@@ -91,9 +91,7 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
             pass  # Never let logging failure affect tool response
 
     @server.call_tool()
-    async def call_tool(
-        name: str, arguments: dict
-    ) -> list[TextContent] | CallToolResult:
+    async def call_tool(name: str, arguments: dict) -> CallToolResult:
         tool_module = TOOL_MAP.get(name)
         if not tool_module:
             return CallToolResult(
@@ -148,7 +146,10 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
                 content=[TextContent(type="text", text=f"Error: {error}")],
                 isError=True,
             )
-        return [TextContent(type="text", text=result)]  # type: ignore[arg-type]
+        return CallToolResult(
+            content=[TextContent(type="text", text=result)],  # type: ignore[arg-type]
+            isError=False,
+        )
 
     return server
 

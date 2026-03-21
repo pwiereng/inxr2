@@ -1937,10 +1937,16 @@ class TestServerCreation:
             method="tools/call",
             params=CallToolRequestParams(name="nonexistent_tool", arguments={}),
         )
+        # NOTE: server.request_handlers is an internal attribute of the MCP SDK's
+        # Server class. There is no public test-client API; this is the least-bad
+        # option for exercising the full dispatch path. If the SDK reorganises its
+        # handler registry this will raise AttributeError unrelated to the behaviour
+        # under test — update the accessor if that happens.
         handler = server.request_handlers[type(req)]
         result = await handler(req)
 
         assert result.root.isError is True
+        assert result.root.content, "expected non-empty content in error result"
         assert "Unknown tool" in result.root.content[0].text
 
     async def test_invalid_repository_sets_is_error(self) -> None:
@@ -1959,6 +1965,7 @@ class TestServerCreation:
                 arguments={"query": "foo", "repository": "nonexistent"},
             ),
         )
+        # NOTE: see test_unknown_tool_sets_is_error for why we use request_handlers.
         handler = server.request_handlers[type(req)]
         result = await handler(req)
 
@@ -1980,8 +1987,10 @@ class TestServerCreation:
                 arguments={"query": "foo", "commit": "abc1234"},
             ),
         )
+        # NOTE: see test_unknown_tool_sets_is_error for why we use request_handlers.
         handler = server.request_handlers[type(req)]
         result = await handler(req)
 
         assert result.root.isError is True
+        assert result.root.content, "expected non-empty content in error result"
         assert "'commit' requires 'repository'" in result.root.content[0].text
