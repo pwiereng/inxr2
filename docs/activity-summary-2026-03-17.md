@@ -1,0 +1,121 @@
+# INXR2 Project Activity Summary
+
+Generated: 2026-03-17
+
+## Commit History by Day
+
+| Date | Commits | Added | Deleted | Net | Notes |
+|------|---------|-------|---------|-----|-------|
+| 2025-12-29 | 3 | +3,706 | -3 | +3,703 | Project kickoff |
+| 2025-12-31 | 3 | +842 | -36 | +806 | |
+| 2026-01-01 | 2 | +2,481 | -88 | +2,393 | |
+| 2026-01-02 | 4 | +1,650 | -386 | +1,264 | |
+| 2026-01-04 | 1 | +5,080 | -279 | +4,801 | DB foundation |
+| 2026-01-05 | 5 | +3,999 | -455 | +3,544 | File indexing |
+| 2026-01-10 | 1 | +3,111 | -286 | +2,825 | CLI engine |
+| 2026-01-11 | 6 | +3,764 | -491 | +3,273 | Browser UI |
+| 2026-01-12 | 3 | +1,386 | -42 | +1,344 | |
+| 2026-01-13 | 1 | +1,281 | -121 | +1,160 | Config system |
+| 2026-01-16 | 4 | +2,099 | -468 | +1,631 | |
+| 2026-01-17 | 12 | +3,228 | -1,075 | +2,153 | Time travel |
+| 2026-01-18 | 8 | +6,417 | -2,029 | +4,388 | |
+| 2026-01-19 | 3 | +259 | -132 | +127 | |
+| 2026-01-20 | 7 | +2,025 | -224 | +1,801 | URL state |
+| 2026-01-24 | 13 | +4,360 | -1,000 | +3,360 | Multi-branch |
+| 2026-01-25 | 20 | +10,849 | -1,853 | +8,996 | Biggest day (lines) |
+| 2026-01-26 | 8 | +1,729 | -92 | +1,637 | |
+| 2026-01-27 | 4 | +542 | -309 | +233 | |
+| 2026-01-29 | 1 | +186 | -6 | +180 | |
+| 2026-01-30 | 3 | +107 | -28 | +79 | |
+| 2026-01-31 | 27 | +9,309 | -1,407 | +7,902 | |
+| 2026-02-01 | 19 | +3,983 | -1,397 | +2,586 | |
+| 2026-02-02 | 15 | +8,771 | -170 | +8,601 | |
+| 2026-02-03 | 2 | +3,765 | -10 | +3,755 | |
+| 2026-02-04 | 3 | +3,581 | -134 | +3,447 | |
+| 2026-02-05 | 1 | +2,118 | -926 | +1,192 | |
+| 2026-02-07 | 27 | +6,115 | -1,481 | +4,634 | |
+| 2026-02-08 | 18 | +7,494 | -3,520 | +3,974 | |
+| 2026-02-10 | 12 | +3,195 | -198 | +2,997 | |
+| 2026-02-11 | 7 | +92 | -124 | -32 | Only net-negative day |
+| 2026-02-14 | 37 | +3,697 | -2,125 | +1,572 | |
+| 2026-02-15 | 23 | +7,146 | -5,131 | +2,015 | |
+| 2026-02-16 | 19 | +1,688 | -233 | +1,455 | |
+| 2026-02-17 | 9 | +1,042 | -126 | +916 | |
+| 2026-02-18 | 20 | +1,774 | -574 | +1,200 | |
+| 2026-02-19 | 2 | +5 | -1 | +4 | |
+| 2026-02-21 | 47 | +4,536 | -1,298 | +3,238 | Parallel worktrees, most commits/day |
+| 2026-02-22 | 40 | +3,836 | -1,251 | +2,585 | |
+| 2026-02-23 | 16 | +2,991 | -2,027 | +964 | |
+| 2026-02-24 | 26 | +2,642 | -1,226 | +1,416 | C++ support, bash support |
+| 2026-02-25 | 20 | +4,113 | -1,658 | +2,455 | |
+| 2026-02-26 | 17 | +4,122 | -1,434 | +2,688 | |
+| 2026-02-27 | 23 | +1,478 | -245 | +1,233 | |
+| 2026-02-28 | 30 | +4,758 | -3,382 | +1,376 | |
+| 2026-03-01 | 36 | +3,768 | -641 | +3,127 | Class expressions, symbol search scoping |
+| 2026-03-02 | 14 | +2,220 | -591 | +1,629 | |
+| 2026-03-03 | 10 | +597 | -57 | +540 | Shorthand property refs fix |
+| 2026-03-04 | 38 | +2,631 | -953 | +1,678 | Architecture review, 10 PRs merged |
+| 2026-03-05 | 10 | +504 | -49 | +455 | Copy-to-clipboard, resizable panels |
+| 2026-03-06 | 15 | +2,956 | -831 | +2,125 | MCP server launch, browser links |
+| 2026-03-07 | 44 | +11,298 | -1,597 | +9,701 | Logical View, Dependencies, search filters |
+| 2026-03-08 | 34 | +4,682 | -473 | +4,209 | Go/Ruby deps, regression testing |
+| 2026-03-09 | 19 | +1,468 | -441 | +1,027 | Security hardening |
+| 2026-03-10 | 20 | +1,392 | -275 | +1,117 | Resolution scaling fix |
+| 2026-03-11 | 21 | +2,621 | -238 | +2,383 | Breadcrumb nav, error handling |
+| 2026-03-12 | 21 | +1,235 | -451 | +784 | Directory listing enhancements |
+| 2026-03-14 | 26 | +1,753 | -391 | +1,362 | Dep search fix, commit nav buttons |
+| 2026-03-15 | 32 | +7,746 | -298 | +7,448 | File renames, diff rename support |
+| 2026-03-16 | 30 | +6,035 | -446 | +5,589 | Activity log, merge indexing fix |
+| 2026-03-17 | 21 | +1,673 | -65 | +1,608 | explain_symbol, docstrings, global search |
+| **TOTAL** | **973** | **203,931** | **47,278** | **+156,653** | |
+
+- Days active: 61
+- Avg/day: ~16 commits, +3,343 added, +2,568 net
+
+## Key Observations
+
+- 156,653 net lines across 973 commits over 61 active days
+- ~2,568 net lines/day average
+- Jan 25 remains the biggest single day by lines added (+10,849)
+- Feb 21 remains the busiest day by commit count (47 commits)
+- Mar 7 remains the biggest net-lines day (+9,701 net)
+- Feb 11 remains the only net-negative day (pure cleanup/deletion)
+- 93 new commits since last summary (880 → 973) over 4 active days
+
+## Recent Activity (since last summary 2026-03-14)
+
+- File rename tracking via git diff --find-renames (#342)
+- Diff viewer rename following across rename boundary (#357)
+- Configurable indexing filters — min_refs, min_symbols (#356)
+- Commit navigation buttons (forward/back) (#341)
+- Search commit hash filter (#344)
+- Fix: incremental indexing skipped merged feature-branch commits (#360/#338)
+- Fix: module-level constants (UPPER_CASE) now clickable in browser (#359)
+- Activity log: structured HTTP + MCP request logging with /activity UI (#362)
+- MCP explain_symbol tool — rich context for AI assistants (#366/#241)
+- Symbol docstrings now populated from Python parser (#367/#364)
+- Global "All repositories" search pinned at top of dropdown (#365/#291)
+- Database schema v7.0 documented (query_log table, type corrections)
+- 12 PRs merged in 4 days
+- Test count: 1,948 (backend) + frontend + MCP all passing
+
+## Commit Breakdown by Type (as of 2026-03-17, 973 commits on main)
+
+| Category | Commits | % Commits |
+|----------|---------|-----------|
+| bugfix | 459 | 47.2% |
+| merge | 180 | 18.5% |
+| feature | 129 | 13.3% |
+| docs | 72 | 7.4% |
+| refactor | 61 | 6.3% |
+| other | 40 | 4.1% |
+| testing | 17 | 1.7% |
+| perf | 10 | 1.0% |
+| chore | 5 | 0.5% |
+| **TOTAL** | **973** | **100.0%** |
+
+- 93 new commits since last summary (880 → 973) over 4 active days
+- Feature commits grew from 117 to 129 (+10%) — MCP tools, activity log, UI improvements
+- Bug fixes at 47.2% — continued iterative quality improvement
+- Docs grew from 62 to 72 — schema v7.0, regression tests, HELP.md updates
+- Refactor decreased from 77 to 61 — consolidation complete
