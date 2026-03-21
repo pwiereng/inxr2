@@ -1,6 +1,6 @@
 ---
 name: critique-pr
-description: "Independent code review of a PR authored by another Claude session. Reads the diff, reviews for bugs/architecture/tests/style, and posts comments directly to the GitHub PR. Does NOT fix anything."
+description: "Independent code review of a PR authored by another Claude session. Reads the diff, reviews for bugs/architecture/tests/style, and posts comments directly to the GitHub PR. On re-runs, checks whether prior review comments were addressed and posts a follow-up verdict. Does NOT fix anything."
 user-invocable: true
 argument-hint: "<PR number>"
 ---
@@ -17,15 +17,29 @@ gh pr list --state open --json number,title,headRefName
 ```
 and ask the user which PR to review.
 
-## Step 2: Fetch PR Context
+## Step 2: Detect Mode — First Review or Re-review
+
+Check whether you have already posted a review on this PR:
 
 ```bash
 PR=$ARGUMENTS
+gh pr view $PR --json reviews --jq '.reviews[] | select(.author.login == "pwiereng") | {id, submittedAt, state}'
+```
 
+- **No prior reviews from you** → run **First Review Mode** (Steps 3–7)
+- **Prior reviews exist** → run **Re-review Mode** (Steps 3R–7R)
+
+---
+
+## FIRST REVIEW MODE
+
+## Step 3: Fetch PR Context
+
+```bash
 # PR metadata
-gh pr view $PR --json number,title,body,headRefName,headSha,baseRefName,additions,deletions,changedFiles
+gh pr view $PR --json number,title,body,headRefName,headRefOid,baseRefName,additions,deletions,changedFiles
 
-# Files changed (names only for overview)
+# Files changed
 gh pr view $PR --json files --jq '.files[].path'
 
 # Full diff
@@ -34,14 +48,14 @@ gh pr diff $PR
 
 Read the PR title and description carefully — the description explains intent.
 
-## Step 3: Read Relevant Source Files
+## Step 4: Read Relevant Source Files
 
-For each changed file, read the **full file** (not just the diff) to understand context:
+For each changed file, read the **full file** (not just the diff) from the PR branch to understand context:
 - What class/module does it belong to?
 - What layer of Clean Architecture is it in?
 - What are the surrounding functions doing?
 
-Also read related files that the changes interact with (e.g., if a use case changes, read its port interface and any callers).
+Also read related files the changes interact with (e.g., if a use case changes, read its port interface and callers).
 
 Use MCP tools when helpful:
 ```bash
@@ -62,7 +76,7 @@ asyncio.run(call(\"find_references\", {\"name\": \"SymbolName\", \"repository\":
 "'
 ```
 
-## Step 4: Review — What to Look For
+## Step 5: Review — What to Look For
 
 Review each changed file systematically. Flag issues in these categories:
 
@@ -110,80 +124,146 @@ Review each changed file systematically. Flag issues in these categories:
 - Magic numbers/strings that should be named constants
 - Misleading variable or function names
 
-## Step 5: Draft Review Comments
+## Step 6: Draft Review Comments
 
 For each issue found, prepare an inline comment:
 - **File path** (relative to repo root)
-- **Line number** (from the diff — use the new file's line number)
-- **Comment body**: be specific and constructive. Describe the problem clearly. If it's a rule violation, cite the rule. Do NOT provide the fix — just explain what's wrong and why it matters.
+- **Line number** (use the new file's line number — verify against the PR branch with `git show origin/<branch>:<file> | grep -n ...`)
+- **Comment body**: be specific and constructive. Describe the problem. Do NOT provide the fix.
 
-Format your draft internally as:
-```
-FILE: src/inxr2/foo.py
-LINE: 42
-ISSUE: The `items` variable is not checked for None before iteration on line 42.
-If the API returns null instead of an empty list, this will raise a TypeError.
-Per the project's error handling guidelines, validate at system boundaries.
-```
+Also prepare an **overall review summary** (1-3 paragraphs).
 
-Also prepare an **overall review summary** (1-3 paragraphs): what the PR does, general assessment, and a brief overview of the issues found.
+## Step 7: Post Review to GitHub
 
-## Step 6: Post Review to GitHub
-
-Get the head commit SHA for the review:
 ```bash
-HEAD_SHA=$(gh pr view $PR --json headSha --jq '.headSha')
+HEAD_SHA=$(gh pr view $PR --json headRefOid --jq '.headRefOid')
 ```
 
-Post a single review with all inline comments using the GitHub API:
+Post using the GitHub API with a JSON input file (use `--input` to avoid shell quoting issues with multi-line bodies):
 
 ```bash
 gh api repos/pwiereng/inxr2/pulls/$PR/reviews \
   -X POST \
   -H "Accept: application/vnd.github+json" \
-  --field commit_id="$HEAD_SHA" \
-  --field body="<OVERALL SUMMARY>" \
-  --field event="COMMENT" \
-  --field "comments[][path]"="src/inxr2/foo.py" \
-  --field "comments[][line]"=42 \
-  --field "comments[][body]"="<COMMENT TEXT>" \
-  --field "comments[][path]"="src/inxr2/bar.py" \
-  --field "comments[][line]"=17 \
-  --field "comments[][body]"="<COMMENT TEXT>"
+  --input /workspace/.tmp/pr${PR}-review.json
 ```
 
-**Important notes for posting:**
-- Use `--field` (not `-f`) for each array entry so gh handles encoding correctly
-- `event` must be `"COMMENT"` (not `"REQUEST_CHANGES"` or `"APPROVE"`) — you are a reviewer, not a gatekeeper
-- Line numbers must be lines that appear in the diff (added or unchanged context lines). If a line is not in the diff, use the nearest line that is, and note the actual location in the comment body.
-- If the API call fails due to a line not being in the diff, split into separate reviews or adjust line numbers.
+Where the JSON file contains:
+```json
+{
+  "commit_id": "<HEAD_SHA>",
+  "body": "<OVERALL SUMMARY>",
+  "event": "COMMENT",
+  "comments": [
+    {"path": "src/inxr2/foo.py", "line": 42, "body": "<COMMENT>"},
+    {"path": "src/inxr2/bar.py", "line": 17, "body": "<COMMENT>"}
+  ]
+}
+```
 
-If there are too many comments to fit cleanly in one API call, post a second review for the remainder.
+**Important:**
+- `event` must be `"COMMENT"` — never `"REQUEST_CHANGES"` or `"APPROVE"`
+- Line numbers must be lines present in the diff (added or unchanged context lines)
+- If a line number is rejected (422 error), verify with `git show origin/<branch>:<file> | grep -n` and adjust
+- Save the JSON to `.tmp/pr${PR}-review.json` in the project root (gitignored)
 
-## Step 7: Confirm and Report
-
-After posting, verify the review was created:
+Verify after posting:
 ```bash
 gh pr view $PR --json reviews --jq '.reviews[-1]'
 ```
 
 Report to the user:
-- How many inline comments were posted
-- A brief summary of the top issues found
-- The PR URL for reference
-
 ```
 ---
 🔍 **Code Review posted on PR #<number>:** <url>
    <N> inline comments | event: COMMENT
-   Top issues: <1-line summary of most important findings>
+   Top issues: <1-line summary>
 ```
 
-## Constraints
+---
+
+## RE-REVIEW MODE
+
+Triggered when prior reviews from you already exist on this PR.
+
+## Step 3R: Fetch Prior Review Comments
+
+Retrieve everything you previously flagged:
+
+```bash
+# Get all review comment bodies you posted (inline comments)
+gh api repos/pwiereng/inxr2/pulls/$PR/comments \
+  --jq '[.[] | select(.user.login == "pwiereng") | {id, path, line, body, created_at}]'
+
+# Get your prior review bodies (overall summaries)
+gh pr view $PR --json reviews \
+  --jq '[.reviews[] | select(.author.login == "pwiereng") | {id, body, submittedAt}]'
+```
+
+Build a list of every distinct issue you raised, with the file/line it was on.
+
+## Step 4R: Fetch the Updated Diff
+
+```bash
+gh pr diff $PR
+gh pr view $PR --json headRefOid --jq '.headRefOid'
+```
+
+For each file touched by your prior comments, read the **current version** of that file from the PR branch:
+```bash
+git show origin/<headRefName>:<file_path>
+```
+
+## Step 5R: Assess Each Prior Issue
+
+For every issue you previously raised, determine one of:
+
+- ✅ **Addressed** — the problem is gone or the feedback was acted on in a reasonable way
+- ⚠️ **Partially addressed** — something changed but the concern is not fully resolved; explain what remains
+- ❌ **Not addressed** — the code is unchanged or the fix introduces a new problem; explain concisely
+
+Also do a **fresh scan** of the updated diff for any new issues introduced by the fix commits (regressions, new bugs, new code that wasn't in the original diff).
+
+## Step 6R: Post Follow-up Review
+
+Post a single follow-up review that:
+
+1. **Opens with a clear verdict**: one of:
+   - ✅ "All prior review comments have been addressed. The PR looks good to merge."
+   - ⚠️ "Some issues remain. See below."
+   - ❌ "The prior issues have not been addressed. See below."
+
+2. **Lists each prior issue with its status** (✅ / ⚠️ / ❌ and a one-line explanation)
+
+3. **Flags any new issues** introduced since the last review (treat these like first-review inline comments)
+
+Post via the API (same method as Step 7 above, using a fresh JSON file):
+```bash
+gh api repos/pwiereng/inxr2/pulls/$PR/reviews \
+  -X POST \
+  -H "Accept: application/vnd.github+json" \
+  --input /workspace/.tmp/pr${PR}-rereview.json
+```
+
+Inline comments in the re-review should only be added for **new issues** introduced after the last review. For prior issues, the verdict goes in the overall review body (not as new inline comments on old lines).
+
+## Step 7R: Report to User
+
+```
+---
+🔄 **Re-review posted on PR #<number>:** <url>
+   Verdict: <✅ Looks good / ⚠️ Some issues remain / ❌ Issues not addressed>
+   Prior issues: <N> addressed, <N> partial, <N> unresolved
+   New issues: <N> (or "none")
+```
+
+---
+
+## Constraints (all modes)
 
 - **DO NOT** run `./scripts/run-all-tests.sh` or any tests
 - **DO NOT** edit any files
 - **DO NOT** commit or push anything
 - **DO NOT** approve or request changes — always use `event: "COMMENT"`
-- **DO NOT** summarize what the PR does without also finding something to critique — a review with no comments is not useful
-- If you find no issues, post a review saying so explicitly with your reasoning — don't just skip posting
+- **DO NOT** summarize without substance — every review must contain a verdict with reasoning
+- If you find no issues (first review) or all issues are resolved (re-review), say so explicitly and explain why
