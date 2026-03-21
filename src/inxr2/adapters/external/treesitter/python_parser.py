@@ -668,6 +668,13 @@ class PythonParser(BaseLanguageParser):
                         ident_name not in PYTHON_BUILTINS
                         and ident_name not in PYTHON_TYPE_BUILTINS
                         and ident_name not in ("self", "cls")
+                        # Only emit usage refs for constant-pattern names
+                        # (UPPER_CASE or _UPPER_CASE). Local variables, imported
+                        # modules, and camelCase names flood the ref table with
+                        # unresolvable entries that drag down resolution rates.
+                        # The intended use case is capturing usages of module-level
+                        # constants like _STD_LIB_PREFIXES or MAX_RETRIES.
+                        and re.match(r"^_?[A-Z][A-Z0-9_]*$", ident_name)
                     ):
                         add_reference(
                             self._make_reference(ident_name, "usage", node, scope)

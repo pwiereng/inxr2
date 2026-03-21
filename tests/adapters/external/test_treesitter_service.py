@@ -1308,10 +1308,11 @@ class Point:
         )
         x_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "x"]
         y_usages = [r for r in refs if r["type"] == "usage" and r["text"] == "y"]
-        # 2 usages each: right-hand side of `self.x = x` (param read) +
-        # `self.x` read in `distance` (via attribute handler)
-        assert len(x_usages) == 2
-        assert len(y_usages) == 2
+        # 1 usage each: `self.x` read in `distance` (via attribute handler).
+        # The `self.x = x` param read is lowercase and no longer emitted by the
+        # plain identifier handler (which now only captures UPPER_CASE constants).
+        assert len(x_usages) == 1
+        assert len(y_usages) == 1
 
     @pytest.mark.asyncio
     async def test_self_tuple_unpacking_not_usage(
