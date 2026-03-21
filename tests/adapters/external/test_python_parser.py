@@ -198,16 +198,44 @@ def process():
         _, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        # Each variable appears once as a usage (in `a + b`), not twice.
-        # The binding position `for a, b in` must NOT be captured as a usage.
+        # Lowercase loop variables (a, b) must not appear as usage refs at all —
+        # the plain identifier handler only captures UPPER_CASE constant patterns.
         a_usage_refs = [
             r for r in references if r["text"] == "a" and r["type"] == "usage"
         ]
         b_usage_refs = [
             r for r in references if r["text"] == "b" and r["type"] == "usage"
         ]
-        assert len(a_usage_refs) == 1  # only `a + b`, not the `for a, b` binding
-        assert len(b_usage_refs) == 1  # only `a + b`, not the `for a, b` binding
+        assert len(a_usage_refs) == 0
+        assert len(b_usage_refs) == 0
+
+    @pytest.mark.asyncio
+    async def test_does_not_capture_local_variables_as_usage(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Regression test for #363: plain identifier handler must not capture
+        local variables as usage refs.
+
+        Before the fix, the handler emitted a usage ref for every identifier read
+        (e.g. `result`, `item`, `config`) which flooded the reference table with
+        unresolvable entries and dropped inxr/master resolution rate from 37.1% to 28.5%.
+        Only UPPER_CASE constant-pattern names (e.g. MY_CONST, _STD_LIB_PREFIXES)
+        should be emitted.
+        """
+        code = """\
+def process(config):
+    result = do_something(config)
+    for item in result:
+        process_item(item)
+    return result
+"""
+        _, references = await parser_service.parse_file(
+            content=code, language="python", file_path="test.py"
+        )
+        usage_names = {r["text"] for r in references if r["type"] == "usage"}
+        assert "result" not in usage_names
+        assert "item" not in usage_names
+        assert "config" not in usage_names
 
 
 class TestSymbolDocstrings:
