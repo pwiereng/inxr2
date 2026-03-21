@@ -52,12 +52,74 @@ curl "http://localhost:$QA_PORT/navigate?url=http://host.docker.internal:$FRONTE
 
 This is because `localhost` inside the playwright container refers to itself, not the host. All `docker exec` commands still use `localhost` since the backend listens inside the dev container.
 
+## Browse URL Format
+
+**Critical:** Browse URLs always use this exact structure:
+
+```
+/browse/{repo}/{filepath}?branch={branch}
+```
+
+- The **file path** goes in the URL path (no branch prefix)
+- The **branch** goes in `?branch=` query param — NEVER as a path segment
+
+```bash
+# CORRECT
+curl "http://localhost:$QA_PORT/navigate?url=http://host.docker.internal:$FRONTEND_PORT/browse/inxr2/src/inxr2/domain/entities.py?branch=main"
+
+# WRONG — "main" must not be a path segment
+curl "http://localhost:$QA_PORT/navigate?url=http://host.docker.internal:$FRONTEND_PORT/browse/inxr2/main/src/inxr2/domain/entities.py"
+```
+
+Before issuing any navigate command, verify the URL matches the correct pattern.
+
 ## Result Tracking
 
 Maintain a running tally of results. For each test:
 - Record: test ID, PASS/FAIL, brief reason if failed
 - On failure: take a screenshot (`curl "http://localhost:$QA_PORT/screenshot/save?path=/tmp/rt-fail-<ID>.png"`) for browser tests
 - Continue to the next test (do NOT stop on failure)
+
+## Failure Capture — Precise Reproduction Steps
+
+When a test fails, record the **full sequence of steps that led to the failure**, not just the failure itself. This is critical for creating actionable bug reports.
+
+For each failure, capture:
+
+1. **Exact DISCOVER output** — the raw output of every API/git command that produced the values used in the failing step (e.g., the actual repo name, file path, branch name, commit hash that was substituted)
+
+2. **Exact commands issued** — the literal curl/docker commands, with all `<placeholders>` fully substituted with the real values used
+
+3. **Exact observed output** — full response body, URL after navigation, visible page text, screenshot path
+
+4. **Expected vs actual** — what should have happened, what did happen
+
+Example failure record format:
+```
+FAIL RT-06 — Code Viewer Shows Correct File Content
+
+DISCOVER output:
+  repo = inxr2
+  file = src/inxr2/domain/entities.py
+  branch = main
+  git wc-l: 142 lines
+
+Commands issued:
+  curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/inxr2/src/inxr2/domain/entities.py?branch=main"
+  curl "http://localhost:9222/wait?selector=table&timeout=5000"
+  curl "http://localhost:9222/elements?selector=tr[data-line]&limit=5"
+
+Observed:
+  navigate: {"status": "ok"}
+  wait: timed out after 5000ms — selector "table" not found
+  page text: "File not found"
+  screenshot: /tmp/rt-fail-RT-06.png
+
+Expected: 142 table rows with file content
+Actual: Page shows "File not found" error
+```
+
+The goal is that any developer reading the failure record can reproduce it exactly from the captured steps without needing to re-run the test suite.
 
 ---
 
