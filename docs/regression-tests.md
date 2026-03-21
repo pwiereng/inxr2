@@ -1413,7 +1413,7 @@ asyncio.run(main())
 **Steps:**
 ```bash
 docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
-import asyncio
+import asyncio, uuid
 from src.client import HttpInxr2Client
 from src.tools import search_symbols, go_to_definition, find_references, search_code
 async def main():
@@ -1421,7 +1421,7 @@ async def main():
     print('search_symbols:', await search_symbols.handle(client, {'query': 'xyzzy_nonexistent_symbol_42'}))
     print('go_to_definition:', await go_to_definition.handle(client, {'name': 'xyzzy_nonexistent_symbol_42'}))
     print('find_references:', await find_references.handle(client, {'name': 'xyzzy_nonexistent_symbol_42'}))
-    print('search_code:', await search_code.handle(client, {'query': 'zq9x_no_such_token_7f3k2m', 'mode': 'phrase'}))
+    print('search_code:', await search_code.handle(client, {'query': uuid.uuid4().hex, 'mode': 'phrase'}))
     await client.close()
 asyncio.run(main())
 "
