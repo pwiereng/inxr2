@@ -278,6 +278,99 @@ class TestDependencyReverseContract:
         results = await repos.dependency.find_by_package_name("nonexistent")
         assert len(results) == 0
 
+    async def test_find_by_package_name_scoped_npm(self, repos: Repos) -> None:
+        """@scope/package names are stored and retrieved exactly."""
+        repo_id = await create_test_repo(repos)
+        commit_id = await create_test_commit(repos, repo_id, "a" * 40)
+        file_id = await create_test_file(
+            repos, repo_id, commit_id, "package.json", "b" * 40
+        )
+
+        await repos.dependency.save(
+            Dependency(
+                file_id=file_id,
+                repository_id=repo_id,
+                package_name="@scope/pkg",
+                language="javascript",
+            )
+        )
+
+        results = await repos.dependency.find_by_package_name("@scope/pkg")
+        assert len(results) == 1
+        assert results[0].package_name == "@scope/pkg"
+
+        # Exact match — unscoped name must not match
+        results = await repos.dependency.find_by_package_name("pkg")
+        assert len(results) == 0
+
+    async def test_find_by_package_name_with_filter_language(
+        self, repos: Repos
+    ) -> None:
+        """language filter narrows results for find_by_package_name."""
+        repo_id = await create_test_repo(repos)
+        commit_id = await create_test_commit(repos, repo_id, "a" * 40)
+        py_file = await create_test_file(
+            repos, repo_id, commit_id, "pyproject.toml", "b" * 40
+        )
+        js_file = await create_test_file(
+            repos, repo_id, commit_id, "package.json", "c" * 40
+        )
+
+        await repos.dependency.save(
+            Dependency(
+                file_id=py_file,
+                repository_id=repo_id,
+                package_name="requests",
+                language="python",
+            )
+        )
+        await repos.dependency.save(
+            Dependency(
+                file_id=js_file,
+                repository_id=repo_id,
+                package_name="requests",
+                language="javascript",
+            )
+        )
+
+        py_results = await repos.dependency.find_by_package_name(
+            "requests", language="python"
+        )
+        assert len(py_results) == 1
+        assert py_results[0].language == "python"
+
+        js_results = await repos.dependency.find_by_package_name(
+            "requests", language="javascript"
+        )
+        assert len(js_results) == 1
+        assert js_results[0].language == "javascript"
+
+    async def test_find_by_package_name_with_filter_repository(
+        self, repos: Repos
+    ) -> None:
+        """repository_id filter narrows results for find_by_package_name."""
+        repo1_id = await create_test_repo(repos)
+        # Use different hashes per repo to avoid unique constraint collisions
+        commit1_id = await create_test_commit(repos, repo1_id, "a" * 40)
+        file1_id = await create_test_file(
+            repos, repo1_id, commit1_id, "pyproject.toml", "b" * 40
+        )
+
+        await repos.dependency.save(
+            Dependency(
+                file_id=file1_id,
+                repository_id=repo1_id,
+                package_name="fastapi",
+                language="python",
+            )
+        )
+
+        results = await repos.dependency.find_by_package_name(
+            "fastapi", repository_id=repo1_id
+        )
+        assert len(results) == 1
+        assert results[0].repository_id == repo1_id
+
 
 @pytest.mark.asyncio
 class TestDependencyDeleteContract:
