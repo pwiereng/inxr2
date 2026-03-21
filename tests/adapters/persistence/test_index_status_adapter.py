@@ -1,5 +1,7 @@
 """Integration tests for PostgresIndexStatusRepository."""
 
+from typing import Any
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,12 +26,12 @@ async def _make_repo(db_session: AsyncSession, name: str = "test-repo") -> int:
     return repo.id
 
 
-def _status(repo_id: int, branch: str = "main", **kwargs: object) -> IndexStatus:
+def _status(repo_id: int, branch: str = "main", **kwargs: Any) -> IndexStatus:
     """Shorthand for constructing an IndexStatus."""
     return IndexStatus(
         repository_id=repo_id,
         branch=branch,
-        **kwargs,  # type: ignore[arg-type]
+        **kwargs,
     )
 
 

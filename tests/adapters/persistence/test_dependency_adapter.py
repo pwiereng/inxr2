@@ -1,5 +1,7 @@
 """Integration tests for PostgresDependencyRepository."""
 
+from typing import Any
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,14 +56,14 @@ async def _setup(
     return repo.id, commit.id, file.id
 
 
-def _dep(file_id: int, repo_id: int, **kwargs: object) -> Dependency:
+def _dep(file_id: int, repo_id: int, **kwargs: Any) -> Dependency:
     """Shorthand for constructing a Dependency."""
     return Dependency(
         file_id=file_id,
         repository_id=repo_id,
-        package_name=kwargs.pop("package_name", "fastapi"),  # type: ignore[arg-type]
-        language=kwargs.pop("language", "python"),  # type: ignore[arg-type]
-        **kwargs,  # type: ignore[arg-type]
+        package_name=kwargs.pop("package_name", "fastapi"),
+        language=kwargs.pop("language", "python"),
+        **kwargs,
     )
 
 

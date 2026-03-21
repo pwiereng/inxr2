@@ -2,7 +2,7 @@
 
 import pytest
 
-from inxr2.domain.entities import Dependency
+from inxr2.domain.entities import Dependency, Repository
 
 from .conftest import Repos, create_test_commit, create_test_file, create_test_repo
 
@@ -348,12 +348,22 @@ class TestDependencyReverseContract:
     async def test_find_by_package_name_with_filter_repository(
         self, repos: Repos
     ) -> None:
-        """repository_id filter narrows results for find_by_package_name."""
+        """repository_id filter excludes data from other repositories."""
         repo1_id = await create_test_repo(repos)
-        # Use different hashes per repo to avoid unique constraint collisions
         commit1_id = await create_test_commit(repos, repo1_id, "a" * 40)
         file1_id = await create_test_file(
             repos, repo1_id, commit1_id, "pyproject.toml", "b" * 40
+        )
+
+        # Second repo with the same package to verify exclusion (different name to avoid unique constraint)
+        repo2 = await repos.repository.save(
+            Repository(name="contract-test-repo-2", url="https://example.com/repo2.git")
+        )
+        assert repo2.id is not None
+        repo2_id = repo2.id
+        commit2_id = await create_test_commit(repos, repo2_id, "c" * 40)
+        file2_id = await create_test_file(
+            repos, repo2_id, commit2_id, "pyproject.toml", "d" * 40
         )
 
         await repos.dependency.save(
@@ -364,7 +374,20 @@ class TestDependencyReverseContract:
                 language="python",
             )
         )
+        await repos.dependency.save(
+            Dependency(
+                file_id=file2_id,
+                repository_id=repo2_id,
+                package_name="fastapi",
+                language="python",
+            )
+        )
 
+        # Without filter: both repos' deps are returned
+        all_results = await repos.dependency.find_by_package_name("fastapi")
+        assert len(all_results) == 2
+
+        # With filter: only repo1's dep is returned
         results = await repos.dependency.find_by_package_name(
             "fastapi", repository_id=repo1_id
         )
