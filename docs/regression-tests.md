@@ -1421,7 +1421,7 @@ async def main():
     print('search_symbols:', await search_symbols.handle(client, {'query': 'xyzzy_nonexistent_symbol_42'}))
     print('go_to_definition:', await go_to_definition.handle(client, {'name': 'xyzzy_nonexistent_symbol_42'}))
     print('find_references:', await find_references.handle(client, {'name': 'xyzzy_nonexistent_symbol_42'}))
-    print('search_code:', await search_code.handle(client, {'query': 'xyzzy_nonexistent_42', 'mode': 'phrase'}))
+    print('search_code:', await search_code.handle(client, {'query': 'zq9x_no_such_token_7f3k2m', 'mode': 'phrase'}))
     await client.close()
 asyncio.run(main())
 "
