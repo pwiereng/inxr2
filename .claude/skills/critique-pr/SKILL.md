@@ -129,9 +129,17 @@ Review each changed file systematically. Flag issues in these categories:
 For each issue found, prepare an inline comment:
 - **File path** (relative to repo root)
 - **Line number** (use the new file's line number — verify against the PR branch with `git show origin/<branch>:<file> | grep -n ...`)
-- **Comment body**: be specific and constructive. Describe the problem. Do NOT provide the fix.
+- **Comment body**: be specific and constructive. Describe the problem. Do NOT provide the fix. End every inline comment body with:
+  ```
+  ---
+  🤖 *Automated review via [critique-pr](https://github.com/pwiereng/inxr2/blob/main/.claude/skills/critique-pr/SKILL.md) (Claude)*
+  ```
 
-Also prepare an **overall review summary** (1-3 paragraphs).
+Also prepare an **overall review summary** (1-3 paragraphs). End the overall body with:
+```
+---
+🤖 *Automated review via [critique-pr](https://github.com/pwiereng/inxr2/blob/main/.claude/skills/critique-pr/SKILL.md) (Claude)*
+```
 
 ## Step 7: Post Review to GitHub
 
@@ -240,6 +248,13 @@ Post a single follow-up review that:
 2. **Lists each prior issue with its status** (✅ / ⚠️ / ❌ and a one-line explanation)
 
 3. **Flags any new issues** introduced since the last review (treat these like first-review inline comments)
+
+4. **Ends the overall body with the attribution footer:**
+   ```
+   ---
+   🤖 *Automated review via [critique-pr](https://github.com/pwiereng/inxr2/blob/main/.claude/skills/critique-pr/SKILL.md) (Claude)*
+   ```
+   New inline comments (for new issues only) must also carry the same footer.
 
 Post via the API (same method as Step 7 above, using a fresh JSON file):
 ```bash
