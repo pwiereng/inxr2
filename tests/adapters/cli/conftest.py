@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from inxr2.adapters.persistence.models import Base
+from tests.db_helpers import assert_test_database, normalize_asyncpg_url
 
 # PostgreSQL test database URL — use non-asyncpg prefix since
 # DatabaseConnection auto-converts postgresql:// → postgresql+asyncpg://
@@ -28,20 +29,7 @@ _raw_url = os.getenv(
 CLI_TEST_DB_URL = _raw_url.replace("+asyncpg", "")
 
 # asyncpg variant for direct engine operations in fixtures
-if CLI_TEST_DB_URL.startswith("postgresql://"):
-    _ASYNC_URL = CLI_TEST_DB_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
-else:
-    _ASYNC_URL = CLI_TEST_DB_URL
-
-
-def _assert_test_database(url: str) -> None:
-    """Safety guard: refuse to operate on a non-test database."""
-    db_name = url.rsplit("/", 1)[-1].split("?")[0]
-    if not db_name.endswith("_test"):
-        raise RuntimeError(
-            f"Refusing to run tests against database '{db_name}' — "
-            "TEST_DATABASE_URL must point to a database ending with '_test'."
-        )
+_ASYNC_URL = normalize_asyncpg_url(CLI_TEST_DB_URL)
 
 
 @pytest.fixture
@@ -72,7 +60,7 @@ def cli_test_db() -> Generator[str, None, None]:
             )
         await engine.dispose()
 
-    _assert_test_database(CLI_TEST_DB_URL)
+    assert_test_database(CLI_TEST_DB_URL)
     asyncio.run(setup_db())
 
     yield CLI_TEST_DB_URL

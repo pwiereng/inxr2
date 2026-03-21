@@ -1,13 +1,11 @@
 """Parametrized fixtures for contract tests (fake vs Postgres)."""
 
-import os
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -35,6 +33,11 @@ from inxr2.application.ports.repositories import (
     RepositoryPort,
     SymbolRepositoryPort,
 )
+from tests.db_helpers import (
+    assert_test_database,
+    get_test_database_url,
+    setup_test_schema,
+)
 from tests.fixtures.test_doubles import (
     InMemoryCommitRepository,
     InMemoryDependencyRepository,
@@ -46,15 +49,7 @@ from tests.fixtures.test_doubles import (
     InMemorySymbolRepository,
 )
 
-# PostgreSQL test database URL
-_raw_url = os.getenv(
-    "TEST_DATABASE_URL",
-    "postgresql+asyncpg://inxr2_user:inxr2_dev_password@localhost:5432/inxr2_test",
-)
-if _raw_url.startswith("postgresql://"):
-    TEST_DATABASE_URL = _raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-else:
-    TEST_DATABASE_URL = _raw_url
+TEST_DATABASE_URL = get_test_database_url()
 
 
 @dataclass
@@ -71,32 +66,14 @@ class Repos:
     dependency: DependencyRepositoryPort
 
 
-def _assert_test_database(url: str) -> None:
-    """Safety guard: refuse to drop_all on a non-test database."""
-    db_name = url.rsplit("/", 1)[-1].split("?")[0]
-    if not db_name.endswith("_test"):
-        raise RuntimeError(
-            f"Refusing to run tests against database '{db_name}' — "
-            "TEST_DATABASE_URL must point to a database ending with '_test'."
-        )
-
-
 @pytest_asyncio.fixture(scope="session")
 async def contract_engine() -> AsyncGenerator[AsyncEngine, None]:
     """Create test database engine for contract tests."""
-    _assert_test_database(TEST_DATABASE_URL)
+    assert_test_database(TEST_DATABASE_URL)
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-        # Add tsvector column (not in ORM model, managed by migration)
-        await conn.execute(
-            text(
-                "ALTER TABLE text_contents "
-                "ADD COLUMN IF NOT EXISTS content_tsvector tsvector"
-            )
-        )
+        await setup_test_schema(conn)
 
     yield engine
 
