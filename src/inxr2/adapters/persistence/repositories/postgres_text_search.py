@@ -22,7 +22,7 @@ from .query_utils import build_text_match_filter, split_extension_filter
 from .shared_queries import head_file_ids_subquery
 
 
-class PostgresTextSearch(TextSearchPort):
+class PostgresTextSearchRepository(TextSearchPort):
     """
     PostgreSQL implementation of TextSearchPort.
 

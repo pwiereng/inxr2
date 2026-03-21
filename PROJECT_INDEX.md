@@ -34,7 +34,7 @@ src/inxr2/
     cli/             # Click CLI: index, status, serve commands
     persistence/
       models/        # SQLAlchemy ORM: RepositoryModel, CommitModel, FileModel, SymbolModel, ReferenceModel, etc.
-      repositories/  # Postgres implementations of all 7 repository ports + PostgresTextSearch
+      repositories/  # Postgres implementations of all 7 repository ports + PostgresTextSearchRepository
       mappers.py     # Bidirectional Entity <-> ORM conversion
     external/
       git_service.py       # GitPython wrapper (implements GitServicePort)
