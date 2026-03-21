@@ -10,16 +10,6 @@ vi.mock('@/lib/api', () => ({
   getAllRepositoryStats: vi.fn(),
 }))
 
-// Mock useNavigate
-const mockNavigate = vi.fn()
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom')
-  return {
-    ...actual,
-    useNavigate: () => mockNavigate,
-  }
-})
-
 const mockRepositories = [
   {
     id: 1,
@@ -159,22 +149,19 @@ describe('Home', () => {
     })
   })
 
-  it('should navigate to browse when clicking a repository in grid view', async () => {
+  it('should render repo cards as anchor tags with correct href in grid view', async () => {
     render(<Home />)
 
     await waitFor(() => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
     })
 
-    const repoCard = screen.getByText('test-repo').closest('button')
-    if (repoCard) {
-      fireEvent.click(repoCard)
-    }
-
-    expect(mockNavigate).toHaveBeenCalledWith('/browse/test-repo?branch=main')
+    const link = screen.getByText('test-repo').closest('a')
+    expect(link).not.toBeNull()
+    expect(link).toHaveAttribute('href', '/browse/test-repo?branch=main')
   })
 
-  it('should navigate to browse when clicking a repository in list view', async () => {
+  it('should render repo rows as anchor tags with correct href in list view', async () => {
     render(<Home />)
 
     await waitFor(() => {
@@ -184,11 +171,9 @@ describe('Home', () => {
     // Switch to list view
     fireEvent.click(screen.getByLabelText('Switch to list view'))
 
-    const repoRow = screen.getByText('test-repo').closest('[role="button"]')
-    expect(repoRow).not.toBeNull()
-    fireEvent.click(repoRow!)
-
-    expect(mockNavigate).toHaveBeenCalledWith('/browse/test-repo?branch=main')
+    const link = screen.getByText('test-repo').closest('a')
+    expect(link).not.toBeNull()
+    expect(link).toHaveAttribute('href', '/browse/test-repo?branch=main')
   })
 
   it('should show message when no repositories are indexed', async () => {
