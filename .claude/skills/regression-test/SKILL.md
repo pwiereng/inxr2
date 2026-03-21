@@ -102,9 +102,9 @@ DISCOVER output:
   repo = inxr2
   file = src/inxr2/domain/entities.py
   branch = main
-  git wc-l: 142 lines
+  line count (docker exec $CONTAINER bash -c "git -C /repos/test-repos/inxr2 show main:src/inxr2/domain/entities.py | wc -l"): 142
 
-Commands issued:
+Commands issued (ports already substituted: QA_PORT=9222, FRONTEND_PORT=5173):
   curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/inxr2/src/inxr2/domain/entities.py?branch=main"
   curl "http://localhost:9222/wait?selector=table&timeout=5000"
   curl "http://localhost:9222/elements?selector=tr[data-line]&limit=5"
