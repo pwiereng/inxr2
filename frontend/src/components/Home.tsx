@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   Container,
   Typography,
@@ -61,8 +61,16 @@ function formatDate(iso: string): string {
  * Home page component
  * Displays repositories in grid or list view with filtering
  */
+function getRepoUrl(repo: Repository): string {
+  const params = new URLSearchParams()
+  if (repo.default_branch) {
+    params.set('branch', repo.default_branch)
+  }
+  const qs = params.toString()
+  return qs ? `/browse/${repo.name}?${qs}` : `/browse/${repo.name}`
+}
+
 export function Home(): React.ReactElement {
-  const navigate = useNavigate()
   const { themeMode } = useApp()
   const [repositories, setRepositories] = useState<Repository[]>([])
   const [statsMap, setStatsMap] = useState<Map<number, RepositoryStats>>(new Map())
@@ -107,14 +115,6 @@ export function Home(): React.ReactElement {
     const q = filter.trim().toLowerCase()
     return repositories.filter((r) => r.name.toLowerCase().includes(q))
   }, [repositories, filter])
-
-  const handleRepoClick = (repo: Repository) => {
-    const params = new URLSearchParams()
-    if (repo.default_branch) {
-      params.set('branch', repo.default_branch)
-    }
-    navigate(`/browse/${repo.name}?${params.toString()}`)
-  }
 
   const handleViewModeToggle = () => {
     const next = viewMode === 'grid' ? 'list' : 'grid'
@@ -233,7 +233,8 @@ export function Home(): React.ReactElement {
                       }}
                     >
                       <CardActionArea
-                        onClick={() => handleRepoClick(repo)}
+                        component={Link}
+                        to={getRepoUrl(repo)}
                         sx={{ height: '100%', display: 'flex', alignItems: 'flex-start' }}
                       >
                         <CardContent sx={{ width: '100%' }}>
@@ -365,27 +366,21 @@ export function Home(): React.ReactElement {
                 return (
                   <Box
                     key={repo.id}
-                    onClick={() => handleRepoClick(repo)}
+                    component={Link}
+                    to={getRepoUrl(repo)}
                     sx={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: 2,
                       px: 2,
                       py: 1.5,
-                      cursor: 'pointer',
+                      color: 'inherit',
+                      textDecoration: 'none',
                       borderBottom: index < filteredRepositories.length - 1 ? '1px solid' : 'none',
                       borderColor: 'divider',
                       '&:hover': {
                         bgcolor: 'action.hover',
                       },
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        handleRepoClick(repo)
-                      }
                     }}
                   >
                     <FolderIcon color="primary" sx={{ flexShrink: 0 }} />
