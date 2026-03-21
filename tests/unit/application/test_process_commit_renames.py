@@ -5,7 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from inxr2.application.ports.services import CommitInfo, ParserServicePort, RenameInfo
+from inxr2.application.ports.services import (
+    CommitInfo,
+    ParsedComment,
+    ParsedReference,
+    ParsedSymbol,
+    ParserServicePort,
+    RenameInfo,
+)
 from inxr2.application.use_cases.indexing.process_commit import (
     ProcessCommitRequest,
     ProcessCommitUseCase,
@@ -31,12 +38,12 @@ class FakeParserService(ParserServicePort):
 
     async def parse_file(
         self, content: str, language: str, file_path: str
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
         return [], []
 
     async def extract_comments(
         self, content: str, language: str, file_path: str
-    ) -> list[dict]:
+    ) -> list[ParsedComment]:
         return []
 
 

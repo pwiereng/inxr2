@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from inxr2.application.ports.services import CommitInfo, ParserServicePort
+from inxr2.application.ports.services import (
+    CommitInfo,
+    ParsedComment,
+    ParsedReference,
+    ParsedSymbol,
+    ParserServicePort,
+)
 from inxr2.application.use_cases.indexing.process_commit import (
     ProcessCommitRequest,
     ProcessCommitUseCase,
@@ -31,37 +37,37 @@ class FakeParserService(ParserServicePort):
 
     async def parse_file(
         self, content: str, language: str, file_path: str
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
         file_name = Path(file_path).name
         symbols = [
-            {
-                "name": f"function_in_{file_name}",
-                "kind": "function",
-                "start_line": 1,
-                "start_column": 0,
-                "end_line": 5,
-                "end_column": 0,
-            }
+            ParsedSymbol(
+                name=f"function_in_{file_name}",
+                kind="function",
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
         ]
         references = [
-            {
-                "text": "print",
-                "type": "call",
-                "source_line": 2,
-                "source_column": 0,
-            }
+            ParsedReference(
+                reference_text="print",
+                reference_type="call",
+                source_line=2,
+                source_column=0,
+            )
         ]
         return symbols, references
 
     async def extract_comments(
         self, content: str, language: str, file_path: str
-    ) -> list[dict]:
+    ) -> list[ParsedComment]:
         return [
-            {
-                "content": f"Comment in {Path(file_path).name}",
-                "content_type": "single_line_comment",
-                "source_line": 1,
-            }
+            ParsedComment(
+                content=f"Comment in {Path(file_path).name}",
+                content_type="single_line_comment",
+                source_line=1,
+            )
         ]
 
 

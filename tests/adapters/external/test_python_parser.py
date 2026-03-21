@@ -21,10 +21,10 @@ class TestModuleLevelConstants:
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        names = [s["name"] for s in symbols]
+        names = [s.name for s in symbols]
         assert "MAX_RETRIES" in names
-        const = next(s for s in symbols if s["name"] == "MAX_RETRIES")
-        assert const["kind"] == "constant"
+        const = next(s for s in symbols if s.name == "MAX_RETRIES")
+        assert const.kind == "constant"
 
     @pytest.mark.asyncio
     async def test_captures_private_constant_with_underscore_prefix(
@@ -35,10 +35,10 @@ class TestModuleLevelConstants:
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        names = [s["name"] for s in symbols]
+        names = [s.name for s in symbols]
         assert "_STD_LIB_PREFIXES" in names
-        const = next(s for s in symbols if s["name"] == "_STD_LIB_PREFIXES")
-        assert const["kind"] == "constant"
+        const = next(s for s in symbols if s.name == "_STD_LIB_PREFIXES")
+        assert const.kind == "constant"
 
     @pytest.mark.asyncio
     async def test_does_not_capture_lowercase_module_variable(
@@ -48,7 +48,7 @@ class TestModuleLevelConstants:
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        names = [s["name"] for s in symbols]
+        names = [s.name for s in symbols]
         assert "logger" not in names
 
     @pytest.mark.asyncio
@@ -63,7 +63,7 @@ some_variable = "hello"
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        names = [s["name"] for s in symbols]
+        names = [s.name for s in symbols]
         assert "MAX_SIZE" in names
         assert "_INTERNAL_LIMIT" in names
         assert "some_variable" not in names
@@ -86,7 +86,7 @@ def is_std(name):
         _, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        ref_names = [r["text"] for r in references]
+        ref_names = [r.reference_text for r in references]
         assert "_STD_LIB_PREFIXES" in ref_names
 
     @pytest.mark.asyncio
@@ -103,7 +103,7 @@ def process():
         _, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        ref_names = [r["text"] for r in references]
+        ref_names = [r.reference_text for r in references]
         assert "MY_LIST" in ref_names
 
     @pytest.mark.asyncio
@@ -123,7 +123,7 @@ def foo():
         usage_refs = [
             r
             for r in references
-            if r["text"] == "MY_CONST" and r.get("type") == "usage"
+            if r.reference_text == "MY_CONST" and r.reference_type == "usage"
         ]
         assert len(usage_refs) == 0
 
@@ -135,10 +135,10 @@ def foo():
         _, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        call_refs = [r for r in references if r["text"] == "my_function"]
+        call_refs = [r for r in references if r.reference_text == "my_function"]
         # Should appear exactly once (as a call), not also as a plain usage
         assert len(call_refs) == 1
-        assert call_refs[0]["type"] == "call"
+        assert call_refs[0].reference_type == "call"
 
     @pytest.mark.asyncio
     async def test_does_not_duplicate_type_annotation_references(
@@ -149,13 +149,13 @@ def foo():
         _, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        my_type_refs = [r for r in references if r["text"] == "MyType"]
-        return_type_refs = [r for r in references if r["text"] == "ReturnType"]
+        my_type_refs = [r for r in references if r.reference_text == "MyType"]
+        return_type_refs = [r for r in references if r.reference_text == "ReturnType"]
         # Each type name should appear exactly once, as type_annotation only
         assert len(my_type_refs) == 1
-        assert my_type_refs[0]["type"] == "type_annotation"
+        assert my_type_refs[0].reference_type == "type_annotation"
         assert len(return_type_refs) == 1
-        assert return_type_refs[0]["type"] == "type_annotation"
+        assert return_type_refs[0].reference_type == "type_annotation"
 
     @pytest.mark.asyncio
     async def test_does_not_capture_self_or_cls_as_usage(
@@ -176,10 +176,10 @@ class Foo:
             content=code, language="python", file_path="test.py"
         )
         self_refs = [
-            r for r in references if r["text"] == "self" and r["type"] == "usage"
+            r for r in references if r.reference_text == "self" and r.reference_type == "usage"
         ]
         cls_refs = [
-            r for r in references if r["text"] == "cls" and r["type"] == "usage"
+            r for r in references if r.reference_text == "cls" and r.reference_type == "usage"
         ]
         assert len(self_refs) == 0
         assert len(cls_refs) == 0
@@ -201,10 +201,10 @@ def process():
         # Lowercase loop variables (a, b) must not appear as usage refs at all —
         # the plain identifier handler only captures UPPER_CASE constant patterns.
         a_usage_refs = [
-            r for r in references if r["text"] == "a" and r["type"] == "usage"
+            r for r in references if r.reference_text == "a" and r.reference_type == "usage"
         ]
         b_usage_refs = [
-            r for r in references if r["text"] == "b" and r["type"] == "usage"
+            r for r in references if r.reference_text == "b" and r.reference_type == "usage"
         ]
         assert len(a_usage_refs) == 0
         assert len(b_usage_refs) == 0
@@ -232,7 +232,7 @@ def process(config):
         _, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_names = {r["text"] for r in references if r["type"] == "usage"}
+        usage_names = {r.reference_text for r in references if r.reference_type == "usage"}
         assert "result" not in usage_names
         assert "item" not in usage_names
         assert "config" not in usage_names
@@ -253,8 +253,8 @@ def greet(name):
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        greet = next(s for s in symbols if s["name"] == "greet")
-        assert greet["docstring"] == "Return a greeting for the given name."
+        greet = next(s for s in symbols if s.name == "greet")
+        assert greet.docstring == "Return a greeting for the given name."
 
     @pytest.mark.asyncio
     async def test_class_docstring_extracted(
@@ -268,8 +268,8 @@ class MyClass:
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        cls = next(s for s in symbols if s["name"] == "MyClass")
-        assert cls["docstring"] == "A simple example class."
+        cls = next(s for s in symbols if s.name == "MyClass")
+        assert cls.docstring == "A simple example class."
 
     @pytest.mark.asyncio
     async def test_method_docstring_extracted(
@@ -284,8 +284,8 @@ class Greeter:
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        method = next(s for s in symbols if s["name"] == "hello")
-        assert method["docstring"] == "Say hello."
+        method = next(s for s in symbols if s.name == "hello")
+        assert method.docstring == "Say hello."
 
     @pytest.mark.asyncio
     async def test_no_docstring_symbol_has_none(
@@ -295,8 +295,8 @@ class Greeter:
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        func = next(s for s in symbols if s["name"] == "no_doc")
-        assert func.get("docstring") is None
+        func = next(s for s in symbols if s.name == "no_doc")
+        assert func.docstring is None
 
     @pytest.mark.asyncio
     async def test_multiline_docstring_extracted(
@@ -313,10 +313,10 @@ def complex_func():
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        func = next(s for s in symbols if s["name"] == "complex_func")
-        assert func["docstring"] is not None
-        assert "longer docstring" in func["docstring"]
-        assert "multiple lines" in func["docstring"]
+        func = next(s for s in symbols if s.name == "complex_func")
+        assert func.docstring is not None
+        assert func.docstring is not None and "longer docstring" in func.docstring
+        assert func.docstring is not None and "multiple lines" in func.docstring
 
     @pytest.mark.asyncio
     async def test_decorated_function_docstring_extracted(
@@ -334,8 +334,8 @@ def decorated():
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        func = next(s for s in symbols if s["name"] == "decorated")
-        assert func["docstring"] == "Decorated function docstring."
+        func = next(s for s in symbols if s.name == "decorated")
+        assert func.docstring == "Decorated function docstring."
 
     @pytest.mark.asyncio
     async def test_nested_function_docstring_extracted(
@@ -351,8 +351,8 @@ def outer():
         symbols, _ = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        inner = next(s for s in symbols if s["name"] == "inner")
-        assert inner["docstring"] == "Inner docstring."
+        inner = next(s for s in symbols if s.name == "inner")
+        assert inner.docstring == "Inner docstring."
 
     @pytest.mark.asyncio
     async def test_docstring_still_in_text_contents(
@@ -370,13 +370,13 @@ def my_func():
         comments = await parser_service.extract_comments(
             content=code, language="python", file_path="test.py"
         )
-        func = next(s for s in symbols if s["name"] == "my_func")
-        assert func["docstring"] == "This docstring should appear in comments too."
+        func = next(s for s in symbols if s.name == "my_func")
+        assert func.docstring == "This docstring should appear in comments too."
         docstring_comments = [
-            c for c in comments if c.get("content_type") == "docstring"
+            c for c in comments if c.content_type == "docstring"
         ]
         assert len(docstring_comments) == 1
         assert (
             "This docstring should appear in comments too."
-            in docstring_comments[0]["content"]
+            in docstring_comments[0].content
         )

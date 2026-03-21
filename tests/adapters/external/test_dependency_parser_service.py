@@ -54,13 +54,13 @@ dependencies = ["fastapi>=0.100"]
 """
         deps = service.parse(content, "pyproject.toml")
         assert len(deps) == 1
-        assert deps[0]["language"] == "python"
+        assert deps[0].language == "python"
 
     def test_dispatches_to_javascript(self, service: DependencyParserService) -> None:
         content = '{"dependencies": {"react": "^18.0.0"}}'
         deps = service.parse(content, "package.json")
         assert len(deps) == 1
-        assert deps[0]["language"] == "javascript"
+        assert deps[0].language == "javascript"
 
     def test_dispatches_to_java(self, service: DependencyParserService) -> None:
         content = """\
@@ -76,7 +76,7 @@ dependencies = ["fastapi>=0.100"]
 """
         deps = service.parse(content, "pom.xml")
         assert len(deps) == 1
-        assert deps[0]["language"] == "java"
+        assert deps[0].language == "java"
 
     def test_dispatches_to_csharp(self, service: DependencyParserService) -> None:
         content = """\
@@ -88,7 +88,7 @@ dependencies = ["fastapi>=0.100"]
 """
         deps = service.parse(content, "App.csproj")
         assert len(deps) == 1
-        assert deps[0]["language"] == "csharp"
+        assert deps[0].language == "csharp"
 
     def test_unsupported_file(self, service: DependencyParserService) -> None:
         deps = service.parse("anything", "unknown.txt")

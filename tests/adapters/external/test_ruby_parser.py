@@ -38,9 +38,9 @@ end
             content=code, language="ruby", file_path="my_class.rb"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["name"] == "MyClass"
+        assert class_symbols[0].name == "MyClass"
 
     @pytest.mark.asyncio
     async def test_parse_class_with_inheritance(
@@ -54,13 +54,13 @@ end
             content=code, language="ruby", file_path="child.rb"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["name"] == "Child"
+        assert class_symbols[0].name == "Child"
 
-        inheritance_refs = [r for r in references if r["type"] == "inheritance"]
+        inheritance_refs = [r for r in references if r.reference_type == "inheritance"]
         assert len(inheritance_refs) == 1
-        assert inheritance_refs[0]["text"] == "Parent"
+        assert inheritance_refs[0].reference_text == "Parent"
 
 
 class TestRubyModules:
@@ -81,9 +81,9 @@ end
             content=code, language="ruby", file_path="my_module.rb"
         )
 
-        mod_symbols = [s for s in symbols if s["kind"] == "module"]
+        mod_symbols = [s for s in symbols if s.kind == "module"]
         assert len(mod_symbols) == 1
-        assert mod_symbols[0]["name"] == "MyModule"
+        assert mod_symbols[0].name == "MyModule"
 
     @pytest.mark.asyncio
     async def test_parse_scope_resolution_module(
@@ -97,9 +97,9 @@ end
             content=code, language="ruby", file_path="nested.rb"
         )
 
-        mod_symbols = [s for s in symbols if s["kind"] == "module"]
+        mod_symbols = [s for s in symbols if s.kind == "module"]
         assert len(mod_symbols) == 1
-        assert mod_symbols[0]["name"] == "Outer::Inner"
+        assert mod_symbols[0].name == "Outer::Inner"
 
 
 class TestRubyMethods:
@@ -124,10 +124,10 @@ end
             content=code, language="ruby", file_path="my_class.rb"
         )
 
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
+        method_symbols = [s for s in symbols if s.kind == "method"]
         assert len(method_symbols) == 1
-        assert method_symbols[0]["name"] == "my_method"
-        assert method_symbols[0]["scope"] == "MyClass"
+        assert method_symbols[0].name == "my_method"
+        assert method_symbols[0].scope == "MyClass"
 
     @pytest.mark.asyncio
     async def test_parse_method_with_params(
@@ -144,10 +144,10 @@ end
             content=code, language="ruby", file_path="calc.rb"
         )
 
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
+        method_symbols = [s for s in symbols if s.kind == "method"]
         assert len(method_symbols) == 1
-        assert method_symbols[0]["name"] == "add"
-        assert method_symbols[0]["scope"] == "Calculator"
+        assert method_symbols[0].name == "add"
+        assert method_symbols[0].scope == "Calculator"
 
     @pytest.mark.asyncio
     async def test_parse_multiple_methods(
@@ -166,12 +166,12 @@ end
             content=code, language="ruby", file_path="dog.rb"
         )
 
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
-        method_names = [s["name"] for s in method_symbols]
+        method_symbols = [s for s in symbols if s.kind == "method"]
+        method_names = [s.name for s in method_symbols]
         assert "bark" in method_names
         assert "fetch" in method_names
         for m in method_symbols:
-            assert m["scope"] == "Dog"
+            assert m.scope == "Dog"
 
 
 class TestRubySingletonMethods:
@@ -197,10 +197,10 @@ end
             content=code, language="ruby", file_path="factory.rb"
         )
 
-        static_symbols = [s for s in symbols if s["kind"] == "staticmethod"]
+        static_symbols = [s for s in symbols if s.kind == "staticmethod"]
         assert len(static_symbols) == 1
-        assert static_symbols[0]["name"] == "create"
-        assert static_symbols[0]["scope"] == "Factory"
+        assert static_symbols[0].name == "create"
+        assert static_symbols[0].scope == "Factory"
 
     @pytest.mark.asyncio
     async def test_parse_multiple_singleton_methods(
@@ -219,8 +219,8 @@ end
             content=code, language="ruby", file_path="config.rb"
         )
 
-        static_symbols = [s for s in symbols if s["kind"] == "staticmethod"]
-        static_names = [s["name"] for s in static_symbols]
+        static_symbols = [s for s in symbols if s.kind == "staticmethod"]
+        static_names = [s.name for s in static_symbols]
         assert "load" in static_names
         assert "default" in static_names
 
@@ -239,9 +239,9 @@ end
             content=code, language="ruby", file_path="custom.rb"
         )
 
-        static_symbols = [s for s in symbols if s["kind"] == "staticmethod"]
+        static_symbols = [s for s in symbols if s.kind == "staticmethod"]
         assert len(static_symbols) == 1
-        assert static_symbols[0]["name"] == "custom_method"
+        assert static_symbols[0].name == "custom_method"
 
 
 class TestRubyConstants:
@@ -266,12 +266,12 @@ end
             content=code, language="ruby", file_path="settings.rb"
         )
 
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
-        const_names = [s["name"] for s in const_symbols]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
+        const_names = [s.name for s in const_symbols]
         assert "MAX_RETRIES" in const_names
         assert "DEFAULT_TIMEOUT" in const_names
         for c in const_symbols:
-            assert c["scope"] == "Settings"
+            assert c.scope == "Settings"
 
     @pytest.mark.asyncio
     async def test_parse_constant_in_module(
@@ -286,10 +286,10 @@ end
             content=code, language="ruby", file_path="constants.rb"
         )
 
-        const_symbols = [s for s in symbols if s["kind"] == "constant"]
+        const_symbols = [s for s in symbols if s.kind == "constant"]
         assert len(const_symbols) == 1
-        assert const_symbols[0]["name"] == "VERSION"
-        assert const_symbols[0]["scope"] == "Constants"
+        assert const_symbols[0].name == "VERSION"
+        assert const_symbols[0].scope == "Constants"
 
 
 class TestRubyReferences:
@@ -316,8 +316,8 @@ end
             content=code, language="ruby", file_path="worker.rb"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "helper_method" in call_texts
         assert "do_work" in call_texts
 
@@ -339,8 +339,8 @@ end
             content=code, language="ruby", file_path="printer.rb"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "puts" not in call_texts
         assert "print" not in call_texts
         assert "p" not in call_texts
@@ -362,8 +362,8 @@ end
             content=code, language="ruby", file_path="worker.rb"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "transform" in call_texts
         assert "compute" in call_texts
 
@@ -386,8 +386,8 @@ end
             content=code, language="ruby", file_path="person.rb"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "@name" in usage_texts
 
     @pytest.mark.asyncio
@@ -405,12 +405,12 @@ end
             content=code, language="ruby", file_path="worker.rb"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "call" in call_texts
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         # Individual constants from scope_resolution are emitted separately
         assert "Other" in usage_texts
         assert "Helper" in usage_texts
@@ -427,14 +427,14 @@ end
             content=code, language="ruby", file_path="child.rb"
         )
 
-        inheritance_refs = [r for r in references if r["type"] == "inheritance"]
+        inheritance_refs = [r for r in references if r.reference_type == "inheritance"]
         assert len(inheritance_refs) == 1
-        assert inheritance_refs[0]["text"] == "Outer::Base"
+        assert inheritance_refs[0].reference_text == "Outer::Base"
 
         # Outer and Base should NOT appear as separate usage refs
         # since they're part of the superclass declaration
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "Outer" not in usage_texts
         assert "Base" not in usage_texts
 
@@ -454,9 +454,9 @@ end
             content=code, language="ruby", file_path="custom.rb"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        helper_ref = next(r for r in call_refs if r["text"] == "helper_call")
-        assert helper_ref["scope"] == "MyClass.custom_method"
+        call_refs = [r for r in references if r.reference_type == "call"]
+        helper_ref = next(r for r in call_refs if r.reference_text == "helper_call")
+        assert helper_ref.scope == "MyClass.custom_method"
 
 
 class TestRubyImports:
@@ -477,8 +477,8 @@ require 'net/http'
             content=code, language="ruby", file_path="app.rb"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_texts = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_texts = [r.reference_text for r in import_refs]
         assert "json" in import_texts
         assert "net/http" in import_texts
 
@@ -494,8 +494,8 @@ require_relative 'lib/utils'
             content=code, language="ruby", file_path="app.rb"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_texts = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_texts = [r.reference_text for r in import_refs]
         assert "helper" in import_texts
         assert "lib/utils" in import_texts
 
@@ -522,8 +522,8 @@ end
             content=code, language="ruby", file_path="my_list.rb"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "Loggable" in usage_texts
 
     @pytest.mark.asyncio
@@ -537,8 +537,8 @@ end
             content=code, language="ruby", file_path="config.rb"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "Serializable" in usage_texts
 
 
@@ -566,20 +566,20 @@ end
             content=code, language="ruby", file_path="nested.rb"
         )
 
-        mod_symbols = [s for s in symbols if s["kind"] == "module"]
+        mod_symbols = [s for s in symbols if s.kind == "module"]
         assert len(mod_symbols) == 1
-        assert mod_symbols[0]["name"] == "MyModule"
-        assert mod_symbols[0]["scope"] is None
+        assert mod_symbols[0].name == "MyModule"
+        assert mod_symbols[0].scope is None
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
+        class_symbols = [s for s in symbols if s.kind == "class"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["name"] == "MyClass"
-        assert class_symbols[0]["scope"] == "MyModule"
+        assert class_symbols[0].name == "MyClass"
+        assert class_symbols[0].scope == "MyModule"
 
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
+        method_symbols = [s for s in symbols if s.kind == "method"]
         assert len(method_symbols) == 1
-        assert method_symbols[0]["name"] == "my_method"
-        assert method_symbols[0]["scope"] == "MyModule::MyClass"
+        assert method_symbols[0].name == "my_method"
+        assert method_symbols[0].scope == "MyModule::MyClass"
 
     @pytest.mark.asyncio
     async def test_nested_class_in_class(
@@ -597,17 +597,17 @@ end
             content=code, language="ruby", file_path="nested.rb"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
-        class_names = [s["name"] for s in class_symbols]
+        class_symbols = [s for s in symbols if s.kind == "class"]
+        class_names = [s.name for s in class_symbols]
         assert "Outer" in class_names
         assert "Inner" in class_names
 
-        inner = next(s for s in class_symbols if s["name"] == "Inner")
-        assert inner["scope"] == "Outer"
+        inner = next(s for s in class_symbols if s.name == "Inner")
+        assert inner.scope == "Outer"
 
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
-        assert method_symbols[0]["name"] == "inner_method"
-        assert method_symbols[0]["scope"] == "Outer::Inner"
+        method_symbols = [s for s in symbols if s.kind == "method"]
+        assert method_symbols[0].name == "inner_method"
+        assert method_symbols[0].scope == "Outer::Inner"
 
 
 class TestRubyComments:
@@ -632,8 +632,8 @@ end
         )
 
         assert len(comments) == 1
-        assert comments[0]["content"] == "This is a comment"
-        assert comments[0]["content_type"] == "single_line_comment"
+        assert comments[0].content == "This is a comment"
+        assert comments[0].content_type == "single_line_comment"
 
     @pytest.mark.asyncio
     async def test_extract_multiple_comments(
@@ -652,7 +652,7 @@ end
             content=code, language="ruby", file_path="my_class.rb"
         )
 
-        comment_texts = [c["content"] for c in comments]
+        comment_texts = [c.content for c in comments]
         assert "First comment" in comment_texts
         assert "Second comment" in comment_texts
         assert "Method comment" in comment_texts
@@ -716,43 +716,43 @@ end
         )
 
         # Module
-        mod = [s for s in symbols if s["kind"] == "module"]
+        mod = [s for s in symbols if s.kind == "module"]
         assert len(mod) == 1
-        assert mod[0]["name"] == "MyApp"
+        assert mod[0].name == "MyApp"
 
         # Constant
-        consts = [s for s in symbols if s["kind"] == "constant"]
-        assert any(c["name"] == "MY_VERSION" for c in consts)
+        consts = [s for s in symbols if s.kind == "constant"]
+        assert any(c.name == "MY_VERSION" for c in consts)
 
         # Class
-        classes = [s for s in symbols if s["kind"] == "class"]
-        assert any(c["name"] == "Server" for c in classes)
-        server = next(c for c in classes if c["name"] == "Server")
-        assert server["scope"] == "MyApp"
+        classes = [s for s in symbols if s.kind == "class"]
+        assert any(c.name == "Server" for c in classes)
+        server = next(c for c in classes if c.name == "Server")
+        assert server.scope == "MyApp"
 
         # Methods
-        methods = [s for s in symbols if s["kind"] == "method"]
-        method_names = [m["name"] for m in methods]
+        methods = [s for s in symbols if s.kind == "method"]
+        method_names = [m.name for m in methods]
         assert "initialize" in method_names
         assert "start" in method_names
 
         # Singleton method
-        statics = [s for s in symbols if s["kind"] == "staticmethod"]
-        assert any(s["name"] == "default" for s in statics)
+        statics = [s for s in symbols if s.kind == "staticmethod"]
+        assert any(s.name == "default" for s in statics)
 
         # Imports
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_texts = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_texts = [r.reference_text for r in import_refs]
         assert "json" in import_texts
         assert "helper" in import_texts
 
         # Inheritance
-        inheritance_refs = [r for r in references if r["type"] == "inheritance"]
-        assert any(r["text"] == "BaseServer" for r in inheritance_refs)
+        inheritance_refs = [r for r in references if r.reference_type == "inheritance"]
+        assert any(r.reference_text == "BaseServer" for r in inheritance_refs)
 
         # Include reference
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "Loggable" in usage_texts
 
     @pytest.mark.asyncio
@@ -769,9 +769,9 @@ end
             content=code, language="ruby", file_path="my_class.rb"
         )
 
-        method_symbols = [s for s in symbols if s["name"] == "my_method"]
+        method_symbols = [s for s in symbols if s.name == "my_method"]
         assert len(method_symbols) == 1
-        assert method_symbols[0]["start_line"] == 2
+        assert method_symbols[0].start_line == 2
 
 
 class TestRubyEdgeCases:
@@ -835,7 +835,7 @@ end
             content=code, language="ruby", file_path="helper.rb"
         )
 
-        method_symbols = [s for s in symbols if s["kind"] == "method"]
+        method_symbols = [s for s in symbols if s.kind == "method"]
         assert len(method_symbols) == 1
-        assert method_symbols[0]["name"] == "top_level_helper"
-        assert method_symbols[0]["scope"] is None
+        assert method_symbols[0].name == "top_level_helper"
+        assert method_symbols[0].scope is None

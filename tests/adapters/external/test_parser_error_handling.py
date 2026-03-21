@@ -171,7 +171,7 @@ class TestPythonParserCommentErrorHandling:
         code = "# first comment\nx = 1\n# second comment\n"
         comments = await service.extract_comments(code, "python", "test.py")
 
-        contents = [c["content"] for c in comments]
+        contents = [c.content for c in comments]
         assert "first comment" in contents
         assert "second comment" in contents
 
@@ -207,7 +207,7 @@ class TestPythonParserCommentErrorHandling:
 
         # The comment node should have been skipped
         comment_contents = [
-            c["content"] for c in comments if c["content_type"] == "single_line_comment"
+            c.content for c in comments if c.content_type == "single_line_comment"
         ]
         assert len(comment_contents) == 0
         assert any("Skipping comment node" in r.message for r in caplog.records)

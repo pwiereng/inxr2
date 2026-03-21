@@ -10,7 +10,6 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from inxr2.domain.constants import DatabaseLimits
 from inxr2.domain.entities import (
@@ -36,7 +35,11 @@ from ...ports.repositories import (
 from ...ports.services import (
     DependencyParserServicePort,
     GitServicePort,
+    ParsedDependency,
+    ParsedReference,
+    ParsedSymbol,
     ParserServicePort,
+    PlaintextChunk,
     PlaintextParserPort,
 )
 
@@ -397,7 +400,7 @@ class ProcessFileUseCase:
 
     async def _extract_and_save_symbols(
         self,
-        symbols_data: list[dict[str, Any]],
+        symbols_data: list[ParsedSymbol],
         repository_id: int,
         file_id: int,
         file_path_str: str,
@@ -410,12 +413,12 @@ class ProcessFileUseCase:
         """
         valid_symbols_data = []
         for sd in symbols_data:
-            if sd.get("name"):
+            if sd.name:
                 valid_symbols_data.append(sd)
             else:
                 logger.debug(
                     "Skipping symbol with empty name at line %d in %s",
-                    sd.get("start_line", 0),
+                    sd.start_line,
                     file_path_str,
                 )
 
@@ -424,18 +427,18 @@ class ProcessFileUseCase:
                 id=None,
                 file_id=file_id,
                 repository_id=repository_id,
-                name=symbol_data["name"],
-                kind=SymbolKind(symbol_data["kind"]),
-                start_line=symbol_data["start_line"],
-                start_column=symbol_data["start_column"],
-                end_line=symbol_data["end_line"],
-                end_column=symbol_data["end_column"],
-                parent_symbol_id=symbol_data.get("parent_symbol_id"),
-                scope=symbol_data.get("scope"),
-                qualified_name=symbol_data.get("qualified_name"),
-                signature=symbol_data.get("signature"),
-                docstring=symbol_data.get("docstring"),
-                metadata=symbol_data.get("metadata", {}),
+                name=symbol_data.name,
+                kind=SymbolKind(symbol_data.kind),
+                start_line=symbol_data.start_line,
+                start_column=symbol_data.start_column,
+                end_line=symbol_data.end_line,
+                end_column=symbol_data.end_column,
+                parent_symbol_id=None,
+                scope=symbol_data.scope,
+                qualified_name=symbol_data.qualified_name,
+                signature=symbol_data.signature,
+                docstring=symbol_data.docstring,
+                metadata=symbol_data.metadata,
             )
             for symbol_data in valid_symbols_data
         ]
@@ -446,21 +449,17 @@ class ProcessFileUseCase:
 
     async def _extract_and_save_references(
         self,
-        references_data: list[dict[str, Any]],
+        references_data: list[ParsedReference],
         repository_id: int,
         file_id: int,
     ) -> int:
         """Build and persist reference entities. Returns the count saved."""
         references = []
         for ref_data in references_data:
-            reference_text = ref_data.get("text") or ref_data.get("reference_text", "")
-            reference_type = ref_data.get("type") or ref_data.get(
-                "reference_type", "usage"
-            )
-            source_column = ref_data["source_column"]
-            source_end_column = ref_data.get(
-                "source_end_column",
-                source_column + len(reference_text),
+            source_end_column = (
+                ref_data.source_end_column
+                if ref_data.source_end_column is not None
+                else ref_data.source_column + len(ref_data.reference_text)
             )
 
             references.append(
@@ -468,11 +467,11 @@ class ProcessFileUseCase:
                     id=None,
                     repository_id=repository_id,
                     source_file_id=file_id,
-                    source_line=ref_data["source_line"],
-                    source_column=source_column,
+                    source_line=ref_data.source_line,
+                    source_column=ref_data.source_column,
                     source_end_column=source_end_column,
-                    reference_text=reference_text,
-                    reference_type=ReferenceType(reference_type),
+                    reference_text=ref_data.reference_text,
+                    reference_type=ReferenceType(ref_data.reference_type),
                     target_symbol_id=None,
                 )
             )
@@ -509,24 +508,24 @@ class ProcessFileUseCase:
             return 0
 
         try:
-            dep_dicts = self._dependency_parser.parse(content, file_path_str)
-            if not dep_dicts:
+            dep_list = self._dependency_parser.parse(content, file_path_str)
+            if not dep_list:
                 return 0
 
             entities = [
                 Dependency(
                     file_id=file_id,
                     repository_id=repository_id,
-                    package_name=d["package_name"],
-                    language=d["language"],
-                    version_spec=d.get("version_spec"),
-                    resolved_version=d.get("resolved_version"),
-                    dependency_type=d.get("dependency_type", "runtime"),
-                    is_direct=d.get("is_direct", True),
-                    extras=d.get("extras"),
-                    source_line=d.get("source_line"),
+                    package_name=d.package_name,
+                    language=d.language,
+                    version_spec=d.version_spec,
+                    resolved_version=d.resolved_version,
+                    dependency_type=d.dependency_type,
+                    is_direct=d.is_direct,
+                    extras=d.extras,
+                    source_line=d.source_line,
                 )
-                for d in dep_dicts
+                for d in dep_list
             ]
             await self._dependency_repo.save_many(entities)
             return len(entities)
@@ -603,7 +602,7 @@ class ProcessFileUseCase:
 
             text_contents: list[TextContent] = []
             for comment_data in comments_data:
-                comment_content = comment_data.get("content", "")
+                comment_content = comment_data.content
                 if not comment_content or not comment_content.strip():
                     continue
 
@@ -613,11 +612,11 @@ class ProcessFileUseCase:
                         "Truncated comment content in %s (line %d) "
                         "to fit tsvector limit (%d bytes)",
                         file_path_str,
-                        comment_data.get("source_line", 0),
+                        comment_data.source_line,
                         DatabaseLimits.MAX_TSVECTOR_BYTES,
                     )
 
-                content_type = comment_data.get("content_type", "single_line_comment")
+                content_type = comment_data.content_type
                 if content_type == "docstring":
                     source_type = TextSearchSourceType.DOCSTRING.value
                     docstrings_indexed += 1
@@ -632,8 +631,8 @@ class ProcessFileUseCase:
                         commit_id=None,  # file-derived, not commit-specific
                         source_type=source_type,
                         source_file_id=file_id,
-                        source_line=comment_data["source_line"],
-                        source_end_line=comment_data.get("source_end_line"),
+                        source_line=comment_data.source_line,
+                        source_end_line=comment_data.source_end_line,
                         content=comment_content,
                         language=language,
                         content_type=content_type,
@@ -678,13 +677,13 @@ class ProcessFileUseCase:
 
             text_contents: list[TextContent] = []
             for chunk in chunks:
-                chunk_content, was_truncated = truncate_for_tsvector(chunk["content"])
+                chunk_content, was_truncated = truncate_for_tsvector(chunk.content)
                 if was_truncated:
                     logger.warning(
                         "Truncated text content in %s (line %d) "
                         "to fit tsvector limit (%d bytes)",
                         file_path_str,
-                        chunk.get("source_line", 0),
+                        chunk.source_line,
                         DatabaseLimits.MAX_TSVECTOR_BYTES,
                     )
                 text_contents.append(
@@ -694,11 +693,11 @@ class ProcessFileUseCase:
                         commit_id=None,  # file-derived, not commit-specific
                         source_type=TextSearchSourceType.FILE_CONTENT.value,
                         source_file_id=file_id,
-                        source_line=chunk["source_line"],
-                        source_end_line=chunk.get("source_end_line"),
+                        source_line=chunk.source_line,
+                        source_end_line=chunk.source_end_line,
                         content=chunk_content,
                         language=None,
-                        content_type=chunk["content_type"],
+                        content_type=chunk.content_type,
                     )
                 )
             if text_contents:

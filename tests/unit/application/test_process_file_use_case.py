@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from inxr2.application.ports.services import ParserServicePort
+from inxr2.application.ports.services import (
+    ParsedComment,
+    ParsedReference,
+    ParsedSymbol,
+    ParserServicePort,
+)
 from inxr2.application.use_cases.indexing.process_file import (
     ProcessFileRequest,
     ProcessFileUseCase,
@@ -25,49 +30,46 @@ class FakeParserService(ParserServicePort):
     """Fake parser service for testing."""
 
     def __init__(self) -> None:
-        self.comments_to_return: list[dict] = []
+        self.comments_to_return: list[ParsedComment] = []
 
     def supports_language(self, language: str) -> bool:
         return language in ["python", "typescript", "java"]
 
     async def parse_file(
         self, content: str, language: str, file_path: str
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
         file_name = Path(file_path).name
         symbols = [
-            {
-                "name": f"function_in_{file_name}",
-                "kind": "function",
-                "start_line": 1,
-                "start_column": 0,
-                "end_line": 5,
-                "end_column": 0,
-                "parent_symbol_id": None,
-                "signature": None,
-                "metadata": {},
-            }
+            ParsedSymbol(
+                name=f"function_in_{file_name}",
+                kind="function",
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
         ]
         references = [
-            {
-                "text": "print",
-                "type": "call",
-                "source_line": 2,
-                "source_column": 0,
-            }
+            ParsedReference(
+                reference_text="print",
+                reference_type="call",
+                source_line=2,
+                source_column=0,
+            )
         ]
         return symbols, references
 
     async def extract_comments(
         self, content: str, language: str, file_path: str
-    ) -> list[dict]:
+    ) -> list[ParsedComment]:
         if self.comments_to_return:
             return self.comments_to_return
         return [
-            {
-                "content": f"Comment in {Path(file_path).name}",
-                "content_type": "single_line_comment",
-                "source_line": 1,
-            }
+            ParsedComment(
+                content=f"Comment in {Path(file_path).name}",
+                content_type="single_line_comment",
+                source_line=1,
+            )
         ]
 
 
@@ -288,17 +290,17 @@ class TestProcessFileUseCase:
     ) -> None:
         """Test that comments and docstrings are extracted and saved."""
         parser_service.comments_to_return = [
-            {
-                "content": "A docstring",
-                "content_type": "docstring",
-                "source_line": 1,
-                "source_end_line": 3,
-            },
-            {
-                "content": "An inline comment",
-                "content_type": "single_line_comment",
-                "source_line": 5,
-            },
+            ParsedComment(
+                content="A docstring",
+                content_type="docstring",
+                source_line=1,
+                source_end_line=3,
+            ),
+            ParsedComment(
+                content="An inline comment",
+                content_type="single_line_comment",
+                source_line=5,
+            ),
         ]
 
         request = ProcessFileRequest(
@@ -485,37 +487,36 @@ class TestParentSymbolIdResolution:
         class ClassMethodParserService(FakeParserService):
             async def parse_file(
                 self, content: str, language: str, file_path: str
-            ) -> tuple[list[dict], list[dict]]:
+            ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
                 symbols = [
-                    {
-                        "name": "MyClass",
-                        "kind": "class",
-                        "start_line": 1,
-                        "start_column": 0,
-                        "end_line": 20,
-                        "end_column": 0,
-                        "scope": None,
-                    },
-                    {
-                        "name": "do_thing",
-                        "kind": "method",
-                        "start_line": 3,
-                        "start_column": 4,
-                        "end_line": 10,
-                        "end_column": 0,
-                        "scope": "MyClass",
-                        "qualified_name": "MyClass.do_thing",
-                    },
-                    {
-                        "name": "value",
-                        "kind": "class_variable",
-                        "start_line": 2,
-                        "start_column": 4,
-                        "end_line": 2,
-                        "end_column": 14,
-                        "scope": "MyClass",
-                        "qualified_name": "MyClass.value",
-                    },
+                    ParsedSymbol(
+                        name="MyClass",
+                        kind="class",
+                        start_line=1,
+                        start_column=0,
+                        end_line=20,
+                        end_column=0,
+                    ),
+                    ParsedSymbol(
+                        name="do_thing",
+                        kind="method",
+                        start_line=3,
+                        start_column=4,
+                        end_line=10,
+                        end_column=0,
+                        scope="MyClass",
+                        qualified_name="MyClass.do_thing",
+                    ),
+                    ParsedSymbol(
+                        name="value",
+                        kind="class_variable",
+                        start_line=2,
+                        start_column=4,
+                        end_line=2,
+                        end_column=14,
+                        scope="MyClass",
+                        qualified_name="MyClass.value",
+                    ),
                 ]
                 return symbols, []
 
@@ -564,37 +565,36 @@ class TestParentSymbolIdResolution:
         class NestedParserService(FakeParserService):
             async def parse_file(
                 self, content: str, language: str, file_path: str
-            ) -> tuple[list[dict], list[dict]]:
+            ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
                 symbols = [
-                    {
-                        "name": "MyClass",
-                        "kind": "class",
-                        "start_line": 1,
-                        "start_column": 0,
-                        "end_line": 30,
-                        "end_column": 0,
-                        "scope": None,
-                    },
-                    {
-                        "name": "do_thing",
-                        "kind": "method",
-                        "start_line": 3,
-                        "start_column": 4,
-                        "end_line": 20,
-                        "end_column": 0,
-                        "scope": "MyClass",
-                        "qualified_name": "MyClass.do_thing",
-                    },
-                    {
-                        "name": "helper",
-                        "kind": "function",
-                        "start_line": 10,
-                        "start_column": 8,
-                        "end_line": 15,
-                        "end_column": 0,
-                        "scope": "MyClass.do_thing",
-                        "qualified_name": "MyClass.do_thing.helper",
-                    },
+                    ParsedSymbol(
+                        name="MyClass",
+                        kind="class",
+                        start_line=1,
+                        start_column=0,
+                        end_line=30,
+                        end_column=0,
+                    ),
+                    ParsedSymbol(
+                        name="do_thing",
+                        kind="method",
+                        start_line=3,
+                        start_column=4,
+                        end_line=20,
+                        end_column=0,
+                        scope="MyClass",
+                        qualified_name="MyClass.do_thing",
+                    ),
+                    ParsedSymbol(
+                        name="helper",
+                        kind="function",
+                        start_line=10,
+                        start_column=8,
+                        end_line=15,
+                        end_column=0,
+                        scope="MyClass.do_thing",
+                        qualified_name="MyClass.do_thing.helper",
+                    ),
                 ]
                 return symbols, []
 
@@ -640,17 +640,16 @@ class TestParentSymbolIdResolution:
         class TopLevelParserService(FakeParserService):
             async def parse_file(
                 self, content: str, language: str, file_path: str
-            ) -> tuple[list[dict], list[dict]]:
+            ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
                 symbols = [
-                    {
-                        "name": "standalone_func",
-                        "kind": "function",
-                        "start_line": 1,
-                        "start_column": 0,
-                        "end_line": 5,
-                        "end_column": 0,
-                        "scope": None,
-                    },
+                    ParsedSymbol(
+                        name="standalone_func",
+                        kind="function",
+                        start_line=1,
+                        start_column=0,
+                        end_line=5,
+                        end_column=0,
+                    ),
                 ]
                 return symbols, []
 
@@ -792,14 +791,14 @@ class TestLargeContentTruncation:
         class LargeCommentParserService(FakeParserService):
             async def extract_comments(
                 self, content: str, language: str, file_path: str
-            ) -> list[dict]:
+            ) -> list[ParsedComment]:
                 return [
-                    {
-                        "content": large_comment,
-                        "content_type": "block_comment",
-                        "source_line": 1,
-                        "source_end_line": 10,
-                    }
+                    ParsedComment(
+                        content=large_comment,
+                        content_type="block_comment",
+                        source_line=1,
+                        source_end_line=10,
+                    )
                 ]
 
         git_service = FakeGitService()

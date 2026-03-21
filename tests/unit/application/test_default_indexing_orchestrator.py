@@ -6,7 +6,14 @@ from pathlib import Path
 import pytest
 
 from inxr2.application.dtos.indexing import IndexRepositoryRequest
-from inxr2.application.ports.services import ChangedFiles, CommitInfo, ParserServicePort
+from inxr2.application.ports.services import (
+    ChangedFiles,
+    CommitInfo,
+    ParsedComment,
+    ParsedReference,
+    ParsedSymbol,
+    ParserServicePort,
+)
 from inxr2.application.use_cases.indexing.default_orchestrator import (
     DefaultIndexingOrchestrator,
 )
@@ -28,7 +35,7 @@ class FakeParserService(ParserServicePort):
 
     def __init__(self) -> None:
         """Initialize fake parser service."""
-        self.comments_to_return: list[dict] = []
+        self.comments_to_return: list[ParsedComment] = []
 
     def supports_language(self, language: str) -> bool:
         """Check if language is supported."""
@@ -36,63 +43,43 @@ class FakeParserService(ParserServicePort):
 
     async def parse_file(
         self, content: str, language: str, file_path: str
-    ) -> tuple[list[dict], list[dict]]:
-        """
-        Parse file and return symbols and references as dicts.
-
-        Note: Signature matches TreeSitterService.parse_file() which returns
-        dicts, not Symbol objects.
-        """
-        # Return fake symbols as dicts (matching real TreeSitterService)
+    ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
+        """Parse file and return typed symbols and references."""
         file_name = Path(file_path).name
         symbols = [
-            {
-                "name": f"function_in_{file_name}",
-                "kind": "function",
-                "start_line": 1,
-                "start_column": 0,
-                "end_line": 5,
-                "end_column": 0,
-                "parent_symbol_id": None,
-                "signature": None,
-                "metadata": {},
-            }
+            ParsedSymbol(
+                name=f"function_in_{file_name}",
+                kind="function",
+                start_line=1,
+                start_column=0,
+                end_line=5,
+                end_column=0,
+            )
         ]
-        # Return fake references (using "text" and "type" like real parsers)
         references = [
-            {
-                "text": "print",
-                "type": "call",
-                "source_line": 2,
-                "source_column": 0,
-            }
+            ParsedReference(
+                reference_text="print",
+                reference_type="call",
+                source_line=2,
+                source_column=0,
+            )
         ]
         return symbols, references
 
     async def extract_comments(
         self, content: str, language: str, file_path: str
-    ) -> list[dict]:
-        """
-        Extract comments and docstrings from a file.
-
-        Returns list of dicts with keys:
-        - content: The comment text
-        - content_type: Type (single_line_comment, block_comment, docstring)
-        - source_line: Starting line number
-        - source_end_line: Ending line number (optional)
-        """
-        # Return predefined comments if set, otherwise return default
+    ) -> list[ParsedComment]:
+        """Extract comments and docstrings from a file."""
         if self.comments_to_return:
             return self.comments_to_return
 
-        # Default: return one fake comment per file
         file_name = Path(file_path).name
         return [
-            {
-                "content": f"This is a comment in {file_name}",
-                "content_type": "single_line_comment",
-                "source_line": 1,
-            }
+            ParsedComment(
+                content=f"This is a comment in {file_name}",
+                content_type="single_line_comment",
+                source_line=1,
+            )
         ]
 
 
@@ -762,49 +749,47 @@ class TestGitServiceIntegration:
         git_service: FakeGitService,
     ) -> None:
         """
-        Regression test: Orchestrator must handle dict symbols from TreeSitterService.
+        Regression test: Orchestrator must handle typed symbols from ParserServicePort.
 
-        The TreeSitterService.parse_file() returns tuple[list[dict], list[dict]],
-        not tuple[list[Symbol], list[dict]]. The orchestrator must convert these
-        dicts to Symbol objects.
+        The ParserServicePort.parse_file() returns typed ParsedSymbol/ParsedReference,
+        and the orchestrator must correctly persist these to the repository.
         """
 
-        class DictReturningParserService(ParserServicePort):
-            """Parser that returns dicts (like real TreeSitterService)."""
+        class TypedParserService(ParserServicePort):
+            """Parser that returns typed structs (like real TreeSitterService)."""
 
             def supports_language(self, language: str) -> bool:
                 return language == "python"
 
             async def parse_file(
                 self, content: str, language: str, file_path: str
-            ) -> tuple[list[dict], list[dict]]:
-                # Return dicts, not Symbol objects
+            ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
                 symbols = [
-                    {
-                        "name": "test_function",
-                        "kind": "function",
-                        "start_line": 1,
-                        "start_column": 0,
-                        "end_line": 5,
-                        "end_column": 0,
-                    }
+                    ParsedSymbol(
+                        name="test_function",
+                        kind="function",
+                        start_line=1,
+                        start_column=0,
+                        end_line=5,
+                        end_column=0,
+                    )
                 ]
                 references = [
-                    {
-                        "text": "print",
-                        "type": "call",
-                        "source_line": 2,
-                        "source_column": 0,
-                    }
+                    ParsedReference(
+                        reference_text="print",
+                        reference_type="call",
+                        source_line=2,
+                        source_column=0,
+                    )
                 ]
                 return symbols, references
 
             async def extract_comments(
                 self, content: str, language: str, file_path: str
-            ) -> list[dict]:
+            ) -> list[ParsedComment]:
                 return []
 
-        dict_parser = DictReturningParserService()
+        typed_parser = TypedParserService()
         orchestrator = DefaultIndexingOrchestrator(
             repository_repo=repository_adapter,
             commit_repo=commit_repo,
@@ -814,7 +799,7 @@ class TestGitServiceIntegration:
             index_status_repo=index_status_repo,
             text_content_repo=text_content_repo,
             git_service=git_service,
-            parser_service=dict_parser,
+            parser_service=typed_parser,
             plaintext_parser=FakePlaintextParser(),
         )
 
@@ -859,32 +844,32 @@ class TestGitServiceIntegration:
 
             async def parse_file(
                 self, content: str, language: str, file_path: str
-            ) -> tuple[list[dict], list[dict]]:
+            ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
                 symbols = [
-                    {
-                        "name": "main",
-                        "kind": "function",
-                        "start_line": 1,
-                        "start_column": 0,
-                        "end_line": 5,
-                        "end_column": 0,
-                    }
+                    ParsedSymbol(
+                        name="main",
+                        kind="function",
+                        start_line=1,
+                        start_column=0,
+                        end_line=5,
+                        end_column=0,
+                    )
                 ]
                 # References WITHOUT source_end_column (like real C parser)
                 references = [
-                    {
-                        "text": "printf",  # 6 chars
-                        "type": "call",
-                        "source_line": 3,
-                        "source_column": 4,
-                        # source_end_column is NOT provided
-                    }
+                    ParsedReference(
+                        reference_text="printf",  # 6 chars
+                        reference_type="call",
+                        source_line=3,
+                        source_column=4,
+                        # source_end_column is NOT provided (defaults to None)
+                    )
                 ]
                 return symbols, references
 
             async def extract_comments(
                 self, content: str, language: str, file_path: str
-            ) -> list[dict]:
+            ) -> list[ParsedComment]:
                 return []
 
         no_end_parser = ParserWithoutEndColumn()
@@ -957,37 +942,37 @@ class TestGitServiceIntegration:
 
             async def parse_file(
                 self, content: str, language: str, file_path: str
-            ) -> tuple[list[dict], list[dict]]:
+            ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
                 symbols = [
-                    {
-                        "name": "main",
-                        "kind": "function",
-                        "start_line": 1,
-                        "start_column": 0,
-                        "end_line": 5,
-                        "end_column": 0,
-                    }
+                    ParsedSymbol(
+                        name="main",
+                        kind="function",
+                        start_line=1,
+                        start_column=0,
+                        end_line=5,
+                        end_column=0,
+                    )
                 ]
                 # References with string type (like all real parsers)
                 references = [
-                    {
-                        "text": "printf",
-                        "type": "call",  # String, not ReferenceType.CALL
-                        "source_line": 3,
-                        "source_column": 4,
-                    },
-                    {
-                        "text": "count",
-                        "type": "usage",  # String, not ReferenceType.USAGE
-                        "source_line": 4,
-                        "source_column": 0,
-                    },
+                    ParsedReference(
+                        reference_text="printf",
+                        reference_type="call",  # String, not ReferenceType.CALL
+                        source_line=3,
+                        source_column=4,
+                    ),
+                    ParsedReference(
+                        reference_text="count",
+                        reference_type="usage",  # String, not ReferenceType.USAGE
+                        source_line=4,
+                        source_column=0,
+                    ),
                 ]
                 return symbols, references
 
             async def extract_comments(
                 self, content: str, language: str, file_path: str
-            ) -> list[dict]:
+            ) -> list[ParsedComment]:
                 return []
 
         string_type_parser = ParserWithStringReferenceType()
@@ -1608,17 +1593,17 @@ class TestBranchIndexingOptimization:
         """Test that text search extracts and saves comments when enabled."""
         # Arrange: Set up fake comments to be extracted
         parser_service.comments_to_return = [
-            {
-                "content": "This is a docstring",
-                "content_type": "docstring",
-                "source_line": 1,
-                "source_end_line": 3,
-            },
-            {
-                "content": "This is an inline comment",
-                "content_type": "single_line_comment",
-                "source_line": 5,
-            },
+            ParsedComment(
+                content="This is a docstring",
+                content_type="docstring",
+                source_line=1,
+                source_end_line=3,
+            ),
+            ParsedComment(
+                content="This is an inline comment",
+                content_type="single_line_comment",
+                source_line=5,
+            ),
         ]
 
         request = IndexRepositoryRequest(

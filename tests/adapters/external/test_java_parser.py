@@ -42,9 +42,9 @@ public class HelloWorld {
             content=code, language="java", file_path="HelloWorld.java"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "HelloWorld"]
+        class_symbols = [s for s in symbols if s.name == "HelloWorld"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["kind"] == "class"
+        assert class_symbols[0].kind == "class"
 
     @pytest.mark.asyncio
     async def test_parse_abstract_class(
@@ -61,10 +61,10 @@ public abstract class Shape {
             content=code, language="java", file_path="Shape.java"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "Shape"]
+        class_symbols = [s for s in symbols if s.name == "Shape"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["kind"] == "class"
-        assert class_symbols[0]["is_abstract"] is True
+        assert class_symbols[0].kind == "class"
+        assert class_symbols[0].metadata["is_abstract"] is True
 
     @pytest.mark.asyncio
     async def test_parse_final_class(self, parser_service: TreeSitterService) -> None:
@@ -78,10 +78,10 @@ public final class Constants {
             content=code, language="java", file_path="Constants.java"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "Constants"]
+        class_symbols = [s for s in symbols if s.name == "Constants"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["kind"] == "class"
-        assert class_symbols[0]["is_final"] is True
+        assert class_symbols[0].kind == "class"
+        assert class_symbols[0].metadata["is_final"] is True
 
     @pytest.mark.asyncio
     async def test_parse_inner_class(self, parser_service: TreeSitterService) -> None:
@@ -101,22 +101,22 @@ public class Outer {
             content=code, language="java", file_path="Outer.java"
         )
 
-        outer = [s for s in symbols if s["name"] == "Outer" and s["kind"] == "class"]
+        outer = [s for s in symbols if s.name == "Outer" and s.kind == "class"]
         assert len(outer) == 1
 
-        inner = [s for s in symbols if s["name"] == "Inner" and s["kind"] == "class"]
+        inner = [s for s in symbols if s.name == "Inner" and s.kind == "class"]
         assert len(inner) == 1
-        assert inner[0]["scope"] == "Outer"
-        assert inner[0]["is_inner"] is True
+        assert inner[0].scope == "Outer"
+        assert inner[0].metadata["is_inner"] is True
 
         static_inner = [
-            s for s in symbols if s["name"] == "StaticInner" and s["kind"] == "class"
+            s for s in symbols if s.name == "StaticInner" and s.kind == "class"
         ]
         assert len(static_inner) == 1
-        assert static_inner[0]["scope"] == "Outer"
-        assert static_inner[0]["is_static"] is True
+        assert static_inner[0].scope == "Outer"
+        assert static_inner[0].metadata["is_static"] is True
         # Static nested classes are NOT inner classes in Java terminology
-        assert static_inner[0]["is_inner"] is False
+        assert static_inner[0].metadata["is_inner"] is False
 
 
 class TestJavaInterfaces:
@@ -142,12 +142,12 @@ public interface Drawable {
             content=code, language="java", file_path="Drawable.java"
         )
 
-        interface_symbols = [s for s in symbols if s["name"] == "Drawable"]
+        interface_symbols = [s for s in symbols if s.name == "Drawable"]
         assert len(interface_symbols) == 1
-        assert interface_symbols[0]["kind"] == "interface"
+        assert interface_symbols[0].kind == "interface"
 
-        methods = [s for s in symbols if s["kind"] == "method"]
-        method_names = [s["name"] for s in methods]
+        methods = [s for s in symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
         assert "draw" in method_names
         assert "resize" in method_names
 
@@ -169,17 +169,17 @@ public interface Vehicle {
             content=code, language="java", file_path="Vehicle.java"
         )
 
-        interface_symbols = [s for s in symbols if s["name"] == "Vehicle"]
+        interface_symbols = [s for s in symbols if s.name == "Vehicle"]
         assert len(interface_symbols) == 1
-        assert interface_symbols[0]["kind"] == "interface"
+        assert interface_symbols[0].kind == "interface"
 
         # Check that abstract method (no body) is marked abstract
-        start_method = [s for s in symbols if s["name"] == "start"][0]
-        assert start_method["is_abstract"] is True
+        start_method = [s for s in symbols if s.name == "start"][0]
+        assert start_method.metadata["is_abstract"] is True
 
         # Check that default method (has body) is NOT marked abstract
-        stop_method = [s for s in symbols if s["name"] == "stop"][0]
-        assert stop_method["is_abstract"] is False
+        stop_method = [s for s in symbols if s.name == "stop"][0]
+        assert stop_method.metadata["is_abstract"] is False
 
     @pytest.mark.asyncio
     async def test_parse_interface_constants(
@@ -196,8 +196,8 @@ public interface Config {
             content=code, language="java", file_path="Config.java"
         )
 
-        constants = [s for s in symbols if s["kind"] == "constant"]
-        constant_names = [s["name"] for s in constants]
+        constants = [s for s in symbols if s.kind == "constant"]
+        constant_names = [s.name for s in constants]
         assert "MAX_CONNECTIONS" in constant_names
         assert "DEFAULT_HOST" in constant_names
 
@@ -230,19 +230,19 @@ public class Calculator {
             content=code, language="java", file_path="Calculator.java"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
-        method_names = [s["name"] for s in methods]
+        methods = [s for s in symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
         assert "add" in method_names
         assert "multiply" in method_names
 
-        add_method = [s for s in methods if s["name"] == "add"][0]
-        assert add_method["scope"] == "Calculator"
-        assert add_method["is_static"] is False
+        add_method = [s for s in methods if s.name == "add"][0]
+        assert add_method.scope == "Calculator"
+        assert add_method.metadata["is_static"] is False
         # Verify primitive return type is captured in signature
-        assert "int add(" in add_method["signature"]
+        assert add_method.signature is not None and "int add(" in add_method.signature
 
-        multiply_method = [s for s in methods if s["name"] == "multiply"][0]
-        assert "double multiply(" in multiply_method["signature"]
+        multiply_method = [s for s in methods if s.name == "multiply"][0]
+        assert multiply_method.signature is not None and "double multiply(" in multiply_method.signature
 
     @pytest.mark.asyncio
     async def test_parse_static_method(self, parser_service: TreeSitterService) -> None:
@@ -262,9 +262,9 @@ public class MathUtils {
             content=code, language="java", file_path="MathUtils.java"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         for method in methods:
-            assert method["is_static"] is True
+            assert method.metadata["is_static"] is True
 
     @pytest.mark.asyncio
     async def test_parse_abstract_method(
@@ -281,9 +281,9 @@ public abstract class Animal {
             content=code, language="java", file_path="Animal.java"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         for method in methods:
-            assert method["is_abstract"] is True
+            assert method.metadata["is_abstract"] is True
 
     @pytest.mark.asyncio
     async def test_method_signature(self, parser_service: TreeSitterService) -> None:
@@ -299,10 +299,10 @@ public class Service {
             content=code, language="java", file_path="Service.java"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
-        assert "signature" in methods[0]
-        assert "processData" in methods[0]["signature"]
+        assert methods[0].signature is not None
+        assert methods[0].signature is not None and "processData" in methods[0].signature
 
 
 class TestJavaConstructors:
@@ -335,11 +335,11 @@ public class Person {
             content=code, language="java", file_path="Person.java"
         )
 
-        constructors = [s for s in symbols if s["kind"] == "constructor"]
+        constructors = [s for s in symbols if s.kind == "constructor"]
         assert len(constructors) == 2
         for constructor in constructors:
-            assert constructor["name"] == "Person"
-            assert constructor["scope"] == "Person"
+            assert constructor.name == "Person"
+            assert constructor.scope == "Person"
 
 
 class TestJavaFields:
@@ -366,15 +366,15 @@ public class User {
             content=code, language="java", file_path="User.java"
         )
 
-        fields = [s for s in symbols if s["kind"] == "field"]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if s.kind == "field"]
+        field_names = [s.name for s in fields]
         assert "username" in field_names
         assert "email" in field_names
         assert "age" in field_names
 
         for field in fields:
-            assert field["scope"] == "User"
-            assert field["is_static"] is False
+            assert field.scope == "User"
+            assert field.metadata["is_static"] is False
 
     @pytest.mark.asyncio
     async def test_parse_static_fields(self, parser_service: TreeSitterService) -> None:
@@ -389,9 +389,9 @@ public class Counter {
             content=code, language="java", file_path="Counter.java"
         )
 
-        fields = [s for s in symbols if s["kind"] == "field"]
+        fields = [s for s in symbols if s.kind == "field"]
         for field in fields:
-            assert field["is_static"] is True
+            assert field.metadata["is_static"] is True
 
     @pytest.mark.asyncio
     async def test_parse_constants(self, parser_service: TreeSitterService) -> None:
@@ -407,8 +407,8 @@ public class Constants {
             content=code, language="java", file_path="Constants.java"
         )
 
-        constants = [s for s in symbols if s["kind"] == "constant"]
-        constant_names = [s["name"] for s in constants]
+        constants = [s for s in symbols if s.kind == "constant"]
+        constant_names = [s.name for s in constants]
         assert "MAX_VALUE" in constant_names
         assert "APP_NAME" in constant_names
         assert "PI" in constant_names
@@ -436,12 +436,12 @@ public enum Color {
             content=code, language="java", file_path="Color.java"
         )
 
-        enum_symbols = [s for s in symbols if s["kind"] == "enum"]
+        enum_symbols = [s for s in symbols if s.kind == "enum"]
         assert len(enum_symbols) == 1
-        assert enum_symbols[0]["name"] == "Color"
+        assert enum_symbols[0].name == "Color"
 
-        enum_values = [s for s in symbols if s["kind"] == "enum_value"]
-        value_names = [s["name"] for s in enum_values]
+        enum_values = [s for s in symbols if s.kind == "enum_value"]
+        value_names = [s.name for s in enum_values]
         assert "RED" in value_names
         assert "GREEN" in value_names
         assert "BLUE" in value_names
@@ -474,22 +474,22 @@ public enum Planet {
             content=code, language="java", file_path="Planet.java"
         )
 
-        enum_symbols = [s for s in symbols if s["kind"] == "enum"]
+        enum_symbols = [s for s in symbols if s.kind == "enum"]
         assert len(enum_symbols) == 1
-        assert enum_symbols[0]["name"] == "Planet"
+        assert enum_symbols[0].name == "Planet"
 
-        enum_values = [s for s in symbols if s["kind"] == "enum_value"]
-        value_names = [s["name"] for s in enum_values]
+        enum_values = [s for s in symbols if s.kind == "enum_value"]
+        value_names = [s.name for s in enum_values]
         assert "MERCURY" in value_names
         assert "VENUS" in value_names
         assert "EARTH" in value_names
 
         # Should also find the constructor and methods
-        constructors = [s for s in symbols if s["kind"] == "constructor"]
-        assert any(c["name"] == "Planet" for c in constructors)
+        constructors = [s for s in symbols if s.kind == "constructor"]
+        assert any(c.name == "Planet" for c in constructors)
 
-        methods = [s for s in symbols if s["kind"] == "method"]
-        assert any(m["name"] == "getMass" for m in methods)
+        methods = [s for s in symbols if s.kind == "method"]
+        assert any(m.name == "getMass" for m in methods)
 
     @pytest.mark.asyncio
     async def test_enum_value_scope(self, parser_service: TreeSitterService) -> None:
@@ -503,9 +503,9 @@ public enum Direction {
             content=code, language="java", file_path="Direction.java"
         )
 
-        enum_values = [s for s in symbols if s["kind"] == "enum_value"]
+        enum_values = [s for s in symbols if s.kind == "enum_value"]
         for value in enum_values:
-            assert value["scope"] == "Direction"
+            assert value.scope == "Direction"
 
 
 class TestJavaAnnotations:
@@ -531,9 +531,9 @@ public @interface MyAnnotation {
             content=code, language="java", file_path="MyAnnotation.java"
         )
 
-        annotation_symbols = [s for s in symbols if s["kind"] == "annotation"]
+        annotation_symbols = [s for s in symbols if s.kind == "annotation"]
         assert len(annotation_symbols) == 1
-        assert annotation_symbols[0]["name"] == "MyAnnotation"
+        assert annotation_symbols[0].name == "MyAnnotation"
 
 
 class TestJavaRecords:
@@ -555,13 +555,13 @@ public record Point(int x, int y) {
             content=code, language="java", file_path="Point.java"
         )
 
-        record_symbols = [s for s in symbols if s["kind"] == "record"]
+        record_symbols = [s for s in symbols if s.kind == "record"]
         assert len(record_symbols) == 1
-        assert record_symbols[0]["name"] == "Point"
+        assert record_symbols[0].name == "Point"
 
         # Record components should be extracted as fields
-        fields = [s for s in symbols if s["kind"] == "field"]
-        field_names = [s["name"] for s in fields]
+        fields = [s for s in symbols if s.kind == "field"]
+        field_names = [s.name for s in fields]
         assert "x" in field_names
         assert "y" in field_names
 
@@ -581,12 +581,12 @@ public record Person(String name, int age) {
             content=code, language="java", file_path="Person.java"
         )
 
-        record_symbols = [s for s in symbols if s["kind"] == "record"]
+        record_symbols = [s for s in symbols if s.kind == "record"]
         assert len(record_symbols) == 1
-        assert record_symbols[0]["name"] == "Person"
+        assert record_symbols[0].name == "Person"
 
-        methods = [s for s in symbols if s["kind"] == "method"]
-        assert any(m["name"] == "greeting" for m in methods)
+        methods = [s for s in symbols if s.kind == "method"]
+        assert any(m.name == "greeting" for m in methods)
 
 
 class TestJavaReferences:
@@ -615,8 +615,8 @@ public class App {
             content=code, language="java", file_path="App.java"
         )
 
-        import_refs = [r for r in references if r["type"] == "import"]
-        import_texts = [r["text"] for r in import_refs]
+        import_refs = [r for r in references if r.reference_type == "import"]
+        import_texts = [r.reference_text for r in import_refs]
         assert "java.util.List" in import_texts
         assert "java.util.ArrayList" in import_texts
         assert "java.io.*" in import_texts
@@ -638,8 +638,8 @@ public class Service {
             content=code, language="java", file_path="Service.java"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         assert "initialize" in call_texts
         assert "calculate" in call_texts
         assert "cleanup" in call_texts
@@ -663,8 +663,8 @@ public class Test {
             content=code, language="java", file_path="Test.java"
         )
 
-        call_refs = [r for r in references if r["type"] == "call"]
-        call_texts = [r["text"] for r in call_refs]
+        call_refs = [r for r in references if r.reference_type == "call"]
+        call_texts = [r.reference_text for r in call_refs]
         # Builtins should be filtered
         assert "toString" not in call_texts
         assert "equals" not in call_texts
@@ -688,8 +688,8 @@ public class Factory {
             content=code, language="java", file_path="Factory.java"
         )
 
-        instantiation_refs = [r for r in references if r["type"] == "instantiation"]
-        instantiation_texts = [r["text"] for r in instantiation_refs]
+        instantiation_refs = [r for r in references if r.reference_type == "instantiation"]
+        instantiation_texts = [r.reference_text for r in instantiation_refs]
         assert "Person" in instantiation_texts
         assert "MyObject" in instantiation_texts
 
@@ -712,8 +712,8 @@ public class Repository {
             content=code, language="java", file_path="Repository.java"
         )
 
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "UserService" in type_texts
         assert "DataMapper" in type_texts
         assert "CustomType" in type_texts
@@ -737,8 +737,8 @@ public class Calculator {
             content=code, language="java", file_path="Calculator.java"
         )
 
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         # Primitives should be filtered
         assert "int" not in type_texts
         assert "double" not in type_texts
@@ -769,8 +769,8 @@ public class Dog extends Animal {
             content=code, language="java", file_path="Dog.java"
         )
 
-        inheritance_refs = [r for r in references if r["type"] == "inheritance"]
-        inheritance_texts = [r["text"] for r in inheritance_refs]
+        inheritance_refs = [r for r in references if r.reference_type == "inheritance"]
+        inheritance_texts = [r.reference_text for r in inheritance_refs]
         assert "Animal" in inheritance_texts
 
     @pytest.mark.asyncio
@@ -788,8 +788,8 @@ public class Circle implements Drawable, Resizable {
             content=code, language="java", file_path="Circle.java"
         )
 
-        inheritance_refs = [r for r in references if r["type"] == "inheritance"]
-        inheritance_texts = [r["text"] for r in inheritance_refs]
+        inheritance_refs = [r for r in references if r.reference_type == "inheritance"]
+        inheritance_texts = [r.reference_text for r in inheritance_refs]
         assert "Drawable" in inheritance_texts
         assert "Resizable" in inheritance_texts
 
@@ -807,8 +807,8 @@ public interface ExtendedDrawable extends Drawable, Printable {
             content=code, language="java", file_path="ExtendedDrawable.java"
         )
 
-        inheritance_refs = [r for r in references if r["type"] == "inheritance"]
-        inheritance_texts = [r["text"] for r in inheritance_refs]
+        inheritance_refs = [r for r in references if r.reference_type == "inheritance"]
+        inheritance_texts = [r.reference_text for r in inheritance_refs]
         assert "Drawable" in inheritance_texts
         assert "Printable" in inheritance_texts
 
@@ -841,9 +841,9 @@ public class Box<T> {
             content=code, language="java", file_path="Box.java"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "Box"]
+        class_symbols = [s for s in symbols if s.name == "Box"]
         assert len(class_symbols) == 1
-        assert class_symbols[0]["kind"] == "class"
+        assert class_symbols[0].kind == "class"
 
     @pytest.mark.asyncio
     async def test_parse_generic_type_references(
@@ -860,8 +860,8 @@ public class Container {
             content=code, language="java", file_path="Container.java"
         )
 
-        type_refs = [r for r in references if r["type"] == "type_annotation"]
-        type_texts = [r["text"] for r in type_refs]
+        type_refs = [r for r in references if r.reference_type == "type_annotation"]
+        type_texts = [r.reference_text for r in type_refs]
         assert "CustomList" in type_texts
         assert "MyItem" in type_texts
         assert "CustomMap" in type_texts
@@ -886,7 +886,7 @@ public class StreamProcessor {
             content=code, language="java", file_path="StreamProcessor.java"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "StreamProcessor"]
+        class_symbols = [s for s in symbols if s.name == "StreamProcessor"]
         assert len(class_symbols) == 1
 
     @pytest.mark.asyncio
@@ -906,8 +906,8 @@ public class Controller {
             content=code, language="java", file_path="Controller.java"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "CustomAnnotation" in usage_texts
         assert "AnotherAnnotation" in usage_texts
 
@@ -926,8 +926,8 @@ public class Example {
             content=code, language="java", file_path="Example.java"
         )
 
-        usage_refs = [r for r in references if r["type"] == "usage"]
-        usage_texts = [r["text"] for r in usage_refs]
+        usage_refs = [r for r in references if r.reference_type == "usage"]
+        usage_texts = [r.reference_text for r in usage_refs]
         assert "config" in usage_texts
         assert "setting" in usage_texts
         assert "myObject" in usage_texts
@@ -958,8 +958,8 @@ class Utility {
             content=code, language="java", file_path="Main.java"
         )
 
-        class_symbols = [s for s in symbols if s["kind"] == "class"]
-        class_names = [s["name"] for s in class_symbols]
+        class_symbols = [s for s in symbols if s.kind == "class"]
+        class_names = [s.name for s in class_symbols]
         assert "Main" in class_names
         assert "Helper" in class_names
         assert "Utility" in class_names
@@ -977,10 +977,10 @@ public class MyClass {
             content=code, language="java", file_path="MyClass.java"
         )
 
-        class_symbols = [s for s in symbols if s["name"] == "MyClass"]
+        class_symbols = [s for s in symbols if s.name == "MyClass"]
         assert len(class_symbols) == 1
         # The class name "MyClass" is on line 2, not line 1 where the annotation is
-        assert class_symbols[0]["start_line"] == 2
+        assert class_symbols[0].start_line == 2
 
     @pytest.mark.asyncio
     async def test_method_symbol_line_points_to_name(
@@ -997,10 +997,10 @@ public class MyClass {
             content=code, language="java", file_path="Test.java"
         )
 
-        method_symbols = [s for s in symbols if s["name"] == "myMethod"]
+        method_symbols = [s for s in symbols if s.name == "myMethod"]
         assert len(method_symbols) == 1
         # The method name "myMethod" is on line 3
-        assert method_symbols[0]["start_line"] == 3
+        assert method_symbols[0].start_line == 3
 
     @pytest.mark.asyncio
     async def test_parse_varargs_method(
@@ -1018,6 +1018,6 @@ public class Formatter {
             content=code, language="java", file_path="Formatter.java"
         )
 
-        methods = [s for s in symbols if s["kind"] == "method"]
+        methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
-        assert methods[0]["name"] == "format"
+        assert methods[0].name == "format"

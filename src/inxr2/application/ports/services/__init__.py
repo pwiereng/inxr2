@@ -2,7 +2,9 @@
 
 Each port is defined in its own module for easier navigation:
 - git_service: GitServicePort, CommitInfo, ChangedFiles, RepositoryInfo, BlameLineInfo
-- parser_service: ParserServicePort, PlaintextParserPort
+- parser_service: ParserServicePort, PlaintextParserPort, ParsedSymbol, ParsedReference,
+  ParsedComment, PlaintextChunk
+- dependency_parser_service: DependencyParserServicePort, ParsedDependency
 - config_service: ConfigServicePort
 - filesystem_service: FileSystemPort, FileStat
 - text_search_service: TextSearchPort, TextSearchResult, TextSearchQuery
@@ -10,7 +12,7 @@ Each port is defined in its own module for easier navigation:
 """
 
 from .config_service import ConfigServicePort
-from .dependency_parser_service import DependencyParserServicePort
+from .dependency_parser_service import DependencyParserServicePort, ParsedDependency
 from .filesystem_service import FileStat, FileSystemPort
 from .git_service import (
     BlameLineInfo,
@@ -21,7 +23,14 @@ from .git_service import (
     RepositoryInfo,
 )
 from .indexing_orchestrator import IndexingOrchestratorPort, ProgressCallback
-from .parser_service import ParserServicePort, PlaintextParserPort
+from .parser_service import (
+    ParsedComment,
+    ParsedReference,
+    ParsedSymbol,
+    ParserServicePort,
+    PlaintextChunk,
+    PlaintextParserPort,
+)
 from .text_search_service import TextSearchPort, TextSearchQuery, TextSearchResult
 
 __all__ = [
@@ -34,7 +43,12 @@ __all__ = [
     "FileSystemPort",
     "GitServicePort",
     "IndexingOrchestratorPort",
+    "ParsedComment",
+    "ParsedDependency",
+    "ParsedReference",
+    "ParsedSymbol",
     "ParserServicePort",
+    "PlaintextChunk",
     "PlaintextParserPort",
     "ProgressCallback",
     "RenameInfo",

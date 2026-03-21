@@ -10,7 +10,12 @@ from typing import Any
 
 from tree_sitter import Language, Parser
 
-from inxr2.application.ports.services import ParserServicePort
+from inxr2.application.ports.services import (
+    ParsedComment,
+    ParsedReference,
+    ParsedSymbol,
+    ParserServicePort,
+)
 
 from .base import BaseLanguageParser
 from .bash_parser import BashParser
@@ -215,12 +220,84 @@ class TreeSitterService(ParserServicePort):
         """Get the language-specific extraction parser."""
         return self._language_parsers.get(language.lower())
 
+    @staticmethod
+    def _dict_to_parsed_symbol(sym: dict[str, Any]) -> ParsedSymbol:
+        """Convert an internal symbol dict to a typed ParsedSymbol."""
+        known_keys = {
+            "name",
+            "kind",
+            "start_line",
+            "start_column",
+            "end_line",
+            "end_column",
+            "scope",
+            "qualified_name",
+            "signature",
+            "docstring",
+        }
+        metadata: dict[str, Any] = {}
+        for k, v in sym.items():
+            if k not in known_keys:
+                metadata[k] = v
+        return ParsedSymbol(
+            name=sym["name"],
+            kind=sym["kind"],
+            start_line=sym["start_line"],
+            start_column=sym["start_column"],
+            end_line=sym["end_line"],
+            end_column=sym["end_column"],
+            scope=sym.get("scope"),
+            qualified_name=sym.get("qualified_name"),
+            signature=sym.get("signature"),
+            docstring=sym.get("docstring"),
+            metadata=metadata,
+        )
+
+    @staticmethod
+    def _dict_to_parsed_reference(ref: dict[str, Any]) -> ParsedReference:
+        """Convert an internal reference dict to a typed ParsedReference."""
+        known_keys = {
+            "text",
+            "reference_text",
+            "type",
+            "reference_type",
+            "source_line",
+            "source_column",
+            "source_end_column",
+            "scope",
+        }
+        reference_text = ref.get("text") or ref.get("reference_text", "")
+        reference_type = ref.get("type") or ref.get("reference_type", "usage")
+        metadata: dict[str, Any] = {}
+        for k, v in ref.items():
+            if k not in known_keys:
+                metadata[k] = v
+        return ParsedReference(
+            reference_text=reference_text,
+            reference_type=reference_type,
+            source_line=ref["source_line"],
+            source_column=ref["source_column"],
+            source_end_column=ref.get("source_end_column"),
+            scope=ref.get("scope"),
+            metadata=metadata,
+        )
+
+    @staticmethod
+    def _dict_to_parsed_comment(comment: dict[str, Any]) -> ParsedComment:
+        """Convert an internal comment dict to a typed ParsedComment."""
+        return ParsedComment(
+            content=comment["content"],
+            content_type=comment["content_type"],
+            source_line=comment["source_line"],
+            source_end_line=comment.get("source_end_line"),
+        )
+
     async def parse_file(
         self,
         content: str,
         language: str,
         file_path: str,
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
         """
         Parse a file and extract symbols and references.
 
@@ -230,7 +307,7 @@ class TreeSitterService(ParserServicePort):
             file_path: Path to file (for error reporting)
 
         Returns:
-            Tuple of (symbols, references) where each is a list of dicts
+            Tuple of (symbols, references)
         """
         self._ensure_initialized()
 
@@ -256,18 +333,22 @@ class TreeSitterService(ParserServicePort):
             return [], []
 
         try:
-            return language_parser.extract(tree.root_node, content)
+            raw_symbols, raw_references = language_parser.extract(tree.root_node, content)
         except (AttributeError, IndexError, KeyError, TypeError, RuntimeError) as e:
             # AST traversal errors from unexpected node structures
             logger.error("Failed to extract symbols from %s: %s", file_path, e)
             return [], []
+
+        symbols = [self._dict_to_parsed_symbol(s) for s in raw_symbols]
+        references = [self._dict_to_parsed_reference(r) for r in raw_references]
+        return symbols, references
 
     async def extract_comments(
         self,
         content: str,
         language: str,
         file_path: str,
-    ) -> list[dict[str, Any]]:
+    ) -> list[ParsedComment]:
         """
         Extract comments and docstrings from a file.
 
@@ -277,11 +358,8 @@ class TreeSitterService(ParserServicePort):
             file_path: Path to file (for error reporting)
 
         Returns:
-            List of comment dicts with keys:
-            - content: The comment text (stripped of comment markers)
-            - content_type: Type of comment (single_line_comment, block_comment, docstring, etc.)
-            - source_line: Starting line number
-            - source_end_line: Ending line number (for multi-line comments)
+            List of ParsedComment with content, content_type, source_line,
+            source_end_line
         """
         self._ensure_initialized()
 
@@ -307,8 +385,10 @@ class TreeSitterService(ParserServicePort):
             return []
 
         try:
-            return language_parser.extract_comments(tree.root_node, content)
+            raw_comments = language_parser.extract_comments(tree.root_node, content)
         except (AttributeError, IndexError, KeyError, TypeError, RuntimeError) as e:
             # AST traversal errors from unexpected node structures
             logger.error("Failed to extract comments from %s: %s", file_path, e)
             return []
+
+        return [self._dict_to_parsed_comment(c) for c in raw_comments]
