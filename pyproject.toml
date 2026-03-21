@@ -105,6 +105,7 @@ extend-exclude = '''
   | \.venv
   | build
   | dist
+  | \.tmp
 )/
 '''
 
@@ -113,6 +114,7 @@ extend-exclude = '''
 profile = "black"
 line_length = 88
 known_first_party = ["inxr2", "src", "tests"]
+skip_glob = [".tmp/*"]
 
 # Ruff configuration
 [tool.ruff]
