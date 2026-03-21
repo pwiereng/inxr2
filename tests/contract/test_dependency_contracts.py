@@ -2,7 +2,7 @@
 
 import pytest
 
-from inxr2.domain.entities import Dependency
+from inxr2.domain.entities import Dependency, Repository
 
 from .conftest import Repos, create_test_commit, create_test_file, create_test_repo
 
@@ -277,6 +277,122 @@ class TestDependencyReverseContract:
 
         results = await repos.dependency.find_by_package_name("nonexistent")
         assert len(results) == 0
+
+    async def test_find_by_package_name_scoped_npm(self, repos: Repos) -> None:
+        """@scope/package names are stored and retrieved exactly."""
+        repo_id = await create_test_repo(repos)
+        commit_id = await create_test_commit(repos, repo_id, "a" * 40)
+        file_id = await create_test_file(
+            repos, repo_id, commit_id, "package.json", "b" * 40
+        )
+
+        await repos.dependency.save(
+            Dependency(
+                file_id=file_id,
+                repository_id=repo_id,
+                package_name="@scope/pkg",
+                language="javascript",
+            )
+        )
+
+        results = await repos.dependency.find_by_package_name("@scope/pkg")
+        assert len(results) == 1
+        assert results[0].package_name == "@scope/pkg"
+
+        # Exact match — unscoped name must not match
+        results = await repos.dependency.find_by_package_name("pkg")
+        assert len(results) == 0
+
+    async def test_find_by_package_name_with_filter_language(
+        self, repos: Repos
+    ) -> None:
+        """language filter narrows results for find_by_package_name."""
+        repo_id = await create_test_repo(repos)
+        commit_id = await create_test_commit(repos, repo_id, "a" * 40)
+        py_file = await create_test_file(
+            repos, repo_id, commit_id, "pyproject.toml", "b" * 40
+        )
+        js_file = await create_test_file(
+            repos, repo_id, commit_id, "package.json", "c" * 40
+        )
+
+        await repos.dependency.save(
+            Dependency(
+                file_id=py_file,
+                repository_id=repo_id,
+                package_name="requests",
+                language="python",
+            )
+        )
+        await repos.dependency.save(
+            Dependency(
+                file_id=js_file,
+                repository_id=repo_id,
+                package_name="requests",
+                language="javascript",
+            )
+        )
+
+        py_results = await repos.dependency.find_by_package_name(
+            "requests", language="python"
+        )
+        assert len(py_results) == 1
+        assert py_results[0].language == "python"
+
+        js_results = await repos.dependency.find_by_package_name(
+            "requests", language="javascript"
+        )
+        assert len(js_results) == 1
+        assert js_results[0].language == "javascript"
+
+    async def test_find_by_package_name_with_filter_repository(
+        self, repos: Repos
+    ) -> None:
+        """repository_id filter excludes data from other repositories."""
+        repo1_id = await create_test_repo(repos)
+        commit1_id = await create_test_commit(repos, repo1_id, "a" * 40)
+        file1_id = await create_test_file(
+            repos, repo1_id, commit1_id, "pyproject.toml", "b" * 40
+        )
+
+        # Second repo with the same package to verify exclusion (different name to avoid unique constraint)
+        repo2 = await repos.repository.save(
+            Repository(name="contract-test-repo-2", url="https://example.com/repo2.git")
+        )
+        assert repo2.id is not None
+        repo2_id = repo2.id
+        commit2_id = await create_test_commit(repos, repo2_id, "c" * 40)
+        file2_id = await create_test_file(
+            repos, repo2_id, commit2_id, "pyproject.toml", "d" * 40
+        )
+
+        await repos.dependency.save(
+            Dependency(
+                file_id=file1_id,
+                repository_id=repo1_id,
+                package_name="fastapi",
+                language="python",
+            )
+        )
+        await repos.dependency.save(
+            Dependency(
+                file_id=file2_id,
+                repository_id=repo2_id,
+                package_name="fastapi",
+                language="python",
+            )
+        )
+
+        # Without filter: both repos' deps are returned
+        all_results = await repos.dependency.find_by_package_name("fastapi")
+        assert len(all_results) == 2
+
+        # With filter: only repo1's dep is returned
+        results = await repos.dependency.find_by_package_name(
+            "fastapi", repository_id=repo1_id
+        )
+        assert len(results) == 1
+        assert results[0].repository_id == repo1_id
 
 
 @pytest.mark.asyncio
