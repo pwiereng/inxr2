@@ -72,33 +72,6 @@ class FakeParserService(ParserServicePort):
 
 
 @pytest.fixture
-def git_service() -> FakeGitService:
-    return FakeGitService()
-
-
-@pytest.fixture
-def file_repo() -> InMemoryFileRepository:
-    return InMemoryFileRepository()
-
-
-@pytest.fixture
-def symbol_repo() -> InMemorySymbolRepository:
-    return InMemorySymbolRepository()
-
-
-@pytest.fixture
-def reference_repo(
-    symbol_repo: InMemorySymbolRepository,
-) -> InMemoryReferenceRepository:
-    return InMemoryReferenceRepository(symbol_repo=symbol_repo)
-
-
-@pytest.fixture
-def text_content_repo() -> InMemoryTextContentRepository:
-    return InMemoryTextContentRepository()
-
-
-@pytest.fixture
 def parser_service() -> FakeParserService:
     return FakeParserService()
 

@@ -103,47 +103,9 @@ def repository_adapter() -> InMemoryRepositoryRepository:
 
 
 @pytest.fixture
-def commit_repo() -> InMemoryCommitRepository:
-    """Create in-memory commit repository."""
-    return InMemoryCommitRepository()
-
-
-@pytest.fixture
-def file_repo() -> InMemoryFileRepository:
-    """Create in-memory file repository."""
-    return InMemoryFileRepository()
-
-
-@pytest.fixture
-def symbol_repo() -> InMemorySymbolRepository:
-    """Create in-memory symbol repository."""
-    return InMemorySymbolRepository()
-
-
-@pytest.fixture
-def reference_repo(
-    symbol_repo: InMemorySymbolRepository,
-) -> InMemoryReferenceRepository:
-    """Create in-memory reference repository."""
-    return InMemoryReferenceRepository(symbol_repo=symbol_repo)
-
-
-@pytest.fixture
 def index_status_repo() -> InMemoryIndexStatusRepository:
     """Create in-memory index status repository."""
     return InMemoryIndexStatusRepository()
-
-
-@pytest.fixture
-def text_content_repo() -> InMemoryTextContentRepository:
-    """Create in-memory text content repository."""
-    return InMemoryTextContentRepository()
-
-
-@pytest.fixture
-def git_service() -> FakeGitService:
-    """Create fake git service."""
-    return FakeGitService()
 
 
 @pytest.fixture

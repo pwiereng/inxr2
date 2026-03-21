@@ -61,11 +61,6 @@ def _make_commit(
 
 
 @pytest.fixture
-def git_service() -> FakeGitService:
-    return FakeGitService()
-
-
-@pytest.fixture
 def file_rename_repo() -> InMemoryFileRenameRepository:
     return InMemoryFileRenameRepository()
 
