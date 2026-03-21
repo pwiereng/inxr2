@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 
+from ....domain.constants import QueryDefaults
 from ....domain.entities import Commit
 
 
@@ -106,7 +107,10 @@ class CommitRepositoryPort(ABC):
 
     @abstractmethod
     async def list_by_repository(
-        self, repository_id: int, branch: str | None = None, limit: int = 100
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        limit: int = QueryDefaults.COMMIT_LIST_LIMIT,
     ) -> list[Commit]:
         """List commits for a repository, optionally filtered by branch.
 

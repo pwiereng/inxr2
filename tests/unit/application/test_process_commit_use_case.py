@@ -10,10 +10,8 @@ from inxr2.application.use_cases.indexing.process_commit import (
     ProcessCommitRequest,
     ProcessCommitUseCase,
 )
-from inxr2.application.use_cases.indexing.process_file import (
-    MAX_TSVECTOR_CONTENT_BYTES,
-    ProcessFileUseCase,
-)
+from inxr2.application.use_cases.indexing.process_file import ProcessFileUseCase
+from inxr2.domain.constants import DatabaseLimits
 from tests.fixtures.test_doubles import (
     FakeGitService,
     FakePlaintextParser,
@@ -355,7 +353,7 @@ class TestProcessCommitUseCase:
         text_content_repo: InMemoryTextContentRepository,
     ) -> None:
         """Commit message exceeding tsvector limit should be truncated, not fail."""
-        large_message = "word " * (MAX_TSVECTOR_CONTENT_BYTES // 2)
+        large_message = "word " * (DatabaseLimits.MAX_TSVECTOR_BYTES // 2)
         request = ProcessCommitRequest(
             repository_id=1,
             commit_data=_make_commit(message=large_message),
@@ -369,7 +367,10 @@ class TestProcessCommitUseCase:
         all_text = text_content_repo.get_all()
         commit_msgs = [tc for tc in all_text if tc.source_type == "commit_message"]
         assert len(commit_msgs) == 1
-        assert len(commit_msgs[0].content.encode("utf-8")) <= MAX_TSVECTOR_CONTENT_BYTES
+        assert (
+            len(commit_msgs[0].content.encode("utf-8"))
+            <= DatabaseLimits.MAX_TSVECTOR_BYTES
+        )
 
     @pytest.mark.asyncio
     async def test_minified_files_always_skipped(

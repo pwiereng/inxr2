@@ -7,6 +7,7 @@ from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import ReferenceRepositoryPort
+from ....domain.constants import QueryDefaults
 from ....domain.entities import Reference
 from ..mappers import ReferenceMapper
 from ..models.commit_file import CommitFileModel
@@ -51,7 +52,7 @@ class PostgresReferenceRepository(
     async def find_references_to_symbol(
         self,
         symbol_id: int,
-        limit: int = 100,
+        limit: int = QueryDefaults.REFERENCE_LIMIT,
         commit_id: int | None = None,
         branch: str | None = None,
         repository_id: int | None = None,
@@ -108,7 +109,7 @@ class PostgresReferenceRepository(
         self,
         text: str,
         repository_id: int,
-        limit: int = 100,
+        limit: int = QueryDefaults.REFERENCE_LIMIT,
         commit_id: int | None = None,
         branch: str | None = None,
     ) -> list[Reference]:

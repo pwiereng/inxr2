@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from ....application.ports.repositories import SymbolRepositoryPort
+from ....domain.constants import QueryDefaults
 from ....domain.entities import Symbol
 from ..mappers import SymbolMapper
 from ..models.commit_file import CommitFileModel
@@ -42,7 +43,7 @@ class PostgresSymbolRepository(
         name: str,
         repository_id: int | None = None,
         kind: str | None = None,
-        limit: int = 50,
+        limit: int = QueryDefaults.SYMBOL_SEARCH_LIMIT,
         offset: int = 0,
         branch: str | None = None,
         language: str | None = None,

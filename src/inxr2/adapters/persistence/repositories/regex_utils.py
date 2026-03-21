@@ -2,8 +2,8 @@
 
 import re
 
-# Regex validation constants
-MAX_REGEX_LENGTH = 500
+from ....domain.constants import DatabaseLimits
+
 # Patterns that can cause catastrophic backtracking (ReDoS)
 DANGEROUS_REGEX_PATTERNS = [
     r"\(\.\*\)\+",  # (.*)+
@@ -26,10 +26,10 @@ def validate_regex_pattern(pattern: str) -> None:
         ValueError: If pattern is invalid or potentially dangerous
     """
     # Check length
-    if len(pattern) > MAX_REGEX_LENGTH:
+    if len(pattern) > DatabaseLimits.MAX_REGEX_LENGTH:
         raise ValueError(
             f"Regex pattern too long: {len(pattern)} characters "
-            f"(max {MAX_REGEX_LENGTH})"
+            f"(max {DatabaseLimits.MAX_REGEX_LENGTH})"
         )
 
     # Check for dangerous patterns that can cause catastrophic backtracking
