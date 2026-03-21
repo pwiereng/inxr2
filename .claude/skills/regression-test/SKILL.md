@@ -255,3 +255,89 @@ Include the indexing performance table:
 |------|--------|-----------------------|-----------------------|-----------------|
 | ... | ... | ... | ... | ... |
 ```
+
+---
+
+## Save Report to Docs
+
+After outputting the final report to the user, **always** save it as a dated markdown file under `docs/`:
+
+```bash
+DATE=$(date +%Y-%m-%d)
+REPORT_PATH="docs/regression-report-${DATE}.md"
+```
+
+Write the file using the Write tool (not bash echo/heredoc). The file must follow this structure exactly, matching the format of `docs/regression-report-2026-03-08.md`:
+
+```markdown
+# Regression Test Report — <YYYY-MM-DD>
+
+## Summary
+
+| Phase | Passed | Total | Notes |
+|-------|--------|-------|-------|
+| Indexing | X | 7 | |
+| Browser | X | 29 | X skipped (list IDs) |
+| MCP | X | 18 | X failed (list IDs) |
+| **Total** | **X** | **54** | **X skipped, X failed** |
+
+---
+
+## Phase 1: Indexing (X/7 passed)
+
+| ID | Test | Result | Notes |
+|----|------|--------|-------|
+| IX-01 | Reset DB and index all repos | PASS | <key stats: repo count, file count, line count, resolution %, elapsed> |
+| IX-02 | Verify indexing status | PASS/FAIL | |
+| IX-03 | Verify API serves indexed data | PASS/FAIL | |
+| IX-04 | Multi-language symbols (10 langs) | PASS/FAIL | |
+| IX-04a | Reference extraction | PASS/FAIL | |
+| IX-04b | ES6 export/re-export references | PASS/FAIL | |
+| IX-05 | Performance comparison | PASS/FAIL | |
+
+### IX-05 Performance Comparison
+
+| Repo | Branch | Elapsed (prev → now) | Symbols | Refs Resolved % |
+|------|--------|---------------------|---------|-----------------|
+| <repo> | <branch> | <prev>s → <now>s (<delta>%) | <count> (=/<delta>) | <pct>% |
+...
+
+---
+
+## Phase 2: Browser (X/29 passed, X skipped)
+
+| ID | Test | Result | Notes |
+|----|------|--------|-------|
+| RT-01 | Home page repo cards | PASS/FAIL/SKIP | |
+...
+
+---
+
+## Phase 3: MCP Server (X/18 passed)
+
+| ID | Test | Result | Notes |
+|----|------|--------|-------|
+| MCP-01 | List repos | PASS/FAIL | |
+...
+
+### <ID> Failure Details  ← include only for failing tests
+
+<Root cause and reproduction steps>
+
+---
+
+## Known Issues / Observations
+
+<Numbered list of any notable observations, even from passing tests>
+```
+
+After writing the file, `git add` it so it's staged for the user to commit:
+
+```bash
+git add docs/regression-report-${DATE}.md
+```
+
+Then report the path to the user:
+```
+📄 Report saved to docs/regression-report-<DATE>.md (staged, ready to commit)
+```
