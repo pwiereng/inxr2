@@ -18,7 +18,7 @@ class DatabaseLimits:
 
 
 class QueryDefaults:
-    """Default limits and batch sizes for database queries."""
+    """Default limits for database queries."""
 
     SYMBOL_SEARCH_LIMIT = 50
     REFERENCE_LIMIT = 100
