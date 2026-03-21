@@ -66,7 +66,8 @@ function getRepoUrl(repo: Repository): string {
   if (repo.default_branch) {
     params.set('branch', repo.default_branch)
   }
-  return `/browse/${repo.name}?${params.toString()}`
+  const qs = params.toString()
+  return qs ? `/browse/${repo.name}?${qs}` : `/browse/${repo.name}`
 }
 
 export function Home(): React.ReactElement {

@@ -156,9 +156,9 @@ describe('Home', () => {
       expect(screen.getByText('test-repo')).toBeInTheDocument()
     })
 
-    const link = screen.getByText('test-repo').closest('a')
-    expect(link).not.toBeNull()
-    expect(link).toHaveAttribute('href', '/browse/test-repo?branch=main')
+    const links = screen.getAllByRole('link')
+    const repoLink = links.find((l) => l.getAttribute('href') === '/browse/test-repo?branch=main')
+    expect(repoLink).toBeDefined()
   })
 
   it('should render repo rows as anchor tags with correct href in list view', async () => {
@@ -171,9 +171,34 @@ describe('Home', () => {
     // Switch to list view
     fireEvent.click(screen.getByLabelText('Switch to list view'))
 
-    const link = screen.getByText('test-repo').closest('a')
-    expect(link).not.toBeNull()
-    expect(link).toHaveAttribute('href', '/browse/test-repo?branch=main')
+    const links = screen.getAllByRole('link')
+    const repoLink = links.find((l) => l.getAttribute('href') === '/browse/test-repo?branch=main')
+    expect(repoLink).toBeDefined()
+  })
+
+  it('should render repo card href without trailing ? when default_branch is null', async () => {
+    const api = await import('@/lib/api')
+    vi.mocked(api.getRepositories).mockResolvedValue([
+      {
+        id: 99,
+        name: 'no-branch-repo',
+        url: 'https://github.com/test/no-branch-repo',
+        description: null,
+        default_branch: '',
+        created_at: '2024-01-01',
+        updated_at: '2024-01-01',
+      },
+    ])
+
+    render(<Home />)
+
+    await waitFor(() => {
+      expect(screen.getByText('no-branch-repo')).toBeInTheDocument()
+    })
+
+    const links = screen.getAllByRole('link')
+    const repoLink = links.find((l) => l.getAttribute('href') === '/browse/no-branch-repo')
+    expect(repoLink).toBeDefined()
   })
 
   it('should show message when no repositories are indexed', async () => {
