@@ -8,7 +8,7 @@ from .file_rename_adapter import PostgresFileRenameRepository
 from .file_search_adapter import PostgresFileSearchRepository
 from .file_version_adapter import PostgresFileVersionRepository
 from .index_status_adapter import PostgresIndexStatusRepository
-from .postgres_text_search import PostgresTextSearch
+from .postgres_text_search import PostgresTextSearchRepository
 from .query_log_adapter import PostgresQueryLogRepository
 from .reference_adapter import PostgresReferenceRepository
 from .repository_adapter import PostgresRepositoryAdapter
@@ -30,5 +30,5 @@ __all__ = [
     "PostgresRepositoryAdapter",
     "PostgresSymbolRepository",
     "PostgresTextContentRepository",
-    "PostgresTextSearch",
+    "PostgresTextSearchRepository",
 ]

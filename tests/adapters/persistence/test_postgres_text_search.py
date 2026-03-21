@@ -1,4 +1,4 @@
-"""Tests for PostgresTextSearch."""
+"""Tests for PostgresTextSearchRepository."""
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +7,7 @@ from inxr2.adapters.persistence.repositories import (
     PostgresCommitRepository,
     PostgresFileRepository,
     PostgresTextContentRepository,
-    PostgresTextSearch,
+    PostgresTextSearchRepository,
 )
 from inxr2.application.ports.services import TextSearchQuery
 from inxr2.domain.entities import Commit, File, Repository, TextContent
@@ -19,7 +19,7 @@ from .factories import FileFactory
 @pytest.mark.asyncio
 async def test_search_empty_query_raises_error(db_session: AsyncSession) -> None:
     """Test that empty query raises ValueError."""
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     query = TextSearchQuery(query="")
 
@@ -40,7 +40,7 @@ async def test_search_with_repository_filter(
     assert test_file.id is not None
 
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     # Create test text content
     text_content = TextContent(
@@ -82,7 +82,7 @@ async def test_search_regex_mode(
     assert test_file.id is not None
 
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     # Create test text contents
     text_contents = [
@@ -135,7 +135,7 @@ async def test_search_with_source_type_filter(
     assert test_file.id is not None
 
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     # Create mixed source types
     text_contents = [
@@ -188,7 +188,7 @@ async def test_search_with_language_filter(
     assert test_file.id is not None
 
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     # Create content in different languages
     text_contents = [
@@ -233,7 +233,7 @@ async def test_search_pagination(
     assert test_file.id is not None
 
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     # Create 10 text contents
     text_contents = [
@@ -301,7 +301,7 @@ async def test_search_pagination_deterministic_with_tied_ranks(
     assert test_file.id is not None
 
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     # Create 10 text contents with identical keyword content so they all
     # get the same ts_rank score
@@ -368,7 +368,7 @@ async def test_search_with_commit_filter(
     assert test_file.id is not None
 
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     # Create content in different commits
     await repo.save(
@@ -430,7 +430,7 @@ async def test_search_commit_filter_for_file_derived_content(
 
     file_repo = PostgresFileRepository(db_session)
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     # Create a second file version linked only to the second commit
     second_file = await file_repo.save(
@@ -507,7 +507,7 @@ async def test_keyword_search_returns_headline(
     assert test_file.id is not None
 
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     await repo.save(
         TextContent(
@@ -548,7 +548,7 @@ async def test_phrase_search_returns_headline(
     assert test_file.id is not None
 
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     await repo.save(
         TextContent(
@@ -588,7 +588,7 @@ async def test_regex_search_returns_no_headline(
     assert test_file.id is not None
 
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     await repo.save(
         TextContent(
@@ -631,7 +631,7 @@ async def test_headline_shows_stemmed_match(
     assert test_file.id is not None
 
     repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     await repo.save(
         TextContent(
@@ -678,7 +678,7 @@ async def test_search_branch_filter_finds_file_based_content(
 
     commit_repo = PostgresCommitRepository(db_session)
     text_repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     # Link commit to branch "main"
     await commit_repo.link_commit_to_branch(test_repository.id, test_commit.id, "main")
@@ -736,7 +736,7 @@ async def test_search_branch_filter_finds_commit_messages(
 
     commit_repo = PostgresCommitRepository(db_session)
     text_repo = PostgresTextContentRepository(db_session)
-    search = PostgresTextSearch(db_session)
+    search = PostgresTextSearchRepository(db_session)
 
     # Link commit to branch "main"
     await commit_repo.link_commit_to_branch(test_repository.id, test_commit.id, "main")

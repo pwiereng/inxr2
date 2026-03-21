@@ -43,7 +43,9 @@ from ..adapters.persistence.repositories.file_version_adapter import (
 from ..adapters.persistence.repositories.index_status_adapter import (
     PostgresIndexStatusRepository,
 )
-from ..adapters.persistence.repositories.postgres_text_search import PostgresTextSearch
+from ..adapters.persistence.repositories.postgres_text_search import (
+    PostgresTextSearchRepository,
+)
 from ..adapters.persistence.repositories.query_log_adapter import (
     PostgresQueryLogRepository,
 )
@@ -177,7 +179,7 @@ def get_file_rename_adapter(session: DbSession) -> FileRenameRepositoryPort:
 
 def get_text_search(session: DbSession) -> TextSearchPort:
     """Provide text search service."""
-    return PostgresTextSearch(session)
+    return PostgresTextSearchRepository(session)
 
 
 # Type aliases for injected adapters
