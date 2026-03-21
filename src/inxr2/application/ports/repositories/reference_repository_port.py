@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
+from ....domain.constants import QueryDefaults
 from ....domain.entities import Reference
 
 
@@ -28,7 +29,7 @@ class ReferenceRepositoryPort(ABC):
     async def find_references_to_symbol(
         self,
         symbol_id: int,
-        limit: int = 100,
+        limit: int = QueryDefaults.REFERENCE_LIMIT,
         commit_id: int | None = None,
         branch: str | None = None,
         repository_id: int | None = None,
@@ -55,7 +56,7 @@ class ReferenceRepositoryPort(ABC):
         self,
         text: str,
         repository_id: int,
-        limit: int = 100,
+        limit: int = QueryDefaults.REFERENCE_LIMIT,
         commit_id: int | None = None,
         branch: str | None = None,
     ) -> list[Reference]:

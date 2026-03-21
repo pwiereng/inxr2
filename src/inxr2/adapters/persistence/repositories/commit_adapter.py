@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import CommitRepositoryPort
+from ....domain.constants import QueryDefaults
 from ....domain.entities import Commit
 from ..mappers import CommitMapper
 from ..models.branch_commit import BranchCommitModel
@@ -211,7 +212,10 @@ class PostgresCommitRepository(
         return branches_by_commit
 
     async def list_by_repository(
-        self, repository_id: int, branch: str | None = None, limit: int = 100
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        limit: int = QueryDefaults.COMMIT_LIST_LIMIT,
     ) -> list[Commit]:
         """List commits for a repository, optionally filtered by branch."""
         if branch:

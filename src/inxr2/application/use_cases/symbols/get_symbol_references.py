@@ -5,6 +5,7 @@ Handles fetching references to a symbol with file path enrichment.
 
 from dataclasses import dataclass
 
+from ....domain.constants import QueryDefaults
 from ....domain.entities import Reference
 from ....domain.exceptions import SymbolNotFound
 from ...ports.repositories import (
@@ -43,7 +44,7 @@ class GetSymbolReferencesRequest:
     by_name: bool = True
     commit_hash: str | None = None
     branch: str | None = None
-    limit: int = 100
+    limit: int = QueryDefaults.REFERENCE_LIMIT
 
 
 @dataclass

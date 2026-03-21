@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ....application.use_cases.dependencies import SearchDependenciesRequest
 from ....application.use_cases.search import SearchFilesRequest, SearchTextRequest
+from ....domain.constants import APILimits
 from ....domain.value_objects import QueryMode, TextSearchSourceType
 from ....infrastructure.dependencies import (
     FileSearchAdapter,
@@ -21,10 +22,6 @@ router = APIRouter(prefix="/search", tags=["search"])
 # Valid values for validation
 VALID_MODES = [m.value for m in QueryMode]
 VALID_SOURCE_TYPES = [s.value for s in TextSearchSourceType]
-
-# Query length limits
-MAX_TEXT_QUERY_LENGTH = 500
-MAX_FILE_QUERY_LENGTH = 200
 
 # Extension validation pattern: must start with dot, alphanumeric/dash/underscore, max 20 chars
 _EXTENSION_RE = re.compile(r"^\.[a-zA-Z0-9_-]{1,19}$")
@@ -122,7 +119,7 @@ async def search_text(
     q: str = Query(
         ...,
         min_length=1,
-        max_length=MAX_TEXT_QUERY_LENGTH,
+        max_length=APILimits.MAX_TEXT_QUERY_LENGTH,
         description="Search query",
     ),
     mode: Literal["keyword", "phrase", "regex"] = Query(
@@ -245,7 +242,7 @@ async def search_files(
     q: str = Query(
         ...,
         min_length=1,
-        max_length=MAX_FILE_QUERY_LENGTH,
+        max_length=APILimits.MAX_FILE_QUERY_LENGTH,
         description="File name/path search query",
     ),
     repository: str | None = Query(None, description="Repository name filter"),
@@ -390,7 +387,7 @@ async def search_dependencies(
     q: str = Query(
         ...,
         min_length=1,
-        max_length=MAX_TEXT_QUERY_LENGTH,
+        max_length=APILimits.MAX_TEXT_QUERY_LENGTH,
         description="Package name search query",
     ),
     repo: int | None = Query(

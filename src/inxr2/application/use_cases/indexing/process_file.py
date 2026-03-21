@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from inxr2.domain.constants import DatabaseLimits
 from inxr2.domain.entities import (
     Dependency,
     Reference,
@@ -41,11 +42,6 @@ from ...ports.services import (
 
 logger = logging.getLogger(__name__)
 
-# PostgreSQL tsvector has a hard limit of 1,048,575 bytes on the *generated*
-# tsvector, which can be larger than the input text due to positional data
-# and lexeme overhead. We use a conservative limit to account for this.
-MAX_TSVECTOR_CONTENT_BYTES = 750_000
-
 
 def truncate_for_tsvector(content: str) -> tuple[str, bool]:
     """Cap input content to reduce the risk of PostgreSQL tsvector overflow.
@@ -59,10 +55,10 @@ def truncate_for_tsvector(content: str) -> tuple[str, bool]:
         Tuple of (possibly truncated content, whether truncation occurred).
     """
     encoded = content.encode("utf-8")
-    if len(encoded) <= MAX_TSVECTOR_CONTENT_BYTES:
+    if len(encoded) <= DatabaseLimits.MAX_TSVECTOR_BYTES:
         return content, False
     # Truncate the raw bytes, then decode ignoring any trailing partial character
-    truncated = encoded[:MAX_TSVECTOR_CONTENT_BYTES]
+    truncated = encoded[: DatabaseLimits.MAX_TSVECTOR_BYTES]
     return truncated.decode("utf-8", errors="ignore"), True
 
 
@@ -618,7 +614,7 @@ class ProcessFileUseCase:
                         "to fit tsvector limit (%d bytes)",
                         file_path_str,
                         comment_data.get("source_line", 0),
-                        MAX_TSVECTOR_CONTENT_BYTES,
+                        DatabaseLimits.MAX_TSVECTOR_BYTES,
                     )
 
                 content_type = comment_data.get("content_type", "single_line_comment")
@@ -689,7 +685,7 @@ class ProcessFileUseCase:
                         "to fit tsvector limit (%d bytes)",
                         file_path_str,
                         chunk.get("source_line", 0),
-                        MAX_TSVECTOR_CONTENT_BYTES,
+                        DatabaseLimits.MAX_TSVECTOR_BYTES,
                     )
                 text_contents.append(
                     TextContent(

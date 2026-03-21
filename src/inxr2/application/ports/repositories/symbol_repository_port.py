@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 
+from ....domain.constants import QueryDefaults
 from ....domain.entities import Symbol
 
 
@@ -29,7 +30,7 @@ class SymbolRepositoryPort(ABC):
         name: str,
         repository_id: int | None = None,
         kind: str | None = None,
-        limit: int = 50,
+        limit: int = QueryDefaults.SYMBOL_SEARCH_LIMIT,
         offset: int = 0,
         branch: str | None = None,
         language: str | None = None,

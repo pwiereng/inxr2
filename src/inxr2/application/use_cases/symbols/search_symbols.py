@@ -5,6 +5,7 @@ Handles symbol search with efficient batch file path enrichment.
 
 from dataclasses import dataclass
 
+from ....domain.constants import QueryDefaults
 from ....domain.entities import Symbol
 from ...ports.repositories import (
     CommitRepositoryPort,
@@ -53,7 +54,7 @@ class SearchSymbolsRequest:
     kind: str | None = None
     commit_hash: str | None = None
     exact_match: bool = False
-    limit: int = 50
+    limit: int = QueryDefaults.SYMBOL_SEARCH_LIMIT
     offset: int = 0
     branch: str | None = None
     language: str | None = None

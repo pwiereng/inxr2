@@ -6,11 +6,11 @@ import pytest
 
 from inxr2.application.ports.services import ParserServicePort
 from inxr2.application.use_cases.indexing.process_file import (
-    MAX_TSVECTOR_CONTENT_BYTES,
     ProcessFileRequest,
     ProcessFileUseCase,
     truncate_for_tsvector,
 )
+from inxr2.domain.constants import DatabaseLimits
 from tests.fixtures.test_doubles import (
     FakeGitService,
     FakePlaintextParser,
@@ -723,17 +723,17 @@ class TestTruncateForTsvector:
 
     def test_content_at_limit_unchanged(self) -> None:
         """Content exactly at the byte limit is not truncated."""
-        content = "a" * MAX_TSVECTOR_CONTENT_BYTES
-        assert len(content.encode("utf-8")) == MAX_TSVECTOR_CONTENT_BYTES
+        content = "a" * DatabaseLimits.MAX_TSVECTOR_BYTES
+        assert len(content.encode("utf-8")) == DatabaseLimits.MAX_TSVECTOR_BYTES
         result, was_truncated = truncate_for_tsvector(content)
         assert result == content
         assert was_truncated is False
 
     def test_content_over_limit_is_truncated(self) -> None:
         """Content exceeding the byte limit is truncated."""
-        content = "a" * (MAX_TSVECTOR_CONTENT_BYTES + 10_000)
+        content = "a" * (DatabaseLimits.MAX_TSVECTOR_BYTES + 10_000)
         result, was_truncated = truncate_for_tsvector(content)
-        assert len(result.encode("utf-8")) <= MAX_TSVECTOR_CONTENT_BYTES
+        assert len(result.encode("utf-8")) <= DatabaseLimits.MAX_TSVECTOR_BYTES
         assert was_truncated is True
 
     def test_multibyte_content_truncated_safely(self) -> None:
@@ -742,17 +742,17 @@ class TestTruncateForTsvector:
         emoji = "\U0001f600"  # 😀
         assert len(emoji.encode("utf-8")) == 4
         # Fill up to just over the limit
-        count = (MAX_TSVECTOR_CONTENT_BYTES // 4) + 100
+        count = (DatabaseLimits.MAX_TSVECTOR_BYTES // 4) + 100
         content = emoji * count
         result, was_truncated = truncate_for_tsvector(content)
         assert was_truncated is True
         # Must be under the byte limit
         encoded = result.encode("utf-8")
-        assert len(encoded) <= MAX_TSVECTOR_CONTENT_BYTES
+        assert len(encoded) <= DatabaseLimits.MAX_TSVECTOR_BYTES
         # Result should be the longest valid UTF-8 prefix within the limit.
         # Since each emoji is 4 bytes, truncation should land on a 4-byte
-        # boundary (MAX_TSVECTOR_CONTENT_BYTES // 4 emojis).
-        expected_count = MAX_TSVECTOR_CONTENT_BYTES // 4
+        # boundary (DatabaseLimits.MAX_TSVECTOR_BYTES // 4 emojis).
+        expected_count = DatabaseLimits.MAX_TSVECTOR_BYTES // 4
         assert result == emoji * expected_count
 
 
@@ -769,7 +769,7 @@ class TestLargeContentTruncation:
         parser_service: FakeParserService,
     ) -> None:
         """Non-code file exceeding tsvector limit should be truncated, not fail."""
-        large_content = "x" * (MAX_TSVECTOR_CONTENT_BYTES + 100_000)
+        large_content = "x" * (DatabaseLimits.MAX_TSVECTOR_BYTES + 100_000)
         git_service = FakeGitService()
         git_service.set_file_content(
             repo_path="/repos/test-repo",
@@ -803,7 +803,7 @@ class TestLargeContentTruncation:
 
         # All saved text contents should be under the limit
         for tc in text_content_repo.get_all():
-            assert len(tc.content.encode("utf-8")) <= MAX_TSVECTOR_CONTENT_BYTES
+            assert len(tc.content.encode("utf-8")) <= DatabaseLimits.MAX_TSVECTOR_BYTES
 
     @pytest.mark.asyncio
     async def test_large_comment_content_is_truncated(
@@ -814,7 +814,7 @@ class TestLargeContentTruncation:
         text_content_repo: InMemoryTextContentRepository,
     ) -> None:
         """Code file with comment exceeding tsvector limit should truncate, not fail."""
-        large_comment = "x" * (MAX_TSVECTOR_CONTENT_BYTES + 50_000)
+        large_comment = "x" * (DatabaseLimits.MAX_TSVECTOR_BYTES + 50_000)
 
         class LargeCommentParserService(FakeParserService):
             async def extract_comments(
@@ -855,4 +855,6 @@ class TestLargeContentTruncation:
         # The saved comment should be truncated to fit
         for tc in text_content_repo.get_all():
             if tc.content_type == "block_comment":
-                assert len(tc.content.encode("utf-8")) <= MAX_TSVECTOR_CONTENT_BYTES
+                assert (
+                    len(tc.content.encode("utf-8")) <= DatabaseLimits.MAX_TSVECTOR_BYTES
+                )

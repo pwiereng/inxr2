@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from inxr2.domain.constants import DatabaseLimits
 from inxr2.domain.entities import Commit, FileRename, TextContent
 from inxr2.domain.exceptions import DomainException
 from inxr2.domain.services.file_filter import FileFilter
@@ -25,7 +26,6 @@ from ...ports.repositories import (
 )
 from ...ports.services import CommitInfo, GitServicePort
 from .process_file import (
-    MAX_TSVECTOR_CONTENT_BYTES,
     ProcessFileRequest,
     ProcessFileResult,
     ProcessFileUseCase,
@@ -325,7 +325,7 @@ class ProcessCommitUseCase:
                     "Truncated commit message for %s to fit tsvector "
                     "limit (%d bytes)",
                     commit_data.hash,
-                    MAX_TSVECTOR_CONTENT_BYTES,
+                    DatabaseLimits.MAX_TSVECTOR_BYTES,
                 )
 
             text_content = TextContent(
