@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.client import Inxr2Client
+from src.errors import McpToolError
 from src.staleness import check_staleness, prepend_warning
 from src.urls import build_browse_url
 
@@ -70,7 +71,7 @@ async def handle(
 
     # commit requires repository (API returns 400 otherwise)
     if commit and not repository:
-        return "Error: 'commit' requires 'repository' to be specified."
+        raise McpToolError("'commit' requires 'repository' to be specified.")
 
     # Resolve repository and check staleness
     staleness_warning = None

@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import CallToolResult, TextContent, Tool
 
 from src.client import HttpInxr2Client, Inxr2Client
 from src.tools import (
@@ -91,10 +91,13 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
             pass  # Never let logging failure affect tool response
 
     @server.call_tool()
-    async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    async def call_tool(name: str, arguments: dict) -> CallToolResult:
         tool_module = TOOL_MAP.get(name)
         if not tool_module:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+            return CallToolResult(
+                content=[TextContent(type="text", text=f"Unknown tool: {name}")],
+                isError=True,
+            )
 
         start = time.monotonic()
         result: str | None = None
@@ -139,8 +142,14 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
                 )
 
         if error is not None:
-            return [TextContent(type="text", text=f"Error: {error}")]
-        return [TextContent(type="text", text=result)]  # type: ignore[arg-type]
+            return CallToolResult(
+                content=[TextContent(type="text", text=f"Error: {error}")],
+                isError=True,
+            )
+        return CallToolResult(
+            content=[TextContent(type="text", text=result)],  # type: ignore[arg-type]
+            isError=False,
+        )
 
     return server
 

@@ -2,6 +2,9 @@
 
 from typing import Any
 
+import pytest
+
+from src.errors import McpToolError
 from src.tools import (
     explain_symbol,
     find_dead_code,
@@ -74,11 +77,8 @@ class TestFindReferences:
 
     async def test_commit_requires_repository(self) -> None:
         client = FakeInxr2Client()
-        result = await find_references.handle(
-            client, {"name": "Foo", "commit": "abc123"}
-        )
-        assert "Error" in result
-        assert "'commit' requires 'repository'" in result
+        with pytest.raises(McpToolError, match="'commit' requires 'repository'"):
+            await find_references.handle(client, {"name": "Foo", "commit": "abc123"})
 
     async def test_includes_browse_urls_with_repository(self) -> None:
         client = FakeInxr2Client()
@@ -161,11 +161,8 @@ class TestGoToDefinition:
 
     async def test_commit_requires_repository(self) -> None:
         client = FakeInxr2Client()
-        result = await go_to_definition.handle(
-            client, {"name": "Foo", "commit": "abc123"}
-        )
-        assert "Error" in result
-        assert "'commit' requires 'repository'" in result
+        with pytest.raises(McpToolError, match="'commit' requires 'repository'"):
+            await go_to_definition.handle(client, {"name": "Foo", "commit": "abc123"})
 
     async def test_multiple_definitions(self) -> None:
         client = FakeInxr2Client()
@@ -258,11 +255,8 @@ class TestSearchSymbols:
 
     async def test_commit_requires_repository(self) -> None:
         client = FakeInxr2Client()
-        result = await search_symbols.handle(
-            client, {"query": "Foo", "commit": "abc123"}
-        )
-        assert "Error" in result
-        assert "'commit' requires 'repository'" in result
+        with pytest.raises(McpToolError, match="'commit' requires 'repository'"):
+            await search_symbols.handle(client, {"query": "Foo", "commit": "abc123"})
 
     async def test_includes_browse_urls_with_repository(self) -> None:
         client = FakeInxr2Client()
@@ -354,9 +348,8 @@ class TestSearchCode:
 
     async def test_commit_requires_repository(self) -> None:
         client = FakeInxr2Client()
-        result = await search_code.handle(client, {"query": "test", "commit": "abc123"})
-        assert "Error" in result
-        assert "'commit' requires 'repository'" in result
+        with pytest.raises(McpToolError, match="'commit' requires 'repository'"):
+            await search_code.handle(client, {"query": "test", "commit": "abc123"})
 
     async def test_with_repository_filter(self) -> None:
         client = FakeInxr2Client()
@@ -1772,11 +1765,8 @@ class TestExplainSymbol:
 
     async def test_commit_requires_repository(self) -> None:
         client = FakeInxr2Client()
-        result = await explain_symbol.handle(
-            client, {"name": "Foo", "commit": "abc123"}
-        )
-        assert "Error" in result
-        assert "'commit' requires 'repository'" in result
+        with pytest.raises(McpToolError, match="'commit' requires 'repository'"):
+            await explain_symbol.handle(client, {"name": "Foo", "commit": "abc123"})
 
     async def test_includes_browse_url_with_repository(self) -> None:
         client = FakeInxr2Client()
@@ -1933,3 +1923,74 @@ class TestServerCreation:
         # Verify the server was created (basic smoke test)
         assert server is not None
         assert server.name == "inxr2"
+
+    async def test_unknown_tool_sets_is_error(self) -> None:
+        """Regression: unknown tool name must set isError=True, not return in content."""
+        from mcp.types import CallToolRequest, CallToolRequestParams
+
+        from src.server import create_server
+
+        client = FakeInxr2Client()
+        server = create_server(client)
+
+        req = CallToolRequest(
+            method="tools/call",
+            params=CallToolRequestParams(name="nonexistent_tool", arguments={}),
+        )
+        # NOTE: server.request_handlers is an internal attribute of the MCP SDK's
+        # Server class. There is no public test-client API; this is the least-bad
+        # option for exercising the full dispatch path. If the SDK reorganises its
+        # handler registry this will raise AttributeError unrelated to the behaviour
+        # under test — update the accessor if that happens.
+        handler = server.request_handlers[type(req)]
+        result = await handler(req)
+
+        assert result.root.isError is True
+        assert result.root.content, "expected non-empty content in error result"
+        assert "Unknown tool" in result.root.content[0].text
+
+    async def test_invalid_repository_sets_is_error(self) -> None:
+        """Regression: invalid repository name must set isError=True, not return in content."""
+        from mcp.types import CallToolRequest, CallToolRequestParams
+
+        from src.server import create_server
+
+        client = FakeInxr2Client()  # no repositories registered
+        server = create_server(client)
+
+        req = CallToolRequest(
+            method="tools/call",
+            params=CallToolRequestParams(
+                name="search_symbols",
+                arguments={"query": "foo", "repository": "nonexistent"},
+            ),
+        )
+        # NOTE: see test_unknown_tool_sets_is_error for why we use request_handlers.
+        handler = server.request_handlers[type(req)]
+        result = await handler(req)
+
+        assert result.root.isError is True
+
+    async def test_validation_error_sets_is_error(self) -> None:
+        """Regression: commit-without-repository validation error must set isError=True."""
+        from mcp.types import CallToolRequest, CallToolRequestParams
+
+        from src.server import create_server
+
+        client = FakeInxr2Client()
+        server = create_server(client)
+
+        req = CallToolRequest(
+            method="tools/call",
+            params=CallToolRequestParams(
+                name="search_symbols",
+                arguments={"query": "foo", "commit": "abc1234"},
+            ),
+        )
+        # NOTE: see test_unknown_tool_sets_is_error for why we use request_handlers.
+        handler = server.request_handlers[type(req)]
+        result = await handler(req)
+
+        assert result.root.isError is True
+        assert result.root.content, "expected non-empty content in error result"
+        assert "'commit' requires 'repository'" in result.root.content[0].text
