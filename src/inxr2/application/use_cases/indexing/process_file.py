@@ -35,11 +35,9 @@ from ...ports.repositories import (
 from ...ports.services import (
     DependencyParserServicePort,
     GitServicePort,
-    ParsedDependency,
     ParsedReference,
     ParsedSymbol,
     ParserServicePort,
-    PlaintextChunk,
     PlaintextParserPort,
 )
 
