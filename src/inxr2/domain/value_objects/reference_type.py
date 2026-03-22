@@ -20,3 +20,6 @@ class ReferenceType(StrEnum):
     INSTANTIATION = "instantiation"  # Class instantiation
     DEFINITION = "definition"  # Symbol definition site
     USAGE = "usage"  # Generic usage/reference
+
+    # Swift-specific reference types
+    PROTOCOL_CONFORMANCE = "protocol_conformance"  # Swift protocol conformance declaration

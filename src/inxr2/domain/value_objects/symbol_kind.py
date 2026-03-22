@@ -61,3 +61,10 @@ class SymbolKind(StrEnum):
 
     # Go-specific kinds
     PACKAGE = "package"  # Go package declarations
+
+    # Swift-specific kinds
+    PROTOCOL = "protocol"  # Swift protocol declarations
+    EXTENSION = "extension"  # Swift extension declarations
+    ENUM_CASE = "enum_case"  # Swift enum case members
+    INIT = "init"  # Swift initializer declarations
+    ACTOR = "actor"  # Swift actor declarations
