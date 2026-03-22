@@ -56,10 +56,48 @@ class Vehicle: Identifiable {
         assert len(classes) == 1
         assert classes[0].name == "Vehicle"
 
+        # When a class has a single ':' entry, it is treated as a superclass
+        # (inheritance) at parse time — we can't distinguish protocol vs class
+        # without type resolution.
+        inheritance_refs = [r for r in refs if r.reference_type == "inheritance"]
+        assert any(r.reference_text == "Identifiable" for r in inheritance_refs)
+
+    @pytest.mark.asyncio
+    async def test_class_superclass_emitted_as_inheritance(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """First entry after ':' for a class is a superclass — must use ReferenceType.INHERITANCE."""
+        code = """
+class SportsCar: Vehicle, Drivable {
+    var turbo: Bool = false
+}
+"""
+        _, refs = await parser_service.parse_file(code, "swift", "test.swift")
+        inheritance_refs = [r for r in refs if r.reference_type == "inheritance"]
         conformance_refs = [
             r for r in refs if r.reference_type == "protocol_conformance"
         ]
-        assert any(r.reference_text == "Identifiable" for r in conformance_refs)
+        assert any(r.reference_text == "Vehicle" for r in inheritance_refs)
+        assert any(r.reference_text == "Drivable" for r in conformance_refs)
+        # Superclass must NOT appear as protocol_conformance
+        assert not any(r.reference_text == "Vehicle" for r in conformance_refs)
+
+    @pytest.mark.asyncio
+    async def test_inheritance_ref_source_line_points_to_inherited_type(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Reference source_line must point at the inherited type, not the class name."""
+        code = """class Foo {}
+class Bar: Foo {}
+"""
+        _, refs = await parser_service.parse_file(code, "swift", "test.swift")
+        inh = next(
+            r
+            for r in refs
+            if r.reference_type == "inheritance" and r.reference_text == "Foo"
+        )
+        # `Foo` appears on line 2 (after the colon), not line 1
+        assert inh.source_line == 2
 
     @pytest.mark.asyncio
     async def test_class_with_properties(

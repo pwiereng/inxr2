@@ -76,18 +76,23 @@ class SwiftParser(BaseLanguageParser):
                             return get_text(grandchild), grandchild
             return None
 
-        def get_inheritance_types(node: Node) -> list[str]:
-            """Return all inherited/conformed type names from inheritance_specifier children."""
-            types: list[str] = []
+        def get_inheritance_types(node: Node) -> list[tuple[str, Node]]:
+            """Return (name, node) pairs for each inherited/conformed type.
+
+            Returning the AST node lets callers emit references with correct
+            source locations (the inherited type identifier, not the declaring
+            type's name node).
+            """
+            types: list[tuple[str, Node]] = []
             for child in node.children:
                 if child.type == "inheritance_specifier":
                     for spec_child in child.children:
                         if spec_child.type == "user_type":
                             for gc in spec_child.children:
                                 if gc.type == "type_identifier":
-                                    types.append(get_text(gc))
+                                    types.append((get_text(gc), gc))
                         elif spec_child.type == "type_identifier":
-                            types.append(get_text(spec_child))
+                            types.append((get_text(spec_child), spec_child))
             return types
 
         def process_import_declaration(node: Node) -> None:
@@ -133,18 +138,27 @@ class SwiftParser(BaseLanguageParser):
                     )
                 )
 
-                # Add protocol conformance references (not filtered by primitive_types
-                # — protocol names like Identifiable, Equatable are meaningful links)
-                for inherited in get_inheritance_types(node):
-                    if inherited not in SWIFT_BUILTINS:
-                        add_reference(
-                            self._make_reference(
-                                inherited,
-                                "protocol_conformance",
-                                name_node,
-                                qualified_name,
-                            )
+                # Add inheritance/conformance references.
+                # For `class`, the first entry is a superclass (inheritance);
+                # subsequent entries are protocols. Structs/actors/enums have
+                # no superclass — all entries are protocol conformances.
+                inherited_types = get_inheritance_types(node)
+                for i, (inherited, inherited_node) in enumerate(inherited_types):
+                    if inherited in SWIFT_BUILTINS:
+                        continue
+                    ref_type = (
+                        "inheritance"
+                        if kind == "class" and i == 0
+                        else "protocol_conformance"
+                    )
+                    add_reference(
+                        self._make_reference(
+                            inherited,
+                            ref_type,
+                            inherited_node,
+                            qualified_name,
                         )
+                    )
 
                 # Process body
                 for child in node.children:
@@ -180,14 +194,14 @@ class SwiftParser(BaseLanguageParser):
                 )
             )
 
-            # Add protocol conformance references
-            for inherited in get_inheritance_types(node):
+            # Add protocol conformance references (extensions never inherit classes)
+            for inherited, inherited_node in get_inheritance_types(node):
                 if inherited not in SWIFT_BUILTINS:
                     add_reference(
                         self._make_reference(
                             inherited,
                             "protocol_conformance",
-                            name_node,
+                            inherited_node,
                             ext_qualified_name,
                         )
                     )
@@ -223,14 +237,14 @@ class SwiftParser(BaseLanguageParser):
                 )
             )
 
-            # Add protocol conformance references
-            for inherited in get_inheritance_types(node):
+            # Add protocol conformance references (enums cannot inherit classes)
+            for inherited, inherited_node in get_inheritance_types(node):
                 if inherited not in SWIFT_BUILTINS:
                     add_reference(
                         self._make_reference(
                             inherited,
                             "protocol_conformance",
-                            name_node,
+                            inherited_node,
                             qualified_name,
                         )
                     )
@@ -291,14 +305,14 @@ class SwiftParser(BaseLanguageParser):
                 )
             )
 
-            # Add protocol inheritance references
-            for inherited in get_inheritance_types(node):
+            # Add protocol inheritance references (protocol refining another protocol)
+            for inherited, inherited_node in get_inheritance_types(node):
                 if inherited not in SWIFT_BUILTINS:
                     add_reference(
                         self._make_reference(
                             inherited,
                             "protocol_conformance",
-                            name_node,
+                            inherited_node,
                             qualified_name,
                         )
                     )

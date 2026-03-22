@@ -203,6 +203,23 @@ class TestPackageSwift:
         # All deps should have source lines
         assert all(d["source_line"] is not None for d in deps)
 
+    def test_prerelease_version_does_not_raise(
+        self, parser: SwiftDependencyParser
+    ) -> None:
+        """Non-numeric major segment must not crash — falls back to >= only."""
+        content = """// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "MyApp",
+    dependencies: [
+        .package(url: "https://github.com/Foo/Bar.git", .upToNextMajor(from: "beta.1")),
+    ]
+)
+"""
+        deps = parser.parse(content, "Package.swift")
+        assert len(deps) == 1
+        assert deps[0]["version_spec"] == ">= beta.1"
+
     def test_up_to_next_minor_version_spec(self, parser: SwiftDependencyParser) -> None:
         content = """// swift-tools-version: 5.9
 import PackageDescription

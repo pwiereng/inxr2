@@ -159,14 +159,20 @@ class SwiftDependencyParser(BaseDependencyParser):
             elif exact_ver:
                 spec = f"== {exact_ver}"
             elif major_ver:
-                parts = major_ver.split(".")
-                upper = f"{int(parts[0]) + 1}.0.0"
-                spec = f">= {major_ver}, < {upper}"
+                try:
+                    major = int(major_ver.split(".")[0])
+                    upper = f"{major + 1}.0.0"
+                    spec = f">= {major_ver}, < {upper}"
+                except (ValueError, IndexError):
+                    spec = f">= {major_ver}"
             elif minor_ver:
-                parts = minor_ver.split(".")
-                minor = int(parts[1]) + 1 if len(parts) > 1 else 1
-                upper = f"{parts[0]}.{minor}.0"
-                spec = f">= {minor_ver}, < {upper}"
+                try:
+                    parts = minor_ver.split(".")
+                    minor = int(parts[1]) if len(parts) > 1 else 0
+                    upper = f"{parts[0]}.{minor + 1}.0"
+                    spec = f">= {minor_ver}, < {upper}"
+                except (ValueError, IndexError):
+                    spec = f">= {minor_ver}"
             elif bare_ver:
                 spec = f">= {bare_ver}"
             elif branch:
