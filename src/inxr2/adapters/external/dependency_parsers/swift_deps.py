@@ -36,6 +36,33 @@ _PACKAGE_URL_RE = re.compile(
 )
 
 
+# Strip Swift block comments (non-nested) and line comments.
+# Applied before regex matching to avoid treating commented-out
+# .package(url:) calls as real dependencies.
+_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+# Negative lookbehind for ':' so that '://' inside URLs is not treated as a
+# line-comment marker (e.g. 'https://github.com/...' must not be stripped).
+_LINE_COMMENT_RE = re.compile(r"(?<!:)//[^\n]*")
+
+
+def _strip_swift_comments(content: str) -> str:
+    """Remove // and /* */ comments from Swift source.
+
+    Preserves newlines inside block comments so that line numbers in the
+    original text remain valid for source_line lookups.
+    Note: does not handle nested block comments (rare in Package.swift).
+    """
+
+    # Replace block comments, preserving newlines inside them
+    def _blank_block(m: re.Match[str]) -> str:
+        return "\n" * m.group(0).count("\n")
+
+    stripped = _BLOCK_COMMENT_RE.sub(_blank_block, content)
+    # Replace line comments, preserving the trailing newline
+    stripped = _LINE_COMMENT_RE.sub("", stripped)
+    return stripped
+
+
 def _package_name_from_url(url: str) -> str:
     """Extract a human-readable package name from a git URL.
 
@@ -135,9 +162,13 @@ class SwiftDependencyParser(BaseDependencyParser):
     def _parse_package_swift(self, content: str) -> list[dict[str, Any]]:
         """Extract dependencies from Package.swift using regex."""
         deps: list[dict[str, Any]] = []
+        # Keep original lines for source_line lookups (line numbers must
+        # refer to the unmodified file).
         lines = self._split_lines(content)
+        # Strip comments so commented-out .package(url:) calls are ignored.
+        stripped = _strip_swift_comments(content)
 
-        for m in _PACKAGE_URL_RE.finditer(content):
+        for m in _PACKAGE_URL_RE.finditer(stripped):
             url = m.group("url") or ""
             if not url:
                 continue

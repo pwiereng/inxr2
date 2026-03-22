@@ -242,6 +242,65 @@ let package = Package(name: "Empty", targets: [])
         assert deps == []
 
 
+class TestCommentStripping:
+    """Commented-out .package() calls must not produce false dependencies."""
+
+    def test_line_comment_suppresses_dependency(
+        self, parser: SwiftDependencyParser
+    ) -> None:
+        content = """// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "MyApp",
+    dependencies: [
+        // .package(url: "https://github.com/Foo/Bar.git", from: "1.0.0"),
+        .package(url: "https://github.com/Real/Dep.git", from: "2.0.0"),
+    ]
+)
+"""
+        deps = parser.parse(content, "Package.swift")
+        names = {d["package_name"] for d in deps}
+        assert "Bar" not in names
+        assert "Dep" in names
+
+    def test_block_comment_suppresses_dependency(
+        self, parser: SwiftDependencyParser
+    ) -> None:
+        content = """// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "MyApp",
+    dependencies: [
+        /* .package(url: "https://github.com/Foo/Bar.git", from: "1.0.0"), */
+        .package(url: "https://github.com/Real/Dep.git", from: "2.0.0"),
+    ]
+)
+"""
+        deps = parser.parse(content, "Package.swift")
+        names = {d["package_name"] for d in deps}
+        assert "Bar" not in names
+        assert "Dep" in names
+
+    def test_source_line_still_correct_after_stripping(
+        self, parser: SwiftDependencyParser
+    ) -> None:
+        """Line numbers must refer to the original file, not the stripped content."""
+        content = """// swift-tools-version: 5.9
+import PackageDescription
+// This is a comment
+let package = Package(
+    name: "MyApp",
+    dependencies: [
+        .package(url: "https://github.com/Real/Dep.git", from: "2.0.0"),
+    ]
+)
+"""
+        deps = parser.parse(content, "Package.swift")
+        assert len(deps) == 1
+        # The .package line is line 7 in the original file
+        assert deps[0]["source_line"] == 7
+
+
 class TestPackageNameFromUrl:
     """Test the URL-to-name extraction helper."""
 
