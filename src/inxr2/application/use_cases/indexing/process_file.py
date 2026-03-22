@@ -545,12 +545,18 @@ class ProcessFileUseCase:
         parent symbol's name or qualified_name within the same file and
         updates the FK in a single bulk query.
         """
-        # Build lookup: name/qualified_name → symbol_id for potential parents
+        # Build lookup: name/qualified_name → symbol_id for potential parents.
+        # Extensions are intentionally excluded from the plain-name lookup: an
+        # extension on "Vehicle" has the same `.name` as `class Vehicle`, and
+        # whichever is inserted last would win the key, causing members scoped
+        # to "Vehicle" to attach to the extension instead of the class.
+        # Extensions are still reachable by their distinct qualified_name
+        # (e.g. "Vehicle.<extension>@5") so their own children can be resolved.
         name_to_id: dict[str, int] = {}
         for s in saved_symbols:
             assert s.id is not None
-            # Top-level symbols (no scope) are reachable by name
-            if s.scope is None:
+            # Top-level non-extension symbols are reachable by plain name
+            if s.scope is None and s.kind != "extension":
                 name_to_id[s.name] = s.id
             # All symbols with a qualified_name are reachable by it
             if s.qualified_name:

@@ -636,6 +636,10 @@ class SwiftParser(BaseLanguageParser):
             parent = node.parent
             if parent and parent.type == "user_type":
                 return
+            # Skip types inside inheritance_specifier — already emitted as
+            # inheritance / protocol_conformance during the symbol pass.
+            if parent and parent.type == "inheritance_specifier":
+                return
 
             for child in node.children:
                 if child.type == "type_identifier":

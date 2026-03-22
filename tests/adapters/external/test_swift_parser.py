@@ -100,6 +100,23 @@ class Bar: Foo {}
         assert inh.source_line == 2
 
     @pytest.mark.asyncio
+    async def test_inherited_type_not_emitted_as_type_annotation(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Types in inheritance list must not appear as type_annotation refs (would be duplicates)."""
+        code = """
+class SportsCar: Vehicle, Drivable {
+    var turbo: Bool = false
+}
+"""
+        _, refs = await parser_service.parse_file(code, "swift", "test.swift")
+        type_annotation_refs = {
+            r.reference_text for r in refs if r.reference_type == "type_annotation"
+        }
+        assert "Vehicle" not in type_annotation_refs
+        assert "Drivable" not in type_annotation_refs
+
+    @pytest.mark.asyncio
     async def test_class_with_properties(
         self, parser_service: TreeSitterService
     ) -> None:
