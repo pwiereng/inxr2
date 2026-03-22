@@ -23,7 +23,9 @@ _PACKAGE_URL_RE = re.compile(
     r"|"
     r'\s*,\s*exact\s*:\s*"(?P<exact_ver>[^"]+)"'
     r"|"
-    r'\s*,\s*(?:\.upToNextMajor|\.upToNextMinor)\s*\(from\s*:\s*"(?P<range_ver>[^"]+)"\)'
+    r'\s*,\s*\.upToNextMajor\s*\(from\s*:\s*"(?P<major_ver>[^"]+)"\)'
+    r"|"
+    r'\s*,\s*\.upToNextMinor\s*\(from\s*:\s*"(?P<minor_ver>[^"]+)"\)'
     r"|"
     r'\s*,\s*branch\s*:\s*"(?P<branch>[^"]+)"'
     r"|"
@@ -142,19 +144,31 @@ class SwiftDependencyParser(BaseDependencyParser):
 
             name = _package_name_from_url(url)
 
-            version_spec = (
-                m.group("from_ver")
-                or m.group("exact_ver")
-                or m.group("range_ver")
-                or m.group("bare_ver")
-            )
+            from_ver = m.group("from_ver")
+            exact_ver = m.group("exact_ver")
+            major_ver = m.group("major_ver")
+            minor_ver = m.group("minor_ver")
+            bare_ver = m.group("bare_ver")
             branch = m.group("branch")
             revision = m.group("revision")
 
-            # Build a version spec string
+            # Build a version spec string preserving SwiftPM constraint semantics.
             spec: str | None = None
-            if version_spec:
-                spec = f">= {version_spec}"
+            if from_ver:
+                spec = f">= {from_ver}"
+            elif exact_ver:
+                spec = f"== {exact_ver}"
+            elif major_ver:
+                parts = major_ver.split(".")
+                upper = f"{int(parts[0]) + 1}.0.0"
+                spec = f">= {major_ver}, < {upper}"
+            elif minor_ver:
+                parts = minor_ver.split(".")
+                minor = int(parts[1]) + 1 if len(parts) > 1 else 1
+                upper = f"{parts[0]}.{minor}.0"
+                spec = f">= {minor_ver}, < {upper}"
+            elif bare_ver:
+                spec = f">= {bare_ver}"
             elif branch:
                 spec = f"branch: {branch}"
             elif revision:

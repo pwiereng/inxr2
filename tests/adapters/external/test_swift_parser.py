@@ -407,6 +407,24 @@ extension Vehicle: Drawable {
         ]
         assert any(r.reference_text == "Drawable" for r in conformance_refs)
 
+    @pytest.mark.asyncio
+    async def test_extension_qualified_name_distinct_from_class(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Extension qualified_name must not collide with a same-named class."""
+        code = """
+class Vehicle {}
+extension Vehicle {
+    func describe() -> String { return "" }
+}
+"""
+        symbols, _ = await parser_service.parse_file(code, "swift", "test.swift")
+        class_sym = next(s for s in symbols if s.kind == "class")
+        ext_sym = next(s for s in symbols if s.kind == "extension")
+        assert class_sym.qualified_name != ext_sym.qualified_name
+        assert ext_sym.qualified_name is not None
+        assert "<extension>" in ext_sym.qualified_name
+
 
 class TestSwiftTopLevelFunctions:
     """Tests for top-level Swift function parsing."""
@@ -573,6 +591,19 @@ class Foo {}
         comments = await parser_service.extract_comments(code, "swift", "test.swift")
         block_comments = [c for c in comments if c.content_type == "block_comment"]
         assert len(block_comments) >= 1
+
+    @pytest.mark.asyncio
+    async def test_exclamation_doc_comment_no_leading_bang(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """/*! ... */ doc comments must not start with a leading '!' in content."""
+        code = """
+/*! A HeaderDoc-style doc comment */
+class Foo {}
+"""
+        comments = await parser_service.extract_comments(code, "swift", "test.swift")
+        doc = next(c for c in comments if c.content_type == "docstring")
+        assert not doc.content.startswith("!")
 
 
 class TestSwiftLineNumbers:

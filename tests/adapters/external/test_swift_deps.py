@@ -178,12 +178,12 @@ class TestPackageSwift:
     def test_exact_version_spec(self, parser: SwiftDependencyParser) -> None:
         deps = parser.parse(PACKAGE_SWIFT, "Package.swift")
         by_name = {d["package_name"]: d for d in deps}
-        assert by_name["swift-argument-parser"]["version_spec"] == ">= 1.3.0"
+        assert by_name["swift-argument-parser"]["version_spec"] == "== 1.3.0"
 
     def test_up_to_next_major_version_spec(self, parser: SwiftDependencyParser) -> None:
         deps = parser.parse(PACKAGE_SWIFT, "Package.swift")
         by_name = {d["package_name"]: d for d in deps}
-        assert by_name["SwiftyJSON"]["version_spec"] == ">= 4.0.0"
+        assert by_name["SwiftyJSON"]["version_spec"] == ">= 4.0.0, < 5.0.0"
 
     def test_branch_version_spec(self, parser: SwiftDependencyParser) -> None:
         deps = parser.parse(PACKAGE_SWIFT, "Package.swift")
@@ -202,6 +202,19 @@ class TestPackageSwift:
         deps = parser.parse(PACKAGE_SWIFT, "Package.swift")
         # All deps should have source lines
         assert all(d["source_line"] is not None for d in deps)
+
+    def test_up_to_next_minor_version_spec(self, parser: SwiftDependencyParser) -> None:
+        content = """// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "MyApp",
+    dependencies: [
+        .package(url: "https://github.com/Foo/Bar.git", .upToNextMinor(from: "2.3.0")),
+    ]
+)
+"""
+        deps = parser.parse(content, "Package.swift")
+        assert deps[0]["version_spec"] == ">= 2.3.0, < 2.4.0"
 
     def test_empty_package_swift(self, parser: SwiftDependencyParser) -> None:
         content = """// swift-tools-version: 5.9

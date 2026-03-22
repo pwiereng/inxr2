@@ -164,6 +164,10 @@ class SwiftParser(BaseLanguageParser):
             type_name, name_node = result
 
             qualified_name = f"{scope}.{type_name}" if scope else type_name
+            # Give extensions a distinct qualified_name to avoid collision with
+            # a class/struct of the same name in the same file.
+            line_no = name_node.start_point[0] + 1
+            ext_qualified_name = f"{qualified_name}.<extension>@{line_no}"
             symbols.append(
                 self._make_symbol(
                     type_name,
@@ -172,7 +176,7 @@ class SwiftParser(BaseLanguageParser):
                     scope,
                     end_line=node.end_point[0] + 1,
                     end_column=node.end_point[1],
-                    qualified_name=qualified_name,
+                    qualified_name=ext_qualified_name,
                 )
             )
 
@@ -184,17 +188,18 @@ class SwiftParser(BaseLanguageParser):
                             inherited,
                             "protocol_conformance",
                             name_node,
-                            qualified_name,
+                            ext_qualified_name,
                         )
                     )
 
-            # Process body
+            # Process body using the plain type name as scope so that extension
+            # members are associated with the type, not the extension symbol.
             for child in node.children:
                 if child.type == "class_body":
                     process_class_body(child, qualified_name)
                     break
 
-            return qualified_name
+            return ext_qualified_name
 
         def process_enum_declaration(
             node: Node, scope: str | None = None
@@ -718,6 +723,12 @@ class SwiftParser(BaseLanguageParser):
             # Swift doc comments: /** ... */ or /*! ... */
             if text.startswith("/**") or text.startswith("/*!"):
                 cleaned = self._strip_block_comment(text)
+                if not cleaned:
+                    return None
+                # _strip_block_comment handles /** but not /*!; strip the
+                # leading '!' (and optional space) left by the /*! marker.
+                if text.startswith("/*!") and cleaned.startswith("!"):
+                    cleaned = cleaned[1:].lstrip()
                 if not cleaned:
                     return None
                 return {
