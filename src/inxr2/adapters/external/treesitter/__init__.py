@@ -18,6 +18,7 @@ from .java_parser import JavaParser
 from .python_parser import PythonParser
 from .ruby_parser import RubyParser
 from .service import TreeSitterService
+from .swift_parser import SwiftParser
 from .typescript_parser import TypeScriptParser
 
 __all__ = [
@@ -30,5 +31,6 @@ __all__ = [
     "JavaParser",
     "PythonParser",
     "RubyParser",
+    "SwiftParser",
     "TypeScriptParser",
 ]

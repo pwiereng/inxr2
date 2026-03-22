@@ -1,0 +1,50 @@
+{
+  "builtins": [
+    "print", "debugPrint", "dump", "assert", "assertionFailure",
+    "precondition", "preconditionFailure", "fatalError",
+    "abs", "min", "max", "zip", "stride", "sequence", "swap",
+    "type", "unsafeBitCast", "unsafeDowncast",
+    "withUnsafeMutablePointer", "withUnsafePointer", "withUnsafeBytes",
+    "withUnsafeMutableBytes",
+    "isKnownUniquelyReferenced",
+    "numericCast", "transcode",
+    "true", "false", "nil",
+    "self", "Self", "super",
+    "init", "deinit",
+    "get", "set", "willSet", "didSet",
+    "throws", "rethrows", "async", "await",
+    "try", "catch", "throw"
+  ],
+  "primitive_types": [
+    "Int", "Int8", "Int16", "Int32", "Int64",
+    "UInt", "UInt8", "UInt16", "UInt32", "UInt64",
+    "Float", "Float16", "Float32", "Float64", "Float80",
+    "Double", "Bool", "String", "Character", "Unicode",
+    "Void", "Never", "Any", "AnyObject", "AnyClass",
+    "Optional", "Array", "Dictionary", "Set",
+    "Result", "Error",
+    "Substring", "StaticString",
+    "Range", "ClosedRange", "PartialRangeFrom", "PartialRangeThrough",
+    "Slice", "ContiguousArray", "ArraySlice",
+    "KeyValuePairs", "CollectionDifference",
+    "Mirror", "ObjectIdentifier",
+    "CVarArg", "Sendable", "Codable", "Encodable", "Decodable",
+    "Equatable", "Hashable", "Comparable", "Identifiable",
+    "CustomStringConvertible", "CustomDebugStringConvertible",
+    "CaseIterable", "RawRepresentable",
+    "Sequence", "Collection", "IteratorProtocol",
+    "BinaryInteger", "FixedWidthInteger", "SignedInteger", "UnsignedInteger",
+    "FloatingPoint", "BinaryFloatingPoint",
+    "StringProtocol"
+  ],
+  "standard_library_modules": [
+    "Foundation", "UIKit", "AppKit", "SwiftUI",
+    "Combine", "CryptoKit", "CoreData", "CoreLocation",
+    "CoreGraphics", "CoreText", "CoreImage",
+    "AVFoundation", "MapKit", "StoreKit",
+    "CloudKit", "GameKit", "HealthKit",
+    "UserNotifications", "WatchKit", "WebKit",
+    "XCTest", "Testing",
+    "Dispatch", "os", "Darwin"
+  ]
+}
