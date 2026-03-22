@@ -176,10 +176,14 @@ class Foo:
             content=code, language="python", file_path="test.py"
         )
         self_refs = [
-            r for r in references if r.reference_text == "self" and r.reference_type == "usage"
+            r
+            for r in references
+            if r.reference_text == "self" and r.reference_type == "usage"
         ]
         cls_refs = [
-            r for r in references if r.reference_text == "cls" and r.reference_type == "usage"
+            r
+            for r in references
+            if r.reference_text == "cls" and r.reference_type == "usage"
         ]
         assert len(self_refs) == 0
         assert len(cls_refs) == 0
@@ -201,10 +205,14 @@ def process():
         # Lowercase loop variables (a, b) must not appear as usage refs at all —
         # the plain identifier handler only captures UPPER_CASE constant patterns.
         a_usage_refs = [
-            r for r in references if r.reference_text == "a" and r.reference_type == "usage"
+            r
+            for r in references
+            if r.reference_text == "a" and r.reference_type == "usage"
         ]
         b_usage_refs = [
-            r for r in references if r.reference_text == "b" and r.reference_type == "usage"
+            r
+            for r in references
+            if r.reference_text == "b" and r.reference_type == "usage"
         ]
         assert len(a_usage_refs) == 0
         assert len(b_usage_refs) == 0
@@ -232,7 +240,9 @@ def process(config):
         _, references = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_names = {r.reference_text for r in references if r.reference_type == "usage"}
+        usage_names = {
+            r.reference_text for r in references if r.reference_type == "usage"
+        }
         assert "result" not in usage_names
         assert "item" not in usage_names
         assert "config" not in usage_names
@@ -372,9 +382,7 @@ def my_func():
         )
         func = next(s for s in symbols if s.name == "my_func")
         assert func.docstring == "This docstring should appear in comments too."
-        docstring_comments = [
-            c for c in comments if c.content_type == "docstring"
-        ]
+        docstring_comments = [c for c in comments if c.content_type == "docstring"]
         assert len(docstring_comments) == 1
         assert (
             "This docstring should appear in comments too."

@@ -1033,9 +1033,7 @@ class TestPythonNestedFunctions:
             content=code, language="python", file_path="test.py"
         )
 
-        nested = [
-            s for s in symbols if s.kind == "function" and s.scope == "process"
-        ]
+        nested = [s for s in symbols if s.kind == "function" and s.scope == "process"]
         nested_names = [s.name for s in nested]
 
         assert len(nested) == 3
@@ -1189,7 +1187,11 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "name"]
+        usage_refs = [
+            r
+            for r in refs
+            if r.reference_type == "usage" and r.reference_text == "name"
+        ]
         assert len(usage_refs) == 1
 
     @pytest.mark.asyncio
@@ -1205,7 +1207,11 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "name"]
+        usage_refs = [
+            r
+            for r in refs
+            if r.reference_type == "usage" and r.reference_text == "name"
+        ]
         assert len(usage_refs) == 0
 
     @pytest.mark.asyncio
@@ -1224,9 +1230,15 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        call_refs = [r for r in refs if r.reference_type == "call" and r.reference_text == "validate"]
+        call_refs = [
+            r
+            for r in refs
+            if r.reference_type == "call" and r.reference_text == "validate"
+        ]
         usage_refs = [
-            r for r in refs if r.reference_type == "usage" and r.reference_text == "validate"
+            r
+            for r in refs
+            if r.reference_type == "usage" and r.reference_text == "validate"
         ]
         assert len(call_refs) == 1
         assert len(usage_refs) == 0
@@ -1247,7 +1259,11 @@ class Counter:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "count"]
+        usage_refs = [
+            r
+            for r in refs
+            if r.reference_type == "usage" and r.reference_text == "count"
+        ]
         assert len(usage_refs) == 1
 
     @pytest.mark.asyncio
@@ -1267,7 +1283,11 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "value"]
+        usage_refs = [
+            r
+            for r in refs
+            if r.reference_type == "usage" and r.reference_text == "value"
+        ]
         assert len(usage_refs) == 1
 
     @pytest.mark.asyncio
@@ -1286,7 +1306,11 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "name"]
+        usage_refs = [
+            r
+            for r in refs
+            if r.reference_type == "usage" and r.reference_text == "name"
+        ]
         assert len(usage_refs) == 1
 
     @pytest.mark.asyncio
@@ -1306,8 +1330,12 @@ class Point:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        x_usages = [r for r in refs if r.reference_type == "usage" and r.reference_text == "x"]
-        y_usages = [r for r in refs if r.reference_type == "usage" and r.reference_text == "y"]
+        x_usages = [
+            r for r in refs if r.reference_type == "usage" and r.reference_text == "x"
+        ]
+        y_usages = [
+            r for r in refs if r.reference_type == "usage" and r.reference_text == "y"
+        ]
         # 1 usage each: `self.x` read in `distance` (via attribute handler).
         # The `self.x = x` param read is lowercase and no longer emitted by the
         # plain identifier handler (which now only captures UPPER_CASE constants).
@@ -1327,8 +1355,12 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        x_usages = [r for r in refs if r.reference_type == "usage" and r.reference_text == "x"]
-        y_usages = [r for r in refs if r.reference_type == "usage" and r.reference_text == "y"]
+        x_usages = [
+            r for r in refs if r.reference_type == "usage" and r.reference_text == "x"
+        ]
+        y_usages = [
+            r for r in refs if r.reference_type == "usage" and r.reference_text == "y"
+        ]
         assert len(x_usages) == 0
         assert len(y_usages) == 0
 
@@ -1346,7 +1378,11 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "item"]
+        usage_refs = [
+            r
+            for r in refs
+            if r.reference_type == "usage" and r.reference_text == "item"
+        ]
         assert len(usage_refs) == 0
 
     @pytest.mark.asyncio
@@ -1360,7 +1396,11 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "cache"]
+        usage_refs = [
+            r
+            for r in refs
+            if r.reference_type == "usage" and r.reference_text == "cache"
+        ]
         assert len(usage_refs) == 0
 
     @pytest.mark.asyncio
@@ -1377,7 +1417,11 @@ class MyClass:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r.reference_type == "usage" and r.reference_text == "handle"]
+        usage_refs = [
+            r
+            for r in refs
+            if r.reference_type == "usage" and r.reference_text == "handle"
+        ]
         assert len(usage_refs) == 0
 
 
@@ -1406,9 +1450,7 @@ class TestInstanceVariableColumnPositions:
             content=code, language="python", file_path="test.py"
         )
         ivar = [
-            s
-            for s in symbols
-            if s.name == "_bar" and s.kind == "instance_variable"
+            s for s in symbols if s.name == "_bar" and s.kind == "instance_variable"
         ]
         assert len(ivar) == 1
         # "        self._bar = 42"
@@ -1429,9 +1471,7 @@ class TestInstanceVariableColumnPositions:
             content=code, language="python", file_path="test.py"
         )
         ivar = [
-            s
-            for s in symbols
-            if s.name == "_bar" and s.kind == "instance_variable"
+            s for s in symbols if s.name == "_bar" and s.kind == "instance_variable"
         ]
         assert len(ivar) == 1
         # _bar ends at col 17 (13 + len("_bar"))
@@ -1451,7 +1491,11 @@ class TestInstanceVariableColumnPositions:
         _, refs = await parser_service.parse_file(
             content=code, language="python", file_path="test.py"
         )
-        usage_refs = [r for r in refs if r.reference_text == "_bar" and r.reference_type == "usage"]
+        usage_refs = [
+            r
+            for r in refs
+            if r.reference_text == "_bar" and r.reference_type == "usage"
+        ]
         assert len(usage_refs) == 1
         # "        return self._bar"
         #  0123456789012345678
@@ -1638,7 +1682,9 @@ class Child extends ns.Parent {}
 
         # Parent should NOT also appear as a usage reference
         usage_refs = [
-            r for r in references if r.reference_type == "usage" and r.reference_text == "Parent"
+            r
+            for r in references
+            if r.reference_type == "usage" and r.reference_text == "Parent"
         ]
         assert len(usage_refs) == 0
 
@@ -2092,7 +2138,9 @@ function test() {
 
         # Should NOT also have a usage reference for the same method
         usage_refs = [
-            r for r in references if r.reference_type == "usage" and r.reference_text == "method"
+            r
+            for r in references
+            if r.reference_type == "usage" and r.reference_text == "method"
         ]
         assert len(usage_refs) == 0
 
@@ -2115,7 +2163,9 @@ function test() {
         assert "Foo" in inst_names
 
         usage_refs = [
-            r for r in references if r.reference_type == "usage" and r.reference_text == "Foo"
+            r
+            for r in references
+            if r.reference_type == "usage" and r.reference_text == "Foo"
         ]
         assert len(usage_refs) == 0
 
@@ -2313,10 +2363,14 @@ function main() {
 
         # doWork should appear as a "call" ref, NOT also as a "usage" ref
         call_refs = [
-            r for r in references if r.reference_text == "doWork" and r.reference_type == "call"
+            r
+            for r in references
+            if r.reference_text == "doWork" and r.reference_type == "call"
         ]
         usage_refs = [
-            r for r in references if r.reference_text == "doWork" and r.reference_type == "usage"
+            r
+            for r in references
+            if r.reference_text == "doWork" and r.reference_type == "usage"
         ]
         assert len(call_refs) >= 1
         assert len(usage_refs) == 0
@@ -2477,7 +2531,9 @@ const { readFile } = require('fs');
         )
 
         import_refs = [
-            r for r in references if r.reference_type == "import" and r.reference_text == "readFile"
+            r
+            for r in references
+            if r.reference_type == "import" and r.reference_text == "readFile"
         ]
         assert len(import_refs) == 1
         assert import_refs[0].metadata.get("from_module") == "fs"
@@ -2755,7 +2811,9 @@ export { baz }
 
         # baz should appear as a usage reference from the export
         usage_refs = [
-            r for r in references if r.reference_type == "usage" and r.reference_text == "baz"
+            r
+            for r in references
+            if r.reference_type == "usage" and r.reference_text == "baz"
         ]
         assert len(usage_refs) == 1
 
@@ -2795,7 +2853,9 @@ export default myFunction
         )
 
         usage_refs = [
-            r for r in references if r.reference_type == "usage" and r.reference_text == "myFunction"
+            r
+            for r in references
+            if r.reference_type == "usage" and r.reference_text == "myFunction"
         ]
         assert len(usage_refs) == 1
 

@@ -545,7 +545,9 @@ public class Service {
         methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
         assert methods[0].signature is not None
-        assert methods[0].signature is not None and "ProcessData" in methods[0].signature
+        assert (
+            methods[0].signature is not None and "ProcessData" in methods[0].signature
+        )
 
     @pytest.mark.asyncio
     async def test_parse_constructor(self, parser_service: TreeSitterService) -> None:
@@ -897,7 +899,9 @@ public class Factory {
             content=code, language="csharp", file_path="Factory.cs"
         )
 
-        instantiation_refs = [r for r in references if r.reference_type == "instantiation"]
+        instantiation_refs = [
+            r for r in references if r.reference_type == "instantiation"
+        ]
         instantiation_texts = [r.reference_text for r in instantiation_refs]
         assert "Person" in instantiation_texts
         assert "MyObject" in instantiation_texts
@@ -1027,9 +1031,7 @@ public class Foo {
             content=code, language="csharp", file_path="Foo.cs"
         )
 
-        single_line = [
-            c for c in comments if c.content_type == "single_line_comment"
-        ]
+        single_line = [c for c in comments if c.content_type == "single_line_comment"]
         assert len(single_line) >= 1
         assert any("single line comment" in c.content for c in single_line)
 

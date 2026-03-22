@@ -198,7 +198,9 @@ struct Person {
         fields = [s for s in symbols if s.kind == "struct_field"]
         for field in fields:
             assert field.scope == "Person"
-            assert field.qualified_name is not None and field.qualified_name.startswith("Person.")
+            assert field.qualified_name is not None and field.qualified_name.startswith(
+                "Person."
+            )
 
 
 class TestCUnions:
@@ -1051,9 +1053,7 @@ public:
         assert "age" in field_names
 
         method_symbols = [s for s in symbols if s.kind == "method"]
-        assert any(
-            m.name == "greet" and m.scope == "Person" for m in method_symbols
-        )
+        assert any(m.name == "greet" and m.scope == "Person" for m in method_symbols)
 
     @pytest.mark.asyncio
     async def test_parse_class_with_inheritance(
@@ -1105,9 +1105,7 @@ struct Point {
         assert len(struct_symbols) == 1
         assert struct_symbols[0].name == "Point"
 
-        fields = [
-            s for s in symbols if s.kind == "field" and s.scope == "Point"
-        ]
+        fields = [s for s in symbols if s.kind == "field" and s.scope == "Point"]
         field_names = [s.name for s in fields]
         assert "x" in field_names
         assert "y" in field_names
@@ -1151,7 +1149,9 @@ int add(int a, int b) {
         assert len(func_symbols) == 1
         assert func_symbols[0].name == "add"
         assert func_symbols[0].signature is not None
-        assert func_symbols[0].signature is not None and "add" in func_symbols[0].signature
+        assert (
+            func_symbols[0].signature is not None and "add" in func_symbols[0].signature
+        )
 
     @pytest.mark.asyncio
     async def test_parse_multiple_functions(
@@ -1261,9 +1261,7 @@ class Config {
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="config.cpp"
         )
-        fields = [
-            s for s in symbols if s.kind == "field" and s.scope == "Config"
-        ]
+        fields = [s for s in symbols if s.kind == "field" and s.scope == "Config"]
         field_names = [s.name for s in fields]
         assert "timeout" in field_names
         assert "enabled" in field_names
@@ -1377,9 +1375,7 @@ public:
         assert class_symbols[0].name == "Container"
 
         method_symbols = [s for s in symbols if s.kind == "method"]
-        assert any(
-            m.name == "add" and m.scope == "Container" for m in method_symbols
-        )
+        assert any(m.name == "add" and m.scope == "Container" for m in method_symbols)
 
     @pytest.mark.asyncio
     async def test_parse_template_function(
@@ -1589,9 +1585,7 @@ void initialize() {}
         assert any(m.name == "log" and m.scope == "App.Logger" for m in methods)
 
         fields = [s for s in symbols if s.kind == "field"]
-        assert any(
-            f.name == "count" and f.scope == "App.Logger" for f in fields
-        )
+        assert any(f.name == "count" and f.scope == "App.Logger" for f in fields)
 
         funcs = [s for s in symbols if s.kind == "function"]
         assert any(f.name == "initialize" and f.scope == "App" for f in funcs)
@@ -1715,9 +1709,7 @@ void N::f() {}
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="ns_func.cpp"
         )
-        out_of_class = [
-            s for s in symbols if s.name == "f" and s.kind == "function"
-        ]
+        out_of_class = [s for s in symbols if s.name == "f" and s.kind == "function"]
         assert len(out_of_class) >= 1
         methods = [s for s in symbols if s.name == "f" and s.kind == "method"]
         assert len(methods) == 0
@@ -1736,9 +1728,7 @@ void MyClass::doWork() {}
         symbols, _ = await parser_service.parse_file(
             content=code, language="cpp", file_path="class_method.cpp"
         )
-        methods = [
-            s for s in symbols if s.name == "doWork" and s.kind == "method"
-        ]
+        methods = [s for s in symbols if s.name == "doWork" and s.kind == "method"]
         assert len(methods) >= 1
 
     @pytest.mark.asyncio
@@ -1889,7 +1879,9 @@ void test() {
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r.reference_text == "TIMER_ONESHOT" and r.reference_type == "usage"
+            r
+            for r in refs
+            if r.reference_text == "TIMER_ONESHOT" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -1907,7 +1899,9 @@ void test() {
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r.reference_text == "VALUE_A" and r.reference_type == "usage"
+            r
+            for r in refs
+            if r.reference_text == "VALUE_A" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -1925,7 +1919,9 @@ void test(State s) {
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r.reference_text == "STATE_INIT" and r.reference_type == "usage"
+            r
+            for r in refs
+            if r.reference_text == "STATE_INIT" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -1944,7 +1940,9 @@ void test() {
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r.reference_text == "MAX_SIZE" and r.reference_type == "usage"
+            r
+            for r in refs
+            if r.reference_text == "MAX_SIZE" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -1960,7 +1958,9 @@ int myGlobal = 42;
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r.reference_text == "myGlobal" and r.reference_type == "usage"
+            r
+            for r in refs
+            if r.reference_text == "myGlobal" and r.reference_type == "usage"
         ]
         assert len(usage_refs) == 0
 
@@ -1977,7 +1977,9 @@ Status get_status() {
         _, refs = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        usage_refs = [r for r in refs if r.reference_text == "OK" and r.reference_type == "usage"]
+        usage_refs = [
+            r for r in refs if r.reference_text == "OK" and r.reference_type == "usage"
+        ]
         assert len(usage_refs) >= 1
 
     @pytest.mark.asyncio
@@ -1993,7 +1995,9 @@ int arr[ARRAY_SIZE];
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r.reference_text == "ARRAY_SIZE" and r.reference_type == "usage"
+            r
+            for r in refs
+            if r.reference_text == "ARRAY_SIZE" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -2014,7 +2018,9 @@ void test(int x) {
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r.reference_text == "MY_CONST" and r.reference_type == "usage"
+            r
+            for r in refs
+            if r.reference_text == "MY_CONST" and r.reference_type == "usage"
         ]
         assert len(usage_refs) >= 1
 
@@ -2030,7 +2036,9 @@ void foo(int myParam) {}
             content=code, language="c", file_path="test.c"
         )
         usage_refs = [
-            r for r in refs if r.reference_text == "myParam" and r.reference_type == "usage"
+            r
+            for r in refs
+            if r.reference_text == "myParam" and r.reference_type == "usage"
         ]
         assert len(usage_refs) == 0
 
@@ -2045,7 +2053,9 @@ enum Color { RED, GREEN, BLUE };
         _, refs = await parser_service.parse_file(
             content=code, language="c", file_path="test.c"
         )
-        usage_refs = [r for r in refs if r.reference_text == "RED" and r.reference_type == "usage"]
+        usage_refs = [
+            r for r in refs if r.reference_text == "RED" and r.reference_type == "usage"
+        ]
         assert len(usage_refs) == 0
 
     @pytest.mark.asyncio
@@ -2069,10 +2079,14 @@ void MyClass::doWork() {}
             content=code, language="cpp", file_path="test.cpp"
         )
         # "f" and "doWork" should not get spurious usage refs from qualified_identifier
-        f_usage = [r for r in refs if r.reference_text == "f" and r.reference_type == "usage"]
+        f_usage = [
+            r for r in refs if r.reference_text == "f" and r.reference_type == "usage"
+        ]
         assert len(f_usage) == 0
         dowork_usage = [
-            r for r in refs if r.reference_text == "doWork" and r.reference_type == "usage"
+            r
+            for r in refs
+            if r.reference_text == "doWork" and r.reference_type == "usage"
         ]
         assert len(dowork_usage) == 0
 
