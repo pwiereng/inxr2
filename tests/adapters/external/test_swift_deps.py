@@ -233,6 +233,34 @@ let package = Package(
         deps = parser.parse(content, "Package.swift")
         assert deps[0]["version_spec"] == ">= 2.3.0, < 2.4.0"
 
+    def test_half_open_range_version_spec(self, parser: SwiftDependencyParser) -> None:
+        content = """// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "MyApp",
+    dependencies: [
+        .package(url: "https://github.com/Foo/Bar.git", "1.0.0" ..< "2.0.0"),
+    ]
+)
+"""
+        deps = parser.parse(content, "Package.swift")
+        assert len(deps) == 1
+        assert deps[0]["version_spec"] == ">= 1.0.0, < 2.0.0"
+
+    def test_closed_range_version_spec(self, parser: SwiftDependencyParser) -> None:
+        content = """// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "MyApp",
+    dependencies: [
+        .package(url: "https://github.com/Foo/Bar.git", "1.0.0" ... "1.9.9"),
+    ]
+)
+"""
+        deps = parser.parse(content, "Package.swift")
+        assert len(deps) == 1
+        assert deps[0]["version_spec"] == ">= 1.0.0, <= 1.9.9"
+
     def test_empty_package_swift(self, parser: SwiftDependencyParser) -> None:
         content = """// swift-tools-version: 5.9
 import PackageDescription

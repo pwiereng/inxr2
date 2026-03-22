@@ -31,7 +31,11 @@ _PACKAGE_URL_RE = re.compile(
     r"|"
     r'\s*,\s*revision\s*:\s*"(?P<revision>[^"]+)"'
     r"|"
-    r'\s*,\s*"(?P<bare_ver>[^"]+)"\s*\.\.\.'
+    # Half-open range: "1.0.0" ..< "2.0.0"  →  >= 1.0.0, < 2.0.0
+    r'\s*,\s*"(?P<excl_low>[^"]+)"\s*\.\.<\s*"(?P<excl_high>[^"]+)"'
+    r"|"
+    # Closed range:     "1.0.0" ... "2.0.0"  →  >= 1.0.0, <= 2.0.0
+    r'\s*,\s*"(?P<incl_low>[^"]+)"\s*\.\.\.\s*"(?P<incl_high>[^"]+)"'
     r")?",
 )
 
@@ -179,7 +183,10 @@ class SwiftDependencyParser(BaseDependencyParser):
             exact_ver = m.group("exact_ver")
             major_ver = m.group("major_ver")
             minor_ver = m.group("minor_ver")
-            bare_ver = m.group("bare_ver")
+            excl_low = m.group("excl_low")
+            excl_high = m.group("excl_high")
+            incl_low = m.group("incl_low")
+            incl_high = m.group("incl_high")
             branch = m.group("branch")
             revision = m.group("revision")
 
@@ -204,8 +211,12 @@ class SwiftDependencyParser(BaseDependencyParser):
                     spec = f">= {minor_ver}, < {upper}"
                 except (ValueError, IndexError):
                     spec = f">= {minor_ver}"
-            elif bare_ver:
-                spec = f">= {bare_ver}"
+            elif excl_low:
+                # Half-open range: "1.0.0" ..< "2.0.0"
+                spec = f">= {excl_low}, < {excl_high}"
+            elif incl_low:
+                # Closed range: "1.0.0" ... "2.0.0"
+                spec = f">= {incl_low}, <= {incl_high}"
             elif branch:
                 spec = f"branch: {branch}"
             elif revision:

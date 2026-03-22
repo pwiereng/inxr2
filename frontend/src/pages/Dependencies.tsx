@@ -33,7 +33,7 @@ const LANGUAGE_COLORS: Record<string, string> = {
   javascript: '#e5c07b',
   java: '#d19a66',
   csharp: '#c678dd',
-  swift: '#FA7343',
+  swift: '#fa7343',
 }
 
 // Dependency type colors
