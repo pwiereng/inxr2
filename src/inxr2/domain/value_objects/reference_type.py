@@ -22,4 +22,6 @@ class ReferenceType(StrEnum):
     USAGE = "usage"  # Generic usage/reference
 
     # Swift-specific reference types
-    PROTOCOL_CONFORMANCE = "protocol_conformance"  # Swift protocol conformance declaration
+    PROTOCOL_CONFORMANCE = (
+        "protocol_conformance"  # Swift protocol conformance declaration
+    )
