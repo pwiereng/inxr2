@@ -632,18 +632,79 @@ class SwiftParser(BaseLanguageParser):
 
         # --- Main processing ---
 
+        def process_top_level_node(node: Node, scope: str | None = None) -> None:
+            """Dispatch a node to the appropriate symbol extractor."""
+            if node.type == "class_declaration":
+                process_class_declaration(node, scope)
+            elif node.type == "protocol_declaration":
+                process_protocol_declaration(node, scope)
+            elif node.type == "function_declaration":
+                process_function_declaration(node, scope)
+            elif node.type == "property_declaration":
+                process_property_declaration(node, scope)
+            elif node.type == "typealias_declaration":
+                process_typealias_declaration(node, scope)
+            elif node.type == "ERROR":
+                # Partial-parse error recovery: an ERROR node may represent a
+                # top-level declaration that tree-sitter couldn't fully parse
+                # (e.g. a protocol with a syntactically invalid member).
+                # Detect the keyword from unnamed children and treat accordingly.
+                keyword = next(
+                    (
+                        c.type
+                        for c in node.children
+                        if not c.is_named
+                        and c.type
+                        in (
+                            "class",
+                            "struct",
+                            "enum",
+                            "extension",
+                            "actor",
+                            "protocol",
+                            "func",
+                        )
+                    ),
+                    None,
+                )
+                if keyword == "protocol":
+                    # Synthesise extraction: find name, then recurse into any
+                    # ERROR sub-node for members.
+                    name_node = next(
+                        (c for c in node.children if c.type == "simple_identifier"),
+                        None,
+                    )
+                    if name_node:
+                        type_name = get_text(name_node)
+                        qualified_name = f"{scope}.{type_name}" if scope else type_name
+                        symbols.append(
+                            self._make_symbol(
+                                type_name,
+                                "protocol",
+                                name_node,
+                                scope,
+                                end_line=node.end_point[0] + 1,
+                                end_column=node.end_point[1],
+                                qualified_name=qualified_name,
+                            )
+                        )
+                        # Recurse into any inner ERROR node to extract members
+                        for child in node.children:
+                            if child.type == "ERROR":
+                                process_protocol_body(child, qualified_name)
+                                process_class_body(child, qualified_name)
+                elif keyword in ("class", "struct", "enum", "extension", "actor"):
+                    # Fall back to normal class_declaration processing by
+                    # recursing into children for any parseable sub-nodes.
+                    for child in node.children:
+                        process_top_level_node(child, scope)
+                else:
+                    for child in node.children:
+                        process_top_level_node(child, scope)
+
         # First pass: extract symbols (top-level declarations)
         for child in root.children:
-            if child.type == "class_declaration":
-                process_class_declaration(child)
-            elif child.type == "protocol_declaration":
-                process_protocol_declaration(child)
-            elif child.type == "function_declaration":
-                process_function_declaration(child)
-            elif child.type == "property_declaration":
-                process_property_declaration(child)
-            elif child.type == "typealias_declaration":
-                process_typealias_declaration(child)
+            process_top_level_node(child)
 
         # Second pass: extract references
         extract_references(root)

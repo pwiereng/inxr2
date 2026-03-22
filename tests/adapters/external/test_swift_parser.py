@@ -607,3 +607,44 @@ import UIKit
         imports = {r.reference_text: r for r in refs if r.reference_type == "import"}
         assert imports["Foundation"].source_line == 1
         assert imports["UIKit"].source_line == 2
+
+
+class TestSwiftErrorRecovery:
+    """Tests for graceful handling of syntactically invalid Swift files."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_protocol_with_invalid_member_still_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Regression: protocol body with invalid syntax should still yield
+        the protocol symbol (tree-sitter wraps it in an ERROR node)."""
+        code = """import Foundation
+
+protocol LLMPort {
+    func complete(systemPrompt: String, userMessage: String) async throws -> String
+    func isConfigured: Bool
+}
+"""
+        symbols, _ = await parser_service.parse_file(code, "swift", "test.swift")
+        protocols = [s for s in symbols if s.kind == "protocol"]
+        assert len(protocols) == 1
+        assert protocols[0].name == "LLMPort"
+
+    @pytest.mark.asyncio
+    async def test_protocol_members_inside_error_node_extracted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """Regression: valid protocol_function_declaration nodes inside an ERROR
+        node (caused by an invalid sibling) should still be extracted."""
+        code = """protocol LLMPort {
+    func complete(systemPrompt: String, userMessage: String) async throws -> String
+    func isConfigured: Bool
+}
+"""
+        symbols, _ = await parser_service.parse_file(code, "swift", "test.swift")
+        methods = [s for s in symbols if s.kind == "method"]
+        assert any(s.name == "complete" for s in methods)
