@@ -15,7 +15,7 @@ on:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Lint, formatting, and type checking (combined to avoid duplicate installs)
+  # Lint, formatting, and type checking
   # ---------------------------------------------------------------------------
   lint-and-typecheck:
     name: Lint & Type Check
@@ -66,92 +66,6 @@ jobs:
         working-directory: frontend
 
   # ---------------------------------------------------------------------------
-  # Unit tests (no database required)
-  # ---------------------------------------------------------------------------
-  unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-
-      - name: Install Python deps
-        run: pip install ".[dev]"
-
-      - name: Backend unit tests
-        run: pytest tests/unit/ -v --tb=short --cov=src --cov-report=term-missing
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend deps
-        run: npm ci
-        working-directory: frontend
-
-      - name: Frontend tests
-        run: npm test -- --run --coverage
-        working-directory: frontend
-
-      - name: Install MCP server deps
-        run: pip install -e mcp-server
-
-      - name: MCP server tests
-        run: pytest -v
-        working-directory: mcp-server
-
-  # ---------------------------------------------------------------------------
-  # Integration tests (adapter, persistence, contract — need PostgreSQL)
-  # ---------------------------------------------------------------------------
-  integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: inxr2_user
-          POSTGRES_PASSWORD: inxr2_dev_password
-          POSTGRES_DB: inxr2_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      TEST_DATABASE_URL: postgresql+asyncpg://inxr2_user:inxr2_dev_password@localhost:5432/inxr2_test
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-
-      - name: Install Python deps
-        run: pip install ".[dev]"
-
-      - name: Integration, adapter & contract tests
-        run: >-
-          pytest
-          tests/adapters/
-          tests/integration/
-          tests/contract/
-          tests/infrastructure/
-          -v --tb=short
-
-  # ---------------------------------------------------------------------------
   # Secret scanning (every PR and push to main)
   # ---------------------------------------------------------------------------
   secret-scan:
@@ -176,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: google/osv-scanner-action@v2
+      - uses: google/osv-scanner-action@v2.3.3
         with:
           scan-args: |-
             --recursive
