@@ -701,6 +701,70 @@ class TestParentSymbolIdResolution:
         assert method_sym.parent_symbol_id == class_sym.id
 
     @pytest.mark.asyncio
+    async def test_extension_only_file_members_get_parent(
+        self,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        text_content_repo: InMemoryTextContentRepository,
+    ) -> None:
+        """When a file contains only an extension (no class/struct), members
+        scoped to the extended type must still be parented to the extension."""
+
+        class ExtensionOnlyParserService(FakeParserService):
+            async def parse_file(
+                self, content: str, language: str, file_path: str
+            ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
+                symbols = [
+                    ParsedSymbol(
+                        name="String",
+                        kind="extension",
+                        start_line=1,
+                        start_column=0,
+                        end_line=10,
+                        end_column=0,
+                        qualified_name="String.<extension>@1",
+                    ),
+                    ParsedSymbol(
+                        name="trimmed",
+                        kind="method",
+                        start_line=2,
+                        start_column=4,
+                        end_line=4,
+                        end_column=0,
+                        scope="String",
+                        qualified_name="String.trimmed",
+                    ),
+                ]
+                return symbols, []
+
+        git_service = FakeGitService()
+        use_case = ProcessFileUseCase(
+            git_service=git_service,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            text_content_repo=text_content_repo,
+            parser_service=ExtensionOnlyParserService(),
+            plaintext_parser=FakePlaintextParser(),
+        )
+
+        request = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/example.py",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+        )
+        await use_case.execute(request)
+
+        all_symbols = list(symbol_repo._symbols.values())
+        ext_sym = next(s for s in all_symbols if s.kind == "extension")
+        method_sym = next(s for s in all_symbols if s.name == "trimmed")
+
+        # The method must be parented to the extension (no class present)
+        assert method_sym.parent_symbol_id == ext_sym.id
+
+    @pytest.mark.asyncio
     async def test_top_level_function_has_no_parent(
         self,
         file_repo: InMemoryFileRepository,

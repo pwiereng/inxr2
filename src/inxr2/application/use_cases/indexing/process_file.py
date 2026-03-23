@@ -555,12 +555,22 @@ class ProcessFileUseCase:
         name_to_id: dict[str, int] = {}
         for s in saved_symbols:
             assert s.id is not None
-            # Top-level non-extension symbols are reachable by plain name
+            # Top-level non-extension symbols are reachable by plain name.
+            # Extensions are added in a second pass (below) so that a class and
+            # its extension on the same type don't overwrite each other — the
+            # class always wins over the extension for the plain-name key.
             if s.scope is None and s.kind != "extension":
                 name_to_id[s.name] = s.id
             # All symbols with a qualified_name are reachable by it
             if s.qualified_name:
                 name_to_id[s.qualified_name] = s.id
+
+        # Second pass: extensions populate the plain-name key only when no
+        # non-extension symbol already claimed it (extension-only files).
+        for s in saved_symbols:
+            assert s.id is not None
+            if s.scope is None and s.kind == "extension" and s.name not in name_to_id:
+                name_to_id[s.name] = s.id
 
         # Match children: scope → parent_id
         updates: dict[int, int] = {}
