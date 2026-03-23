@@ -44,9 +44,9 @@ _PACKAGE_URL_RE = re.compile(
 # Applied before regex matching to avoid treating commented-out
 # .package(url:) calls as real dependencies.
 _BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
-# Negative lookbehind for ':' so that '://' inside URLs is not treated as a
-# line-comment marker (e.g. 'https://github.com/...' must not be stripped).
-_LINE_COMMENT_RE = re.compile(r"(?<!:)//[^\n]*")
+# Negative lookbehind for ':' and '/' so that '://' and 'file:///' inside
+# URLs are not treated as line-comment markers.
+_LINE_COMMENT_RE = re.compile(r"(?<![:/])//[^\n]*")
 
 
 def _strip_swift_comments(content: str) -> str:
@@ -171,6 +171,9 @@ class SwiftDependencyParser(BaseDependencyParser):
         lines = self._split_lines(content)
         # Strip comments so commented-out .package(url:) calls are ignored.
         stripped = _strip_swift_comments(content)
+        # Track the last assigned source_line so that _find_line starts its
+        # search after the previous match — handles duplicate URLs correctly.
+        last_source_line = 0
 
         for m in _PACKAGE_URL_RE.finditer(stripped):
             url = m.group("url") or ""
@@ -222,7 +225,9 @@ class SwiftDependencyParser(BaseDependencyParser):
             elif revision:
                 spec = f"revision: {revision}"
 
-            source_line = self._find_line(lines, url)
+            source_line = self._find_line(lines, url, after_line=last_source_line)
+            if source_line is not None:
+                last_source_line = source_line
 
             deps.append(
                 self._make_dep(

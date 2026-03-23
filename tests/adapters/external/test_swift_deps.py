@@ -329,6 +329,48 @@ let package = Package(
         assert deps[0]["source_line"] == 7
 
 
+class TestFileUrlPreservation:
+    """file:/// URLs must not be corrupted by comment stripping."""
+
+    def test_file_url_not_stripped(self, parser: SwiftDependencyParser) -> None:
+        content = """// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "MyApp",
+    dependencies: [
+        .package(url: "file:///Users/dev/MyLib", from: "1.0.0"),
+    ]
+)
+"""
+        deps = parser.parse(content, "Package.swift")
+        assert len(deps) == 1
+        assert deps[0]["extras"]["url"] == "file:///Users/dev/MyLib"
+
+
+class TestDuplicateUrlSourceLines:
+    """Each dependency reports the correct source_line even for duplicate URLs."""
+
+    def test_duplicate_url_gets_distinct_source_lines(
+        self, parser: SwiftDependencyParser
+    ) -> None:
+        content = """// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "MyApp",
+    dependencies: [
+        .package(url: "https://github.com/Foo/Bar.git", from: "1.0.0"),
+        .package(url: "https://github.com/Foo/Bar.git", from: "2.0.0"),
+    ]
+)
+"""
+        deps = parser.parse(content, "Package.swift")
+        assert len(deps) == 2
+        lines = [d["source_line"] for d in deps]
+        # Both lines must be non-None and distinct
+        assert None not in lines
+        assert lines[0] != lines[1]
+
+
 class TestPackageNameFromUrl:
     """Test the URL-to-name extraction helper."""
 
