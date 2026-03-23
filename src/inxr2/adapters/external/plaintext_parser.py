@@ -265,7 +265,9 @@ class PlaintextParser(PlaintextParserPort):
 
         return chunks
 
-    def _parse_structured_text(self, content: str, content_type: str) -> list[PlaintextChunk]:
+    def _parse_structured_text(
+        self, content: str, content_type: str
+    ) -> list[PlaintextChunk]:
         """
         Parse structured text (JSON, XML) line by line.
 

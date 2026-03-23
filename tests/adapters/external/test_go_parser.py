@@ -91,7 +91,9 @@ func Add(a int, b int) int {
         assert len(func_symbols) == 1
         assert func_symbols[0].name == "Add"
         assert func_symbols[0].signature is not None
-        assert func_symbols[0].signature is not None and "Add" in func_symbols[0].signature
+        assert (
+            func_symbols[0].signature is not None and "Add" in func_symbols[0].signature
+        )
 
     @pytest.mark.asyncio
     async def test_parse_exported_and_unexported_functions(
@@ -217,8 +219,14 @@ func (c *Calculator) Add(a, b int) int {
         method_symbols = [s for s in symbols if s.kind == "method"]
         assert len(method_symbols) == 1
         assert method_symbols[0].signature is not None
-        assert method_symbols[0].signature is not None and "Calculator" in method_symbols[0].signature
-        assert method_symbols[0].signature is not None and "Add" in method_symbols[0].signature
+        assert (
+            method_symbols[0].signature is not None
+            and "Calculator" in method_symbols[0].signature
+        )
+        assert (
+            method_symbols[0].signature is not None
+            and "Add" in method_symbols[0].signature
+        )
 
 
 class TestGoStructs:

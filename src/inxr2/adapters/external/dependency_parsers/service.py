@@ -10,6 +10,7 @@ from .java_deps import JavaDependencyParser
 from .javascript_deps import JavaScriptDependencyParser
 from .python_deps import PythonDependencyParser
 from .ruby_deps import RubyDependencyParser
+from .swift_deps import SwiftDependencyParser
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class DependencyParserService(DependencyParserServicePort):
                 CSharpDependencyParser(),
                 GoDependencyParser(),
                 RubyDependencyParser(),
+                SwiftDependencyParser(),
             ]
         return self._parsers
 

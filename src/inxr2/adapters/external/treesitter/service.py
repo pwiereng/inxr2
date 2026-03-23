@@ -25,6 +25,7 @@ from .go_parser import GoParser
 from .java_parser import JavaParser
 from .python_parser import PythonParser
 from .ruby_parser import RubyParser
+from .swift_parser import SwiftParser
 from .typescript_parser import TypeScriptParser
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class TreeSitterService(ParserServicePort):
         "cpp": [".cpp", ".cc", ".cxx", ".c++", ".hpp", ".hh", ".hxx", ".h++", ".h"],
         "ruby": [".rb", ".rake"],
         "bash": [".sh", ".bash"],
+        "swift": [".swift"],
     }
 
     def __init__(self) -> None:
@@ -161,6 +163,13 @@ class TreeSitterService(ParserServicePort):
         except ImportError as e:
             logger.warning(f"Tree-sitter grammar for bash not available: {e}")
 
+        try:
+            import tree_sitter_swift as tsswift
+
+            _init_language("swift", tsswift.language, SwiftParser)
+        except ImportError as e:
+            logger.warning(f"Tree-sitter grammar for swift not available: {e}")
+
         loaded = list(self._parsers.keys())
         if loaded:
             logger.debug(
@@ -213,6 +222,8 @@ class TreeSitterService(ParserServicePort):
             return self._parsers.get("bash")
         elif language == "cpp":
             return self._parsers.get("cpp")
+        elif language == "swift":
+            return self._parsers.get("swift")
 
         return None
 
@@ -333,7 +344,9 @@ class TreeSitterService(ParserServicePort):
             return [], []
 
         try:
-            raw_symbols, raw_references = language_parser.extract(tree.root_node, content)
+            raw_symbols, raw_references = language_parser.extract(
+                tree.root_node, content
+            )
             symbols = [self._dict_to_parsed_symbol(s) for s in raw_symbols]
             references = [self._dict_to_parsed_reference(r) for r in raw_references]
         except (AttributeError, IndexError, KeyError, TypeError, RuntimeError) as e:

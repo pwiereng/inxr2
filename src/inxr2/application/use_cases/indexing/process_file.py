@@ -35,11 +35,9 @@ from ...ports.repositories import (
 from ...ports.services import (
     DependencyParserServicePort,
     GitServicePort,
-    ParsedDependency,
     ParsedReference,
     ParsedSymbol,
     ParserServicePort,
-    PlaintextChunk,
     PlaintextParserPort,
 )
 
@@ -547,24 +545,50 @@ class ProcessFileUseCase:
         parent symbol's name or qualified_name within the same file and
         updates the FK in a single bulk query.
         """
-        # Build lookup: name/qualified_name → symbol_id for potential parents
+        # Build lookup: name/qualified_name → symbol_id for potential parents.
+        # Extensions are intentionally excluded from the plain-name lookup: an
+        # extension on "Vehicle" has the same `.name` as `class Vehicle`, and
+        # whichever is inserted last would win the key, causing members scoped
+        # to "Vehicle" to attach to the extension instead of the class.
+        # Extensions are still reachable by their distinct qualified_name
+        # (e.g. "Vehicle.<extension>@5") so their own children can be resolved.
         name_to_id: dict[str, int] = {}
         for s in saved_symbols:
             assert s.id is not None
-            # Top-level symbols (no scope) are reachable by name
-            if s.scope is None:
+            if s.scope is None and s.kind != "extension":
                 name_to_id[s.name] = s.id
             # All symbols with a qualified_name are reachable by it
             if s.qualified_name:
                 name_to_id[s.qualified_name] = s.id
 
+        # Build a separate index of top-level extensions grouped by type name.
+        # Used as a fallback when no non-extension symbol claims a scope name
+        # (extension-only files). Line-containment determines which extension
+        # owns each child, correctly handling multiple extensions on the same
+        # type in one file.
+        extensions_by_name: dict[str, list[Symbol]] = {}
+        for s in saved_symbols:
+            assert s.id is not None
+            if s.scope is None and s.kind == "extension":
+                extensions_by_name.setdefault(s.name, []).append(s)
+
         # Match children: scope → parent_id
         updates: dict[int, int] = {}
         for s in saved_symbols:
             if s.scope and s.parent_symbol_id is None:
+                assert s.id is not None
+                # First try the plain-name lookup (class/struct always wins).
                 parent_id = name_to_id.get(s.scope)
+                if parent_id is None:
+                    # Fallback: find the extension whose line range contains
+                    # this child (handles extension-only files, including
+                    # multiple extensions on the same type).
+                    for ext in extensions_by_name.get(s.scope, []):
+                        assert ext.id is not None
+                        if ext.start_line <= s.start_line <= ext.end_line:
+                            parent_id = ext.id
+                            break
                 if parent_id is not None:
-                    assert s.id is not None
                     updates[s.id] = parent_id
 
         if updates:

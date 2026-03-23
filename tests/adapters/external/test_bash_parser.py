@@ -161,9 +161,7 @@ ANOTHER=42
         symbols, _ = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        locals_ = [
-            s for s in symbols if s.kind == "variable" and s.name == "name"
-        ]
+        locals_ = [s for s in symbols if s.kind == "variable" and s.name == "name"]
         assert len(locals_) == 1
         assert locals_[0].scope == "greet"
 
@@ -278,9 +276,7 @@ ANOTHER=42
             content=code, language="bash", file_path="test.sh"
         )
         local_names = {
-            s.name
-            for s in symbols
-            if s.kind == "variable" and s.scope == "init"
+            s.name for s in symbols if s.kind == "variable" and s.scope == "init"
         }
         assert "foo" in local_names
         assert "bar" in local_names
@@ -299,9 +295,7 @@ ANOTHER=42
             content=code, language="bash", file_path="test.sh"
         )
         local_names = {
-            s.name
-            for s in symbols
-            if s.kind == "variable" and s.scope == "setup"
+            s.name for s in symbols if s.kind == "variable" and s.scope == "setup"
         }
         assert "a" in local_names
         assert "b" in local_names
@@ -344,7 +338,9 @@ ANOTHER=42
         _, refs = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        calls = [r for r in refs if r.reference_text == "expr" and r.reference_type == "call"]
+        calls = [
+            r for r in refs if r.reference_text == "expr" and r.reference_type == "call"
+        ]
         assert len(calls) == 1
 
 
@@ -367,7 +363,11 @@ echo $MY_VAR
         _, refs = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        usage = [r for r in refs if r.reference_text == "MY_VAR" and r.reference_type == "usage"]
+        usage = [
+            r
+            for r in refs
+            if r.reference_text == "MY_VAR" and r.reference_type == "usage"
+        ]
         assert len(usage) >= 1
 
     @pytest.mark.asyncio
@@ -381,7 +381,11 @@ echo "${MY_VAR}"
         _, refs = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        usage = [r for r in refs if r.reference_text == "MY_VAR" and r.reference_type == "usage"]
+        usage = [
+            r
+            for r in refs
+            if r.reference_text == "MY_VAR" and r.reference_type == "usage"
+        ]
         assert len(usage) >= 1
 
     @pytest.mark.asyncio
@@ -393,7 +397,11 @@ echo "${MY_VAR}"
         _, refs = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        usage = [r for r in refs if r.reference_text == "MY_VAR" and r.reference_type == "usage"]
+        usage = [
+            r
+            for r in refs
+            if r.reference_text == "MY_VAR" and r.reference_type == "usage"
+        ]
         assert len(usage) == 1
 
     @pytest.mark.asyncio
@@ -407,7 +415,11 @@ greet
         _, refs = await parser_service.parse_file(
             content=code, language="bash", file_path="test.sh"
         )
-        calls = [r for r in refs if r.reference_text == "greet" and r.reference_type == "call"]
+        calls = [
+            r
+            for r in refs
+            if r.reference_text == "greet" and r.reference_type == "call"
+        ]
         assert len(calls) >= 1
 
     @pytest.mark.asyncio
@@ -439,7 +451,8 @@ greet
         special = [
             r
             for r in refs
-            if r.reference_text in ("1", "2", "@", "#", "?", "$") and r.reference_type == "usage"
+            if r.reference_text in ("1", "2", "@", "#", "?", "$")
+            and r.reference_type == "usage"
         ]
         assert len(special) == 0
 
@@ -473,7 +486,9 @@ pwd
             content=code, language="bash", file_path="test.sh"
         )
         calls = [
-            r for r in refs if r.reference_text == "my_custom_func" and r.reference_type == "call"
+            r
+            for r in refs
+            if r.reference_text == "my_custom_func" and r.reference_type == "call"
         ]
         assert len(calls) == 1
 
@@ -490,7 +505,9 @@ pwd
             content=code, language="bash", file_path="test.sh"
         )
         config_refs = [
-            r for r in refs if r.reference_text == "CONFIG_PATH" and r.reference_type == "usage"
+            r
+            for r in refs
+            if r.reference_text == "CONFIG_PATH" and r.reference_type == "usage"
         ]
         assert len(config_refs) == 1
         assert config_refs[0].scope == "setup"

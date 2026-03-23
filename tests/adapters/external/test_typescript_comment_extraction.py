@@ -72,9 +72,7 @@ function foo() {
         assert len(block_comments) == 2
 
         # Multi-line block comment
-        multi_line = [
-            c for c in block_comments if "spans multiple lines" in c.content
-        ]
+        multi_line = [c for c in block_comments if "spans multiple lines" in c.content]
         assert len(multi_line) == 1
         assert multi_line[0].source_line == 2
         assert multi_line[0].source_end_line is not None
@@ -213,9 +211,7 @@ public class MyClass {
         assert len(comments) >= 3
 
         # Single-line
-        single_line = [
-            c for c in comments if c.content_type == "single_line_comment"
-        ]
+        single_line = [c for c in comments if c.content_type == "single_line_comment"]
         assert len(single_line) >= 2
 
         # Block comments
@@ -256,9 +252,7 @@ int main() {
         assert len(comments) >= 3
 
         # Single-line
-        single_line = [
-            c for c in comments if c.content_type == "single_line_comment"
-        ]
+        single_line = [c for c in comments if c.content_type == "single_line_comment"]
         assert len(single_line) >= 2
 
         # Block comment

@@ -242,7 +242,10 @@ public class Calculator {
         assert add_method.signature is not None and "int add(" in add_method.signature
 
         multiply_method = [s for s in methods if s.name == "multiply"][0]
-        assert multiply_method.signature is not None and "double multiply(" in multiply_method.signature
+        assert (
+            multiply_method.signature is not None
+            and "double multiply(" in multiply_method.signature
+        )
 
     @pytest.mark.asyncio
     async def test_parse_static_method(self, parser_service: TreeSitterService) -> None:
@@ -302,7 +305,9 @@ public class Service {
         methods = [s for s in symbols if s.kind == "method"]
         assert len(methods) == 1
         assert methods[0].signature is not None
-        assert methods[0].signature is not None and "processData" in methods[0].signature
+        assert (
+            methods[0].signature is not None and "processData" in methods[0].signature
+        )
 
 
 class TestJavaConstructors:
@@ -688,7 +693,9 @@ public class Factory {
             content=code, language="java", file_path="Factory.java"
         )
 
-        instantiation_refs = [r for r in references if r.reference_type == "instantiation"]
+        instantiation_refs = [
+            r for r in references if r.reference_type == "instantiation"
+        ]
         instantiation_texts = [r.reference_text for r in instantiation_refs]
         assert "Person" in instantiation_texts
         assert "MyObject" in instantiation_texts

@@ -36,7 +36,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import BinaryIO
 
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,

@@ -45,4 +45,5 @@ SUPPORTED_LANGUAGES_WITH_PARSERS = (
     "go",
     "ruby",
     "bash",
+    "swift",
 )
