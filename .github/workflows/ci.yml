@@ -1,17 +1,7 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - "docs/**"
-      - "*.md"
-      - ".github/*.md"
-  pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "*.md"
-      - ".github/*.md"
+  workflow_dispatch: # manual trigger only — re-enable push/pull_request when minutes reset
 
 jobs:
   # ---------------------------------------------------------------------------
