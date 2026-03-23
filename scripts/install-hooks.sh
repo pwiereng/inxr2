@@ -8,6 +8,7 @@
 set -e
 
 HOOKS_DIR="$(git rev-parse --git-dir)/hooks"
+mkdir -p "$HOOKS_DIR"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
