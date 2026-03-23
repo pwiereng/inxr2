@@ -44,9 +44,32 @@ _PACKAGE_URL_RE = re.compile(
 # Applied before regex matching to avoid treating commented-out
 # .package(url:) calls as real dependencies.
 _BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
-# Negative lookbehind for ':' and '/' so that '://' and 'file:///' inside
-# URLs are not treated as line-comment markers.
-_LINE_COMMENT_RE = re.compile(r"(?<![:/])//[^\n]*")
+
+
+def _strip_line_comment(line: str) -> str:
+    """Return *line* with any trailing // comment removed.
+
+    Scans character by character so that ``//`` inside a double-quoted string
+    literal is never mistaken for a comment marker.  Handles ``\\`` escape
+    sequences inside strings.
+    """
+    in_string = False
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if in_string:
+            if ch == "\\":
+                i += 2  # skip the escaped character
+                continue
+            if ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == "/" and i + 1 < len(line) and line[i + 1] == "/":
+                return line[:i]
+        i += 1
+    return line
 
 
 def _strip_swift_comments(content: str) -> str:
@@ -62,8 +85,9 @@ def _strip_swift_comments(content: str) -> str:
         return "\n" * m.group(0).count("\n")
 
     stripped = _BLOCK_COMMENT_RE.sub(_blank_block, content)
-    # Replace line comments, preserving the trailing newline
-    stripped = _LINE_COMMENT_RE.sub("", stripped)
+    # Strip line comments using a scanner that respects string literals,
+    # so that '//' inside a URL string is never treated as a comment marker.
+    stripped = "\n".join(_strip_line_comment(ln) for ln in stripped.split("\n"))
     return stripped
 
 

@@ -330,7 +330,7 @@ let package = Package(
 
 
 class TestFileUrlPreservation:
-    """file:/// URLs must not be corrupted by comment stripping."""
+    """URLs must not be corrupted by comment stripping."""
 
     def test_file_url_not_stripped(self, parser: SwiftDependencyParser) -> None:
         content = """// swift-tools-version: 5.9
@@ -345,6 +345,23 @@ let package = Package(
         deps = parser.parse(content, "Package.swift")
         assert len(deps) == 1
         assert deps[0]["extras"]["url"] == "file:///Users/dev/MyLib"
+
+    def test_double_slash_in_url_path_not_stripped(
+        self, parser: SwiftDependencyParser
+    ) -> None:
+        """A URL containing // in its path must not be truncated at that //."""
+        content = """// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "MyApp",
+    dependencies: [
+        .package(url: "https://example.com//org/my-lib.git", from: "1.0.0"),
+    ]
+)
+"""
+        deps = parser.parse(content, "Package.swift")
+        assert len(deps) == 1
+        assert deps[0]["extras"]["url"] == "https://example.com//org/my-lib.git"
 
 
 class TestDuplicateUrlSourceLines:
