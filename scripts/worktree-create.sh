@@ -136,6 +136,11 @@ if [ -f "$MAIN_REPO/.mcp.json" ]; then
     echo "📡 Copied .mcp.json (MCP tools available in Claude Code)"
 fi
 
+# Install git hooks (gitleaks pre-commit) into the worktree's .git dir
+if [ -f "$WORKTREE_DIR/scripts/install-hooks.sh" ]; then
+    bash "$WORKTREE_DIR/scripts/install-hooks.sh"
+fi
+
 # ── Register slot (with file locking) ──────────────────────────────────────
 
 (
