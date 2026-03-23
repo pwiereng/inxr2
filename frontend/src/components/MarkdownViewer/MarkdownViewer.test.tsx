@@ -1,10 +1,81 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, act } from '@testing-library/react'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
-import { MarkdownViewer } from './MarkdownViewer'
+import { MarkdownViewer, MermaidDiagram } from './MarkdownViewer'
 
 // react-markdown v10 is ESM-only and doesn't render in jsdom.
 // Mock it to test our component's integration behavior.
+
+function processMarkdownText(text: string): string {
+  let html = text
+
+  // Headings
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+
+  // GFM tables (basic support)
+  const tableMatch = html.match(/\|(.+)\|\n\|[-| ]+\|\n((?:\|.+\|\n?)*)/)
+  if (tableMatch) {
+    const headers = tableMatch[1]!
+      .split('|')
+      .map((h: string) => h.trim())
+      .filter(Boolean)
+    const rows = tableMatch[2]!
+      .trim()
+      .split('\n')
+      .map((row: string) =>
+        row
+          .split('|')
+          .map((c: string) => c.trim())
+          .filter(Boolean)
+      )
+
+    const tableHtml = `<table><thead><tr>${headers.map((h: string) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((row: string[]) => `<tr>${row.map((c: string) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`
+    html = html.replace(/\|(.+)\|\n\|[-| ]+\|\n((?:\|.+\|\n?)*)/, tableHtml)
+  }
+
+  // Unordered lists
+  const lines = html.split('\n')
+  let inList = false
+  const outputLines: string[] = []
+  let listItems = ''
+  for (const line of lines) {
+    if (line.startsWith('- ')) {
+      if (!inList) inList = true
+      listItems += `<li>${line.slice(2)}</li>`
+    } else {
+      if (inList) {
+        outputLines.push(`<ul>${listItems}</ul>`)
+        listItems = ''
+        inList = false
+      }
+      outputLines.push(line)
+    }
+  }
+  if (inList) {
+    outputLines.push(`<ul>${listItems}</ul>`)
+  }
+  html = outputLines.join('\n')
+
+  // Paragraphs (lines that aren't already wrapped in tags)
+  html = html.replace(/^(?!<[a-z])((?!^\s*$).+)$/gm, (match: string) => {
+    if (match.startsWith('<')) return match
+    return `<p>${match}</p>`
+  })
+
+  // Remove empty lines
+  html = html.replace(/^\s*\n/gm, '')
+
+  return html
+}
+
 vi.mock('react-markdown', () => ({
   __esModule: true,
   default: ({
@@ -13,96 +84,73 @@ vi.mock('react-markdown', () => ({
   }: {
     children: string
     remarkPlugins?: unknown[]
-    components?: Record<string, unknown>
+    components?: {
+      code?: (props: { className?: string; children?: React.ReactNode }) => React.ReactElement
+    }
   }) => {
-    // Simple markdown-to-HTML conversion for testing
-    let html = children
+    const parts: React.ReactNode[] = []
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
+    let lastIndex = 0
+    let key = 0
+    let match: RegExpExecArray | null
 
-    // Headings
-    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
-
-    // Code blocks
-    html = html.replace(
-      /```(\w+)?\n([\s\S]*?)```/g,
-      (_match: string, lang: string | undefined, code: string) => {
-        const className = lang ? `language-${lang}` : ''
-        if (components?.code) {
-          // Let the custom code component handle it
-          return `<pre><code class="${className}">${code.trim()}</code></pre>`
-        }
-        return `<pre><code class="${className}">${code.trim()}</code></pre>`
-      }
-    )
-
-    // Inline code
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
-
-    // Links
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-
-    // GFM tables (basic support)
-    const tableMatch = html.match(/\|(.+)\|\n\|[-| ]+\|\n((?:\|.+\|\n?)*)/)
-    if (tableMatch) {
-      const headers = tableMatch[1]!
-        .split('|')
-        .map((h: string) => h.trim())
-        .filter(Boolean)
-      const rows = tableMatch[2]!
-        .trim()
-        .split('\n')
-        .map((row: string) =>
-          row
-            .split('|')
-            .map((c: string) => c.trim())
-            .filter(Boolean)
+    while ((match = codeBlockRegex.exec(children)) !== null) {
+      if (match.index > lastIndex) {
+        const textBefore = children.slice(lastIndex, match.index)
+        parts.push(
+          <div key={key++} dangerouslySetInnerHTML={{ __html: processMarkdownText(textBefore) }} />
         )
-
-      const tableHtml = `<table><thead><tr>${headers.map((h: string) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((row: string[]) => `<tr>${row.map((c: string) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`
-      html = html.replace(/\|(.+)\|\n\|[-| ]+\|\n((?:\|.+\|\n?)*)/, tableHtml)
-    }
-
-    // Unordered lists
-    const lines = html.split('\n')
-    let inList = false
-    const outputLines: string[] = []
-    let listItems = ''
-    for (const line of lines) {
-      if (line.startsWith('- ')) {
-        if (!inList) inList = true
-        listItems += `<li>${line.slice(2)}</li>`
-      } else {
-        if (inList) {
-          outputLines.push(`<ul>${listItems}</ul>`)
-          listItems = ''
-          inList = false
-        }
-        outputLines.push(line)
       }
+
+      const lang = match[1]
+      const code = (match[2] ?? '').trim()
+      const className = lang ? `language-${lang}` : ''
+
+      if (components?.code) {
+        const CodeComp = components.code
+        parts.push(
+          <pre key={key++}>
+            <CodeComp className={className}>{code}</CodeComp>
+          </pre>
+        )
+      } else {
+        parts.push(
+          <pre key={key++}>
+            <code className={className}>{code}</code>
+          </pre>
+        )
+      }
+
+      lastIndex = match.index + match[0].length
     }
-    if (inList) {
-      outputLines.push(`<ul>${listItems}</ul>`)
+
+    if (lastIndex < children.length || parts.length === 0) {
+      parts.push(
+        <div
+          key={key++}
+          dangerouslySetInnerHTML={{ __html: processMarkdownText(children.slice(lastIndex)) }}
+        />
+      )
     }
-    html = outputLines.join('\n')
 
-    // Paragraphs (lines that aren't already wrapped in tags)
-    html = html.replace(/^(?!<[a-z])((?!^\s*$).+)$/gm, (match: string) => {
-      // Don't wrap if already inside a tag
-      if (match.startsWith('<')) return match
-      return `<p>${match}</p>`
-    })
+    return <div>{parts}</div>
+  },
+}))
 
-    // Remove empty lines
-    html = html.replace(/^\s*\n/gm, '')
-
-    return <div dangerouslySetInnerHTML={{ __html: html }} />
+vi.mock('mermaid', () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn().mockResolvedValue({
+      svg: '<svg data-testid="mermaid-svg"><text>diagram</text></svg>',
+      diagramType: 'flowchart',
+    }),
   },
 }))
 
 // Minimal theme with code palette for testing
-const theme = createTheme({
+const lightTheme = createTheme({
   palette: {
+    mode: 'light',
     code: {
       background: '#1e1e1e',
       text: '#d4d4d4',
@@ -130,8 +178,41 @@ const theme = createTheme({
   } as never,
 })
 
-function renderWithTheme(ui: React.ReactElement) {
-  return render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>)
+const darkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    code: {
+      background: '#1e1e1e',
+      text: '#d4d4d4',
+      lineNumber: '#858585',
+      lineNumberHover: '#c6c6c6',
+      lineNumberHighlight: '#c6c6c6',
+      lineBorder: '#404040',
+      highlightBg: 'rgba(255, 255, 0, 0.07)',
+      highlightHoverBg: 'rgba(255, 255, 0, 0.12)',
+      hoverBg: 'rgba(255, 255, 255, 0.04)',
+      symbolUnderline: '#569cd6',
+      referenceUnderline: '#9cdcfe',
+      diffAddedBg: 'rgba(0, 255, 0, 0.1)',
+      diffRemovedBg: 'rgba(255, 0, 0, 0.1)',
+      diffModifiedBg: 'rgba(255, 255, 0, 0.1)',
+      diffAddedIndicator: '#4caf50',
+      diffRemovedIndicator: '#f44336',
+    },
+    blame: {
+      date: '#888',
+      hash: '#569cd6',
+      author: '#ce9178',
+      border: '#404040',
+    },
+  } as never,
+})
+
+// Keep the original theme alias for backward compatibility
+const theme = lightTheme
+
+function renderWithTheme(ui: React.ReactElement, themeOverride = theme) {
+  return render(<ThemeProvider theme={themeOverride}>{ui}</ThemeProvider>)
 }
 
 describe('MarkdownViewer', () => {
@@ -181,5 +262,83 @@ describe('MarkdownViewer', () => {
     renderWithTheme(<MarkdownViewer content={'- Item 1\n- Item 2\n- Item 3'} />)
     const items = screen.getAllByRole('listitem')
     expect(items).toHaveLength(3)
+  })
+
+  it('renders mermaid blocks as SVG diagrams', async () => {
+    const md = '```mermaid\ngraph TD\n  A --> B\n```'
+    renderWithTheme(<MarkdownViewer content={md} />)
+    const svg = await screen.findByTestId('mermaid-svg')
+    expect(svg).toBeInTheDocument()
+  })
+
+  it('does not render mermaid code as plain text', async () => {
+    const md = '```mermaid\ngraph TD\n  A --> B\n```'
+    renderWithTheme(<MarkdownViewer content={md} />)
+    await screen.findByTestId('mermaid-svg')
+    // The mermaid source should not appear as raw code
+    expect(screen.queryByText('graph TD')).not.toBeInTheDocument()
+  })
+})
+
+describe('MermaidDiagram', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('renders SVG when mermaid.render resolves', async () => {
+    const { default: mermaidMock } = await import('mermaid')
+    vi.mocked(mermaidMock.render).mockResolvedValue({
+      svg: '<svg data-testid="mermaid-svg"><text>diagram</text></svg>',
+      diagramType: 'flowchart',
+    })
+
+    renderWithTheme(<MermaidDiagram code="graph TD\n  A --> B" isDark={false} />)
+    const svg = await screen.findByTestId('mermaid-svg')
+    expect(svg).toBeInTheDocument()
+  })
+
+  it('initializes mermaid with default theme in light mode', async () => {
+    const { default: mermaidMock } = await import('mermaid')
+
+    await act(async () => {
+      renderWithTheme(<MermaidDiagram code="graph TD\n  A --> B" isDark={false} />)
+    })
+
+    expect(mermaidMock.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ theme: 'default' })
+    )
+  })
+
+  it('initializes mermaid with dark theme in dark mode', async () => {
+    const { default: mermaidMock } = await import('mermaid')
+
+    await act(async () => {
+      renderWithTheme(<MermaidDiagram code="graph TD\n  A --> B" isDark={true} />)
+    })
+
+    expect(mermaidMock.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ theme: 'dark' })
+    )
+  })
+
+  it('falls back to code block when mermaid.render rejects', async () => {
+    const { default: mermaidMock } = await import('mermaid')
+    vi.mocked(mermaidMock.render).mockRejectedValue(new Error('parse error'))
+
+    renderWithTheme(<MermaidDiagram code="invalid mermaid" isDark={false} />)
+    // Fallback: the code should appear in a <pre><code> block
+    expect(screen.getByText('invalid mermaid')).toBeInTheDocument()
+  })
+
+  it('respects isDark prop from MarkdownViewer theme', async () => {
+    const { default: mermaidMock } = await import('mermaid')
+
+    await act(async () => {
+      renderWithTheme(<MarkdownViewer content={'```mermaid\ngraph TD\n  A --> B\n```'} />, darkTheme)
+    })
+
+    expect(mermaidMock.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ theme: 'dark' })
+    )
   })
 })
