@@ -765,6 +765,97 @@ class TestParentSymbolIdResolution:
         assert method_sym.parent_symbol_id == ext_sym.id
 
     @pytest.mark.asyncio
+    async def test_multiple_extensions_on_same_type_get_correct_children(
+        self,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        text_content_repo: InMemoryTextContentRepository,
+    ) -> None:
+        """Two extensions on the same type in one file must each parent only
+        the members whose line numbers fall within their own range."""
+
+        class MultiExtParserService(FakeParserService):
+            async def parse_file(
+                self, content: str, language: str, file_path: str
+            ) -> tuple[list[ParsedSymbol], list[ParsedReference]]:
+                symbols = [
+                    # extension String (lines 1–5)
+                    ParsedSymbol(
+                        name="String",
+                        kind="extension",
+                        start_line=1,
+                        start_column=0,
+                        end_line=5,
+                        end_column=0,
+                        qualified_name="String.<extension>@1",
+                    ),
+                    ParsedSymbol(
+                        name="trimmed",
+                        kind="method",
+                        start_line=2,
+                        start_column=4,
+                        end_line=4,
+                        end_column=0,
+                        scope="String",
+                        qualified_name="String.trimmed",
+                    ),
+                    # extension String (lines 7–11)
+                    ParsedSymbol(
+                        name="String",
+                        kind="extension",
+                        start_line=7,
+                        start_column=0,
+                        end_line=11,
+                        end_column=0,
+                        qualified_name="String.<extension>@7",
+                    ),
+                    ParsedSymbol(
+                        name="uppercased",
+                        kind="method",
+                        start_line=8,
+                        start_column=4,
+                        end_line=10,
+                        end_column=0,
+                        scope="String",
+                        qualified_name="String.uppercased",
+                    ),
+                ]
+                return symbols, []
+
+        git_service = FakeGitService()
+        use_case = ProcessFileUseCase(
+            git_service=git_service,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            text_content_repo=text_content_repo,
+            parser_service=MultiExtParserService(),
+            plaintext_parser=FakePlaintextParser(),
+        )
+
+        request = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/example.py",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+        )
+        await use_case.execute(request)
+
+        all_symbols = list(symbol_repo._symbols.values())
+        ext1 = next(
+            s for s in all_symbols if s.qualified_name == "String.<extension>@1"
+        )
+        ext2 = next(
+            s for s in all_symbols if s.qualified_name == "String.<extension>@7"
+        )
+        trimmed = next(s for s in all_symbols if s.name == "trimmed")
+        uppercased = next(s for s in all_symbols if s.name == "uppercased")
+
+        assert trimmed.parent_symbol_id == ext1.id
+        assert uppercased.parent_symbol_id == ext2.id
+
+    @pytest.mark.asyncio
     async def test_top_level_function_has_no_parent(
         self,
         file_repo: InMemoryFileRepository,

@@ -555,30 +555,40 @@ class ProcessFileUseCase:
         name_to_id: dict[str, int] = {}
         for s in saved_symbols:
             assert s.id is not None
-            # Top-level non-extension symbols are reachable by plain name.
-            # Extensions are added in a second pass (below) so that a class and
-            # its extension on the same type don't overwrite each other — the
-            # class always wins over the extension for the plain-name key.
             if s.scope is None and s.kind != "extension":
                 name_to_id[s.name] = s.id
             # All symbols with a qualified_name are reachable by it
             if s.qualified_name:
                 name_to_id[s.qualified_name] = s.id
 
-        # Second pass: extensions populate the plain-name key only when no
-        # non-extension symbol already claimed it (extension-only files).
+        # Build a separate index of top-level extensions grouped by type name.
+        # Used as a fallback when no non-extension symbol claims a scope name
+        # (extension-only files). Line-containment determines which extension
+        # owns each child, correctly handling multiple extensions on the same
+        # type in one file.
+        extensions_by_name: dict[str, list[Symbol]] = {}
         for s in saved_symbols:
             assert s.id is not None
-            if s.scope is None and s.kind == "extension" and s.name not in name_to_id:
-                name_to_id[s.name] = s.id
+            if s.scope is None and s.kind == "extension":
+                extensions_by_name.setdefault(s.name, []).append(s)
 
         # Match children: scope → parent_id
         updates: dict[int, int] = {}
         for s in saved_symbols:
             if s.scope and s.parent_symbol_id is None:
+                assert s.id is not None
+                # First try the plain-name lookup (class/struct always wins).
                 parent_id = name_to_id.get(s.scope)
+                if parent_id is None:
+                    # Fallback: find the extension whose line range contains
+                    # this child (handles extension-only files, including
+                    # multiple extensions on the same type).
+                    for ext in extensions_by_name.get(s.scope, []):
+                        assert ext.id is not None
+                        if ext.start_line <= s.start_line <= ext.end_line:
+                            parent_id = ext.id
+                            break
                 if parent_id is not None:
-                    assert s.id is not None
                     updates[s.id] = parent_id
 
         if updates:
