@@ -1,13 +1,13 @@
 ---
 name: regression-test
-description: "Runs the full regression test suite: resets DB, re-indexes all repos, starts services, then runs all 62 browser/indexing/MCP tests via the QA agent. Runs autonomously without prompting."
+description: "Runs the full regression test suite: resets DB, re-indexes all repos, starts services, then runs all 75 browser/indexing/MCP tests via the QA agent. Runs autonomously without prompting."
 user-invocable: true
 argument-hint: "[optional: 'indexing' or 'browser' to run only one phase]"
 ---
 
 # Regression Test Skill
 
-Runs the full regression test suite (62 tests) autonomously. See `docs/regression-tests.md` for detailed test procedures.
+Runs the full regression test suite (75 tests) autonomously. See `docs/regression-tests.md` for detailed test procedures.
 
 ## CRITICAL: Autonomy Rule
 
