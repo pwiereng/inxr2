@@ -262,6 +262,6 @@ Multiple Claude Code agents can work on separate branches simultaneously, each w
 
 - `CONTRIBUTING.md` — Coding standards, testing philosophy, git workflow
 - `docs/database-schema.md` — Complete database schema with design rationale
-- `docs/regression-tests.md` — Full regression test plan (48 test cases)
+- `docs/regression-tests.md` — Full regression test plan (75 test cases)
 - `docs/archived/2026-01-24-IMPLEMENTATION_PLAN.md` — Original phase-by-phase roadmap
 - `qa-agent/README.md` — QA agent API documentation
