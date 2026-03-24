@@ -234,12 +234,21 @@ class ProcessFileUseCase:
             # Also index raw file content so search_code can find tokens in
             # code bodies (class names, identifiers, etc.) that don't appear
             # in comments or docstrings. (#395)
-            await self._index_non_code_file(
+            # NOTE: this branch MUST return below — the non-code path after
+            # this block is mutually exclusive and must not run for code files.
+            # (#398)
+            code_body_result = await self._index_non_code_file(
                 content=content,
                 file_path_str=request.file_path,
                 repository_id=request.repository_id,
                 file_id=file_id,
             )
+            if code_body_result.error:
+                logger.warning(
+                    "Failed to index code file body for %s: %s",
+                    request.file_path,
+                    code_body_result.error,
+                )
 
             return ProcessFileResult(
                 processed=True,
