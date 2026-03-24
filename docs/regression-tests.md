@@ -2176,6 +2176,97 @@ asyncio.run(main())
 
 ---
 
+## MCP-25: search_code Finds Content in Code File Bodies
+
+Regression test for bug #395 — code files (Swift, Python, etc.) were never storing raw body content in `text_contents`, so `search_code` returned no results for terms that appeared only in source bodies (class names, identifiers) rather than in comments or docstrings.
+
+**Steps:**
+```bash
+# DISCOVER: Find a Swift symbol name via search_symbols (proves it exists in source)
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_symbols
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_symbols.handle(client, {'query': 'BucketList', 'repository': 'travelbuddy'})
+    print(result)
+    await client.close()
+asyncio.run(main())
+"
+
+# VERIFY: search_code with extensions filter finds the same term in Swift files
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_code.handle(client, {'query': 'BucketList', 'repository': 'travelbuddy', 'extensions': 'swift', 'limit': 10})
+    print(result)
+    swift_results = [l for l in result.splitlines() if '.swift' in l]
+    print(f'Swift results: {len(swift_results)}')
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- `search_code` with `extensions='swift'` returns at least one result
+- All results have `.swift` file paths (not `.md` or `.yaml`)
+- The term appears in the result content (confirming it came from the file body, not just a symbol name match)
+
+---
+
+## MCP-26: search_code source_only Filter Excludes Non-Source Files
+
+Regression test for the `source_only` parameter — verifies that `source_only=true` removes documentation and config files from results while preserving code file results.
+
+**Steps:**
+```bash
+# DISCOVER: Find a term that appears in both docs and Swift source
+# (BucketList appears in README.md and in .swift files)
+
+# VERIFY: Without filter, markdown results appear
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_code.handle(client, {'query': 'BucketList', 'repository': 'travelbuddy', 'limit': 20})
+    print(result)
+    md_results = [l for l in result.splitlines() if '.md' in l]
+    print(f'Markdown results (expect > 0): {len(md_results)}')
+    await client.close()
+asyncio.run(main())
+"
+
+# VERIFY: With source_only=true, markdown results are absent
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_code.handle(client, {'query': 'BucketList', 'repository': 'travelbuddy', 'source_only': True, 'limit': 20})
+    print(result)
+    md_results = [l for l in result.splitlines() if '.md' in l]
+    swift_results = [l for l in result.splitlines() if '.swift' in l]
+    print(f'Markdown results (expect 0): {len(md_results)}')
+    print(f'Swift results (expect > 0): {len(swift_results)}')
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- Without `source_only`: at least one `.md` result appears
+- With `source_only=true`: zero `.md` results, at least one `.swift` result
+- No error or empty response when `source_only=true` is used
+
+---
+
 ## Summary
 
 ### Phase 1: Indexing (8 tests)
