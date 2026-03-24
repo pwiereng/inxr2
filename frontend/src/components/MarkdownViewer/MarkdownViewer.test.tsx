@@ -316,9 +316,7 @@ describe('MermaidDiagram', () => {
       renderWithTheme(<MermaidDiagram code="graph TD\n  A --> B" isDark={true} />)
     })
 
-    expect(mermaidMock.initialize).toHaveBeenCalledWith(
-      expect.objectContaining({ theme: 'dark' })
-    )
+    expect(mermaidMock.initialize).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }))
   })
 
   it('falls back to code block when mermaid.render rejects', async () => {
@@ -334,11 +332,12 @@ describe('MermaidDiagram', () => {
     const { default: mermaidMock } = await import('mermaid')
 
     await act(async () => {
-      renderWithTheme(<MarkdownViewer content={'```mermaid\ngraph TD\n  A --> B\n```'} />, darkTheme)
+      renderWithTheme(
+        <MarkdownViewer content={'```mermaid\ngraph TD\n  A --> B\n```'} />,
+        darkTheme
+      )
     })
 
-    expect(mermaidMock.initialize).toHaveBeenCalledWith(
-      expect.objectContaining({ theme: 'dark' })
-    )
+    expect(mermaidMock.initialize).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }))
   })
 })
