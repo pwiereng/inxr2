@@ -306,5 +306,49 @@ describe('API functions - by-name/by-path endpoints', () => {
 
       await expect(searchText({ q: 'invalid[' })).rejects.toThrow('Invalid search query')
     })
+
+    it('should format FastAPI 422 validation error array as human-readable message', async () => {
+      // FastAPI returns detail as an array of validation error objects when input is invalid
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: async () => ({
+          detail: [
+            {
+              type: 'enum',
+              loc: ['query', 'mode'],
+              msg: "Input should be 'keyword', 'phrase' or 'regex'",
+              input: 'text',
+            },
+          ],
+        }),
+      })
+
+      await expect(searchText({ q: 'foo', mode: 'text' as 'keyword' })).rejects.toThrow(
+        "Input should be 'keyword', 'phrase' or 'regex'"
+      )
+    })
+
+    it('should join multiple FastAPI validation errors with semicolons', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: async () => ({
+          detail: [
+            { msg: 'Field required', type: 'missing', loc: ['query', 'q'], input: {} },
+            {
+              msg: "Input should be 'keyword', 'phrase' or 'regex'",
+              type: 'enum',
+              loc: ['query', 'mode'],
+              input: 'bad',
+            },
+          ],
+        }),
+      })
+
+      await expect(searchText({ q: 'foo' })).rejects.toThrow(
+        "Field required; Input should be 'keyword', 'phrase' or 'regex'"
+      )
+    })
   })
 })
