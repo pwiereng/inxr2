@@ -2114,7 +2114,7 @@ asyncio.run(main())
 
 ## MCP-23: search_code Extensions Filter Does Not Return Duplicates
 
-Regression test for bug #392 — `search_code` with an extensions filter was returning the same `file:line` multiple times (one per indexed commit/branch).
+Regression test for bug #400 — after #395 added raw body indexing, `search_code` with an extensions filter returns the same `file:line` multiple times because `_index_non_code_file` creates multiple `file_content` rows with `commit_id=NULL` for the same file. The `latest_file_ids_subquery` dedup pass-through for `source_file_id IS NULL` rows allows all of them through.
 
 **Steps:**
 ```bash
