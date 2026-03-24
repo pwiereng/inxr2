@@ -148,23 +148,10 @@ fi
 echo "📝 Final node_modules permissions:"
 ls -ld /workspace/frontend/node_modules
 
-# Check if frontend packages are installed and valid
-if [ ! -d "/workspace/frontend/node_modules" ] || [ ! -f "/workspace/frontend/node_modules/.package-lock.json" ]; then
-    echo "📦 Installing frontend packages..."
-    cd /workspace/frontend && npm install
-    echo "✅ Frontend packages installed"
-else
-    # Verify installation is valid by checking if vite works
-    cd /workspace/frontend
-    if ! npm list vite >/dev/null 2>&1; then
-        echo "📦 Re-installing frontend packages (previous installation invalid)..."
-        rm -rf node_modules package-lock.json
-        npm install
-        echo "✅ Frontend packages re-installed"
-    else
-        echo "✅ Frontend packages already installed"
-    fi
-fi
+# Install frontend packages (idempotent — fast when already up-to-date)
+echo "📦 Installing frontend packages..."
+cd /workspace/frontend && npm ci
+echo "✅ Frontend packages installed"
 
 echo "Container ready!"
 
