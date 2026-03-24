@@ -1159,3 +1159,74 @@ class TestSearchTextDeduplication:
         )
         assert len(response.results) == 1
         assert response.results[0].source_line == 8
+
+    @pytest.mark.asyncio
+    async def test_dedup_does_not_collapse_same_path_different_repos(
+        self,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+    ) -> None:
+        """Cross-repo dedup key includes repository_id. Two repos that both
+        have a match at the same file path and line must each produce a result."""
+        repository_repo = InMemoryRepositoryRepository()
+        repository_repo.add(
+            Repository(id=1, name="repo-a", url="/repos/a", description="")
+        )
+        repository_repo.add(
+            Repository(id=2, name="repo-b", url="/repos/b", description="")
+        )
+        # Add a second file in repo 2 at the same path
+        await file_repo.save(
+            File(
+                repository_id=2,
+                path="src/Logger.swift",  # same path as file_id=1 in repo 1
+                content_hash="c" * 40,
+                size_bytes=500,
+                language="swift",
+            )
+        )
+
+        text_repo = InMemoryTextContentRepository()
+        await text_repo.save(
+            TextContent(
+                repository_id=1,
+                commit_id=None,
+                source_type="comment",
+                source_file_id=1,
+                source_line=4,
+                source_end_line=4,
+                content="// MARK: - TraceLogger",
+                language="swift",
+                content_type="single_line_comment",
+            )
+        )
+        await text_repo.save(
+            TextContent(
+                repository_id=2,
+                commit_id=None,
+                source_type="comment",
+                source_file_id=2,
+                source_line=4,
+                source_end_line=4,
+                content="// MARK: - TraceLogger",
+                language="swift",
+                content_type="single_line_comment",
+            )
+        )
+        use_case = SearchTextUseCase(
+            text_search=FakeTextSearch(text_repo, file_repo=file_repo),
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+        )
+
+        response = await use_case.execute(
+            SearchTextRequest(query="TraceLogger")  # global search, no repository_id
+        )
+
+        assert len(response.results) == 2, (
+            "Expected 2 results (one per repo), dedup must not collapse "
+            f"cross-repo matches at the same path:line, got {len(response.results)}"
+        )
+        repo_ids = {r.repository_id for r in response.results}
+        assert repo_ids == {1, 2}

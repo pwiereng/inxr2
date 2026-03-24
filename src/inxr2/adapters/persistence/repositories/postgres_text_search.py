@@ -278,6 +278,10 @@ class PostgresTextSearchRepository(TextSearchPort):
         # Results are already ordered highest-rank-first, so keep the first hit
         # per (file, line). Only applies to file-backed rows (source_file_id set);
         # commit messages (source_file_id=None) are never deduped against each other.
+        # NOTE: total_count is adjusted by the number of duplicates on the current page
+        # only — this is an approximation. The SQL LIMIT/OFFSET is applied before this
+        # loop, so duplicate pairs that straddle a page boundary are not caught here.
+        # TODO: for an exact count, push dedup into a SQL subquery before LIMIT/OFFSET.
         seen_positions: set[tuple[int, int | None]] = set()
         deduped: list[TextSearchResult] = []
         for sr in search_results:

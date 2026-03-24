@@ -299,17 +299,22 @@ class SearchTextUseCase:
                     )
                 )
 
-        # Deduplicate text_results by (file_path, source_line) after line refinement.
-        # Multi-line chunks whose match term appears at the same refined line as a
-        # shorter chunk (e.g., a docstring row at line 8 and a plain_text chunk
-        # spanning lines 7–13 where the term is at line 8) both produce the same
-        # file:line in the API response. Keep highest-ranked (results are already
-        # ranked first). Commit-message entries (file_path=None) are never deduped.
-        seen_text_positions: set[tuple[str, int | None]] = set()
+        # Deduplicate text_results by (repository_id, file_path, source_line) after
+        # line refinement. Multi-line chunks whose match term appears at the same
+        # refined line as a shorter chunk (e.g., a docstring row at line 8 and a
+        # plain_text chunk spanning lines 7–13 where the term is at line 8) both
+        # produce the same file:line in the API response. Keep highest-ranked (results
+        # are already ranked first). Commit-message entries (file_path=None) are never
+        # deduped. repository_id is included so global searches don't collapse results
+        # from two repos that share the same file path and line number.
+        # NOTE: text_total is adjusted by the number of duplicates on the current page
+        # only — this is an approximation. Duplicate pairs straddling a page boundary
+        # are not caught, so total may differ across pages when offset > 0.
+        seen_text_positions: set[tuple[int, str, int | None]] = set()
         deduped_text: list[SearchTextResultItem] = []
         for item in text_results:
             if item.file_path is not None:
-                key = (item.file_path, item.source_line)
+                key = (item.repository_id, item.file_path, item.source_line)
                 if key in seen_text_positions:
                     continue
                 seen_text_positions.add(key)
