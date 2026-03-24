@@ -978,3 +978,184 @@ class TestSearchTextReferenceExtensionFilter:
         for r in response.results:
             assert r.file_path is not None
             assert r.file_path.endswith(".ts")
+
+
+class TestSearchTextDeduplication:
+    """Regression tests for search result deduplication (#400).
+
+    Code file body indexing (#395) creates plain_text rows covering all
+    lines of a file, including lines already stored as comment/docstring
+    rows. Two rows for the same file+line both match the same search term,
+    producing duplicate results.
+
+    Two dedup passes are required:
+    1. DB layer (postgres_text_search.py): catches rows with the same raw
+       source_line (e.g. comment at line 4 and plain_text chunk at line 4).
+    2. Use case layer (search_text_use_case.py): catches rows where a
+       multi-line plain_text chunk starting at line N refines to the same
+       line as a shorter row at line N+k (e.g. docstring at line 8 and a
+       plain_text chunk starting at line 7 that contains the match at line 8).
+    """
+
+    @pytest.fixture
+    def repository_repo(self) -> InMemoryRepositoryRepository:
+        repo = InMemoryRepositoryRepository()
+        repo.add(
+            Repository(
+                id=1,
+                name="travelbuddy",
+                url="/repos/travelbuddy",
+                description="Travel app",
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    async def commit_repo(self) -> InMemoryCommitRepository:
+        from datetime import UTC, datetime
+
+        from inxr2.domain.value_objects import CommitHash
+
+        repo = InMemoryCommitRepository()
+        commit = await repo.save(
+            Commit(
+                id=None,
+                repository_id=1,
+                commit_hash=CommitHash("a" * 40),
+                author_date=datetime(2024, 1, 1, tzinfo=UTC),
+                commit_date=datetime(2024, 1, 1, tzinfo=UTC),
+            )
+        )
+        assert commit.id is not None
+        await repo.link_commit_to_branch(1, commit.id, "main")
+        return repo
+
+    @pytest.fixture
+    async def file_repo(self) -> InMemoryFileRepository:
+        repo = InMemoryFileRepository()
+        await repo.save(
+            File(
+                repository_id=1,
+                path="src/Logger.swift",
+                content_hash="b" * 40,
+                size_bytes=500,
+                language="swift",
+            )
+        )
+        return repo
+
+    @pytest.mark.asyncio
+    async def test_dedup_same_raw_source_line(
+        self,
+        repository_repo: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+    ) -> None:
+        """Regression test for GH #400 (DB-layer case): a comment row and a
+        plain_text row both at source_line=4 must produce only one result."""
+        text_repo = InMemoryTextContentRepository()
+        await text_repo.save(
+            TextContent(
+                repository_id=1,
+                commit_id=None,
+                source_type="comment",
+                source_file_id=1,
+                source_line=4,
+                source_end_line=4,
+                content="MARK: - TraceLogger",
+                language="swift",
+                content_type="single_line_comment",
+            )
+        )
+        await text_repo.save(
+            TextContent(
+                repository_id=1,
+                commit_id=None,
+                source_type="file_content",
+                source_file_id=1,
+                source_line=4,
+                source_end_line=4,
+                content="// MARK: - TraceLogger",
+                language=None,
+                content_type="plain_text",
+            )
+        )
+        use_case = SearchTextUseCase(
+            text_search=FakeTextSearch(text_repo, file_repo=file_repo),
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+        )
+
+        response = await use_case.execute(
+            SearchTextRequest(query="TraceLogger", repository_id=1)
+        )
+
+        assert response.total == 1, (
+            "Expected 1 deduplicated result for same file+line, "
+            f"got {response.total}"
+        )
+        assert len(response.results) == 1
+
+    @pytest.mark.asyncio
+    async def test_dedup_multiline_chunk_refines_to_same_line(
+        self,
+        repository_repo: InMemoryRepositoryRepository,
+        commit_repo: InMemoryCommitRepository,
+        file_repo: InMemoryFileRepository,
+    ) -> None:
+        """Regression test for GH #400 (use-case-layer case): a docstring at
+        line 8 and a multi-line plain_text chunk starting at line 7 (where the
+        match term appears at line 8, i.e. offset 1) both refine to source_line=8
+        and must produce only one result after use-case dedup."""
+        text_repo = InMemoryTextContentRepository()
+        # Docstring at line 8 (single line)
+        await text_repo.save(
+            TextContent(
+                repository_id=1,
+                commit_id=None,
+                source_type="docstring",
+                source_file_id=1,
+                source_line=8,
+                source_end_line=8,
+                content="Accepts the ModelContainer created by TravelBuddyApp",
+                language="swift",
+                content_type="docstring",
+            )
+        )
+        # Multi-line plain_text chunk starting at line 7, containing the
+        # match term at line 8 (offset 1 within the chunk).
+        await text_repo.save(
+            TextContent(
+                repository_id=1,
+                commit_id=None,
+                source_type="file_content",
+                source_file_id=1,
+                source_line=7,
+                source_end_line=13,
+                content=(
+                    "/// Persists UserProfile to the shared store.\n"
+                    "/// Accepts the ModelContainer created by TravelBuddyApp\n"
+                    "final class SwiftDataAdapter {}"
+                ),
+                language=None,
+                content_type="plain_text",
+            )
+        )
+        use_case = SearchTextUseCase(
+            text_search=FakeTextSearch(text_repo, file_repo=file_repo),
+            repository_repo=repository_repo,
+            commit_repo=commit_repo,
+            file_repo=file_repo,
+        )
+
+        response = await use_case.execute(
+            SearchTextRequest(query="TravelBuddyApp", repository_id=1)
+        )
+
+        assert response.total == 1, (
+            "Expected 1 deduplicated result after multi-line chunk refinement, "
+            f"got {response.total}"
+        )
+        assert len(response.results) == 1
+        assert response.results[0].source_line == 8
