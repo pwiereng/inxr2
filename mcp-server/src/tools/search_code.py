@@ -108,9 +108,10 @@ async def handle(
     repository = arguments.get("repository")
     mode = arguments.get("mode", "keyword")
     extensions_raw = arguments.get("extensions")
-    # Accept array (["py", "ts"]) or comma-string ("py,ts")
+    # Accept array (["py", "ts"]) or comma-string ("py,ts"); [] → None
     if isinstance(extensions_raw, list):
-        extensions: str | None = ",".join(e for e in extensions_raw if e)
+        joined = ",".join(e for e in extensions_raw if e)
+        extensions: str | None = joined if joined else None
     else:
         extensions = extensions_raw
     limit = min(arguments.get("limit", 20), 100)

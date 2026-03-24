@@ -1054,3 +1054,84 @@ async def test_search_deduplicates_branch_scoped(
         total_main == 1
     ), f"Expected 1 result (main branch version only), got {total_main}"
     assert results_main[0].text_content.source_file_id == file_main.id
+
+
+@pytest.mark.asyncio
+async def test_search_deduplicates_same_file_and_line(
+    db_session: AsyncSession,
+    test_repository: Repository,
+) -> None:
+    """Regression test for GH #400: search must not return duplicate results
+    when the same file+line has both a comment row and a plain_text row.
+
+    This happens after GH #395 added _index_non_code_file for code files:
+    comment extraction stores a single_line_comment row for line N, and body
+    indexing also stores a plain_text row that covers line N. Both rows match
+    the same keyword search, producing duplicate hits for the same location.
+    """
+    assert test_repository.id is not None
+
+    commit_repo = PostgresCommitRepository(db_session)
+    file_repo = PostgresFileRepository(db_session)
+    text_repo = PostgresTextContentRepository(db_session)
+    search = PostgresTextSearchRepository(db_session)
+
+    commit = await commit_repo.save(
+        CommitFactory.create(
+            repository_id=test_repository.id,
+            commit_hash="m" * 40,
+            commit_date=datetime(2024, 4, 1),
+        )
+    )
+    assert commit.id is not None
+    await commit_repo.link_commit_to_branch(test_repository.id, commit.id, "main")
+
+    file = await file_repo.save(
+        FileFactory.create(
+            repository_id=test_repository.id,
+            path="src/Logger.swift",
+            content_hash="n" * 40,
+        )
+    )
+    assert file.id is not None
+    await file_repo.link_file_to_commit(file.id, commit.id)
+
+    # Simulate comment extraction: single_line_comment at line 4
+    await text_repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=None,
+            source_type=TextSearchSourceType.COMMENT.value,
+            source_file_id=file.id,
+            source_line=4,
+            source_end_line=4,
+            content="MARK: - TraceLogger",
+            language="swift",
+            content_type="single_line_comment",
+        )
+    )
+    # Simulate body indexing: plain_text chunk also covering line 4
+    await text_repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=None,
+            source_type=TextSearchSourceType.FILE_CONTENT.value,
+            source_file_id=file.id,
+            source_line=4,
+            source_end_line=4,
+            content="MARK: - TraceLogger",
+            language=None,
+            content_type="plain_text",
+        )
+    )
+    await db_session.commit()
+
+    query = TextSearchQuery(
+        query="TraceLogger",
+        mode=QueryMode.KEYWORD.value,
+        repository_id=test_repository.id,
+    )
+    results, total = await search.search(query)
+
+    assert total == 1, f"Expected 1 deduplicated result for file+line, got {total}"
+    assert len(results) == 1

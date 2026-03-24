@@ -325,9 +325,7 @@ class TestProcessFileUseCase:
     async def test_code_file_body_indexed_as_file_content(
         self,
         git_service: FakeGitService,
-        file_repo: InMemoryFileRepository,
-        symbol_repo: InMemorySymbolRepository,
-        reference_repo: InMemoryReferenceRepository,
+        use_case: ProcessFileUseCase,
         text_content_repo: InMemoryTextContentRepository,
         parser_service: FakeParserService,
     ) -> None:
@@ -342,16 +340,6 @@ class TestProcessFileUseCase:
         )
         # parser_service returns no comments — "BucketList" only in body
         parser_service.comments_to_return = []
-
-        use_case = ProcessFileUseCase(
-            git_service=git_service,
-            file_repo=file_repo,
-            symbol_repo=symbol_repo,
-            reference_repo=reference_repo,
-            text_content_repo=text_content_repo,
-            parser_service=parser_service,
-            plaintext_parser=FakePlaintextParser(),
-        )
 
         request = ProcessFileRequest(
             repository_id=1,

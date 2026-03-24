@@ -272,6 +272,30 @@ class PostgresTextSearchRepository(TextSearchPort):
                     )
                 )
 
+        # Deduplicate by (source_file_id, source_line). Code files produce both
+        # comment/docstring rows and plain_text rows (from body indexing) for the
+        # same line, which both match when a search term appears in a comment.
+        # Results are already ordered highest-rank-first, so keep the first hit
+        # per (file, line). Only applies to file-backed rows (source_file_id set);
+        # commit messages (source_file_id=None) are never deduped against each other.
+        # NOTE: total_count is adjusted by the number of duplicates on the current page
+        # only — this is an approximation. The SQL LIMIT/OFFSET is applied before this
+        # loop, so duplicate pairs that straddle a page boundary are not caught here.
+        # TODO: for an exact count, push dedup into a SQL subquery before LIMIT/OFFSET.
+        seen_positions: set[tuple[int, int | None]] = set()
+        deduped: list[TextSearchResult] = []
+        for sr in search_results:
+            fid = sr.text_content.source_file_id
+            if fid is not None:
+                key = (fid, sr.text_content.source_line)
+                if key in seen_positions:
+                    continue
+                seen_positions.add(key)
+            deduped.append(sr)
+        if len(deduped) < len(search_results):
+            total_count -= len(search_results) - len(deduped)
+        search_results = deduped
+
         return search_results, total_count
 
     def _apply_query_mode_filter(

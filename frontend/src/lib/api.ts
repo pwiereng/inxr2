@@ -230,7 +230,13 @@ async function fetchApi<T>(endpoint: string): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`)
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new ApiError(error.detail || `HTTP ${response.status}`, response.status)
+    const detail: unknown = error.detail
+    const message = Array.isArray(detail)
+      ? detail.map((e: { msg?: string }) => e.msg ?? JSON.stringify(e)).join('; ')
+      : typeof detail === 'string'
+        ? detail
+        : `HTTP ${response.status}`
+    throw new ApiError(message, response.status)
   }
   return response.json()
 }
