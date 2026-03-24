@@ -48,6 +48,15 @@ class PostgresTextSearchRepository(TextSearchPort):
         self.session = session
         self.mapper = TextContentMapper()
 
+    async def _resolve_default_branch(self, repository_id: int) -> str | None:
+        """Look up a repository's default branch."""
+        result = await self.session.execute(
+            select(RepositoryModel.default_branch).where(
+                RepositoryModel.id == repository_id
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def search(
         self, query: TextSearchQuery
     ) -> tuple[list[TextSearchResult], int]:
@@ -165,9 +174,17 @@ class PostgresTextSearchRepository(TextSearchPort):
         # Without this, a file indexed across N commits returns N duplicate results.
         # Not applied when commit_id is set (time-travel already pins to one version).
         if query.repository_id is not None and query.commit_id is None:
+            # When branch is None, fall back to the repo's default branch to avoid
+            # an expensive unscoped ROW_NUMBER() over all commits on all branches,
+            # and to match symbol_adapter behaviour (latest = latest on default branch).
+            effective_branch = query.branch
+            if effective_branch is None:
+                effective_branch = await self._resolve_default_branch(
+                    query.repository_id
+                )
             latest_fids = latest_file_ids_subquery(
                 repository_id=query.repository_id,
-                branch=query.branch,
+                branch=effective_branch,
             )
             base_query = base_query.where(
                 TextContentModel.source_file_id.in_(select(latest_fids.c.max_id))
