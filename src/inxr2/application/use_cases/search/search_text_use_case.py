@@ -299,6 +299,25 @@ class SearchTextUseCase:
                     )
                 )
 
+        # Deduplicate text_results by (file_path, source_line) after line refinement.
+        # Multi-line chunks whose match term appears at the same refined line as a
+        # shorter chunk (e.g., a docstring row at line 8 and a plain_text chunk
+        # spanning lines 7–13 where the term is at line 8) both produce the same
+        # file:line in the API response. Keep highest-ranked (results are already
+        # ranked first). Commit-message entries (file_path=None) are never deduped.
+        seen_text_positions: set[tuple[str, int | None]] = set()
+        deduped_text: list[SearchTextResultItem] = []
+        for item in text_results:
+            if item.file_path is not None:
+                key = (item.file_path, item.source_line)
+                if key in seen_text_positions:
+                    continue
+                seen_text_positions.add(key)
+            deduped_text.append(item)
+        if len(deduped_text) < len(text_results):
+            text_total -= len(text_results) - len(deduped_text)
+        text_results = deduped_text
+
         # Reference search
         ref_results: list[SearchTextResultItem] = []
         ref_total = 0
