@@ -322,6 +322,55 @@ class TestProcessFileUseCase:
         assert len(comments) == 1
 
     @pytest.mark.asyncio
+    async def test_code_file_body_indexed_as_file_content(
+        self,
+        git_service: FakeGitService,
+        file_repo: InMemoryFileRepository,
+        symbol_repo: InMemorySymbolRepository,
+        reference_repo: InMemoryReferenceRepository,
+        text_content_repo: InMemoryTextContentRepository,
+        parser_service: FakeParserService,
+    ) -> None:
+        """Regression test for GH #395: code file bodies must be indexed as
+        file_content so search_code can find tokens that appear only in source
+        (not in comments or docstrings)."""
+        git_service.set_file_content(
+            repo_path="/repos/test-repo",
+            commit_hash="abc123",
+            file_path="src/main.py",
+            content="class BucketList:\n    pass\n",
+        )
+        # parser_service returns no comments — "BucketList" only in body
+        parser_service.comments_to_return = []
+
+        use_case = ProcessFileUseCase(
+            git_service=git_service,
+            file_repo=file_repo,
+            symbol_repo=symbol_repo,
+            reference_repo=reference_repo,
+            text_content_repo=text_content_repo,
+            parser_service=parser_service,
+            plaintext_parser=FakePlaintextParser(),
+        )
+
+        request = ProcessFileRequest(
+            repository_id=1,
+            file_path="src/main.py",
+            commit_hash="abc123",
+            repo_path=Path("/repos/test-repo"),
+        )
+
+        result = await use_case.execute(request)
+
+        assert result.processed is True
+        all_text = text_content_repo.get_all()
+        file_contents = [tc for tc in all_text if tc.source_type == "file_content"]
+        assert (
+            len(file_contents) > 0
+        ), "Code file body must be indexed as file_content for search_code to work"
+        assert any("BucketList" in tc.content for tc in file_contents)
+
+    @pytest.mark.asyncio
     async def test_language_detection(
         self,
         use_case: ProcessFileUseCase,

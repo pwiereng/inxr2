@@ -2131,6 +2131,76 @@ class TestSearchCodeExtensions:
 
 
 # ============================================================
+# Bug #395 — extensions array and source_only string rejected by schema
+# ============================================================
+
+
+class TestSearchCodeInputCoercion:
+    """Regression tests for GH #395: AI models may pass extensions as an array
+    or source_only as the string "true"; both must be accepted."""
+
+    async def test_extensions_as_array_sent_as_dot_prefixed_list(self) -> None:
+        """extensions=['swift'] (array) must be coerced to ['.swift'] for the API."""
+        client = _ParamCapturingClient()
+        client.add_repository(1, "test-repo")
+        client.set_stats(1)
+
+        await search_code.handle(
+            client,
+            {"query": "foo", "repository": "test-repo", "extensions": ["swift"]},
+        )
+
+        assert client.captured_search_params is not None
+        ext = client.captured_search_params.get("extensions")
+        assert isinstance(
+            ext, list
+        ), f"expected list, got {type(ext).__name__}: {ext!r}"
+        assert ".swift" in ext
+
+    async def test_extensions_array_already_dot_prefixed(self) -> None:
+        """extensions=['.py', '.ts'] (already dot-prefixed array) must not double the dot."""
+        client = _ParamCapturingClient()
+        client.add_repository(1, "test-repo")
+        client.set_stats(1)
+
+        await search_code.handle(
+            client,
+            {"query": "foo", "repository": "test-repo", "extensions": [".py", ".ts"]},
+        )
+
+        assert client.captured_search_params is not None
+        ext = client.captured_search_params.get("extensions")
+        assert isinstance(ext, list)
+        assert ".py" in ext
+        assert ".ts" in ext
+        assert "..py" not in ext
+
+    async def test_source_only_string_true_filters_non_source(self) -> None:
+        """source_only='true' (string) must filter out non-source files."""
+        client = FakeInxr2Client()
+        client.add_search_result("README.md", 1, "foo bar")
+        client.add_search_result("src/main.py", 5, "def foo(): pass")
+
+        result = await search_code.handle(
+            client, {"query": "foo", "source_only": "true"}
+        )
+
+        assert "src/main.py" in result
+        assert "README.md" not in result
+
+    async def test_source_only_string_false_does_not_filter(self) -> None:
+        """source_only='false' (string) must not filter anything."""
+        client = FakeInxr2Client()
+        client.add_search_result("README.md", 1, "foo bar")
+
+        result = await search_code.handle(
+            client, {"query": "foo", "source_only": "false"}
+        )
+
+        assert "README.md" in result
+
+
+# ============================================================
 # Bug #387 — search_code returns commit message matches (file: None)
 # ============================================================
 

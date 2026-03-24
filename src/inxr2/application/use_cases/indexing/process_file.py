@@ -231,6 +231,16 @@ class ProcessFileUseCase:
                 file_id=file_id,
             )
 
+            # Also index raw file content so search_code can find tokens in
+            # code bodies (class names, identifiers, etc.) that don't appear
+            # in comments or docstrings. (#395)
+            await self._index_non_code_file(
+                content=content,
+                file_path_str=request.file_path,
+                repository_id=request.repository_id,
+                file_id=file_id,
+            )
+
             return ProcessFileResult(
                 processed=True,
                 skipped=False,

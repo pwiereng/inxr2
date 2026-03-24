@@ -63,8 +63,11 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": "keyword",
         },
         "extensions": {
-            "type": "string",
-            "description": "Comma-separated file extensions to filter (e.g. 'py,ts')",
+            "description": "File extensions to filter — comma-separated string (e.g. 'py,ts') or array (e.g. ['py','ts'])",
+            "oneOf": [
+                {"type": "string"},
+                {"type": "array", "items": {"type": "string"}},
+            ],
         },
         "limit": {
             "type": "integer",
@@ -80,12 +83,15 @@ TOOL_SCHEMA: dict[str, Any] = {
             "description": "Specific commit hash to search at (optional, overrides branch)",
         },
         "source_only": {
-            "type": "boolean",
             "description": (
                 "When true, exclude non-source files such as markdown docs, "
                 "YAML configs, JSON, TOML, and other non-code file types. "
                 "Default: false."
             ),
+            "oneOf": [
+                {"type": "boolean"},
+                {"type": "string", "enum": ["true", "false"]},
+            ],
             "default": False,
         },
     },
@@ -101,11 +107,22 @@ async def handle(
     query = arguments["query"]
     repository = arguments.get("repository")
     mode = arguments.get("mode", "keyword")
-    extensions = arguments.get("extensions")
+    extensions_raw = arguments.get("extensions")
+    # Accept array (["py", "ts"]) or comma-string ("py,ts")
+    if isinstance(extensions_raw, list):
+        extensions: str | None = ",".join(e for e in extensions_raw if e)
+    else:
+        extensions = extensions_raw
     limit = min(arguments.get("limit", 20), 100)
     branch = arguments.get("branch")
     commit = arguments.get("commit")
-    source_only = arguments.get("source_only", False)
+    # Accept boolean true or string "true"
+    source_only_raw = arguments.get("source_only", False)
+    source_only = (
+        source_only_raw
+        if isinstance(source_only_raw, bool)
+        else source_only_raw == "true"
+    )
 
     # commit requires repository (API returns 400 otherwise)
     if commit and not repository:
