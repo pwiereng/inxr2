@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, waitFor } from '@testing-library/react'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import { MarkdownViewer, MermaidDiagram } from './MarkdownViewer'
 
@@ -147,6 +147,13 @@ vi.mock('mermaid', () => ({
   },
 }))
 
+// DOMPurify is a passthrough in tests — we test component behaviour, not sanitization.
+vi.mock('dompurify', () => ({
+  default: {
+    sanitize: vi.fn((svg: string) => svg),
+  },
+}))
+
 // Minimal theme with code palette for testing
 const lightTheme = createTheme({
   palette: {
@@ -281,8 +288,14 @@ describe('MarkdownViewer', () => {
 })
 
 describe('MermaidDiagram', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    // Restore default resolved value after clearing (clearAllMocks wipes mockResolvedValue).
+    const { default: mermaidMock } = await import('mermaid')
+    vi.mocked(mermaidMock.render).mockResolvedValue({
+      svg: '<svg data-testid="mermaid-svg"><text>diagram</text></svg>',
+      diagramType: 'flowchart',
+    })
   })
 
   it('renders SVG when mermaid.render resolves', async () => {
@@ -297,26 +310,51 @@ describe('MermaidDiagram', () => {
     expect(svg).toBeInTheDocument()
   })
 
-  it('initializes mermaid with default theme in light mode', async () => {
+  it('renders with default theme in light mode', async () => {
     const { default: mermaidMock } = await import('mermaid')
 
     await act(async () => {
       renderWithTheme(<MermaidDiagram code="graph TD\n  A --> B" isDark={false} />)
     })
 
-    expect(mermaidMock.initialize).toHaveBeenCalledWith(
-      expect.objectContaining({ theme: 'default' })
+    expect(mermaidMock.render).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining('"theme": "default"')
     )
   })
 
-  it('initializes mermaid with dark theme in dark mode', async () => {
+  it('renders with dark theme in dark mode', async () => {
     const { default: mermaidMock } = await import('mermaid')
 
     await act(async () => {
       renderWithTheme(<MermaidDiagram code="graph TD\n  A --> B" isDark={true} />)
     })
 
-    expect(mermaidMock.initialize).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }))
+    expect(mermaidMock.render).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining('"theme": "dark"')
+    )
+  })
+
+  it('re-renders with updated theme when isDark prop changes', async () => {
+    const { default: mermaidMock } = await import('mermaid')
+    const code = 'graph TD\n  A --> B'
+
+    const { rerender } = renderWithTheme(<MermaidDiagram code={code} isDark={false} />)
+    await screen.findByTestId('mermaid-svg')
+
+    rerender(
+      <ThemeProvider theme={darkTheme}>
+        <MermaidDiagram code={code} isDark={true} />
+      </ThemeProvider>
+    )
+
+    await waitFor(() => {
+      expect(mermaidMock.render).toHaveBeenLastCalledWith(
+        expect.any(String),
+        expect.stringContaining('"theme": "dark"')
+      )
+    })
   })
 
   it('falls back to code block when mermaid.render rejects', async () => {
@@ -328,7 +366,7 @@ describe('MermaidDiagram', () => {
     expect(screen.getByText('invalid mermaid')).toBeInTheDocument()
   })
 
-  it('respects isDark prop from MarkdownViewer theme', async () => {
+  it('passes dark theme from MarkdownViewer to mermaid render', async () => {
     const { default: mermaidMock } = await import('mermaid')
 
     await act(async () => {
@@ -338,6 +376,20 @@ describe('MermaidDiagram', () => {
       )
     })
 
-    expect(mermaidMock.initialize).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }))
+    expect(mermaidMock.render).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining('"theme": "dark"')
+    )
+  })
+
+  it('sanitizes SVG output via DOMPurify', async () => {
+    const { default: DOMPurifyMock } = await import('dompurify')
+
+    await act(async () => {
+      renderWithTheme(<MermaidDiagram code="graph TD\n  A --> B" isDark={false} />)
+    })
+
+    await screen.findByTestId('mermaid-svg')
+    expect(DOMPurifyMock.sanitize).toHaveBeenCalled()
   })
 })

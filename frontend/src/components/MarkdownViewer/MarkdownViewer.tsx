@@ -4,8 +4,13 @@ import { useTheme } from '@mui/material/styles'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import mermaid from 'mermaid'
+import DOMPurify from 'dompurify'
 import Prism from 'prismjs'
 import { getPrismLanguage } from '@/lib/prismLanguages'
+
+// Initialize mermaid once at module level (startOnLoad only — theme is set per-render
+// via the %%{init}%% directive to avoid global-state races when multiple diagrams mount).
+mermaid.initialize({ startOnLoad: false })
 
 interface MarkdownViewerProps {
   content: string
@@ -23,17 +28,22 @@ export function MermaidDiagram({ code, isDark }: MermaidDiagramProps): React.Rea
 
   useEffect(() => {
     let cancelled = false
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: isDark ? 'dark' : 'default',
-    })
+    // Embed theme per-render via the mermaid init directive so each diagram is
+    // self-contained and concurrent renders don't race on global mermaid state.
+    const theme = isDark ? 'dark' : 'default'
+    const themedCode = `%%{init: {"theme": "${theme}"}}%%\n${code}`
     mermaid
-      .render(id, code)
+      .render(id, themedCode)
       .then(({ svg: renderedSvg }) => {
-        if (!cancelled) setSvg(renderedSvg)
+        if (!cancelled) {
+          const sanitized = DOMPurify.sanitize(renderedSvg, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+          })
+          setSvg(sanitized)
+        }
       })
-      .catch(() => {
-        // Fall back to plain code block on render error
+      .catch((err: unknown) => {
+        console.error('MermaidDiagram render failed:', err)
       })
     return () => {
       cancelled = true
