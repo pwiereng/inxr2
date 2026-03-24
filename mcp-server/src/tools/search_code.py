@@ -14,7 +14,35 @@ TOOL_NAME = "search_code"
 TOOL_DESCRIPTION = (
     "Full-text or regex search across all indexed repositories. "
     "Search code content, comments, and docstrings. "
-    "Supports keyword, phrase, and regex modes."
+    "Supports keyword, phrase, and regex modes. "
+    "Use source_only=true to exclude documentation and config files."
+)
+
+# File extensions considered non-source (docs, config, data files).
+# Used by source_only=True to filter results.
+NON_SOURCE_EXTENSIONS = frozenset(
+    {
+        ".md",
+        ".rst",
+        ".txt",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".html",
+        ".htm",
+        ".xml",
+        ".csv",
+        ".tsv",
+        ".lock",
+        ".log",
+        ".env",
+        ".gitignore",
+        ".editorconfig",
+        ".dockerignore",
+    }
 )
 
 TOOL_SCHEMA: dict[str, Any] = {
@@ -51,6 +79,15 @@ TOOL_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "Specific commit hash to search at (optional, overrides branch)",
         },
+        "source_only": {
+            "type": "boolean",
+            "description": (
+                "When true, exclude non-source files such as markdown docs, "
+                "YAML configs, JSON, TOML, and other non-code file types. "
+                "Default: false."
+            ),
+            "default": False,
+        },
     },
     "required": ["query"],
 }
@@ -68,6 +105,7 @@ async def handle(
     limit = min(arguments.get("limit", 20), 100)
     branch = arguments.get("branch")
     commit = arguments.get("commit")
+    source_only = arguments.get("source_only", False)
 
     # commit requires repository (API returns 400 otherwise)
     if commit and not repository:
@@ -97,6 +135,17 @@ async def handle(
     all_results = search_data.get("results", [])
     # Only show file-backed results — skip commit messages (file_path is None)
     results = [r for r in all_results if r.get("file_path") is not None]
+
+    # Optionally exclude non-source files (docs, configs, etc.)
+    if source_only:
+        results = [
+            r
+            for r in results
+            if not any(
+                (r.get("file_path") or "").endswith(ext)
+                for ext in NON_SOURCE_EXTENSIONS
+            )
+        ]
 
     if not results:
         return prepend_warning(

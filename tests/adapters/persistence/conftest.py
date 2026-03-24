@@ -89,7 +89,11 @@ async def test_repository(db_session: AsyncSession) -> Repository:
 
 @pytest_asyncio.fixture
 async def test_commit(db_session: AsyncSession, test_repository: Repository) -> Commit:
-    """Create a test commit."""
+    """Create a test commit, linked to the repository's default branch.
+
+    Linking to the default branch ensures text search deduplication (which
+    scopes 'latest' to the default branch) returns this commit's files.
+    """
     assert test_repository.id is not None
     adapter = PostgresCommitRepository(db_session)
     commit = await adapter.save(
@@ -97,6 +101,10 @@ async def test_commit(db_session: AsyncSession, test_repository: Repository) -> 
             repository_id=test_repository.id,
             commit_hash="a" * 40,
         )
+    )
+    assert commit.id is not None
+    await adapter.link_commit_to_branch(
+        test_repository.id, commit.id, test_repository.default_branch or "main"
     )
     await db_session.commit()
     return commit
