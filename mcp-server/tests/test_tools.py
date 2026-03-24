@@ -324,7 +324,7 @@ class TestSearchCode:
 
         result = await search_code.handle(client, {"query": "connect_database"})
 
-        assert "1 shown" in result
+        assert "1 results" in result
         assert "my-repo:src/main.py:15" in result
         assert "connect_database" in result
 
@@ -362,7 +362,7 @@ class TestSearchCode:
             client, {"query": "match", "repository": "target-repo"}
         )
 
-        assert "1 shown" in result
+        assert "1 results" in result
         assert "src/a.py" in result
         assert "src/b.py" not in result
 
@@ -2109,8 +2109,8 @@ class TestSearchCodeCommitMessages:
     async def test_commit_message_result_not_shown(self) -> None:
         """Results with file_path=None (commit messages) must be excluded from output."""
         client = FakeInxr2Client()
-        # Inject a raw commit-message result (file_path is None)
-        client._search_results.append(
+        # Inject a commit-message result (file_path is None) via the helper
+        client.add_raw_result(
             {
                 "id": 1,
                 "repository_id": 1,
@@ -2140,7 +2140,7 @@ class TestSearchCodeCommitMessages:
     async def test_file_result_still_shown(self) -> None:
         """File-backed results must still appear after commit message filtering."""
         client = FakeInxr2Client()
-        client._search_results.append(
+        client.add_raw_result(
             {
                 "id": 1,
                 "repository_id": 1,
@@ -2167,7 +2167,7 @@ class TestSearchCodeCommitMessages:
     async def test_all_commit_message_results_no_output(self) -> None:
         """When all results are commit messages, report no results found."""
         client = FakeInxr2Client()
-        client._search_results.append(
+        client.add_raw_result(
             {
                 "id": 1,
                 "repository_id": 1,
@@ -2188,9 +2188,7 @@ class TestSearchCodeCommitMessages:
 
         result = await search_code.handle(client, {"query": "something"})
 
-        # Bug: currently shows "1 shown (of 1 total)" with file_path=None
-        # After fix: should report no file-backed results
-        assert "No results" in result or "0 shown" in result or ":None" not in result
+        assert "No results" in result
 
 
 # ============================================================

@@ -38,6 +38,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
 
+from inxr2.adapters.persistence.repositories.query_utils import KIND_ALIASES
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
     DependencyRepositoryPort,
@@ -277,9 +278,7 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
             if repository_id is not None and symbol.repository_id != repository_id:
                 continue
             if kind is not None:
-                effective_kinds = (
-                    {"interface", "protocol"} if kind == "interface" else {kind}
-                )
+                effective_kinds = set(KIND_ALIASES.get(kind, [kind]))
                 if symbol.kind.value not in effective_kinds:
                     continue
             if commit_file_ids is not None and symbol.file_id not in commit_file_ids:

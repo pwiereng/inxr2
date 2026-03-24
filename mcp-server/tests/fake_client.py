@@ -168,6 +168,10 @@ class FakeInxr2Client(Inxr2Client):
             "symbols": symbols or [],
         }
 
+    def add_raw_result(self, result: dict[str, Any]) -> None:
+        """Append a raw search result dict directly (e.g. commit-message entries)."""
+        self._search_results.append(result)
+
     def add_search_result(
         self,
         file_path: str,

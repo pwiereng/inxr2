@@ -13,7 +13,7 @@ from ..models.file import FileModel
 from ..models.repository import RepositoryModel
 from ..models.symbol import SymbolModel
 from .base_repository import BaseSQLAlchemyRepository
-from .query_utils import build_text_match_filter, split_extension_filter
+from .query_utils import KIND_ALIASES, build_text_match_filter, split_extension_filter
 from .shared_queries import head_file_ids_subquery, latest_file_ids_subquery
 
 
@@ -102,8 +102,9 @@ class PostgresSymbolRepository(
             query = query.where(SymbolModel.file_id.in_(select(latest_sq.c.max_id)))
 
         if kind is not None:
-            if kind == "interface":
-                query = query.where(SymbolModel.kind.in_(["interface", "protocol"]))
+            effective_kinds = KIND_ALIASES.get(kind, [kind])
+            if len(effective_kinds) > 1:
+                query = query.where(SymbolModel.kind.in_(effective_kinds))
             else:
                 query = query.where(SymbolModel.kind == kind)
 
