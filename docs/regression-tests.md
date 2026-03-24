@@ -1147,6 +1147,35 @@ curl "http://localhost:9222/screenshot/save?path=.tmp/rt-33-diff-rename.png"
 
 ---
 
+## RT-34: Mermaid Diagrams Render as SVG
+
+Verify that markdown files containing ` ```mermaid ` code fences render as SVG diagrams rather than raw text. Regression test for PR #383.
+
+**Steps:**
+```bash
+# DISCOVER: Find a markdown file in the inxr2 repo that contains a mermaid fence
+REPO="inxr2"
+MD_FILE=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO ls-files '*.md' | xargs grep -rl '\`\`\`mermaid' | head -1")
+echo "Found mermaid file: $MD_FILE"
+BRANCH=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO rev-parse --abbrev-ref HEAD")
+
+# NAVIGATE: Open the markdown file in the browser
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/$REPO/$MD_FILE?branch=$BRANCH"
+curl "http://localhost:9222/wait?selector=svg&timeout=8000"
+
+# VERIFY: An SVG element is present (mermaid rendered)
+curl "http://localhost:9222/elements?selector=svg&limit=3"
+# Optionally screenshot
+curl "http://localhost:9222/screenshot/save?path=.tmp/rt-34-mermaid.png"
+```
+
+**Pass criteria:**
+- At least one `<svg>` element is present in the page (mermaid diagram rendered)
+- The page does not display raw mermaid source text (no `graph TD` or `sequenceDiagram` visible as plain text)
+- No JavaScript console errors related to mermaid (check via QA agent text output)
+
+---
+
 # Phase 3: MCP Server Regression
 
 Verify that the MCP server correctly exposes INXR2 code intelligence via its tool handlers.
@@ -1264,7 +1293,7 @@ asyncio.run(main())
 
 **Steps:**
 ```bash
-# VERIFY: Search with kind filter
+# VERIFY: Search with kind=class filter
 docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
 import asyncio
 from src.client import HttpInxr2Client
@@ -1276,11 +1305,34 @@ async def main():
     await client.close()
 asyncio.run(main())
 "
+
+# VERIFY: kind=interface expands to include Swift protocols (KIND_ALIASES regression — bug #385)
+# DISCOVER: Confirm the repo has protocol-kinded symbols via API
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=&repository_name=travelbuddy&kind=protocol&limit=3' | python3 -c '
+import sys, json
+items = json.load(sys.stdin)[\"items\"]
+print(f\"Protocol symbols in travelbuddy: {len(items)}\")
+for s in items[:3]:
+    print(f\"  {s[\"name\"]} [{s[\"kind\"]}]\")
+'"
+# VERIFY: MCP kind=interface returns those same protocol symbols
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_symbols
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_symbols.handle(client, {'query': '*', 'kind': 'interface', 'repository': 'travelbuddy', 'limit': 10})
+    print(result)
+    await client.close()
+asyncio.run(main())
+"
 ```
 
 **Pass criteria:**
-- All returned symbols have kind `class`
-- No functions, methods, or other kinds appear in the output
+- `kind=class` search: all returned symbols have kind `class`; no functions, methods, or other kinds appear
+- `kind=interface` search: output includes Swift `protocol`-kinded symbols from travelbuddy (not just symbols literally named `interface`)
+- If the API returns N protocol symbols, the MCP `kind=interface` result includes those same symbol names
 
 ---
 
@@ -1466,7 +1518,7 @@ docker exec -w /workspace/mcp-server inxr2-dev python -m pytest tests/ -v
 ```
 
 **Pass criteria:**
-- All tests pass (currently 20 tests)
+- All tests pass (currently 133 tests)
 - No warnings or errors
 
 ---
@@ -2034,6 +2086,96 @@ asyncio.run(call(\"explain_symbol\", {\"name\": \"SearchSymbolsUseCase\", \"repo
 
 ---
 
+## MCP-22: search_symbols Wildcard Returns Results
+
+Regression test for bug #384 — `query="*"` was silently returning no results because the wildcard guard was missing.
+
+**Steps:**
+```bash
+# VERIFY: Wildcard query returns symbols (not an empty list)
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_symbols
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_symbols.handle(client, {'query': '*', 'repository': 'inxr2', 'limit': 5})
+    print(result)
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- Output contains at least one symbol entry (not a "no results" message)
+- Symbol names, file paths, and kinds are present in the output
+
+---
+
+## MCP-23: search_code Extensions Filter Does Not Return Duplicates
+
+Regression test for bug #392 — `search_code` with an extensions filter was returning the same `file:line` multiple times (one per indexed commit/branch).
+
+**Steps:**
+```bash
+# DISCOVER: Find a Swift symbol name that exists in travelbuddy
+docker exec inxr2-dev bash -c "git -C /repos/test-repos/travelbuddy ls-files '*.swift' | head -1 | xargs -I{} grep -m1 'class\|struct\|protocol' /repos/test-repos/travelbuddy/{} | head -3"
+
+# VERIFY: extensions filter with a known term returns no duplicates
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_code.handle(client, {'query': 'TraceLogger', 'repository': 'travelbuddy', 'extensions': 'swift'})
+    print(result)
+    lines = [l for l in result.splitlines() if 'TraceLogger' in l and '.swift' in l]
+    paths = [l.strip() for l in lines]
+    unique_paths = set(paths)
+    print(f'Total matching lines: {len(paths)}, unique: {len(unique_paths)}')
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- Each `file:line` appears at most once in the output — no duplicate entries for the same location
+- Result count matches the number of unique file+line combinations, not the number of indexed commits
+
+---
+
+## MCP-24: search_code Results Always Have a File Path
+
+Regression test for bug #387 — `search_code` was including commit message text content entries (which have `file_path=None`) in results, producing lines with no file location.
+
+**Steps:**
+```bash
+# VERIFY: All results include a file path (no commit message entries leaking through)
+docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
+import asyncio
+from src.client import HttpInxr2Client
+from src.tools import search_code
+async def main():
+    client = HttpInxr2Client('http://localhost:8000')
+    result = await search_code.handle(client, {'query': 'Repository', 'repository': 'inxr2', 'limit': 20})
+    print(result)
+    # Every non-header, non-blank line should contain a file path (has a colon separating path from line number)
+    result_lines = [l for l in result.splitlines() if l.strip() and not l.startswith('Search results')]
+    file_lines = [l for l in result_lines if ':' in l and '.' in l.split(':')[0]]
+    print(f'Result lines: {len(result_lines)}, lines with file paths: {len(file_lines)}')
+    await client.close()
+asyncio.run(main())
+"
+```
+
+**Pass criteria:**
+- Every result line includes a file path with an extension (e.g. `repo:path/to/file.py:42`)
+- No result line contains only commit message text without a file location
+- Output does not contain lines that look like git commit messages (e.g. lines starting with `feat:`, `fix:`, `chore:`)
+
+---
+
 ## Summary
 
 ### Phase 1: Indexing (8 tests)
@@ -2049,7 +2191,7 @@ asyncio.run(call(\"explain_symbol\", {\"name\": \"SearchSymbolsUseCase\", \"repo
 | IX-05 | Compare indexing performance vs history | No timing/count regressions |
 | IX-06 | Verify all git files at HEAD are indexed | FileFilter completeness (no silent drops) |
 
-### Phase 2: QA Browser (39 tests)
+### Phase 2: QA Browser (40 tests)
 
 | ID | Test | Validates Against |
 |----|------|-------------------|
@@ -2091,8 +2233,9 @@ asyncio.run(call(\"explain_symbol\", {\"name\": \"SearchSymbolsUseCase\", \"repo
 | RT-31 | References panel → Logical View link | URL navigation |
 | RT-32 | Browse rename banner at old commit | `file_renames` API + rename banner visible |
 | RT-33 | Diff viewer rename following across rename boundary | Both paths in diff header, diff renders |
+| RT-34 | Mermaid diagrams render as SVG | SVG element present in DOM |
 
-### Phase 3: MCP Server (21 tests)
+### Phase 3: MCP Server (25 tests)
 
 | ID | Test | Validates Against |
 |----|------|-------------------|
@@ -2117,5 +2260,8 @@ asyncio.run(call(\"explain_symbol\", {\"name\": \"SearchSymbolsUseCase\", \"repo
 | MCP-19 | get_file_structure returns correct symbol tree | API file-structure endpoint |
 | MCP-20 | get_change_impact returns dependents grouped by type | API references endpoint, grouping logic |
 | MCP-21 | explain_symbol returns rich symbol context | API by-name + references endpoints |
+| MCP-22 | search_symbols wildcard returns results (not empty) | API symbols endpoint |
+| MCP-23 | search_code extensions filter returns no duplicates | Unique file:line per result |
+| MCP-24 | search_code results always include a file path | No commit message entries in output |
 
-**Total: 68 test cases** (8 indexing + 39 browser + 21 MCP) — all verified against git/API, no hardcoded data.
+**Total: 73 test cases** (8 indexing + 40 browser + 25 MCP) — all verified against git/API, no hardcoded data.
