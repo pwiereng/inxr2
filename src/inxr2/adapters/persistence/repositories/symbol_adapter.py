@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from ....application.ports.repositories import SymbolRepositoryPort
-from ....domain.constants import QueryDefaults
+from ....domain.constants import KIND_ALIASES, QueryDefaults
 from ....domain.entities import Symbol
 from ..mappers import SymbolMapper
 from ..models.commit_file import CommitFileModel
@@ -67,10 +67,12 @@ class PostgresSymbolRepository(
         provided and ``commit_id`` is not, since branch-scoped dedup
         requires a repository context.
         """
-        name_filter = build_text_match_filter(
-            SymbolModel.name, name, mode=mode, case_sensitive=case_sensitive
-        )
-        query = select(SymbolModel).where(name_filter)
+        query = select(SymbolModel)
+        if name and name != "*":
+            name_filter = build_text_match_filter(
+                SymbolModel.name, name, mode=mode, case_sensitive=case_sensitive
+            )
+            query = query.where(name_filter)
 
         if commit_id is not None:
             # Specific commit: filter via commit_files junction
@@ -100,7 +102,11 @@ class PostgresSymbolRepository(
             query = query.where(SymbolModel.file_id.in_(select(latest_sq.c.max_id)))
 
         if kind is not None:
-            query = query.where(SymbolModel.kind == kind)
+            effective_kinds = KIND_ALIASES.get(kind, [kind])
+            if len(effective_kinds) > 1:
+                query = query.where(SymbolModel.kind.in_(effective_kinds))
+            else:
+                query = query.where(SymbolModel.kind == kind)
 
         if top_level_only:
             parent_sym = aliased(SymbolModel, flat=True)

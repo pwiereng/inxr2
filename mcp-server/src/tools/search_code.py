@@ -86,15 +86,17 @@ async def handle(
     if repository_id is not None:
         params["repository_id"] = repository_id
     if extensions:
-        params["extensions"] = extensions
+        ext_list = [e.strip() for e in extensions.split(",") if e.strip()]
+        params["extensions"] = [e if e.startswith(".") else f".{e}" for e in ext_list]
     if branch:
         params["branch"] = branch
     if commit:
         params["commit_hash"] = commit
     search_data = await client.get("/api/search/text", params=params)
 
-    results = search_data.get("results", [])
-    total = search_data.get("total", len(results))
+    all_results = search_data.get("results", [])
+    # Only show file-backed results — skip commit messages (file_path is None)
+    results = [r for r in all_results if r.get("file_path") is not None]
 
     if not results:
         return prepend_warning(
@@ -102,9 +104,7 @@ async def handle(
         )
 
     # Format results
-    lines = [
-        f"Search results for '{query}' ({mode}): {len(results)} shown (of {total} total)"
-    ]
+    lines = [f"Search results for '{query}' ({mode}): {len(results)} results"]
     for result in results:
         file_path = result.get("file_path", "unknown")
         line = result.get("source_line")

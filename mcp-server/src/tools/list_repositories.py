@@ -44,7 +44,9 @@ async def handle(
             f"/api/repositories/by-name/{encoded}/branches"
         )
         indexed = [
-            b for b in branches_data.get("branches", []) if b.get("commit_count", 0) > 0
+            b
+            for b in branches_data.get("branches", [])
+            if b.get("last_indexed_commit") is not None or b.get("commit_count", 0) > 0
         ]
 
         lines = [f"Repository: {repo['name']}"]
@@ -71,7 +73,11 @@ async def handle(
     lines = [f"Repositories: {len(repos)} available"]
     for result in results:
         repo = result["repo"]
-        indexed = [b for b in result["branches"] if b.get("commit_count", 0) > 0]
+        indexed = [
+            b
+            for b in result["branches"]
+            if b.get("last_indexed_commit") is not None or b.get("commit_count", 0) > 0
+        ]
         branch_names = ", ".join(b["name"] for b in indexed)
         lines.append(
             f"  {repo['name']} (default: {repo.get('default_branch', '?')}, "

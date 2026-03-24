@@ -312,6 +312,43 @@ class TestSearchSymbols:
         assert "branch=develop" in result
 
 
+# Bug #385 — MCP-level regression: kind:interface finds Swift protocol symbols
+
+
+class TestSearchSymbolsKindInterface:
+    """MCP-level regression tests for kind='interface' matching Swift protocols (#385).
+
+    FakeInxr2Client now applies KIND_ALIASES so this exercises the full
+    search_symbols handler path, not just the backend layer.
+    """
+
+    async def test_kind_interface_returns_protocol_symbol(self) -> None:
+        """search_symbols with kind=interface must return Swift protocol symbols."""
+        client = FakeInxr2Client()
+        client.add_symbol(
+            1, "Codable", kind="protocol", file_path="Sources/Proto.swift"
+        )
+        client.add_symbol(2, "Drawable", kind="interface", file_path="src/iface.kt")
+        client.add_symbol(3, "helper", kind="function", file_path="src/helper.py")
+
+        result = await search_symbols.handle(client, {"query": "", "kind": "interface"})
+
+        assert "Codable" in result
+        assert "Drawable" in result
+        assert "helper" not in result
+
+    async def test_kind_interface_excludes_other_kinds(self) -> None:
+        """kind=interface must not return functions or classes."""
+        client = FakeInxr2Client()
+        client.add_symbol(1, "MyProtocol", kind="protocol", file_path="src/proto.swift")
+        client.add_symbol(2, "MyClass", kind="class", file_path="src/cls.py")
+
+        result = await search_symbols.handle(client, {"query": "", "kind": "interface"})
+
+        assert "MyProtocol" in result
+        assert "MyClass" not in result
+
+
 # --- search_code ---
 
 
@@ -324,7 +361,7 @@ class TestSearchCode:
 
         result = await search_code.handle(client, {"query": "connect_database"})
 
-        assert "1 shown" in result
+        assert "1 results" in result
         assert "my-repo:src/main.py:15" in result
         assert "connect_database" in result
 
@@ -362,7 +399,7 @@ class TestSearchCode:
             client, {"query": "match", "repository": "target-repo"}
         )
 
-        assert "1 shown" in result
+        assert "1 results" in result
         assert "src/a.py" in result
         assert "src/b.py" not in result
 
@@ -1994,3 +2031,301 @@ class TestServerCreation:
         assert result.root.isError is True
         assert result.root.content, "expected non-empty content in error result"
         assert "'commit' requires 'repository'" in result.root.content[0].text
+
+
+# ============================================================
+# Bug #386 — search_code extensions param causes 422
+# ============================================================
+
+
+class _ParamCapturingClient(FakeInxr2Client):
+    """FakeInxr2Client that records the last params sent to GET /api/search/text."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.captured_search_params: dict[str, Any] | None = None
+
+    async def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        if path == "/api/search/text":
+            self.captured_search_params = dict(params or {})
+        return await super().get(path, params)
+
+
+class TestSearchCodeExtensions:
+    """Tests for search_code extensions parameter formatting (bug #386).
+
+    The MCP tool passes extensions as a plain string (e.g. "swift"), but the
+    backend expects a list of dot-prefixed values (e.g. [".swift"]).  The tool
+    must pre-process the string before calling the API.
+    """
+
+    async def test_extensions_sent_as_dot_prefixed_list(self) -> None:
+        """extensions='swift' must be sent to the API as ['.swift'], not as a bare string."""
+        client = _ParamCapturingClient()
+        client.add_repository(1, "test-repo")
+        client.set_stats(1)
+
+        await search_code.handle(
+            client,
+            {"query": "foo", "repository": "test-repo", "extensions": "swift"},
+        )
+
+        assert client.captured_search_params is not None
+        # Bug: currently sends extensions="swift" (str), which the backend rejects with 422
+        # After fix: should send extensions=[".swift"] or extensions=".swift" (with dot)
+        ext = client.captured_search_params.get("extensions")
+        assert isinstance(
+            ext, list
+        ), f"expected list, got {type(ext).__name__}: {ext!r}"
+        assert ".swift" in ext
+
+    async def test_extensions_multiple_values_sent_as_list(self) -> None:
+        """extensions='py,ts' must be split into ['.py', '.ts']."""
+        client = _ParamCapturingClient()
+        client.add_repository(1, "test-repo")
+        client.set_stats(1)
+
+        await search_code.handle(
+            client,
+            {"query": "foo", "repository": "test-repo", "extensions": "py,ts"},
+        )
+
+        assert client.captured_search_params is not None
+        ext = client.captured_search_params.get("extensions")
+        assert isinstance(
+            ext, list
+        ), f"expected list, got {type(ext).__name__}: {ext!r}"
+        assert ".py" in ext
+        assert ".ts" in ext
+
+    async def test_extensions_already_dot_prefixed_accepted(self) -> None:
+        """extensions='.swift' (already has dot) should be handled without doubling the dot."""
+        client = _ParamCapturingClient()
+        client.add_repository(1, "test-repo")
+        client.set_stats(1)
+
+        await search_code.handle(
+            client,
+            {"query": "foo", "repository": "test-repo", "extensions": ".swift"},
+        )
+
+        assert client.captured_search_params is not None
+        ext = client.captured_search_params.get("extensions")
+        assert isinstance(ext, list)
+        assert ".swift" in ext
+        assert "..swift" not in ext  # must not double the dot
+
+    async def test_no_extensions_param_omitted(self) -> None:
+        """When no extensions argument is given the param must not appear in the request."""
+        client = _ParamCapturingClient()
+        client.add_repository(1, "test-repo")
+        client.set_stats(1)
+
+        await search_code.handle(
+            client,
+            {"query": "foo", "repository": "test-repo"},
+        )
+
+        assert client.captured_search_params is not None
+        assert "extensions" not in client.captured_search_params
+
+
+# ============================================================
+# Bug #387 — search_code returns commit message matches (file: None)
+# ============================================================
+
+
+class TestSearchCodeCommitMessages:
+    """Tests for search_code filtering commit message results (bug #387).
+
+    Text search can return results whose file_path is None (commit messages).
+    These must not appear in search_code output; only file-backed results
+    should be shown.
+    """
+
+    async def test_commit_message_result_not_shown(self) -> None:
+        """Results with file_path=None (commit messages) must be excluded from output."""
+        client = FakeInxr2Client()
+        # Inject a commit-message result (file_path is None) via the helper
+        client.add_raw_result(
+            {
+                "id": 1,
+                "repository_id": 1,
+                "repository_name": "test-repo",
+                "file_path": None,
+                "source_line": None,
+                "source_end_line": None,
+                "source_type": "commit_message",
+                "content": "fix: the important bug",
+                "content_type": None,
+                "language": None,
+                "commit_hash": "abc123",
+                "branch": None,
+                "rank": 0.5,
+                "headline": None,
+            }
+        )
+        # Also add a real file result so the handler has something to show
+        client.add_search_result("src/main.py", 10, "// fix the bug", "test-repo")
+
+        result = await search_code.handle(client, {"query": "bug"})
+
+        # Bug: currently the commit message result appears as "test-repo:None"
+        assert ":None" not in result
+        assert "commit_message" not in result
+
+    async def test_file_result_still_shown(self) -> None:
+        """File-backed results must still appear after commit message filtering."""
+        client = FakeInxr2Client()
+        client.add_raw_result(
+            {
+                "id": 1,
+                "repository_id": 1,
+                "repository_name": "test-repo",
+                "file_path": None,
+                "source_line": None,
+                "source_end_line": None,
+                "source_type": "commit_message",
+                "content": "fix: the important bug",
+                "content_type": None,
+                "language": None,
+                "commit_hash": "abc123",
+                "branch": None,
+                "rank": 0.5,
+                "headline": None,
+            }
+        )
+        client.add_search_result("src/main.py", 10, "// fix the bug", "test-repo")
+
+        result = await search_code.handle(client, {"query": "bug"})
+
+        assert "src/main.py" in result
+
+    async def test_all_commit_message_results_no_output(self) -> None:
+        """When all results are commit messages, report no results found."""
+        client = FakeInxr2Client()
+        client.add_raw_result(
+            {
+                "id": 1,
+                "repository_id": 1,
+                "repository_name": "test-repo",
+                "file_path": None,
+                "source_line": None,
+                "source_end_line": None,
+                "source_type": "commit_message",
+                "content": "fix: something",
+                "content_type": None,
+                "language": None,
+                "commit_hash": "abc123",
+                "branch": None,
+                "rank": 0.5,
+                "headline": None,
+            }
+        )
+
+        result = await search_code.handle(client, {"query": "something"})
+
+        assert "No results" in result
+
+
+# ============================================================
+# Bug #388 — list_repositories shows "indexed branches: none"
+# ============================================================
+
+
+class TestListRepositoriesIndexedBranches:
+    """Tests for list_repositories correctly identifying indexed branches (bug #388).
+
+    A branch is considered indexed if indexing has completed — even if
+    total_commits_indexed is 0.  The tool currently uses commit_count > 0
+    to decide, which incorrectly hides branches that were indexed.
+    """
+
+    async def test_branch_with_zero_commits_but_indexed_is_shown(self) -> None:
+        """A branch with commit_count=0 but a last_indexed_commit must appear as indexed."""
+        client = FakeInxr2Client()
+        client.add_repository(
+            1,
+            "my-repo",
+            indexed_branches=[
+                {
+                    "name": "main",
+                    "commit_count": 0,  # Bug trigger: currently filters this out
+                    "last_indexed_commit": "abc123def456abc123def456abc123def456abc1",
+                    "oldest_indexed_commit": None,
+                    "last_indexed_at": "2026-01-01T00:00:00",
+                }
+            ],
+        )
+
+        result = await list_repositories.handle(client, {})
+
+        # Bug: currently shows "indexed branches: none"
+        assert "indexed branches: none" not in result
+        assert "main" in result
+
+    async def test_branch_with_no_indexing_data_not_shown(self) -> None:
+        """A branch with commit_count=0 AND no last_indexed_commit is truly unindexed."""
+        client = FakeInxr2Client()
+        client.add_repository(
+            1,
+            "my-repo",
+            indexed_branches=[
+                {
+                    "name": "feature",
+                    "commit_count": 0,
+                    "last_indexed_commit": None,
+                    "oldest_indexed_commit": None,
+                    "last_indexed_at": None,
+                }
+            ],
+        )
+
+        result = await list_repositories.handle(client, {})
+
+        assert "indexed branches: none" in result
+
+    async def test_single_repo_detail_shows_indexed_branch(self) -> None:
+        """Single-repo detail view must also show branches indexed with commit_count=0."""
+        client = FakeInxr2Client()
+        client.add_repository(
+            1,
+            "my-repo",
+            indexed_branches=[
+                {
+                    "name": "main",
+                    "commit_count": 0,
+                    "last_indexed_commit": "abc123def456abc123def456abc123def456abc1",
+                    "oldest_indexed_commit": None,
+                    "last_indexed_at": "2026-01-01T00:00:00",
+                }
+            ],
+        )
+
+        result = await list_repositories.handle(client, {"repository": "my-repo"})
+
+        # Bug: currently shows "Indexed branches: 0"
+        assert "Indexed branches: 0" not in result
+        assert "main" in result
+
+    async def test_branch_with_positive_commit_count_shown(self) -> None:
+        """Branches with commit_count > 0 must still appear as indexed (regression guard)."""
+        client = FakeInxr2Client()
+        client.add_repository(
+            1,
+            "my-repo",
+            indexed_branches=[
+                {
+                    "name": "main",
+                    "commit_count": 42,
+                    "last_indexed_commit": "abc123def456abc123def456abc123def456abc1",
+                    "oldest_indexed_commit": None,
+                    "last_indexed_at": "2026-01-01T00:00:00",
+                }
+            ],
+        )
+
+        result = await list_repositories.handle(client, {})
+
+        assert "indexed branches: none" not in result
+        assert "main" in result
