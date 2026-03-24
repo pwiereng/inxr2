@@ -312,6 +312,43 @@ class TestSearchSymbols:
         assert "branch=develop" in result
 
 
+# Bug #385 — MCP-level regression: kind:interface finds Swift protocol symbols
+
+
+class TestSearchSymbolsKindInterface:
+    """MCP-level regression tests for kind='interface' matching Swift protocols (#385).
+
+    FakeInxr2Client now applies KIND_ALIASES so this exercises the full
+    search_symbols handler path, not just the backend layer.
+    """
+
+    async def test_kind_interface_returns_protocol_symbol(self) -> None:
+        """search_symbols with kind=interface must return Swift protocol symbols."""
+        client = FakeInxr2Client()
+        client.add_symbol(
+            1, "Codable", kind="protocol", file_path="Sources/Proto.swift"
+        )
+        client.add_symbol(2, "Drawable", kind="interface", file_path="src/iface.kt")
+        client.add_symbol(3, "helper", kind="function", file_path="src/helper.py")
+
+        result = await search_symbols.handle(client, {"query": "", "kind": "interface"})
+
+        assert "Codable" in result
+        assert "Drawable" in result
+        assert "helper" not in result
+
+    async def test_kind_interface_excludes_other_kinds(self) -> None:
+        """kind=interface must not return functions or classes."""
+        client = FakeInxr2Client()
+        client.add_symbol(1, "MyProtocol", kind="protocol", file_path="src/proto.swift")
+        client.add_symbol(2, "MyClass", kind="class", file_path="src/cls.py")
+
+        result = await search_symbols.handle(client, {"query": "", "kind": "interface"})
+
+        assert "MyProtocol" in result
+        assert "MyClass" not in result
+
+
 # --- search_code ---
 
 

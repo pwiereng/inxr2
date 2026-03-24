@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import unquote
 
+from inxr2.adapters.persistence.repositories.query_utils import KIND_ALIASES
 from src.client import Inxr2Client
 
 
@@ -340,7 +341,8 @@ class FakeInxr2Client(Inxr2Client):
                     s for s in self._symbols if query.lower() in s["name"].lower()
                 ]
             if kind:
-                matches = [s for s in matches if s["kind"] == kind]
+                effective_kinds = set(KIND_ALIASES.get(kind, [kind]))
+                matches = [s for s in matches if s["kind"] in effective_kinds]
             if sym_repo_id is not None:
                 matches = [s for s in matches if s["repository_id"] == int(sym_repo_id)]
             total = len(matches)
