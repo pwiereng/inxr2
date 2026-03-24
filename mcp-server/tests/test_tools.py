@@ -2329,3 +2329,67 @@ class TestListRepositoriesIndexedBranches:
 
         assert "indexed branches: none" not in result
         assert "main" in result
+
+
+# ============================================================
+# Bug #393 — search_code without extension filter returns non-source files
+# ============================================================
+
+
+class TestSearchCodeSourceOnly:
+    """Tests for search_code source_only parameter (bug #393).
+
+    Without an extension filter, search results can include markdown docs,
+    YAML configs, etc.  The source_only=True flag excludes known non-source
+    file types.
+    """
+
+    async def test_source_only_excludes_markdown(self) -> None:
+        """source_only=True must exclude .md results."""
+        client = FakeInxr2Client()
+        client.add_search_result("src/main.py", 1, "def foo():", "my-repo")
+        client.add_search_result("README.md", 5, "## Usage", "my-repo")
+        client.add_search_result("docs/guide.md", 10, "## Guide", "my-repo")
+
+        result = await search_code.handle(client, {"query": "foo", "source_only": True})
+
+        assert "src/main.py" in result
+        assert "README.md" not in result
+        assert "docs/guide.md" not in result
+
+    async def test_source_only_excludes_yaml_and_toml(self) -> None:
+        """source_only=True must exclude config file types."""
+        client = FakeInxr2Client()
+        client.add_search_result("src/app.py", 1, "app = App()", "my-repo")
+        client.add_search_result("config.yaml", 3, "app: true", "my-repo")
+        client.add_search_result("pyproject.toml", 8, "[tool.app]", "my-repo")
+
+        result = await search_code.handle(client, {"query": "app", "source_only": True})
+
+        assert "src/app.py" in result
+        assert "config.yaml" not in result
+        assert "pyproject.toml" not in result
+
+    async def test_source_only_false_includes_all(self) -> None:
+        """source_only=False (default) must include all file types."""
+        client = FakeInxr2Client()
+        client.add_search_result("src/main.py", 1, "def foo():", "my-repo")
+        client.add_search_result("README.md", 5, "## foo usage", "my-repo")
+
+        result = await search_code.handle(
+            client, {"query": "foo", "source_only": False}
+        )
+
+        assert "src/main.py" in result
+        assert "README.md" in result
+
+    async def test_source_only_default_is_false(self) -> None:
+        """Without source_only arg, non-source files are included (backward compat)."""
+        client = FakeInxr2Client()
+        client.add_search_result("src/main.py", 1, "def foo():", "my-repo")
+        client.add_search_result("README.md", 5, "## foo usage", "my-repo")
+
+        result = await search_code.handle(client, {"query": "foo"})
+
+        assert "src/main.py" in result
+        assert "README.md" in result

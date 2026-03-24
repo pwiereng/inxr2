@@ -19,7 +19,7 @@ from ..models.file import FileModel
 from ..models.repository import RepositoryModel
 from ..models.text_content import TextContentModel
 from .query_utils import build_text_match_filter, split_extension_filter
-from .shared_queries import head_file_ids_subquery
+from .shared_queries import head_file_ids_subquery, latest_file_ids_subquery
 
 
 class PostgresTextSearchRepository(TextSearchPort):
@@ -159,6 +159,19 @@ class PostgresTextSearchRepository(TextSearchPort):
                 TextContentModel.source_file_id.in_(
                     select(FileModel.id).where(ext_filter)
                 )
+            )
+
+        # Apply per-repository deduplication: limit to latest file version per path.
+        # Without this, a file indexed across N commits returns N duplicate results.
+        # Not applied when commit_id is set (time-travel already pins to one version).
+        if query.repository_id is not None and query.commit_id is None:
+            latest_fids = latest_file_ids_subquery(
+                repository_id=query.repository_id,
+                branch=query.branch,
+            )
+            base_query = base_query.where(
+                TextContentModel.source_file_id.in_(select(latest_fids.c.max_id))
+                | TextContentModel.source_file_id.is_(None)
             )
 
         # Apply global scope filter (when no repository_id is specified)

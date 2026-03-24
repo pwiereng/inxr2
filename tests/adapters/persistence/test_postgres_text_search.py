@@ -1,5 +1,7 @@
 """Tests for PostgresTextSearchRepository."""
 
+from datetime import datetime
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +15,7 @@ from inxr2.application.ports.services import TextSearchQuery
 from inxr2.domain.entities import Commit, File, Repository, TextContent
 from inxr2.domain.value_objects import QueryMode, TextSearchSourceType
 
-from .factories import FileFactory
+from .factories import CommitFactory, FileFactory
 
 
 @pytest.mark.asyncio
@@ -769,3 +771,97 @@ async def test_search_branch_filter_finds_commit_messages(
         r.text_content.source_type == TextSearchSourceType.COMMIT_MESSAGE.value
         for r in results
     )
+
+
+@pytest.mark.asyncio
+async def test_search_deduplicates_by_latest_file_version(
+    db_session: AsyncSession,
+    test_repository: Repository,
+) -> None:
+    """Regression test for #392: search with repository filter must not return
+    duplicate results when the same file path was indexed across multiple commits.
+
+    Before the fix, searching with repository_id returned one row per file version
+    (one per commit), causing the same logical file to appear multiple times.
+    """
+    assert test_repository.id is not None
+
+    commit_repo = PostgresCommitRepository(db_session)
+    file_repo = PostgresFileRepository(db_session)
+    text_repo = PostgresTextContentRepository(db_session)
+    search = PostgresTextSearchRepository(db_session)
+
+    # Two commits at different times in the same repo
+    old_commit = await commit_repo.save(
+        CommitFactory.create(
+            repository_id=test_repository.id,
+            commit_hash="c" * 40,
+            commit_date=datetime(2024, 1, 1),
+        )
+    )
+    new_commit = await commit_repo.save(
+        CommitFactory.create(
+            repository_id=test_repository.id,
+            commit_hash="d" * 40,
+            commit_date=datetime(2024, 1, 2),
+        )
+    )
+    assert old_commit.id is not None
+    assert new_commit.id is not None
+
+    # Same logical file path, two different versions (one per commit)
+    file_v1 = await file_repo.save(
+        FileFactory.create(
+            repository_id=test_repository.id,
+            path="src/TraceLogger.swift",
+            content_hash="e" * 40,
+        )
+    )
+    file_v2 = await file_repo.save(
+        FileFactory.create(
+            repository_id=test_repository.id,
+            path="src/TraceLogger.swift",
+            content_hash="f" * 40,
+        )
+    )
+    assert file_v1.id is not None
+    assert file_v2.id is not None
+
+    await file_repo.link_file_to_commit(file_v1.id, old_commit.id)
+    await file_repo.link_file_to_commit(file_v2.id, new_commit.id)
+
+    # Index text content for each file version (simulating two indexing runs)
+    await text_repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=None,
+            source_type=TextSearchSourceType.FILE_CONTENT.value,
+            source_file_id=file_v1.id,
+            source_line=4,
+            content="class TraceLogger logging framework",
+            language="swift",
+        )
+    )
+    await text_repo.save(
+        TextContent(
+            repository_id=test_repository.id,
+            commit_id=None,
+            source_type=TextSearchSourceType.FILE_CONTENT.value,
+            source_file_id=file_v2.id,
+            source_line=4,
+            content="class TraceLogger logging framework",
+            language="swift",
+        )
+    )
+    await db_session.commit()
+
+    # Should return 1 result (latest version only), not 2
+    query = TextSearchQuery(
+        query="TraceLogger",
+        mode=QueryMode.REGEX.value,
+        repository_id=test_repository.id,
+    )
+    results, total = await search.search(query)
+
+    assert total == 1, f"Expected 1 result (latest version only), got {total}"
+    assert results[0].text_content.source_file_id == file_v2.id
