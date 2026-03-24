@@ -2354,5 +2354,7 @@ asyncio.run(main())
 | MCP-22 | search_symbols wildcard returns results (not empty) | API symbols endpoint |
 | MCP-23 | search_code extensions filter returns no duplicates | Unique file:line per result |
 | MCP-24 | search_code results always include a file path | No commit message entries in output |
+| MCP-25 | search_code finds content in code file bodies | Swift results via extensions filter |
+| MCP-26 | search_code source_only filter excludes non-source files | .md absent, .swift present |
 
-**Total: 73 test cases** (8 indexing + 40 browser + 25 MCP) — all verified against git/API, no hardcoded data.
+**Total: 75 test cases** (8 indexing + 40 browser + 27 MCP) — all verified against git/API, no hardcoded data.
