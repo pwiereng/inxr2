@@ -38,7 +38,6 @@ from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
 
-from inxr2.adapters.persistence.repositories.query_utils import KIND_ALIASES
 from inxr2.application.ports.repositories import (
     CommitRepositoryPort,
     DependencyRepositoryPort,
@@ -73,6 +72,7 @@ from inxr2.application.ports.services import (
     TextSearchQuery,
     TextSearchResult,
 )
+from inxr2.domain.constants import KIND_ALIASES
 from inxr2.domain.entities import (
     Commit,
     Dependency,

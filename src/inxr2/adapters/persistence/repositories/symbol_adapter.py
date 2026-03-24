@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from ....application.ports.repositories import SymbolRepositoryPort
-from ....domain.constants import QueryDefaults
+from ....domain.constants import KIND_ALIASES, QueryDefaults
 from ....domain.entities import Symbol
 from ..mappers import SymbolMapper
 from ..models.commit_file import CommitFileModel
@@ -13,7 +13,7 @@ from ..models.file import FileModel
 from ..models.repository import RepositoryModel
 from ..models.symbol import SymbolModel
 from .base_repository import BaseSQLAlchemyRepository
-from .query_utils import KIND_ALIASES, build_text_match_filter, split_extension_filter
+from .query_utils import build_text_match_filter, split_extension_filter
 from .shared_queries import head_file_ids_subquery, latest_file_ids_subquery
 
 

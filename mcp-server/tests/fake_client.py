@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import unquote
 
-from inxr2.adapters.persistence.repositories.query_utils import KIND_ALIASES
+from inxr2.domain.constants import KIND_ALIASES
 from src.client import Inxr2Client
 
 

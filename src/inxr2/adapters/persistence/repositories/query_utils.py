@@ -9,12 +9,6 @@ from .regex_utils import translate_word_boundaries, validate_regex_pattern
 
 NONE_SENTINEL = "(none)"
 
-# Cross-language kind aliases: querying a key also matches all values.
-# e.g. kind="interface" returns both interface and protocol symbols (Swift).
-KIND_ALIASES: dict[str, list[str]] = {
-    "interface": ["interface", "protocol"],
-}
-
 
 def split_extension_filter(extensions: list[str]) -> tuple[list[str], bool]:
     """Split extension list into real extensions and a flag for extensionless files.
