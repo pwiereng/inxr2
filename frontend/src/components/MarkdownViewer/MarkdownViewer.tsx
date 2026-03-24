@@ -1,17 +1,69 @@
-import { useMemo } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { Box } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import mermaid from 'mermaid'
+import DOMPurify from 'dompurify'
 import Prism from 'prismjs'
 import { getPrismLanguage } from '@/lib/prismLanguages'
+
+// Initialize mermaid once at module level (startOnLoad only — theme is set per-render
+// via the %%{init}%% directive to avoid global-state races when multiple diagrams mount).
+mermaid.initialize({ startOnLoad: false })
 
 interface MarkdownViewerProps {
   content: string
 }
 
+interface MermaidDiagramProps {
+  code: string
+  isDark: boolean
+}
+
+export function MermaidDiagram({ code, isDark }: MermaidDiagramProps): React.ReactElement {
+  const [svg, setSvg] = useState<string | null>(null)
+  const rawId = useId()
+  const id = `mermaid${rawId.replace(/:/g, '-')}`
+
+  useEffect(() => {
+    let cancelled = false
+    // Embed theme per-render via the mermaid init directive so each diagram is
+    // self-contained and concurrent renders don't race on global mermaid state.
+    const theme = isDark ? 'dark' : 'default'
+    const themedCode = `%%{init: {"theme": "${theme}"}}%%\n${code}`
+    mermaid
+      .render(id, themedCode)
+      .then(({ svg: renderedSvg }) => {
+        if (!cancelled) {
+          const sanitized = DOMPurify.sanitize(renderedSvg, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+          })
+          setSvg(sanitized)
+        }
+      })
+      .catch((err: unknown) => {
+        console.error('MermaidDiagram render failed:', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [code, id, isDark])
+
+  if (svg !== null) {
+    return <div dangerouslySetInnerHTML={{ __html: svg }} />
+  }
+
+  return (
+    <pre>
+      <code>{code}</code>
+    </pre>
+  )
+}
+
 export function MarkdownViewer({ content }: MarkdownViewerProps): React.ReactElement {
   const theme = useTheme()
+  const isDark = theme.palette.mode === 'dark'
 
   const markdownStyles = useMemo(
     () => ({
@@ -104,13 +156,18 @@ export function MarkdownViewer({ content }: MarkdownViewerProps): React.ReactEle
         components={{
           code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className ?? '')
-            const lang = match?.[1] ? getPrismLanguage(match[1]) : null
+            const lang = match?.[1] ?? null
             const codeString = String(children).replace(/\n$/, '')
 
-            if (lang && lang !== 'text') {
-              const grammar = Prism.languages[lang]
+            if (lang === 'mermaid') {
+              return <MermaidDiagram code={codeString} isDark={isDark} />
+            }
+
+            const prismLang = lang ? getPrismLanguage(lang) : null
+            if (prismLang && prismLang !== 'text') {
+              const grammar = Prism.languages[prismLang]
               if (grammar) {
-                const html = Prism.highlight(codeString, grammar, lang)
+                const html = Prism.highlight(codeString, grammar, prismLang)
                 return (
                   <code
                     className={className}
