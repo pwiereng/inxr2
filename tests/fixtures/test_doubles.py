@@ -265,14 +265,23 @@ class InMemorySymbolRepository(SymbolRepositoryPort):
                         continue
                 except re.error:
                     continue
-            elif case_sensitive and name not in symbol.name:
+            elif name and name != "*" and case_sensitive and name not in symbol.name:
                 continue
-            elif not case_sensitive and name.lower() not in symbol.name.lower():
+            elif (
+                name
+                and name != "*"
+                and not case_sensitive
+                and name.lower() not in symbol.name.lower()
+            ):
                 continue
             if repository_id is not None and symbol.repository_id != repository_id:
                 continue
-            if kind is not None and symbol.kind.value != kind:
-                continue
+            if kind is not None:
+                effective_kinds = (
+                    {"interface", "protocol"} if kind == "interface" else {kind}
+                )
+                if symbol.kind.value not in effective_kinds:
+                    continue
             if commit_file_ids is not None and symbol.file_id not in commit_file_ids:
                 continue
             if head_file_ids is not None and symbol.file_id not in head_file_ids:

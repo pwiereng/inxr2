@@ -867,3 +867,203 @@ class TestSearchSymbolsTopLevelOnly:
         assert "top_func" in names
         assert "MyClass" in names
         assert "nested_method" in names
+
+
+# ============================================================
+# Bug #384 — search_symbols wildcard (*) returns no results
+# ============================================================
+
+
+class TestSearchSymbolsWildcard:
+    """Tests for wildcard (*) query in search_symbols (bug #384).
+
+    Query `*` should return all symbols, not be treated as a literal string.
+    """
+
+    @pytest.fixture
+    def symbol_repo(self) -> InMemorySymbolRepository:
+        repo = InMemorySymbolRepository()
+        for idx, name in enumerate(["alpha", "beta", "gamma"], start=1):
+            repo.add(
+                Symbol(
+                    id=idx,
+                    repository_id=1,
+                    file_id=1,
+                    name=name,
+                    qualified_name=name,
+                    kind=SymbolKind.FUNCTION,
+                    start_line=idx,
+                    start_column=0,
+                    end_line=idx + 1,
+                    end_column=0,
+                )
+            )
+        return repo
+
+    @pytest.fixture
+    def use_case(self, symbol_repo: InMemorySymbolRepository) -> SearchSymbolsUseCase:
+        return SearchSymbolsUseCase(
+            symbol_repo=symbol_repo,
+            file_repo=InMemoryFileRepository(commit_repo=InMemoryCommitRepository()),
+            commit_repo=InMemoryCommitRepository(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_wildcard_star_returns_all_symbols(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """query='*' should return all symbols, not treat * as a literal."""
+        request = SearchSymbolsRequest(query="*", limit=50)
+
+        result = await use_case.execute(request)
+
+        # Bug: currently returns 0 because '*' is treated as a literal substring
+        assert result.total == 3
+
+    @pytest.mark.asyncio
+    async def test_wildcard_star_with_kind_filter(
+        self, symbol_repo: InMemorySymbolRepository
+    ) -> None:
+        """query='*' with kind filter should return all symbols of that kind."""
+        symbol_repo.add(
+            Symbol(
+                id=10,
+                repository_id=1,
+                file_id=1,
+                name="MyClass",
+                qualified_name="MyClass",
+                kind=SymbolKind.CLASS,
+                start_line=100,
+                start_column=0,
+                end_line=110,
+                end_column=0,
+            )
+        )
+        use_case = SearchSymbolsUseCase(
+            symbol_repo=symbol_repo,
+            file_repo=InMemoryFileRepository(commit_repo=InMemoryCommitRepository()),
+            commit_repo=InMemoryCommitRepository(),
+        )
+        request = SearchSymbolsRequest(query="*", kind="function", limit=50)
+
+        result = await use_case.execute(request)
+
+        assert result.total == 3
+        assert all(s.symbol.kind == "function" for s in result.symbols)
+
+
+# ============================================================
+# Bug #385 — kind:interface doesn't match Swift protocol symbols
+# ============================================================
+
+
+class TestSearchSymbolsKindInterface:
+    """Tests for kind='interface' matching Swift protocols (bug #385).
+
+    Swift protocols are stored with kind='protocol'; querying kind='interface'
+    should also return them.
+    """
+
+    @pytest.fixture
+    def symbol_repo(self) -> InMemorySymbolRepository:
+        repo = InMemorySymbolRepository()
+        repo.add(
+            Symbol(
+                id=1,
+                repository_id=1,
+                file_id=1,
+                name="Drawable",
+                qualified_name="Drawable",
+                kind=SymbolKind.INTERFACE,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            )
+        )
+        repo.add(
+            Symbol(
+                id=2,
+                repository_id=1,
+                file_id=2,
+                name="Codable",
+                qualified_name="Codable",
+                kind=SymbolKind.PROTOCOL,
+                start_line=1,
+                start_column=0,
+                end_line=10,
+                end_column=0,
+            )
+        )
+        repo.add(
+            Symbol(
+                id=3,
+                repository_id=1,
+                file_id=1,
+                name="helper",
+                qualified_name="helper",
+                kind=SymbolKind.FUNCTION,
+                start_line=20,
+                start_column=0,
+                end_line=30,
+                end_column=0,
+            )
+        )
+        return repo
+
+    @pytest.fixture
+    def use_case(self, symbol_repo: InMemorySymbolRepository) -> SearchSymbolsUseCase:
+        return SearchSymbolsUseCase(
+            symbol_repo=symbol_repo,
+            file_repo=InMemoryFileRepository(commit_repo=InMemoryCommitRepository()),
+            commit_repo=InMemoryCommitRepository(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_kind_interface_matches_protocol_symbols(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """kind='interface' should return Swift protocol symbols (kind='protocol')."""
+        request = SearchSymbolsRequest(query="", kind="interface", limit=50)
+
+        result = await use_case.execute(request)
+
+        names = {s.symbol.name for s in result.symbols}
+        # Bug: currently only returns 'Drawable' (interface), not 'Codable' (protocol)
+        assert "Codable" in names
+
+    @pytest.mark.asyncio
+    async def test_kind_interface_still_matches_interface_symbols(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """kind='interface' should still return native interface symbols."""
+        request = SearchSymbolsRequest(query="", kind="interface", limit=50)
+
+        result = await use_case.execute(request)
+
+        names = {s.symbol.name for s in result.symbols}
+        assert "Drawable" in names
+
+    @pytest.mark.asyncio
+    async def test_kind_interface_excludes_functions(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """kind='interface' should not return functions."""
+        request = SearchSymbolsRequest(query="", kind="interface", limit=50)
+
+        result = await use_case.execute(request)
+
+        names = {s.symbol.name for s in result.symbols}
+        assert "helper" not in names
+
+    @pytest.mark.asyncio
+    async def test_kind_interface_returns_both_interface_and_protocol(
+        self, use_case: SearchSymbolsUseCase
+    ) -> None:
+        """kind='interface' should return both interface and protocol symbols."""
+        request = SearchSymbolsRequest(query="", kind="interface", limit=50)
+
+        result = await use_case.execute(request)
+
+        # Bug: currently returns total=1; after fix should be 2
+        assert result.total == 2
