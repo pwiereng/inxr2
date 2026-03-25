@@ -10,6 +10,7 @@ from ....application.use_cases.symbols import (
     GetSymbolReferencesRequest,
     SearchSymbolsRequest,
 )
+from ....application.use_cases.symbols.search_symbols import SymbolWithFilePath
 from ....infrastructure.dependencies import (
     FileAdapter,
     GetSymbolReferencesUseCaseDep,
@@ -74,6 +75,24 @@ class ReferencesListResponse(BaseModel):
     items: list[ReferenceResponse]
     total: int
     symbol_name: str
+
+
+def _symbol_with_path_to_response(s: SymbolWithFilePath) -> SymbolResponse:
+    return SymbolResponse(
+        id=s.symbol.id or 0,
+        name=s.symbol.name,
+        qualified_name=s.symbol.qualified_name,
+        kind=s.symbol.kind.value,
+        file_id=s.symbol.file_id,
+        file_path=s.file_path,
+        repository_id=s.symbol.repository_id,
+        start_line=s.symbol.start_line,
+        start_column=s.symbol.start_column,
+        end_line=s.symbol.end_line,
+        end_column=s.symbol.end_column,
+        signature=s.symbol.signature,
+        docstring=s.symbol.docstring,
+    )
 
 
 @router.get("", response_model=SymbolListResponse)
@@ -145,24 +164,7 @@ async def search_symbols(
         raise HTTPException(status_code=422, detail=str(e)) from None
 
     return SymbolListResponse(
-        items=[
-            SymbolResponse(
-                id=s.symbol.id or 0,
-                name=s.symbol.name,
-                qualified_name=s.symbol.qualified_name,
-                kind=s.symbol.kind.value,
-                file_id=s.symbol.file_id,
-                file_path=s.file_path,
-                repository_id=s.symbol.repository_id,
-                start_line=s.symbol.start_line,
-                start_column=s.symbol.start_column,
-                end_line=s.symbol.end_line,
-                end_column=s.symbol.end_column,
-                signature=s.symbol.signature,
-                docstring=s.symbol.docstring,
-            )
-            for s in result.symbols
-        ],
+        items=[_symbol_with_path_to_response(s) for s in result.symbols],
         total=result.total,
         limit=result.limit,
         offset=result.offset,
@@ -206,24 +208,7 @@ async def get_symbols_by_name(
     )
 
     return SymbolListResponse(
-        items=[
-            SymbolResponse(
-                id=s.symbol.id or 0,
-                name=s.symbol.name,
-                qualified_name=s.symbol.qualified_name,
-                kind=s.symbol.kind.value,
-                file_id=s.symbol.file_id,
-                file_path=s.file_path,
-                repository_id=s.symbol.repository_id,
-                start_line=s.symbol.start_line,
-                start_column=s.symbol.start_column,
-                end_line=s.symbol.end_line,
-                end_column=s.symbol.end_column,
-                signature=s.symbol.signature,
-                docstring=s.symbol.docstring,
-            )
-            for s in result.symbols
-        ],
+        items=[_symbol_with_path_to_response(s) for s in result.symbols],
         total=result.total,
         limit=result.total,
         offset=0,
