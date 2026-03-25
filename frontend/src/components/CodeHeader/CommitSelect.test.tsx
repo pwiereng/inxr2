@@ -89,7 +89,7 @@ describe('CommitSelect', () => {
   })
 
   it('should render CircularProgress when loading is true', () => {
-    const { container } = render(
+    render(
       <CommitSelect
         commits={mockCommits}
         loading={true}
@@ -98,7 +98,7 @@ describe('CommitSelect', () => {
       />
     )
 
-    expect(container.querySelector('.MuiCircularProgress-root')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toBeInTheDocument()
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 
