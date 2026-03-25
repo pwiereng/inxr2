@@ -317,6 +317,149 @@ describe('useBrowseData', () => {
     })
   })
 
+  describe('double tree-load prevention (#391)', () => {
+    it('should load tree only once when latestBranchCommit resolves after initial load', async () => {
+      // Scenario: Navigate to a repo with ?branch=main (no commit param).
+      // Tree loads once (treeCommit=undefined, API uses branch only).
+      // Then getCommits resolves to HEAD hash → latestBranchCommit changes →
+      // treeCommit changes from undefined → "abc123" → effect re-fires.
+      // Skip guard should detect this null→hash transition and suppress the
+      // second fetch (both calls return identical results).
+
+      // Make getCommits deferred so we can control when latestBranchCommit resolves
+      let resolveCommits!: (value: api.CommitListResponse) => void
+      mockGetCommits.mockReturnValue(
+        new Promise<api.CommitListResponse>((resolve) => {
+          resolveCommits = resolve
+        })
+      )
+
+      const urlState = makeUrlState({
+        repoName: 'test-repo',
+        filePath: null,
+        selectedBranch: 'main',
+        selectedCommit: null,
+      })
+
+      await act(async () => {
+        await renderBrowseDataHook(makeParams(urlState))
+      })
+
+      // Tree should have been called once (with branch only, no commit)
+      expect(mockGetRepositoryTreeByName).toHaveBeenCalledTimes(1)
+      expect(mockGetRepositoryTreeByName).toHaveBeenCalledWith(
+        'test-repo',
+        undefined,
+        'main',
+        false
+      )
+
+      // Now simulate latestBranchCommit resolving to HEAD hash
+      const headHash = 'abc123abc123abc123abc123abc123abc123abc1'
+      await act(async () => {
+        resolveCommits({
+          commits: [
+            {
+              hash: headHash,
+              short_hash: 'abc123a',
+              message: 'fix',
+              author_name: 'A',
+              author_email: 'a@b.com',
+              commit_date: '2024-01-01',
+              is_indexed: true,
+              tags: [],
+              is_branch_specific: false,
+              is_merge_base: false,
+            },
+          ],
+          total: 1,
+        })
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      })
+
+      // Key assertion: tree should NOT have been re-fetched (skip guard)
+      expect(mockGetRepositoryTreeByName).toHaveBeenCalledTimes(1)
+    })
+
+    it('should re-fetch tree when switching to a different branch', async () => {
+      // After the skip guard fires, a genuine branch change must still fetch
+      const urlState = makeUrlState({
+        filePath: null,
+        selectedBranch: 'main',
+        selectedCommit: null,
+      })
+      const { rerender } = await renderBrowseDataHook(makeParams(urlState))
+
+      const updatedUrlState = makeUrlState({
+        filePath: null,
+        selectedBranch: 'feature',
+        selectedCommit: null,
+      })
+      await act(async () => {
+        rerender(makeParams(updatedUrlState))
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      })
+
+      // Verify the skip guard didn't block the branch-switch fetch
+      expect(mockGetRepositoryTreeByName).toHaveBeenCalledWith(
+        'test-repo',
+        undefined,
+        'feature',
+        false
+      )
+    })
+
+    it('should re-fetch tree when changedOnly is true even if commit just resolved', async () => {
+      // changedOnly=true: tree at HEAD via branch ≠ tree filtered to commit's diff
+      // The skip guard must NOT fire in this case.
+      let resolveCommits!: (value: api.CommitListResponse) => void
+      mockGetCommits.mockReturnValue(
+        new Promise<api.CommitListResponse>((resolve) => {
+          resolveCommits = resolve
+        })
+      )
+
+      const urlState = makeUrlState({
+        filePath: null,
+        selectedBranch: 'main',
+        selectedCommit: null,
+        changedOnly: true,
+      })
+
+      await act(async () => {
+        await renderBrowseDataHook(makeParams(urlState))
+      })
+
+      // Guard 1 fires (changedOnly + no commit yet), so tree may not have been called
+      const callsBeforeResolve = mockGetRepositoryTreeByName.mock.calls.length
+
+      const headHash = 'abc123abc123abc123abc123abc123abc123abc1'
+      await act(async () => {
+        resolveCommits({
+          commits: [
+            {
+              hash: headHash,
+              short_hash: 'abc123a',
+              message: 'fix',
+              author_name: 'A',
+              author_email: 'a@b.com',
+              commit_date: '2024-01-01',
+              is_indexed: true,
+              tags: [],
+              is_branch_specific: false,
+              is_merge_base: false,
+            },
+          ],
+          total: 1,
+        })
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      })
+
+      // After commit resolves, tree SHOULD load exactly once (skip guard must not block this)
+      expect(mockGetRepositoryTreeByName).toHaveBeenCalledTimes(callsBeforeResolve + 1)
+    })
+  })
+
   describe('rename banner (#240)', () => {
     it('sets fileRenameInfo and clears stale content when file returns 404 and rename is found', async () => {
       // Browsing a renamed file at an old commit: getFileContentByPathAtCommit

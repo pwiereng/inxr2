@@ -96,6 +96,12 @@ export function useBrowseData({
   // skip re-fetch when the same file is already loaded from the implicit HEAD.
   const loadedFileKeyRef = useRef<string | null>(null)
   const loadedCommitRef = useRef<string | null | undefined>(undefined)
+  // Track which (repo, branch, commit) the tree was last successfully fetched with,
+  // so we can skip the redundant re-fetch when latestBranchCommit resolves HEAD hash.
+  // Same pattern as file-fetch skip guard (PR #273).
+  const loadedTreeRepoRef = useRef<string | undefined>(undefined)
+  const loadedTreeBranchRef = useRef<string | null | undefined>(undefined)
+  const loadedTreeCommitRef = useRef<string | null | undefined>(undefined)
 
   // Compute treeCommit using shared helper (same logic as orchestrator's computedState)
   const treeCommit = computeTreeCommit(urlState, fileVersions, diffFileVersions, latestBranchCommit)
@@ -188,6 +194,9 @@ export function useBrowseData({
       // the full unfiltered tree. Once it resolves (to a string or null), the
       // effect re-fires.
       if (urlState.changedOnly && !treeCommit && latestBranchCommit === undefined) {
+        loadedTreeRepoRef.current = undefined
+        loadedTreeBranchRef.current = undefined
+        loadedTreeCommitRef.current = undefined
         setTreeLoading(true)
         setTreeNodes([])
         return
@@ -199,10 +208,36 @@ export function useBrowseData({
       // renamed/deleted files). Once latestBranchCommit resolves, the effect
       // re-fires with a proper commit.
       if (!treeCommit && !treeBranch && latestBranchCommit === undefined) {
+        loadedTreeRepoRef.current = undefined
+        loadedTreeBranchRef.current = undefined
+        loadedTreeCommitRef.current = undefined
         setTreeLoading(true)
         setTreeNodes([])
         return
       }
+
+      // Skip redundant re-fetch when latestBranchCommit resolves HEAD hash.
+      // When treeCommit was undefined (implicit HEAD via branch), then
+      // latestBranchCommit resolves and treeCommit changes to that hash — both
+      // calls return identical data. Same pattern as file-fetch guard (PR #273).
+      // Must NOT skip when changedOnly is true: branch-only tree ≠ commit-diff tree.
+      const prevTreeCommit = loadedTreeCommitRef.current
+      if (
+        !urlState.changedOnly &&
+        loadedTreeRepoRef.current === urlState.repoName &&
+        loadedTreeBranchRef.current === treeBranch &&
+        (prevTreeCommit === null || prevTreeCommit === undefined) &&
+        typeof treeCommit === 'string' &&
+        treeCommit === latestBranchCommit
+      ) {
+        return
+      }
+
+      // Set refs optimistically so the skip guard works even while the request
+      // is in-flight. Reset on failure so a retry isn't blocked.
+      loadedTreeRepoRef.current = urlState.repoName
+      loadedTreeBranchRef.current = treeBranch
+      loadedTreeCommitRef.current = treeCommit ?? null
 
       setTreeLoading(true)
       try {
@@ -219,6 +254,10 @@ export function useBrowseData({
         console.error('Failed to load tree:', err)
         setError(err instanceof Error ? err.message : 'Failed to load file tree')
         setTreeNodes([])
+        // Reset refs so a retry isn't blocked by the skip guard
+        loadedTreeRepoRef.current = undefined
+        loadedTreeBranchRef.current = undefined
+        loadedTreeCommitRef.current = undefined
       } finally {
         setTreeLoading(false)
       }
