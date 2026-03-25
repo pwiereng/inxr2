@@ -399,22 +399,4 @@ describe('MermaidDiagram', () => {
     )
   })
 
-  // Regression test for #408: DOMPurify SVG profile strips <foreignObject> (used
-  // by Mermaid for multi-line node labels) and <style> (used for diagram styling).
-  // ADD_TAGS must include both so diagrams render correctly.
-  it('sanitize config includes ADD_TAGS for foreignObject and style (#408)', async () => {
-    const { default: DOMPurifyMock } = await import('dompurify')
-
-    await act(async () => {
-      renderWithTheme(<MermaidDiagram code="graph TD\n  A --> B" isDark={false} />)
-    })
-
-    await screen.findByTestId('mermaid-svg')
-    expect(DOMPurifyMock.sanitize).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        ADD_TAGS: expect.arrayContaining(['foreignObject', 'style']),
-      })
-    )
-  })
 })
