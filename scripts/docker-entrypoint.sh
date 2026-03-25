@@ -149,8 +149,12 @@ echo "📝 Final node_modules permissions:"
 ls -ld /workspace/frontend/node_modules
 
 # Install frontend packages (idempotent — fast when already up-to-date)
+# Clear sentinel first so dev-serve.sh doesn't proceed with a stale marker
+# from a previous container start while npm ci is in progress.
 echo "📦 Installing frontend packages..."
+rm -f /workspace/frontend/node_modules/.installed
 cd /workspace/frontend && npm ci
+touch /workspace/frontend/node_modules/.installed
 echo "✅ Frontend packages installed"
 
 echo "Container ready!"

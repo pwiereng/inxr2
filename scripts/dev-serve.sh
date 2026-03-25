@@ -101,6 +101,24 @@ if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
     exit 1
 fi
 
+# Wait for npm ci to finish (entrypoint clears .installed before running npm ci
+# and recreates it after — so this guard catches a fresh container start where
+# packages aren't ready yet).
+if [ ! -f "frontend/node_modules/.installed" ]; then
+    printf "${YELLOW}Waiting for frontend packages (npm ci still running)...${NC}"
+    WAIT=0
+    while [ ! -f "frontend/node_modules/.installed" ] && [ "$WAIT" -lt 120 ]; do
+        sleep 2
+        WAIT=$((WAIT + 2))
+        printf "."
+    done
+    echo ""
+    if [ ! -f "frontend/node_modules/.installed" ]; then
+        echo -e "${RED}Error: frontend packages not ready after 120s — check entrypoint logs${NC}"
+        exit 1
+    fi
+fi
+
 # Start frontend in background
 echo -e "${GREEN}Starting frontend...${NC}"
 if [ ! -d "frontend" ]; then
