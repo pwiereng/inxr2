@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '@/test/utils'
+import { fireEvent } from '@testing-library/react'
 import { CommitSelect } from './CommitSelect'
 import type { CommitInfo } from '@/lib/api'
 
@@ -85,5 +86,166 @@ describe('CommitSelect', () => {
     )
 
     expect(screen.getByText('latest')).toBeInTheDocument()
+  })
+
+  it('should render CircularProgress when loading is true', () => {
+    const { container } = render(
+      <CommitSelect
+        commits={mockCommits}
+        loading={true}
+        commitDisplayValue=""
+        onCommitChange={vi.fn()}
+      />
+    )
+
+    expect(container.querySelector('.MuiCircularProgress-root')).toBeInTheDocument()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('should render nothing when commits is empty', () => {
+    const { container } = render(
+      <CommitSelect commits={[]} loading={false} commitDisplayValue="" onCommitChange={vi.fn()} />
+    )
+
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('should show HEAD badge on first commit but not second', () => {
+    render(
+      <CommitSelect
+        commits={mockCommits}
+        loading={false}
+        commitDisplayValue=""
+        onCommitChange={vi.fn()}
+      />
+    )
+
+    const selectElement = screen.getByRole('combobox')
+    fireEvent.mouseDown(selectElement)
+
+    const headBadges = screen.getAllByText('HEAD')
+    expect(headBadges).toHaveLength(1)
+
+    // Verify it's associated with the first commit (abc123d) not the second
+    const firstItem = screen.getByText('abc123d').closest('li')
+    expect(firstItem).toHaveTextContent('HEAD')
+    const secondItem = screen.getByText('def456g').closest('li')
+    expect(secondItem).not.toHaveTextContent('HEAD')
+  })
+
+  it('should show FORK badge for commit with is_merge_base true', () => {
+    const commitsWithMergeBase: CommitInfo[] = [
+      ...mockCommits,
+      {
+        hash: 'fork111aaa222bbb333cc',
+        short_hash: 'fork111',
+        message: 'Fork commit',
+        author_name: 'Test Author',
+        author_email: 'test@example.com',
+        commit_date: '2024-01-03T10:00:00Z',
+        is_indexed: true,
+        tags: [],
+        is_branch_specific: false,
+        is_merge_base: true,
+      },
+    ]
+
+    render(
+      <CommitSelect
+        commits={commitsWithMergeBase}
+        loading={false}
+        commitDisplayValue=""
+        onCommitChange={vi.fn()}
+      />
+    )
+
+    const selectElement = screen.getByRole('combobox')
+    fireEvent.mouseDown(selectElement)
+
+    expect(screen.getByText('FORK')).toBeInTheDocument()
+  })
+
+  it('should render tag badges for commits with tags', () => {
+    const commitsWithTags: CommitInfo[] = [
+      {
+        hash: 'tag111aaa222bbb333ccc4',
+        short_hash: 'tag111a',
+        message: 'Tagged commit',
+        author_name: 'Test Author',
+        author_email: 'test@example.com',
+        commit_date: '2024-01-01T10:00:00Z',
+        is_indexed: true,
+        tags: ['v1.0', 'stable'],
+        is_branch_specific: false,
+        is_merge_base: false,
+      },
+    ]
+
+    render(
+      <CommitSelect
+        commits={commitsWithTags}
+        loading={false}
+        commitDisplayValue=""
+        onCommitChange={vi.fn()}
+      />
+    )
+
+    const selectElement = screen.getByRole('combobox')
+    fireEvent.mouseDown(selectElement)
+
+    expect(screen.getByText('v1.0')).toBeInTheDocument()
+    expect(screen.getByText('stable')).toBeInTheDocument()
+  })
+
+  it('should render branch-specific commit without error', () => {
+    const commitsWithBranchSpecific: CommitInfo[] = [
+      {
+        hash: 'branch1aaa222bbb333ccc',
+        short_hash: 'branch1',
+        message: 'Branch-specific commit',
+        author_name: 'Test Author',
+        author_email: 'test@example.com',
+        commit_date: '2024-01-01T10:00:00Z',
+        is_indexed: true,
+        tags: [],
+        is_branch_specific: true,
+        is_merge_base: false,
+      },
+    ]
+
+    render(
+      <CommitSelect
+        commits={commitsWithBranchSpecific}
+        loading={false}
+        commitDisplayValue=""
+        onCommitChange={vi.fn()}
+      />
+    )
+
+    const selectElement = screen.getByRole('combobox')
+    fireEvent.mouseDown(selectElement)
+
+    expect(screen.getByText('branch1')).toBeInTheDocument()
+  })
+
+  it('should call onCommitChange with full hash when a commit is selected', () => {
+    const onCommitChange = vi.fn()
+
+    render(
+      <CommitSelect
+        commits={mockCommits}
+        loading={false}
+        commitDisplayValue=""
+        onCommitChange={onCommitChange}
+      />
+    )
+
+    const selectElement = screen.getByRole('combobox')
+    fireEvent.mouseDown(selectElement)
+
+    const secondCommitItem = screen.getByText('def456g').closest('li')!
+    fireEvent.click(secondCommitItem)
+
+    expect(onCommitChange).toHaveBeenCalledWith('def456ghi789')
   })
 })
