@@ -203,6 +203,7 @@ describe('useBrowseDiffState', () => {
     })
 
     it('does not attempt rename resolution for non-404 errors', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       mockGetFileContentByPathAtCommit.mockRejectedValue(new ApiError('Internal Server Error', 500))
 
       const urlState = makeUrlState({ diffCommit: 'commit-a' })
@@ -213,6 +214,7 @@ describe('useBrowseDiffState', () => {
       })
       expect(mockResolveFilePath).not.toHaveBeenCalled()
       expect(result.current.diffRenameInfo).toBeNull()
+      consoleSpy.mockRestore()
     })
 
     it('clears diffRenameInfo when rename resolution finds no resolved path', async () => {
