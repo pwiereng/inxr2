@@ -390,8 +390,6 @@ describe('useBrowseData', () => {
       })
       const { rerender } = await renderBrowseDataHook(makeParams(urlState))
 
-      const callsAfterInit = mockGetRepositoryTreeByName.mock.calls.length
-
       const updatedUrlState = makeUrlState({
         filePath: null,
         selectedBranch: 'feature',
@@ -402,7 +400,13 @@ describe('useBrowseData', () => {
         await new Promise((resolve) => setTimeout(resolve, 50))
       })
 
-      expect(mockGetRepositoryTreeByName.mock.calls.length).toBeGreaterThan(callsAfterInit)
+      // Verify the skip guard didn't block the branch-switch fetch
+      expect(mockGetRepositoryTreeByName).toHaveBeenCalledWith(
+        'test-repo',
+        undefined,
+        'feature',
+        false
+      )
     })
 
     it('should re-fetch tree when changedOnly is true even if commit just resolved', async () => {
@@ -451,8 +455,8 @@ describe('useBrowseData', () => {
         await new Promise((resolve) => setTimeout(resolve, 50))
       })
 
-      // After commit resolves, tree SHOULD load (skip guard must not block this)
-      expect(mockGetRepositoryTreeByName.mock.calls.length).toBeGreaterThan(callsBeforeResolve)
+      // After commit resolves, tree SHOULD load exactly once (skip guard must not block this)
+      expect(mockGetRepositoryTreeByName).toHaveBeenCalledTimes(callsBeforeResolve + 1)
     })
   })
 
