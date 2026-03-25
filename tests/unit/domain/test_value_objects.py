@@ -64,8 +64,3 @@ class TestSymbolKind:
         assert SymbolKind.METHOD.value == "method"
         assert SymbolKind.VARIABLE.value == "variable"
         assert SymbolKind.MODULE.value == "module"
-
-    def test_symbol_kind_is_string(self) -> None:
-        """Test that symbol kind values are strings."""
-        assert isinstance(SymbolKind.FUNCTION.value, str)
-        assert SymbolKind.CLASS.value == "class"
