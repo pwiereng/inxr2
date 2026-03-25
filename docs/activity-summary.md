@@ -1,7 +1,5 @@
 # INXR2 Project Activity Summary
 
-Generated: 2026-03-17
-
 ## Commit History by Day
 
 | Date | Commits | Added | Deleted | Net | Notes |
@@ -67,55 +65,57 @@ Generated: 2026-03-17
 | 2026-03-15 | 32 | +7,746 | -298 | +7,448 | File renames, diff rename support |
 | 2026-03-16 | 30 | +6,035 | -446 | +5,589 | Activity log, merge indexing fix |
 | 2026-03-17 | 21 | +1,673 | -65 | +1,608 | explain_symbol, docstrings, global search |
-| **TOTAL** | **973** | **203,931** | **47,278** | **+156,653** | |
+| 2026-03-21 | 26 | +4,200 | -2,348 | +1,852 | Swift support, GitHub Actions CI |
+| 2026-03-22 | 9 | +3,153 | -227 | +2,926 | Mermaid diagrams in markdown viewer |
+| 2026-03-23 | 9 | +3,199 | -332 | +2,867 | MCP bug fixes, search_code body indexing |
+| 2026-03-24 | 18 | +4,437 | -3,096 | +1,341 | Search dedup, double-load fix, quick wins |
+| **TOTAL** | **1,036** | **~219,000** | **~53,000** | **+165,639** | |
 
-- Days active: 61
-- Avg/day: ~16 commits, +3,343 added, +2,568 net
+- Days active: 65
+- Avg/day: ~16 commits, +3,369 added, +2,548 net
 
 ## Key Observations
 
-- 156,653 net lines across 973 commits over 61 active days
-- ~2,568 net lines/day average
+- 165,639 net lines across 1,036 commits over 65 active days
+- ~2,548 net lines/day average
 - Jan 25 remains the biggest single day by lines added (+10,849)
 - Feb 21 remains the busiest day by commit count (47 commits)
 - Mar 7 remains the biggest net-lines day (+9,701 net)
 - Feb 11 remains the only net-negative day (pure cleanup/deletion)
-- 93 new commits since last summary (880 → 973) over 4 active days
+- 63 new commits since last summary (973 → 1,036) over 4 active days
 
-## Recent Activity (since last summary 2026-03-14)
+## Recent Activity (since last summary 2026-03-17)
 
-- File rename tracking via git diff --find-renames (#342)
-- Diff viewer rename following across rename boundary (#357)
-- Configurable indexing filters — min_refs, min_symbols (#356)
-- Commit navigation buttons (forward/back) (#341)
-- Search commit hash filter (#344)
-- Fix: incremental indexing skipped merged feature-branch commits (#360/#338)
-- Fix: module-level constants (UPPER_CASE) now clickable in browser (#359)
-- Activity log: structured HTTP + MCP request logging with /activity UI (#362)
-- MCP explain_symbol tool — rich context for AI assistants (#366/#241)
-- Symbol docstrings now populated from Python parser (#367/#364)
-- Global "All repositories" search pinned at top of dropdown (#365/#291)
-- Database schema v7.0 documented (query_log table, type corrections)
-- 12 PRs merged in 4 days
-- Test count: 1,948 (backend) + frontend + MCP all passing
+- Swift language support — full symbol and reference extraction (#381/#382)
+- GitHub Actions CI workflow + gitleaks pre-commit hook
+- Mermaid diagram rendering in markdown viewer (#383/#409) — foreignObject/style sanitization fix
+- MCP: resolve 5 MCP bugs (#384–#388/#390)
+- search_code: index file body content for code search (#395)
+- search_code: deduplication + source_only filter (#394/#406)
+- Fix: dev-serve.sh now waits for npm ci to finish before starting frontend
+- Fix: prevent double tree-load when latestBranchCommit resolves (#410)
+- regression-test skill now saves dated reports to docs/
+- Quick wins: remove low-value tests (#121/#411), split test_api_endpoints.py (#119/#413), add CommitSelect tests (#122/#412), extract symbol converter (#118/#414)
+- 63 new commits over 4 active days (Mar 21–24)
+- Test count: 2,093 backend + 651 frontend + 141 MCP, all passing
 
-## Commit Breakdown by Type (as of 2026-03-17, 973 commits on main)
+## Commit Breakdown by Type (as of 2026-03-24, 1,036 commits on main)
 
 | Category | Commits | % Commits |
 |----------|---------|-----------|
-| bugfix | 459 | 47.2% |
-| merge | 180 | 18.5% |
-| feature | 129 | 13.3% |
-| docs | 72 | 7.4% |
-| refactor | 61 | 6.3% |
-| other | 40 | 4.1% |
-| testing | 17 | 1.7% |
+| bugfix | 478 | 46.1% |
+| merge | 182 | 17.6% |
+| feature | 137 | 13.2% |
+| docs | 86 | 8.3% |
+| refactor | 66 | 6.4% |
+| other | 49 | 4.7% |
+| testing | 20 | 1.9% |
 | perf | 10 | 1.0% |
-| chore | 5 | 0.5% |
-| **TOTAL** | **973** | **100.0%** |
+| chore | 8 | 0.8% |
+| **TOTAL** | **1,036** | **100.0%** |
 
-- 93 new commits since last summary (880 → 973) over 4 active days
-- Feature commits grew from 117 to 129 (+10%) — MCP tools, activity log, UI improvements
-- Bug fixes at 47.2% — continued iterative quality improvement
-- Docs grew from 62 to 72 — schema v7.0, regression tests, HELP.md updates
-- Refactor decreased from 77 to 61 — consolidation complete
+- 63 new commits since last summary (973 → 1,036) over 4 active days
+- Feature commits grew from 129 to 137 (+6%) — Swift, Mermaid, search enhancements
+- Docs grew from 72 to 86 — regression reports, regression-test skill
+- Testing grew from 17 to 20 — quick wins batch (CommitSelect, test splits, removals)
+- Bug fixes at 46.1% — MCP fixes, search dedup, double-load, sanitization
