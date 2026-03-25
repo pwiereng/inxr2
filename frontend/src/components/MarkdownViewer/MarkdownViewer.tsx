@@ -38,6 +38,16 @@ export function MermaidDiagram({ code, isDark }: MermaidDiagramProps): React.Rea
         if (!cancelled) {
           const sanitized = DOMPurify.sanitize(renderedSvg, {
             USE_PROFILES: { svg: true, svgFilters: true },
+            // Mermaid uses <foreignObject> for multi-line node labels and <style>
+            // for diagram styling. DOMPurify's SVG profile strips both by default.
+            // Both are safe to re-allow here:
+            // - <foreignObject>: DOMPurify still sanitizes the HTML content inside it,
+            //   so any attacker-controlled node label text remains sanitized.
+            // - <style>: Mermaid generates these blocks from its own theme renderer,
+            //   not from user-supplied content — the CSS is not attacker-controlled.
+            //   (Note: SVG <style> injected via dangerouslySetInnerHTML is parsed
+            //   globally by the browser, not scoped to the SVG.)
+            ADD_TAGS: ['foreignObject', 'style'],
           })
           setSvg(sanitized)
         }

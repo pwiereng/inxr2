@@ -390,6 +390,13 @@ describe('MermaidDiagram', () => {
     })
 
     await screen.findByTestId('mermaid-svg')
-    expect(DOMPurifyMock.sanitize).toHaveBeenCalled()
+    expect(DOMPurifyMock.sanitize).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        USE_PROFILES: { svg: true, svgFilters: true },
+        ADD_TAGS: ['foreignObject', 'style'],
+      })
+    )
   })
+
 })
