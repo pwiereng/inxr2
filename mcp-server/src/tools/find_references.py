@@ -14,8 +14,10 @@ TOOL_NAME = "find_references"
 TOOL_DESCRIPTION = (
     "Find all usages of a symbol across all indexed repositories. "
     "Returns cross-repo references including imports, calls, type annotations, "
-    "and other usages. This is useful for understanding how a function, class, "
-    "or variable is used across the codebase."
+    "and other usages — results come from the semantic index, not text search. "
+    "Use ref_type to narrow results (e.g. 'call' for callers only, 'type_annotation' "
+    "for type-checking impact). If you need both the definition and references, "
+    "use explain_symbol instead — it returns both in one call."
 )
 
 TOOL_SCHEMA: dict[str, Any] = {

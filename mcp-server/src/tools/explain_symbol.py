@@ -14,9 +14,11 @@ TOOL_NAME = "explain_symbol"
 TOOL_DESCRIPTION = (
     "Get rich context about a symbol in one call: definition location, docstring, "
     "signature, and references grouped by type (imports, calls, type annotations, etc.). "
-    "Shows up to 500 references total and up to 5 per type in the output. "
-    "Ideal for understanding what a symbol is and how it's used across the codebase. "
-    "Use this instead of calling search_symbols + find_references separately."
+    "Use this as the first tool when encountering an unfamiliar symbol — it replaces "
+    "calling search_symbols + find_references separately. "
+    "Shows up to 5 references per type in the summary, 500 total. "
+    "The branch parameter filters references only; it does not affect the definition lookup. "
+    "Requires the exact symbol name — use search_symbols first if unsure of the name."
 )
 
 TOOL_SCHEMA: dict[str, Any] = {

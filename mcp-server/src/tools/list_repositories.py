@@ -13,7 +13,10 @@ TOOL_DESCRIPTION = (
     "List all indexed repositories and their available branches. "
     "Use this to discover what repositories and branches are available "
     "before querying with other tools. Only shows branches that have "
-    "been indexed (have data available)."
+    "been indexed — branches that exist in git but have never been indexed "
+    "will not appear. Use detail=true to see commit counts and last-indexed "
+    "commit SHA, which lets you verify whether the index is current before "
+    "relying on results."
 )
 
 TOOL_SCHEMA: dict[str, Any] = {

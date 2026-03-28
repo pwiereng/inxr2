@@ -16,7 +16,10 @@ TOOL_DESCRIPTION = (
     "Analyze the change impact of modifying a symbol: which files directly depend "
     "on it, grouped by type (source, test, config). "
     "Answers 'If I modify this symbol, what else needs to change?' "
-    "Use depth=2 to include indirect (transitive) dependents."
+    "Call this before changing any type signature, interface, or public API. "
+    "Returns one level of dependents by default (direct references only). "
+    "Use depth=2 for transitive dependents, but expect more noise. "
+    "Does not trace through dynamic dispatch or runtime lookups."
 )
 
 TOOL_SCHEMA: dict[str, Any] = {

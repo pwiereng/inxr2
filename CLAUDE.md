@@ -14,7 +14,7 @@ INXR2 is a cross-reference code browser for git repositories, similar to LXR but
 
 When the MCP server is running (`http://localhost:3000`), **use it as the first choice** for exploring the inxr2 codebase — symbol search, reference lookups, definition jumping, and code search. Fall back to direct file reads/grep when MCP doesn't cover the need.
 
-**Available MCP tools:** `list_repositories`, `search_symbols`, `find_references`, `go_to_definition`, `search_code`
+**Available MCP tools:** `list_repositories`, `search_symbols`, `find_references`, `go_to_definition`, `search_code`, `find_dead_code`, `review_helper`, `get_file_structure`, `get_change_impact`, `explain_symbol`
 
 **Calling MCP tools** (via the SSE server at `http://localhost:3000`):
 ```bash
@@ -35,9 +35,27 @@ asyncio.run(call(\"search_symbols\", {\"query\": \"MySymbol\", \"repository\": \
 "'
 ```
 
-Replace `search_symbols` and its args with any tool: `list_repositories`, `find_references`, `go_to_definition`, `search_code`, `find_dead_code`, `review_helper`, `get_file_structure`, `get_change_impact`. Use `localhost:3000` for main; use the worktree's MCP port for worktrees (see port table below).
+Replace `search_symbols` and its args with any tool: `list_repositories`, `find_references`, `go_to_definition`, `search_code`, `find_dead_code`, `review_helper`, `get_file_structure`, `get_change_impact`, `explain_symbol`. Use `localhost:3000` for main; use the worktree's MCP port for worktrees (see port table below).
 
-**Reporting:** Whenever you use an MCP tool during your work, briefly mention it to the user — what tool was used, what you found, and whether it was helpful.
+**Index staleness check:** Before relying on MCP results for source code decisions, verify the index is current:
+```bash
+asyncio.run(call("list_repositories", {"detail": True}))
+# Compare "last_indexed_commit" against: git log main --oneline -1
+```
+Rule: if only docs/test commits are missing, trust the index. If source files are missing (e.g. a new module you're about to reference), fall back to Grep/Read for those files.
+
+**Worktree gap:** The index reflects `main` only. Files you've added or changed in your worktree branch won't be indexed. Use MCP for existing codebase navigation; use Grep/Read for your own changes.
+
+**When NOT to use MCP:**
+- Don't use `search_code` to find open files you already have in context — just read them.
+- Don't use `find_references` to confirm a single known call site — you already know it.
+- Do use `get_change_impact` **before** any type signature or interface change — it maps the blast radius in one call.
+
+**Reporting:** Whenever you use an MCP tool during your work, briefly mention it to the user using this format:
+```
+// inxr2: <tool_name> "<query>" → <summary of result> (<helpful/not helpful>)
+// Example: inxr2: get_change_impact "SymbolRepository" → 12 direct dependents in 5 files (helpful)
+```
 
 ## Critical Development Guidelines
 

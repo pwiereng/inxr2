@@ -14,8 +14,10 @@ TOOL_NAME = "go_to_definition"
 TOOL_DESCRIPTION = (
     "Jump to the definition of a symbol. Works across repositories. "
     "Returns the file path, line number, signature, and docstring of the "
-    "symbol definition. Useful for navigating to where a function, class, "
-    "or variable is defined."
+    "symbol definition. Use when you know the exact name and want to locate "
+    "where it is defined. If the symbol name is ambiguous (exists in multiple "
+    "repos or files), use file_path or repository to narrow the result. "
+    "If you also want to see how the symbol is used, use explain_symbol instead."
 )
 
 TOOL_SCHEMA: dict[str, Any] = {

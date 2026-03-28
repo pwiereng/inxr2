@@ -14,8 +14,10 @@ TOOL_DESCRIPTION = (
     "Get a token-efficient symbol structure overview of a file. "
     "Returns a two-level indented view of structural symbols (classes, functions, "
     "methods, properties, etc.) without the full source code — top-level symbols "
-    "with their direct children (e.g. methods under a class). Useful for "
-    "understanding a file's structure before reading it in detail."
+    "with their direct children (e.g. methods under a class). "
+    "Use this before reading a file to decide which parts are relevant, "
+    "or to confirm a file's public API without fetching the full content. "
+    "Variables, constants, and fields are excluded to keep output concise."
 )
 
 # Exclude variable-like and field-like kinds; keep everything structural.

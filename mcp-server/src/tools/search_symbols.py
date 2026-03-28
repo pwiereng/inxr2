@@ -13,8 +13,12 @@ TOOL_NAME = "search_symbols"
 
 TOOL_DESCRIPTION = (
     "Search for symbol definitions (functions, classes, methods, variables) "
-    "by name across all indexed repositories. Supports fuzzy matching. "
-    "Use this to discover symbols without knowing their exact name."
+    "by name across all indexed repositories. Results come from the pre-parsed "
+    "semantic index — this finds actual definitions, not string matches in comments "
+    "or docs. Supports fuzzy matching so you can search without knowing the exact name. "
+    "Only indexed branches are searchable; files added in un-indexed branches will not appear. "
+    "If you already know the exact symbol name, prefer explain_symbol for richer context "
+    "in a single call."
 )
 
 TOOL_SCHEMA: dict[str, Any] = {

@@ -12,10 +12,13 @@ from src.urls import build_browse_url
 TOOL_NAME = "search_code"
 
 TOOL_DESCRIPTION = (
-    "Full-text or regex search across all indexed repositories. "
-    "Search code content, comments, and docstrings. "
-    "Supports keyword, phrase, and regex modes. "
-    "Use source_only=true to exclude documentation and config files."
+    "Full-text or regex search across all indexed file body content. "
+    "Use this when searching for text patterns, string literals, comments, or "
+    "anything that is not a named symbol definition or reference — for those, "
+    "search_symbols or find_references are faster and more precise. "
+    "Supports keyword (default), phrase, and regex modes. "
+    "Use source_only=true to exclude test, doc, and config files. "
+    "Results are deduplicated — each file/line appears at most once."
 )
 
 # File extensions considered non-source (docs, config, data files).

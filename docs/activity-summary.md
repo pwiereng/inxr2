@@ -68,21 +68,22 @@
 | 2026-03-21 | 26 | +4,200 | -2,348 | +1,852 | Swift support, GitHub Actions CI |
 | 2026-03-22 | 9 | +3,153 | -227 | +2,926 | Mermaid diagrams in markdown viewer |
 | 2026-03-23 | 9 | +3,199 | -332 | +2,867 | MCP bug fixes, search_code body indexing |
-| 2026-03-24 | 18 | +4,437 | -3,096 | +1,341 | Search dedup, double-load fix, quick wins |
-| **TOTAL** | **1,036** | **~219,000** | **~53,000** | **+165,639** | |
+| 2026-03-24 | 19 | +4,666 | -3,273 | +1,393 | Search dedup, double-load fix, quick wins |
+| 2026-03-25 | 1 | +78 | -119 | -41 | Regression report archival |
+| **TOTAL** | **1,038** | **~219,000** | **~53,000** | **+165,650** | |
 
-- Days active: 65
-- Avg/day: ~16 commits, +3,369 added, +2,548 net
+- Days active: 66
+- Avg/day: ~16 commits, +2,510 net
 
 ## Key Observations
 
-- 165,639 net lines across 1,036 commits over 65 active days
-- ~2,548 net lines/day average
+- 165,650 net lines across 1,038 commits over 66 active days
+- ~2,510 net lines/day average
 - Jan 25 remains the biggest single day by lines added (+10,849)
 - Feb 21 remains the busiest day by commit count (47 commits)
 - Mar 7 remains the biggest net-lines day (+9,701 net)
 - Feb 11 remains the only net-negative day (pure cleanup/deletion)
-- 63 new commits since last summary (973 → 1,036) over 4 active days
+- 65 new commits since last summary (973 → 1,038) over 5 active days
 
 ## Recent Activity (since last summary 2026-03-17)
 
@@ -96,26 +97,27 @@
 - Fix: prevent double tree-load when latestBranchCommit resolves (#410)
 - regression-test skill now saves dated reports to docs/
 - Quick wins: remove low-value tests (#121/#411), split test_api_endpoints.py (#119/#413), add CommitSelect tests (#122/#412), extract symbol converter (#118/#414)
-- 63 new commits over 4 active days (Mar 21–24)
+- MCP tool descriptions and README updated with indexing model, when-to-use guidance, missing tool docs
+- 65 new commits over 5 active days (Mar 21–25)
 - Test count: 2,093 backend + 651 frontend + 141 MCP, all passing
 
-## Commit Breakdown by Type (as of 2026-03-24, 1,036 commits on main)
+## Commit Breakdown by Type (as of 2026-03-25, 1,038 commits on main)
 
 | Category | Commits | % Commits |
 |----------|---------|-----------|
-| bugfix | 478 | 46.1% |
-| merge | 182 | 17.6% |
+| bugfix | 478 | 46.0% |
+| merge | 182 | 17.5% |
 | feature | 137 | 13.2% |
-| docs | 86 | 8.3% |
+| docs | 88 | 8.5% |
 | refactor | 66 | 6.4% |
 | other | 49 | 4.7% |
 | testing | 20 | 1.9% |
 | perf | 10 | 1.0% |
 | chore | 8 | 0.8% |
-| **TOTAL** | **1,036** | **100.0%** |
+| **TOTAL** | **1,038** | **100.0%** |
 
-- 63 new commits since last summary (973 → 1,036) over 4 active days
+- 65 new commits since last summary (973 → 1,038) over 5 active days
 - Feature commits grew from 129 to 137 (+6%) — Swift, Mermaid, search enhancements
-- Docs grew from 72 to 86 — regression reports, regression-test skill
+- Docs grew from 72 to 88 — regression reports, regression-test skill, MCP documentation
 - Testing grew from 17 to 20 — quick wins batch (CommitSelect, test splits, removals)
-- Bug fixes at 46.1% — MCP fixes, search dedup, double-load, sanitization
+- Bug fixes at 46.0% — MCP fixes, search dedup, double-load, sanitization
