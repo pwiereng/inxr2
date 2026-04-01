@@ -837,15 +837,29 @@ class GitService(GitServicePort):
     def get_tags(self, repo_path: Path) -> dict[str, list[str]]:
         """Return mapping of commit_hash -> [tag_names].
 
+        Uses a single `git for-each-ref` call to resolve all tags in one
+        subprocess, avoiding O(n) GitPython per-tag resolution.
+
         Raises:
             GitOperationError: If the git operation fails.
         """
         repo = self._get_repo(repo_path)
         try:
+            # %(*objectname) dereferences annotated tags to their underlying commit.
+            # %(objectname) is used as fallback for lightweight tags (where * is empty).
+            output = repo.git.for_each_ref(
+                "refs/tags",
+                format="%(objectname) %(*objectname) %(refname:short)",
+            )
             result: dict[str, list[str]] = {}
-            for tag in repo.tags:
-                commit_hash = tag.commit.hexsha
-                result.setdefault(commit_hash, []).append(tag.name)
+            for line in output.splitlines():
+                if not line.strip():
+                    continue
+                parts = line.split(" ", 2)
+                obj_hash, deref_hash, tag_name = parts[0], parts[1], parts[2]
+                # Use dereferenced commit hash for annotated tags, else direct hash
+                commit_hash = deref_hash if deref_hash else obj_hash
+                result.setdefault(commit_hash, []).append(tag_name)
             return result
         except GitCommandError as e:
             raise GitOperationError("get_tags", str(e)) from e
