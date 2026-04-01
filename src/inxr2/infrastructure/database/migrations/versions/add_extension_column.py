@@ -23,7 +23,7 @@ def upgrade() -> None:
     # Add nullable extension column with index
     op.add_column(
         "files",
-        sa.Column("extension", sa.String(20), nullable=True),
+        sa.Column("extension", sa.String(255), nullable=True),
     )
     op.create_index("ix_files_extension", "files", ["extension"])
 
