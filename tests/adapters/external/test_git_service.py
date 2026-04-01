@@ -342,6 +342,115 @@ class TestGitServiceTimeTravel:
         for f in files:
             assert not f.endswith("/")
 
+    def test_list_files_skips_submodule_entries(
+        self, git_service: GitService, tmp_path: Path
+    ) -> None:
+        """Regression test: list_files must not raise on repos with submodules.
+
+        Git represents submodules as tree entries with type "commit". Before
+        the fix, accessing .name on these raised AttributeError.
+        """
+        # Create a "submodule" repo
+        sub_path = tmp_path / "sub-repo"
+        sub_path.mkdir()
+        sub_repo = Repo.init(sub_path, initial_branch="main")
+        sub_repo.config_writer().set_value("user", "name", "Test User").release()
+        sub_repo.config_writer().set_value(
+            "user", "email", "test@example.com"
+        ).release()
+        (sub_path / "sub.txt").write_text("sub content\n")
+        sub_repo.index.add(["sub.txt"])
+        sub_repo.index.commit("Submodule initial commit")
+
+        # Create a parent repo with a regular file and the submodule
+        parent_path = tmp_path / "parent-repo"
+        parent_path.mkdir()
+        parent_repo = Repo.init(parent_path, initial_branch="main")
+        parent_repo.config_writer().set_value("user", "name", "Test User").release()
+        parent_repo.config_writer().set_value(
+            "user", "email", "test@example.com"
+        ).release()
+        (parent_path / "README.md").write_text("parent\n")
+        parent_repo.index.add(["README.md"])
+        parent_repo.index.commit("Initial commit")
+        parent_repo.create_submodule("sub", "sub", url=str(sub_path))
+        parent_repo.index.commit("Add submodule")
+
+        commit_hash = git_service.get_current_commit(parent_path)
+
+        # Must not raise; must return only the non-submodule files
+        files = git_service.list_files(parent_path, commit_hash)
+        assert "README.md" in files
+        assert "sub" not in files  # submodule entry should be skipped
+
+    def test_get_files_at_commit_skips_submodule_entries(
+        self, git_service: GitService, tmp_path: Path
+    ) -> None:
+        """Regression test: get_files_at_commit must not raise on submodule entries."""
+        sub_path = tmp_path / "sub-repo2"
+        sub_path.mkdir()
+        sub_repo = Repo.init(sub_path, initial_branch="main")
+        sub_repo.config_writer().set_value("user", "name", "Test User").release()
+        sub_repo.config_writer().set_value(
+            "user", "email", "test@example.com"
+        ).release()
+        (sub_path / "sub.txt").write_text("sub content\n")
+        sub_repo.index.add(["sub.txt"])
+        sub_repo.index.commit("Submodule initial commit")
+
+        parent_path = tmp_path / "parent-repo2"
+        parent_path.mkdir()
+        parent_repo = Repo.init(parent_path, initial_branch="main")
+        parent_repo.config_writer().set_value("user", "name", "Test User").release()
+        parent_repo.config_writer().set_value(
+            "user", "email", "test@example.com"
+        ).release()
+        (parent_path / "README.md").write_text("parent\n")
+        parent_repo.index.add(["README.md"])
+        parent_repo.index.commit("Initial commit")
+        parent_repo.create_submodule("sub", "sub", url=str(sub_path))
+        parent_repo.index.commit("Add submodule")
+
+        commit_hash = git_service.get_current_commit(parent_path)
+
+        files = git_service.get_files_at_commit(parent_path, commit_hash)
+        assert "README.md" in files
+        assert "sub" not in files
+
+    def test_list_files_with_hashes_skips_submodule_entries(
+        self, git_service: GitService, tmp_path: Path
+    ) -> None:
+        """Regression test: list_files_with_hashes must not raise on submodule entries."""
+        sub_path = tmp_path / "sub-repo3"
+        sub_path.mkdir()
+        sub_repo = Repo.init(sub_path, initial_branch="main")
+        sub_repo.config_writer().set_value("user", "name", "Test User").release()
+        sub_repo.config_writer().set_value(
+            "user", "email", "test@example.com"
+        ).release()
+        (sub_path / "sub.txt").write_text("sub content\n")
+        sub_repo.index.add(["sub.txt"])
+        sub_repo.index.commit("Submodule initial commit")
+
+        parent_path = tmp_path / "parent-repo3"
+        parent_path.mkdir()
+        parent_repo = Repo.init(parent_path, initial_branch="main")
+        parent_repo.config_writer().set_value("user", "name", "Test User").release()
+        parent_repo.config_writer().set_value(
+            "user", "email", "test@example.com"
+        ).release()
+        (parent_path / "README.md").write_text("parent\n")
+        parent_repo.index.add(["README.md"])
+        parent_repo.index.commit("Initial commit")
+        parent_repo.create_submodule("sub", "sub", url=str(sub_path))
+        parent_repo.index.commit("Add submodule")
+
+        commit_hash = git_service.get_current_commit(parent_path)
+
+        result = git_service.list_files_with_hashes(parent_path, commit_hash)
+        assert "README.md" in result
+        assert "sub" not in result
+
     def test_get_changed_files_in_commit(
         self, git_service: GitService, temp_git_repo: Path
     ) -> None:

@@ -284,6 +284,8 @@ class GitService(GitServicePort):
 
         def traverse_tree(tree: Any, prefix: str = "") -> None:
             for item in tree:
+                if item.type in ("commit", "submodule"):  # submodule entry — skip
+                    continue
                 path = f"{prefix}{item.name}" if prefix else item.name
                 if item.type == "blob":
                     files.append(path)
@@ -315,6 +317,8 @@ class GitService(GitServicePort):
 
         def traverse_tree(tree: Any, prefix: str = "") -> None:
             for item in tree:
+                if item.type in ("commit", "submodule"):  # submodule entry — skip
+                    continue
                 path = f"{prefix}{item.name}" if prefix else item.name
                 if item.type == "blob":
                     result[path] = item.hexsha
@@ -754,6 +758,8 @@ class GitService(GitServicePort):
 
         def traverse_tree(tree: Any, prefix: str = "") -> None:
             for item in tree:
+                if item.type in ("commit", "submodule"):  # submodule entry — skip
+                    continue
                 path = f"{prefix}{item.name}" if prefix else item.name
                 if item.type == "blob":
                     files.add(path)
