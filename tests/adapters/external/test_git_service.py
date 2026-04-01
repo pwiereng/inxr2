@@ -1,5 +1,6 @@
 """Tests for GitService adapter."""
 
+import time
 from pathlib import Path
 
 import pytest
@@ -1290,8 +1291,6 @@ class TestGetTags:
         With the old O(n) GitPython implementation each tag triggered a subprocess
         call; this test would take ~10s. With for-each-ref it should finish in < 1s.
         """
-        import time
-
         repo_path = tmp_path / "big-tag-repo"
         repo_path.mkdir()
         repo = Repo.init(repo_path, initial_branch="main")
