@@ -1,5 +1,6 @@
 """Tests for GitService adapter."""
 
+import time
 from pathlib import Path
 
 import pytest
@@ -1274,3 +1275,148 @@ class TestListCommitsMergeHistory:
         assert not any(
             "old:" in m for m in messages
         ), f"Pre-boundary first-parent commits should be excluded, got: {messages}"
+
+
+class TestGetTags:
+    """Tests for GitService.get_tags() — single-subprocess implementation."""
+
+    @pytest.fixture
+    def git_service(self) -> GitService:
+        return GitService()
+
+    @pytest.fixture
+    def repo_with_tags(self, tmp_path: Path) -> tuple[Path, dict[str, str]]:
+        """Create a git repo with both lightweight and annotated tags.
+
+        Returns (repo_path, {tag_name: commit_hash}).
+        """
+        repo_path = tmp_path / "tag-repo"
+        repo_path.mkdir()
+        repo = Repo.init(repo_path, initial_branch="main")
+        repo.config_writer().set_value("user", "name", "Test User").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+        (repo_path / "a.txt").write_text("first\n")
+        repo.index.add(["a.txt"])
+        commit1 = repo.index.commit("first commit")
+
+        (repo_path / "b.txt").write_text("second\n")
+        repo.index.add(["b.txt"])
+        commit2 = repo.index.commit("second commit")
+
+        # Lightweight tag on commit1
+        repo.create_tag("v0.1", ref=commit1)
+        # Annotated tag on commit2
+        repo.create_tag("v1.0", ref=commit2, message="Release 1.0")
+
+        return repo_path, {
+            "v0.1": str(commit1.hexsha),
+            "v1.0": str(commit2.hexsha),
+        }
+
+    def test_lightweight_tag_resolves_to_commit(
+        self,
+        git_service: GitService,
+        repo_with_tags: tuple[Path, dict[str, str]],
+    ) -> None:
+        """Lightweight tags map directly to their commit hash."""
+        repo_path, expected = repo_with_tags
+        result = git_service.get_tags(repo_path)
+        commit_hash = expected["v0.1"]
+        assert "v0.1" in result.get(commit_hash, [])
+
+    def test_annotated_tag_resolves_to_underlying_commit(
+        self,
+        git_service: GitService,
+        repo_with_tags: tuple[Path, dict[str, str]],
+    ) -> None:
+        """Annotated tags are dereferenced to their underlying commit, not the tag object."""
+        repo_path, expected = repo_with_tags
+        result = git_service.get_tags(repo_path)
+        commit_hash = expected["v1.0"]
+        assert "v1.0" in result.get(commit_hash, [])
+
+    def test_returns_all_tags(
+        self,
+        git_service: GitService,
+        repo_with_tags: tuple[Path, dict[str, str]],
+    ) -> None:
+        """All tags appear in the result."""
+        repo_path, _ = repo_with_tags
+        result = git_service.get_tags(repo_path)
+        all_tag_names = [name for names in result.values() for name in names]
+        assert set(all_tag_names) == {"v0.1", "v1.0"}
+
+    def test_multiple_tags_on_same_commit(
+        self,
+        git_service: GitService,
+        tmp_path: Path,
+    ) -> None:
+        """Multiple tags on the same commit are all returned in a single list."""
+        repo_path = tmp_path / "multi-tag-repo"
+        repo_path.mkdir()
+        repo = Repo.init(repo_path, initial_branch="main")
+        repo.config_writer().set_value("user", "name", "T").release()
+        repo.config_writer().set_value("user", "email", "t@t.com").release()
+
+        (repo_path / "f.txt").write_text("x\n")
+        repo.index.add(["f.txt"])
+        commit = repo.index.commit("only commit")
+
+        repo.create_tag("alpha")
+        repo.create_tag("beta")
+        repo.create_tag("gamma")
+
+        result = git_service.get_tags(repo_path)
+        commit_hash = str(commit.hexsha)
+        assert commit_hash in result
+        assert set(result[commit_hash]) == {"alpha", "beta", "gamma"}
+
+    def test_empty_repo_returns_empty_dict(
+        self,
+        git_service: GitService,
+        tmp_path: Path,
+    ) -> None:
+        """A repo with no tags returns an empty dict."""
+        repo_path = tmp_path / "no-tags"
+        repo_path.mkdir()
+        repo = Repo.init(repo_path, initial_branch="main")
+        repo.config_writer().set_value("user", "name", "T").release()
+        repo.config_writer().set_value("user", "email", "t@t.com").release()
+        (repo_path / "f.txt").write_text("x\n")
+        repo.index.add(["f.txt"])
+        repo.index.commit("init")
+
+        result = git_service.get_tags(repo_path)
+        assert result == {}
+
+    def test_large_tag_count_completes_quickly(
+        self,
+        git_service: GitService,
+        tmp_path: Path,
+    ) -> None:
+        """Regression: 500 tags must resolve in a single subprocess (< 1s total).
+
+        With the old O(n) GitPython implementation each tag triggered a subprocess
+        call; this test would take ~10s. With for-each-ref it should finish in < 1s.
+        """
+        repo_path = tmp_path / "big-tag-repo"
+        repo_path.mkdir()
+        repo = Repo.init(repo_path, initial_branch="main")
+        repo.config_writer().set_value("user", "name", "T").release()
+        repo.config_writer().set_value("user", "email", "t@t.com").release()
+        (repo_path / "f.txt").write_text("x\n")
+        repo.index.add(["f.txt"])
+        repo.index.commit("init")
+
+        for i in range(500):
+            repo.create_tag(f"v0.{i}")
+
+        start = time.monotonic()
+        result = git_service.get_tags(repo_path)
+        elapsed = time.monotonic() - start
+
+        assert len([name for names in result.values() for name in names]) == 500
+        assert (
+            elapsed < 1.0
+        ), f"get_tags took {elapsed:.2f}s with 500 tags — expected < 1s"
