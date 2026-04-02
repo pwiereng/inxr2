@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from urllib.parse import quote
 
 from src.client import Inxr2Client
+
+logger = logging.getLogger("inxr2.mcp")
 
 TOOL_NAME = "list_repositories"
 
@@ -35,7 +38,8 @@ async def _fetch_stats_safe(client: Inxr2Client, repo_id: int) -> dict[str, Any]
     """Fetch repo stats, returning an empty dict on any error (staleness is informational)."""
     try:
         return await client.get(f"/api/repositories/{repo_id}/stats")  # type: ignore[no-any-return]
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed to fetch stats for repo %d: %s", repo_id, exc)
         return {}
 
 
