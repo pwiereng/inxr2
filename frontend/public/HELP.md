@@ -140,6 +140,10 @@ Copy the URL from your browser's address bar to share a specific view with a col
 
 INXR2 includes an MCP (Model Context Protocol) server that exposes its code intelligence as tools for AI assistants like Claude Desktop, Cursor, and Claude Code. This lets your AI assistant search symbols, find references, and navigate code across all your indexed repositories.
 
+### Agent Guide Resource
+
+The MCP server exposes a resource at `inxr2://guide` that AI assistants can fetch for orientation — how the index works, when to use each tool, how to check staleness, and common workflows. If your AI assistant supports MCP resources, it can fetch this at the start of a session instead of relying on tool descriptions alone.
+
 ### Available Tools
 
 #### `list_repositories`
@@ -346,3 +350,12 @@ Once configured, ask your AI assistant to "list repositories in INXR2" to verify
 ### Staleness Warnings
 
 All MCP tools automatically detect when the indexed data is behind the latest git commits and include a warning in the response, along with the hash of the last indexed commit.
+
+`list_repositories` also shows a `commits_behind` field per branch so you can check index freshness before running any queries:
+
+```
+  inxr2 (default: main, indexed branches: main)
+    main: 142 commits, head: a1b2c3d, commits_behind: 0
+```
+
+`commits_behind: 0` means the index is current. `commits_behind: ? (stale) ⚠️` means newer commits exist that haven't been indexed. To update, run `inxr2 index --config config.yaml` inside the dev container.

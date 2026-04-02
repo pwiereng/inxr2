@@ -15,10 +15,12 @@ import time
 from datetime import UTC, datetime
 
 from mcp.server import Server
+from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.server.stdio import stdio_server
-from mcp.types import CallToolResult, TextContent, Tool
+from mcp.types import AnyUrl, CallToolResult, Resource, TextContent, Tool
 
 from src.client import HttpInxr2Client, Inxr2Client
+from src.resources import guide
 from src.tools import (
     explain_symbol,
     find_dead_code,
@@ -55,6 +57,27 @@ TOOL_MAP = {tool.TOOL_NAME: tool for tool in TOOLS}
 def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Server:
     """Create an MCP server wired to the given INXR2 client."""
     server = Server("inxr2")
+
+    @server.list_resources()
+    async def list_resources() -> list[Resource]:
+        return [
+            Resource(
+                uri=guide.RESOURCE_URI,  # type: ignore[arg-type]
+                name=guide.RESOURCE_NAME,
+                description=guide.RESOURCE_DESCRIPTION,
+                mimeType="text/plain",
+            )
+        ]
+
+    @server.read_resource()
+    async def read_resource(uri: AnyUrl) -> list[ReadResourceContents]:
+        if str(uri) == guide.RESOURCE_URI:
+            return [
+                ReadResourceContents(
+                    content=guide.RESOURCE_CONTENT, mime_type="text/plain"
+                )
+            ]
+        raise ValueError(f"Unknown resource: {str(uri)}")
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
