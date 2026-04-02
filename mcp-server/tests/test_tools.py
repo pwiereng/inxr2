@@ -593,6 +593,50 @@ class TestListRepositories:
         assert "ddeeff7" in result
         assert "commits_behind: ? (stale)" in result
 
+    async def test_detail_degrades_gracefully_on_stats_error(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(
+            1,
+            "my-app",
+            default_branch="main",
+            indexed_branches=[
+                {
+                    "name": "main",
+                    "commit_count": 50,
+                    "last_indexed_commit": "abc123def456",
+                },
+            ],
+        )
+        client.set_stats_error(1)
+
+        result = await list_repositories.handle(client, {"repository": "my-app"})
+
+        assert "my-app" in result
+        assert "main: 50 commits" in result
+        assert "commits_behind: unknown" in result
+
+    async def test_list_degrades_gracefully_on_stats_error(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(
+            1,
+            "my-app",
+            default_branch="main",
+            indexed_branches=[
+                {
+                    "name": "main",
+                    "commit_count": 50,
+                    "last_indexed_commit": "abc123def456",
+                },
+            ],
+        )
+        client.set_stats_error(1)
+
+        result = await list_repositories.handle(client, {})
+
+        assert "my-app" in result
+        assert "main: 50 commits" in result
+        assert "commits_behind: unknown" in result
+
 
 # --- find_dead_code ---
 

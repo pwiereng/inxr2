@@ -15,7 +15,8 @@ TOOL_DESCRIPTION = (
     "before querying with other tools. Only shows branches that have "
     "been indexed — branches that exist in git but have never been indexed "
     "will not appear. Each branch shows commit count, last-indexed commit SHA, "
-    "and commits_behind (0 = current; '? (stale)' = newer commits exist). "
+    "and commits_behind (0 = current; '? (stale)' = newer commits exist; "
+    "'unknown' = staleness could not be determined). "
     "Use this to verify whether the index is current before relying on results."
 )
 
@@ -30,6 +31,20 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
+async def _fetch_stats_safe(client: Inxr2Client, repo_id: int) -> dict[str, Any]:
+    """Fetch repo stats, returning an empty dict on any error (staleness is informational)."""
+    try:
+        return await client.get(f"/api/repositories/{repo_id}/stats")  # type: ignore[no-any-return]
+    except Exception:
+        return {}
+
+
+def _commits_behind_str(is_stale: bool | None) -> str:
+    if is_stale is None:
+        return "unknown"
+    return "? (stale) ⚠️" if is_stale else "0"
+
+
 async def handle(
     client: Inxr2Client,
     arguments: dict[str, Any],
@@ -40,20 +55,20 @@ async def handle(
     repository = arguments.get("repository")
 
     if repository:
-        # Single repo detail
+        # Single repo detail — fetch repo first (need ID for stats URL),
+        # then branches and stats in parallel.
         encoded = quote(repository, safe="")
-        repo, branches_data = await asyncio.gather(
-            client.get(f"/api/repositories/by-name/{encoded}"),
+        repo = await client.get(f"/api/repositories/by-name/{encoded}")
+        branches_data, stats = await asyncio.gather(
             client.get(f"/api/repositories/by-name/{encoded}/branches"),
+            _fetch_stats_safe(client, repo["id"]),
         )
         indexed = [
             b
             for b in branches_data.get("branches", [])
             if b.get("last_indexed_commit") is not None or b.get("commit_count", 0) > 0
         ]
-        stats = await client.get(f"/api/repositories/{repo['id']}/stats")
-        is_stale = stats.get("is_stale", False)
-        commits_behind_str = "0" if not is_stale else "? (stale) ⚠️"
+        commits_behind = _commits_behind_str(stats.get("is_stale"))
 
         lines = [f"Repository: {repo['name']}"]
         lines.append(f"  Default branch: {repo.get('default_branch', 'unknown')}")
@@ -62,23 +77,23 @@ async def handle(
             commit = (b.get("last_indexed_commit") or "")[:7]
             count = b.get("commit_count", 0)
             lines.append(
-                f"    {b['name']}: {count} commits, head: {commit}, commits_behind: {commits_behind_str}"
+                f"    {b['name']}: {count} commits, head: {commit}, commits_behind: {commits_behind}"
             )
         return "\n".join(lines)
 
-    # All repos — fetch branches and stats in parallel
+    # All repos — fetch branches and stats in parallel per repo
     repos = await client.get("/api/repositories")
 
     async def fetch_branches(repo: dict[str, Any]) -> dict[str, Any]:
         encoded_name = quote(repo["name"], safe="")
         branches_data, stats = await asyncio.gather(
             client.get(f"/api/repositories/by-name/{encoded_name}/branches"),
-            client.get(f"/api/repositories/{repo['id']}/stats"),
+            _fetch_stats_safe(client, repo["id"]),
         )
         return {
             "repo": repo,
             "branches": branches_data.get("branches", []),
-            "is_stale": stats.get("is_stale", False),
+            "is_stale": stats.get("is_stale"),
         }
 
     results = await asyncio.gather(*[fetch_branches(r) for r in repos])
@@ -86,8 +101,7 @@ async def handle(
     lines = [f"Repositories: {len(repos)} available"]
     for result in results:
         repo = result["repo"]
-        is_stale = result["is_stale"]
-        commits_behind_str = "0" if not is_stale else "? (stale) ⚠️"
+        commits_behind = _commits_behind_str(result["is_stale"])
         indexed = [
             b
             for b in result["branches"]
@@ -102,7 +116,7 @@ async def handle(
             commit = (b.get("last_indexed_commit") or "")[:7]
             count = b.get("commit_count", 0)
             lines.append(
-                f"    {b['name']}: {count} commits, head: {commit}, commits_behind: {commits_behind_str}"
+                f"    {b['name']}: {count} commits, head: {commit}, commits_behind: {commits_behind}"
             )
 
     return "\n".join(lines)
