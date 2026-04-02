@@ -22,6 +22,9 @@ class FakeInxr2Client(Inxr2Client):
         self._search_results: list[dict[str, Any]] = []
         self._branches: dict[int, list[dict[str, Any]]] = {}  # repo_id -> branches
         self._stats: dict[int, dict[str, Any]] = {}  # repo_id -> stats
+        self._stats_errors: set[int] = (
+            set()
+        )  # repo_ids that should raise on stats fetch
         self._commits: dict[str, list[dict[str, Any]]] = {}  # repo_name -> commits
         self._changed_files: dict[str, list[dict[str, Any]]] = (
             {}
@@ -109,6 +112,10 @@ class FakeInxr2Client(Inxr2Client):
             "last_indexed_commit": last_indexed_commit,
             "last_indexed_at": last_indexed_at,
         }
+
+    def set_stats_error(self, repo_id: int) -> None:
+        """Make the stats endpoint raise an exception for this repo (to test graceful degradation)."""
+        self._stats_errors.add(repo_id)
 
     def add_commit(
         self,
@@ -277,6 +284,8 @@ class FakeInxr2Client(Inxr2Client):
         if path.endswith("/stats") and "/repositories/" in path:
             parts = path.split("/")
             repo_id = int(parts[3])  # /api/repositories/{id}/stats
+            if repo_id in self._stats_errors:
+                raise Exception(f"Simulated stats error for repo {repo_id}")
             return self._stats.get(
                 repo_id,
                 {

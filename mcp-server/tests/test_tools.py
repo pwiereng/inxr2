@@ -485,8 +485,8 @@ class TestListRepositories:
 
         assert "my-app" in result
         assert "Indexed branches: 2" in result
-        assert "main (50 commits" in result
-        assert "develop (10 commits" in result
+        assert "main: 50 commits" in result
+        assert "develop: 10 commits" in result
 
     async def test_filters_unindexed_branches(self) -> None:
         client = FakeInxr2Client()
@@ -508,6 +508,134 @@ class TestListRepositories:
         assert "main" in result
         assert "stale-branch" not in result
         assert "Indexed branches: 1" in result
+
+    async def test_detail_shows_commits_behind_zero_when_fresh(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(
+            1,
+            "my-app",
+            default_branch="main",
+            indexed_branches=[
+                {
+                    "name": "main",
+                    "commit_count": 100,
+                    "last_indexed_commit": "abcdef1234567",
+                },
+            ],
+        )
+        client.set_stats(1, is_stale=False)
+
+        result = await list_repositories.handle(client, {"repository": "my-app"})
+
+        assert "main: 100 commits" in result
+        assert "head: abcdef1" in result
+        assert "commits_behind: 0" in result
+
+    async def test_detail_shows_stale_indicator_when_stale(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(
+            1,
+            "my-app",
+            default_branch="main",
+            indexed_branches=[
+                {
+                    "name": "main",
+                    "commit_count": 200,
+                    "last_indexed_commit": "deadbeef00000",
+                },
+            ],
+        )
+        client.set_stats(1, is_stale=True, last_indexed_commit="deadbeef00000")
+
+        result = await list_repositories.handle(client, {"repository": "my-app"})
+
+        assert "main: 200 commits" in result
+        assert "commits_behind: ? (stale)" in result
+        assert "⚠️" in result
+
+    async def test_list_shows_per_branch_staleness(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(
+            1,
+            "repo-a",
+            default_branch="main",
+            indexed_branches=[
+                {
+                    "name": "main",
+                    "commit_count": 50,
+                    "last_indexed_commit": "aabbcc1234567",
+                },
+            ],
+        )
+        client.add_repository(
+            2,
+            "repo-b",
+            default_branch="main",
+            indexed_branches=[
+                {
+                    "name": "main",
+                    "commit_count": 30,
+                    "last_indexed_commit": "ddeeff7654321",
+                },
+            ],
+        )
+        client.set_stats(1, is_stale=False)
+        client.set_stats(2, is_stale=True)
+
+        result = await list_repositories.handle(client, {})
+
+        assert "repo-a" in result
+        assert "repo-b" in result
+        # repo-a is fresh
+        assert "aabbcc1" in result
+        assert "commits_behind: 0" in result
+        # repo-b is stale
+        assert "ddeeff7" in result
+        assert "commits_behind: ? (stale)" in result
+
+    async def test_detail_degrades_gracefully_on_stats_error(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(
+            1,
+            "my-app",
+            default_branch="main",
+            indexed_branches=[
+                {
+                    "name": "main",
+                    "commit_count": 50,
+                    "last_indexed_commit": "abc123def456",
+                },
+            ],
+        )
+        client.set_stats_error(1)
+
+        result = await list_repositories.handle(client, {"repository": "my-app"})
+
+        assert "my-app" in result
+        assert "main: 50 commits" in result
+        assert "commits_behind: unknown" in result
+
+    async def test_list_degrades_gracefully_on_stats_error(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(
+            1,
+            "my-app",
+            default_branch="main",
+            indexed_branches=[
+                {
+                    "name": "main",
+                    "commit_count": 50,
+                    "last_indexed_commit": "abc123def456",
+                },
+            ],
+        )
+        client.set_stats_error(1)
+
+        result = await list_repositories.handle(client, {})
+
+        assert "my-app" in result
+        assert "main: 50 commits" in result
+        assert "commits_behind: unknown" in result
 
 
 # --- find_dead_code ---
