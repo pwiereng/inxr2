@@ -37,12 +37,14 @@ asyncio.run(call(\"search_symbols\", {\"query\": \"MySymbol\", \"repository\": \
 
 Replace `search_symbols` and its args with any tool: `list_repositories`, `find_references`, `go_to_definition`, `search_code`, `find_dead_code`, `review_helper`, `get_file_structure`, `get_change_impact`, `explain_symbol`. Use `localhost:3000` for main; use the worktree's MCP port for worktrees (see port table below).
 
-**Index staleness check:** Before relying on MCP results for source code decisions, verify the index is current:
-```bash
-asyncio.run(call("list_repositories", {"detail": True}))
-# Compare "last_indexed_commit" against: git log main --oneline -1
+**Agent guide resource:** The MCP server exposes `inxr2://guide` — fetch it at the start of a session for orientation on tool selection, staleness checking, and common workflows.
+
+**Index staleness check:** Call `list_repositories` (no arguments) and check `commits_behind` per branch:
 ```
-Rule: if only docs/test commits are missing, trust the index. If source files are missing (e.g. a new module you're about to reference), fall back to Grep/Read for those files.
+  inxr2 (default: main, indexed branches: main)
+    main: 142 commits, head: a1b2c3d, commits_behind: 0
+```
+`commits_behind: 0` = current. `commits_behind: ? (stale) ⚠️` = re-index needed (`inxr2 index --config config.yaml` inside the dev container). If stale, fall back to Grep/Read for recently changed files and tell the user to re-index.
 
 **Worktree gap:** The index reflects `main` only. Files you've added or changed in your worktree branch won't be indexed. Use MCP for existing codebase navigation; use Grep/Read for your own changes.
 
