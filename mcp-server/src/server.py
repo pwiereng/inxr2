@@ -15,9 +15,18 @@ import time
 from datetime import UTC, datetime
 
 from mcp.server import Server
-from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.server.stdio import stdio_server
-from mcp.types import AnyUrl, CallToolResult, Resource, TextContent, Tool
+from mcp.types import (
+    AnyUrl,
+    CallToolResult,
+    ReadResourceRequest,
+    ReadResourceResult,
+    Resource,
+    ServerResult,
+    TextContent,
+    TextResourceContents,
+    Tool,
+)
 
 from src.client import HttpInxr2Client, Inxr2Client
 from src.resources import guide
@@ -62,22 +71,29 @@ def create_server(client: Inxr2Client, frontend_url: str | None = None) -> Serve
     async def list_resources() -> list[Resource]:
         return [
             Resource(
-                uri=guide.RESOURCE_URI,  # type: ignore[arg-type]
+                uri=AnyUrl(guide.RESOURCE_URI),
                 name=guide.RESOURCE_NAME,
                 description=guide.RESOURCE_DESCRIPTION,
                 mimeType="text/plain",
             )
         ]
 
-    @server.read_resource()
-    async def read_resource(uri: AnyUrl) -> list[ReadResourceContents]:
-        if str(uri) == guide.RESOURCE_URI:
-            return [
-                ReadResourceContents(
-                    content=guide.RESOURCE_CONTENT, mime_type="text/plain"
+    async def _read_resource(req: ReadResourceRequest) -> ServerResult:
+        if str(req.params.uri) == guide.RESOURCE_URI:
+            return ServerResult(
+                ReadResourceResult(
+                    contents=[
+                        TextResourceContents(
+                            uri=req.params.uri,
+                            mimeType="text/plain",
+                            text=guide.RESOURCE_CONTENT,
+                        )
+                    ]
                 )
-            ]
-        raise ValueError(f"Unknown resource: {str(uri)}")
+            )
+        raise ValueError(f"Unknown resource: {str(req.params.uri)}")
+
+    server.request_handlers[ReadResourceRequest] = _read_resource
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
