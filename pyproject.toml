@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=65.0", "wheel"]
+requires = ["setuptools>=65.0", "wheel>=0.46.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -76,6 +76,7 @@ dev = [
     # Development tools
     "ipython>=8.15.0",
     "ipdb>=0.13.0",
+    "pygments>=2.20.0",  # CVE-2026-4539 fixed in 2.20.0
 
     # Pre-commit hooks
     "pre-commit>=3.4.0",
