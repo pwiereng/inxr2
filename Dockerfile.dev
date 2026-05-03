@@ -52,6 +52,7 @@ WORKDIR /workspace
 # site-packages.
 COPY pyproject.toml README.md ./
 RUN mkdir -p src/inxr2 && touch src/inxr2/__init__.py && \
+    pip install --no-cache-dir --upgrade 'pip>=26.0' 'wheel>=0.46.2' && \
     pip install -e '.[dev]' && \
     rm -rf src
 

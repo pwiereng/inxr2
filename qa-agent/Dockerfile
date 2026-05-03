@@ -9,7 +9,8 @@ RUN apt-get update && apt-get install -y \
 
 # Install Python dependencies
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir --upgrade 'pip>=26.0' 'wheel>=0.46.2' && \
+    pip install --no-cache-dir -e .
 
 # Install Playwright browsers
 RUN playwright install chromium --with-deps
