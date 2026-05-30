@@ -6,7 +6,7 @@
 ![React](https://img.shields.io/badge/react-19-61dafb.svg)
 ![TypeScript](https://img.shields.io/badge/typescript-strict-3178c6.svg)
 
-> **Project status:** Actively developed as a solo project. Built to be self-hosted — run it locally or in your own environment. Issues and PRs welcome (PRs are reviewed before merge).
+> **Status:** Production-ready core, actively developed as a solo project — built to be self-hosted. Issues and PRs welcome (reviewed before merge). See [Project Status](#project-status) for what's stable.
 
 This is a modern cross-reference code browser designed for teams working with git repositories. INXR2 enables developers to browse, search, and understand code across multiple repositories with powerful temporal navigation capabilities.
 
