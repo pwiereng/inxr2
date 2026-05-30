@@ -10,6 +10,24 @@
 
 This is a modern cross-reference code browser designed for teams working with git repositories. INXR2 enables developers to browse, search, and understand code across multiple repositories with powerful temporal navigation capabilities.
 
+## Screenshots
+
+**Browse code with go-to-definition and find-references** — click any symbol to jump to its definition and see every usage across your repositories.
+
+![Browse with go-to-definition and references panel](docs/screenshots/browse-references.png)
+
+**Cross-repository symbol search** — fuzzy or exact search across definitions, references, comments, docstrings, commit messages, and file content.
+
+![Symbol and code search across repositories](docs/screenshots/search.png)
+
+**Logical View** — a structural outline of every symbol in a repository, filterable by language and symbol kind.
+
+![Logical View symbol outline](docs/screenshots/logical-view.png)
+
+**Time-travel through git history** — browse the codebase exactly as it was at any commit.
+
+![Commit history view](docs/screenshots/history.png)
+
 ## Overview
 
 INXR2 is similar to LXR (Linux Cross Reference) but built specifically for git-based development workflows. It provides deep code intelligence with the ability to browse code at any point in history, making it easy to understand how your codebase evolved over time.
