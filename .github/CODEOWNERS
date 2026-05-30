@@ -1,0 +1,4 @@
+# Code owners for INXR2.
+# @pwiereng is the required reviewer for all changes once branch protection
+# with "Require review from Code Owners" is enabled (on going public).
+* @pwiereng
