@@ -615,7 +615,13 @@ We welcome contributions! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for
 
 ## License
 
-TBD
+Released under the [MIT License](LICENSE).
+
+## Security
+
+Found a vulnerability? Please report it privately via GitHub's
+["Report a vulnerability"](https://github.com/pwiereng/inxr2/security/advisories/new)
+button rather than opening a public issue. See [SECURITY.md](SECURITY.md) for details.
 
 ## Support
 
