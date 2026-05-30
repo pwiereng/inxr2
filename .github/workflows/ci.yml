@@ -1,7 +1,11 @@
 name: CI
 
 on:
-  workflow_dispatch: # manual trigger only — re-enable push/pull_request when minutes reset
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   # ---------------------------------------------------------------------------
