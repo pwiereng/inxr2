@@ -603,9 +603,9 @@ See `config.example.yaml` for a complete example.
 
 ## Project Status
 
-**Current Phase**: Active development — all core features implemented
+**Current state:** Production-ready core, actively developed as a solo project.
 
-INXR2 has completed all core phases (1.1–1.11) plus Logical View, Dependency Inventory, and MCP server integration. 771 commits across 53 active days, with 1,727 backend tests passing and a 62-test regression suite.
+INXR2 has completed all core phases plus Logical View, Dependency Inventory, and MCP server integration. It has comprehensive automated tests (80%+ coverage minimum) and a 75-case regression suite. See the [activity summary](docs/activity-summary.md) for full commit history and metrics (1,053 commits across 73 active days as of May 2026).
 
 ### Completed Features
 - Project setup, React frontend, and development infrastructure
