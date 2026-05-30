@@ -1,5 +1,13 @@
 # INXR2 - Cross-Reference Code Browser
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/pwiereng/inxr2/actions/workflows/ci.yml/badge.svg)](https://github.com/pwiereng/inxr2/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
+![React](https://img.shields.io/badge/react-19-61dafb.svg)
+![TypeScript](https://img.shields.io/badge/typescript-strict-3178c6.svg)
+
+> **Project status:** Actively developed as a solo project. Built to be self-hosted — run it locally or in your own environment. Issues and PRs welcome (PRs are reviewed before merge).
+
 This is a modern cross-reference code browser designed for teams working with git repositories. INXR2 enables developers to browse, search, and understand code across multiple repositories with powerful temporal navigation capabilities.
 
 ## Overview
