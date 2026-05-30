@@ -19,7 +19,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build backend
-FROM python:3.11-slim AS backend-builder
+FROM python:3.14-slim AS backend-builder
 
 WORKDIR /build
 
@@ -39,7 +39,7 @@ RUN pip install --no-cache-dir --upgrade 'pip>=26.0' 'wheel>=0.46.2' && \
     pip install --no-cache-dir .
 
 # Stage 3: Final production image
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \

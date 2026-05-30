@@ -1,7 +1,7 @@
 # Development Dockerfile for INXR2
 # This image includes Python, Node.js, PostgreSQL server, and all development tools
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Prevent Python from writing pyc files and buffering stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
