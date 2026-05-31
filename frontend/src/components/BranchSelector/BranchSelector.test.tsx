@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, act, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BranchSelector } from './BranchSelector'
 import * as api from '@/lib/api'
@@ -22,18 +22,16 @@ describe('BranchSelector', () => {
       () => new Promise(() => {}) // Never resolves
     )
 
-    await act(async () => {
-      render(
-        <BranchSelector
-          repositoryName="inxr2"
-          selectedBranch={null}
-          defaultBranch="main"
-          onBranchChange={mockOnBranchChange}
-        />
-      )
-    })
+    render(
+      <BranchSelector
+        repositoryName="inxr2"
+        selectedBranch={null}
+        defaultBranch="main"
+        onBranchChange={mockOnBranchChange}
+      />
+    )
 
-    expect(screen.getByRole('progressbar')).toBeInTheDocument()
+    expect(await screen.findByRole('progressbar')).toBeInTheDocument()
   })
 
   it('renders single branch as plain text', async () => {
@@ -49,20 +47,16 @@ describe('BranchSelector', () => {
       ],
     })
 
-    await act(async () => {
-      render(
-        <BranchSelector
-          repositoryName="inxr2"
-          selectedBranch={null}
-          defaultBranch="main"
-          onBranchChange={mockOnBranchChange}
-        />
-      )
-      // Allow async effects to settle
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    })
+    render(
+      <BranchSelector
+        repositoryName="inxr2"
+        selectedBranch={null}
+        defaultBranch="main"
+        onBranchChange={mockOnBranchChange}
+      />
+    )
 
-    expect(screen.getByText('main')).toBeInTheDocument()
+    expect(await screen.findByText('main')).toBeInTheDocument()
     // Should not have a dropdown button when single branch
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
@@ -87,19 +81,16 @@ describe('BranchSelector', () => {
       ],
     })
 
-    await act(async () => {
-      render(
-        <BranchSelector
-          repositoryName="inxr2"
-          selectedBranch={null}
-          defaultBranch="main"
-          onBranchChange={mockOnBranchChange}
-        />
-      )
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    })
+    render(
+      <BranchSelector
+        repositoryName="inxr2"
+        selectedBranch={null}
+        defaultBranch="main"
+        onBranchChange={mockOnBranchChange}
+      />
+    )
 
-    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(await screen.findByRole('combobox')).toBeInTheDocument()
   })
 
   it('calls onBranchChange when branch is selected', async () => {
@@ -124,29 +115,20 @@ describe('BranchSelector', () => {
 
     const user = userEvent.setup()
 
-    await act(async () => {
-      render(
-        <BranchSelector
-          repositoryName="inxr2"
-          selectedBranch={null}
-          defaultBranch="main"
-          onBranchChange={mockOnBranchChange}
-        />
-      )
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    })
+    render(
+      <BranchSelector
+        repositoryName="inxr2"
+        selectedBranch={null}
+        defaultBranch="main"
+        onBranchChange={mockOnBranchChange}
+      />
+    )
 
-    // Open the dropdown
-    await act(async () => {
-      await user.click(screen.getByRole('combobox'))
-    })
+    // Open the dropdown once branches have loaded
+    await user.click(await screen.findByRole('combobox'))
 
     // Select the feature branch
-    await act(async () => {
-      await user.click(screen.getByText('feature'))
-      // Wait for MUI transitions to complete
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    })
+    await user.click(await screen.findByRole('option', { name: /feature/ }))
 
     expect(mockOnBranchChange).toHaveBeenCalledWith('feature')
   })
@@ -173,29 +155,20 @@ describe('BranchSelector', () => {
 
     const user = userEvent.setup()
 
-    await act(async () => {
-      render(
-        <BranchSelector
-          repositoryName="inxr2"
-          selectedBranch="feature"
-          defaultBranch="main"
-          onBranchChange={mockOnBranchChange}
-        />
-      )
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    })
+    render(
+      <BranchSelector
+        repositoryName="inxr2"
+        selectedBranch="feature"
+        defaultBranch="main"
+        onBranchChange={mockOnBranchChange}
+      />
+    )
 
-    // Open the dropdown
-    await act(async () => {
-      await user.click(screen.getByRole('combobox'))
-    })
+    // Open the dropdown once branches have loaded
+    await user.click(await screen.findByRole('combobox'))
 
     // Select the main (default) branch
-    await act(async () => {
-      await user.click(screen.getByText('main'))
-      // Wait for MUI transitions to complete
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    })
+    await user.click(await screen.findByRole('option', { name: /main/ }))
 
     // Should call with the branch name (for URL bookmarkability)
     expect(mockOnBranchChange).toHaveBeenCalledWith('main')
@@ -206,21 +179,18 @@ describe('BranchSelector', () => {
       branches: [],
     })
 
-    let container: HTMLElement
-    await act(async () => {
-      const result = render(
-        <BranchSelector
-          repositoryName="inxr2"
-          selectedBranch={null}
-          defaultBranch="main"
-          onBranchChange={mockOnBranchChange}
-        />
-      )
-      container = result.container
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    })
+    const { container } = render(
+      <BranchSelector
+        repositoryName="inxr2"
+        selectedBranch={null}
+        defaultBranch="main"
+        onBranchChange={mockOnBranchChange}
+      />
+    )
 
-    expect(container!.firstChild).toBeNull()
+    // Loading spinner clears once the (empty) branch list resolves, leaving nothing
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
+    expect(container.firstChild).toBeNull()
   })
 
   it('shows branches with last_indexed_commit even when commit_count is 0', async () => {
@@ -243,20 +213,17 @@ describe('BranchSelector', () => {
       ],
     })
 
-    await act(async () => {
-      render(
-        <BranchSelector
-          repositoryName="inxr2"
-          selectedBranch={null}
-          defaultBranch="main"
-          onBranchChange={mockOnBranchChange}
-        />
-      )
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    })
+    render(
+      <BranchSelector
+        repositoryName="inxr2"
+        selectedBranch={null}
+        defaultBranch="main"
+        onBranchChange={mockOnBranchChange}
+      />
+    )
 
     // Should render as dropdown (2 branches), not plain text
-    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(await screen.findByRole('combobox')).toBeInTheDocument()
   })
 
   it('excludes branches without last_indexed_commit', async () => {
@@ -279,21 +246,18 @@ describe('BranchSelector', () => {
       ],
     })
 
-    await act(async () => {
-      render(
-        <BranchSelector
-          repositoryName="inxr2"
-          selectedBranch={null}
-          defaultBranch="main"
-          onBranchChange={mockOnBranchChange}
-        />
-      )
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    })
+    render(
+      <BranchSelector
+        repositoryName="inxr2"
+        selectedBranch={null}
+        defaultBranch="main"
+        onBranchChange={mockOnBranchChange}
+      />
+    )
 
     // Only 1 indexed branch → renders as plain text, not dropdown
+    expect(await screen.findByText('main')).toBeInTheDocument()
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
-    expect(screen.getByText('main')).toBeInTheDocument()
   })
 
   it('falls back to default branch when selected branch is not indexed', async () => {
@@ -316,21 +280,18 @@ describe('BranchSelector', () => {
       ],
     })
 
-    await act(async () => {
-      render(
-        <BranchSelector
-          repositoryName="inxr2"
-          selectedBranch="non-existent-branch" // Branch not in the list
-          defaultBranch="main"
-          onBranchChange={mockOnBranchChange}
-        />
-      )
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    })
+    render(
+      <BranchSelector
+        repositoryName="inxr2"
+        selectedBranch="non-existent-branch" // Branch not in the list
+        defaultBranch="main"
+        onBranchChange={mockOnBranchChange}
+      />
+    )
 
     // Should show 'main' (the fallback) instead of the non-existent branch
     // The combobox should have 'main' selected, not cause MUI out-of-range error
-    expect(screen.getByRole('combobox')).toHaveTextContent('main')
+    expect(await screen.findByRole('combobox')).toHaveTextContent('main')
   })
 
   describe('file-aware indicators', () => {
@@ -386,24 +347,19 @@ describe('BranchSelector', () => {
 
       const user = userEvent.setup()
 
-      await act(async () => {
-        render(
-          <BranchSelector
-            repositoryName="inxr2"
-            selectedBranch={null}
-            defaultBranch="main"
-            onBranchChange={mockOnBranchChange}
-            repoName="test-repo"
-            filePath="src/test.py"
-          />
-        )
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      })
+      render(
+        <BranchSelector
+          repositoryName="inxr2"
+          selectedBranch={null}
+          defaultBranch="main"
+          onBranchChange={mockOnBranchChange}
+          repoName="test-repo"
+          filePath="src/test.py"
+        />
+      )
 
-      // Open dropdown
-      await act(async () => {
-        await user.click(screen.getByRole('combobox'))
-      })
+      // Open dropdown once branches have loaded
+      await user.click(await screen.findByRole('combobox'))
 
       // Wait for file history to be fetched
       await waitFor(() => {
@@ -442,24 +398,19 @@ describe('BranchSelector', () => {
 
       const user = userEvent.setup()
 
-      await act(async () => {
-        render(
-          <BranchSelector
-            repositoryName="inxr2"
-            selectedBranch={null}
-            defaultBranch="main"
-            onBranchChange={mockOnBranchChange}
-            repoName="test-repo"
-            filePath="src/test.py"
-          />
-        )
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      })
+      render(
+        <BranchSelector
+          repositoryName="inxr2"
+          selectedBranch={null}
+          defaultBranch="main"
+          onBranchChange={mockOnBranchChange}
+          repoName="test-repo"
+          filePath="src/test.py"
+        />
+      )
 
-      // Open dropdown
-      await act(async () => {
-        await user.click(screen.getByRole('combobox'))
-      })
+      // Open dropdown once branches have loaded
+      await user.click(await screen.findByRole('combobox'))
 
       // Wait for file history to be fetched and verify edit icon appears
       await waitFor(() => {
@@ -474,18 +425,18 @@ describe('BranchSelector', () => {
       vi.mocked(api.getRepositoryBranches).mockResolvedValue({ branches })
       vi.mocked(api.getFileHistory).mockClear()
 
-      await act(async () => {
-        render(
-          <BranchSelector
-            repositoryName="inxr2"
-            selectedBranch={null}
-            defaultBranch="main"
-            onBranchChange={mockOnBranchChange}
-            // No filePath or repoName provided
-          />
-        )
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      })
+      render(
+        <BranchSelector
+          repositoryName="inxr2"
+          selectedBranch={null}
+          defaultBranch="main"
+          onBranchChange={mockOnBranchChange}
+          // No filePath or repoName provided
+        />
+      )
+
+      // Wait for branches to load (combobox appears)
+      await screen.findByRole('combobox')
 
       // getFileHistory should not be called when filePath is not provided
       expect(api.getFileHistory).not.toHaveBeenCalled()

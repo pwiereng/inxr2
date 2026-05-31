@@ -24,7 +24,11 @@ describe('CopyButton', () => {
   it('should copy value to clipboard on click', async () => {
     render(<CopyButton value="abc1234" />)
 
-    fireEvent.click(screen.getByLabelText('Copy'))
+    // handleClick is async (awaits clipboard.writeText, then setCopied). Wrap in
+    // an async act() so the post-await re-render is flushed inside act().
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Copy'))
+    })
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('abc1234')
   })
@@ -32,7 +36,9 @@ describe('CopyButton', () => {
   it('should copy fullValue on shift+click', async () => {
     render(<CopyButton value="abc1234" fullValue="abc1234567890abcdef" />)
 
-    fireEvent.click(screen.getByLabelText('Copy'), { shiftKey: true })
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Copy'), { shiftKey: true })
+    })
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('abc1234567890abcdef')
   })
@@ -40,7 +46,9 @@ describe('CopyButton', () => {
   it('should copy short value on regular click even when fullValue is provided', async () => {
     render(<CopyButton value="abc1234" fullValue="abc1234567890abcdef" />)
 
-    fireEvent.click(screen.getByLabelText('Copy'))
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Copy'))
+    })
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('abc1234')
   })
@@ -83,7 +91,7 @@ describe('CopyButton', () => {
     expect(screen.getByLabelText('Copy branch')).toBeInTheDocument()
   })
 
-  it('should stop event propagation on click', () => {
+  it('should stop event propagation on click', async () => {
     const parentClick = vi.fn()
     render(
       <div onClick={parentClick}>
@@ -91,7 +99,9 @@ describe('CopyButton', () => {
       </div>
     )
 
-    fireEvent.click(screen.getByLabelText('Copy'))
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Copy'))
+    })
 
     expect(parentClick).not.toHaveBeenCalled()
   })
