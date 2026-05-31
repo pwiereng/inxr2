@@ -221,6 +221,11 @@ curl http://localhost:3000/sse
 docker exec inxr2-dev cat /tmp/mcp-server.log
 ```
 
+> **Hitting `-32602 Invalid request parameters` on every tool call** (including
+> parameter-less ones like `list_repositories`)? That's a stale connection after
+> a server restart, not a parameter problem — see
+> [MCP troubleshooting](../docs/mcp-troubleshooting.md).
+
 ### Local (stdio transport)
 
 ```bash
