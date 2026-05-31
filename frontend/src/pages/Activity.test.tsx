@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Activity from './Activity'
@@ -159,16 +159,17 @@ describe('Activity', () => {
   it('stops auto-refresh when toggle is turned off', async () => {
     vi.useFakeTimers()
     vi.mocked(api.getActivityLog).mockResolvedValue({ entries: mockEntries, returned_count: 2 })
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) })
 
     renderActivity()
     await act(async () => {
       await Promise.resolve()
     })
 
-    // Turn off auto-refresh
+    // Turn off auto-refresh. fireEvent is synchronous — userEvent's internal
+    // delays hang under fake timers + React 19's act enforcement.
     await act(async () => {
-      await user.click(screen.getByRole('checkbox'))
+      fireEvent.click(screen.getByRole('checkbox'))
+      await Promise.resolve()
     })
 
     const callsAfterToggle = vi.mocked(api.getActivityLog).mock.calls.length

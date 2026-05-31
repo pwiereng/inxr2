@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { CopyButton } from './CopyButton'
 
 describe('CopyButton', () => {
@@ -62,12 +62,18 @@ describe('CopyButton', () => {
 
     fireEvent.click(screen.getByLabelText('Copy'))
 
-    // Flush the clipboard promise microtask
-    await vi.advanceTimersByTimeAsync(0)
+    // Flush the clipboard promise microtask + the post-await setCopied re-render.
+    // React 19 requires the state update that follows the awaited clipboard write
+    // to be flushed inside act(); advanceTimersByTimeAsync alone no longer does it.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
 
     expect(screen.getByTestId('CheckIcon')).toBeInTheDocument()
 
-    await vi.advanceTimersByTimeAsync(1500)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
 
     expect(screen.getByTestId('ContentCopyIcon')).toBeInTheDocument()
   })
