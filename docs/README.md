@@ -14,6 +14,7 @@ Documentation index for the INXR2 cross-reference code browser.
 - [Database schema](database-schema.md) — temporal data model and table design
 - [Regression tests](regression-tests.md) — full regression test plan
 - [MCP server](../mcp-server/README.md) — AI-assistant tools over Model Context Protocol
+- [MCP troubleshooting](mcp-troubleshooting.md) — diagnosing `-32602` and other MCP connection issues
 
 ## Project
 
