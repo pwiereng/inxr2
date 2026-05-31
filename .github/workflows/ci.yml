@@ -60,6 +60,100 @@ jobs:
         working-directory: frontend
 
   # ---------------------------------------------------------------------------
+  # Backend test suite (pytest against a PostgreSQL service)
+  # ---------------------------------------------------------------------------
+  backend-tests:
+    name: Backend Tests (pytest)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        # Credentials match the defaults in tests/db_helpers.py so the suite
+        # works even without TEST_DATABASE_URL; we set it explicitly anyway.
+        env:
+          POSTGRES_USER: inxr2_user
+          POSTGRES_PASSWORD: inxr2_dev_password
+          POSTGRES_DB: inxr2_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inxr2_user -d inxr2_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://inxr2_user:inxr2_dev_password@localhost:5432/inxr2_test
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python deps
+        run: pip install ".[dev]"
+
+      - name: pytest
+        run: pytest --cov=src --cov-report=term-missing
+
+  # ---------------------------------------------------------------------------
+  # Frontend test suite (vitest) + production build
+  # ---------------------------------------------------------------------------
+  frontend-tests:
+    name: Frontend Tests (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: vitest
+        run: npm test -- --run
+        working-directory: frontend
+
+      # Production build catches resolution/bundling errors that tsc --noEmit misses.
+      - name: build
+        run: npm run build
+        working-directory: frontend
+
+  # ---------------------------------------------------------------------------
+  # MCP server test suite (pytest, no database needed — uses a fake client)
+  # ---------------------------------------------------------------------------
+  mcp-tests:
+    name: MCP Server Tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # The MCP test doubles import from inxr2 (e.g. inxr2.domain.constants),
+      # so the main package must be installed alongside the mcp-server package.
+      - name: Install deps
+        run: |
+          pip install -e .
+          pip install -e "./mcp-server[dev]"
+
+      - name: pytest
+        run: pytest
+        working-directory: mcp-server
+
+  # ---------------------------------------------------------------------------
   # Secret scanning (every PR and push to main)
   # ---------------------------------------------------------------------------
   secret-scan:
