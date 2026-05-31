@@ -157,13 +157,16 @@ constructor `this.property` assignments.
 docker exec inxr2-dev bash -c "grep -rl 'require(' /repos/test-repos/<repo>/ --include='*.js' --include='*.ts' | head -1"
 # DISCOVER: Extract a require target
 docker exec inxr2-dev bash -c "grep -oP \"require\('\K[^']+\" /repos/test-repos/<repo>/<file> | head -3"
-# VERIFY: Check references via API
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/references?repository_name=<repo>&file_path=<file>&limit=20' | python3 -m json.tool"
+# VERIFY: Check references via API (response shape: {file_id, file_path, references:[{reference_type, reference_text, source_line, ...}]})
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/by-path/references?repo=<repo>&path=<file>&limit=20' | python3 -m json.tool"
 ```
 
 **Pass criteria:**
-- References include `import` type entries with `from_module` set for `require()` calls
-- References include `usage` type entries for bare identifiers used in the file
+- References include `reference_type == "import"` entries for `require()` / `import` targets
+- References include `reference_type == "usage"` entries for bare identifiers used in the file
+
+**Note:** This endpoint's reference objects do **not** carry a `from_module` field — assert on
+`reference_type` (`import` vs `usage`) and `reference_text` instead.
 
 ---
 
@@ -179,14 +182,17 @@ docker exec inxr2-dev bash -c "grep -rl 'export {' /repos/test-repos/<repo>/ --i
 # DISCOVER: Extract export names
 docker exec inxr2-dev bash -c "grep 'export' /repos/test-repos/<repo>/<file> | head -5"
 # VERIFY: Check references via API for that file
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/references?repository_name=<repo>&file_path=<file>&limit=30' | python3 -m json.tool"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/by-path/references?repo=<repo>&path=<file>&limit=30' | python3 -m json.tool"
 ```
 
 **Pass criteria:**
-- Named re-exports (`export { foo } from './module'`) appear as `import` references with `from_module`
-- Local named exports (`export { foo }`) appear as `usage` references
-- Default export of identifier (`export default myFunc`) appears as `usage` reference
+- Named re-exports (`export { foo } from './module'`) appear as `reference_type == "import"` references
+- Local named exports (`export { foo }`) appear as `reference_type == "usage"` references
+- Default export of identifier (`export default myFunc`) appears as a `usage` reference
 - Barrel re-exports (`export * from './module'`) appear as `import` references
+
+**Note:** Assert on `reference_type` (`import` / `usage`); this endpoint does not return a
+`from_module` field.
 
 ---
 
@@ -228,16 +234,27 @@ For each repo+branch combination, compare the **current run** (from IX-01) again
 
 ```
 Indexing Performance Comparison:
-| Repo | Branch | Elapsed (prev → now) | Symbols (prev → now) | Refs Resolved % |
-|------|--------|---------------------|---------------------|-----------------|
-| crisp | main | 5.5s → 5.8s (+5%) | 1324 → 1324 (=) | 82.1% → 82.1% |
-| inxr2 | main | 185.8s → 190.2s (+2%) | 36455 → 36455 (=) | ⚠ ... |
+| Repo | Branch | Commits (prev → now) | Elapsed (prev → now) | Symbols (prev → now) | Refs Resolved % |
+|------|--------|---------------------|---------------------|---------------------|-----------------|
+| crisp | main | 1 → 1 | 5.5s → 5.8s (+5%) | 1324 → 1324 (=) | 82.1% → 82.1% |
+| inxr2 | main | 23 → 21 | 185.8s → 190.2s (+2%) | 36455 → 36455 (=) | ⚠ ... |
 ```
 
+**⚠ Comparison caveat — the `--days 10` window slides:** absolute counts are only
+apples-to-apples for **single-commit (snapshot) repos**, where the same lone commit is indexed
+every run. For **multi-commit repos**, the rolling `--days 10` window shifts forward between runs,
+so an older run indexed *more historical commits* than a later one — its symbol/reference counts
+and elapsed time will legitimately be higher with no parser regression involved. **Always log the
+commits-indexed count (the `Commits (prev → now)` column above) next to the timing data** so a
+count/elapsed drop attributable to the sliding window isn't mistaken for a regression.
+
 Flag any row with:
-- Elapsed time increase > 20%
-- Symbol count decrease
-- Reference resolution % decrease
+- Elapsed time increase > 20% **at an equal or lower commit count** (a higher commit count
+  explains a higher elapsed time)
+- Symbol count decrease **on a single-commit repo, or on a multi-commit repo at an equal/higher
+  commit count**
+- Reference resolution **percentage** (`resolved / found`) decrease — this ratio is
+  window-independent, so a drop here is meaningful regardless of commit count
 
 ## IX-06: Verify All Git Files at HEAD Are Indexed (FileFilter Completeness)
 
@@ -457,7 +474,8 @@ curl "http://localhost:9222/text?selector=tr[data-line='1']"
 **Steps:**
 ```bash
 # (Continuing from RT-06 with a file loaded)
-curl "http://localhost:9222/click?selector=tr[data-line='5'] td:last-child"
+# The line-number cell is the FIRST td in the row; the code content is the last td.
+curl "http://localhost:9222/click?selector=tr[data-line='5'] td:first-child"
 curl "http://localhost:9222/url"
 ```
 
@@ -471,11 +489,13 @@ curl "http://localhost:9222/url"
 **Steps:**
 ```bash
 # (Continuing from RT-06 with a file loaded)
-# Clickable symbols are spans with data-mui-internal-clone-element attribute (Tooltip-wrapped)
+# Clickable symbols render as styled <span> elements inside the code cells — each has a hashed
+# emotion CSS class (e.g. css-jzqzon, css-1c6uefz). Plain (non-clickable) syntax-highlight text
+# uses the class "css-0", so exclude it with :not(.css-0).
 # List clickable symbols on the page
-curl "http://localhost:9222/elements?selector=span[data-mui-internal-clone-element]&limit=10"
+curl "http://localhost:9222/elements?selector=td span[class*='css-']:not(.css-0)&limit=10"
 # Click first clickable symbol
-curl "http://localhost:9222/click?selector=span[data-mui-internal-clone-element]"
+curl "http://localhost:9222/click?selector=td span[class*='css-']:not(.css-0)"
 # Check panel opened
 curl "http://localhost:9222/text?selector=body"
 ```
@@ -570,9 +590,10 @@ additions (newer) are green, deletions (older) are red/pink, not inverted.
 **Steps:**
 ```bash
 # DISCOVER: Find a file with at least 2 versions (different content_hash)
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/<repo>/<file>/history?branch=<branch>' | python3 -c '
+# Response shape: {"path":..., "repository_name":..., "versions":[{"commit_hash","short_hash","commit_date",...}]}
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/history?repo=<repo>&path=<file>&branch=<branch>' | python3 -c '
 import sys, json
-versions = json.load(sys.stdin)
+versions = json.load(sys.stdin)[\"versions\"]
 print(f\"Versions: {len(versions)}\")
 for v in versions[:3]:
     print(f\"  commit={v[\"commit_hash\"][:8]} date={v.get(\"commit_date\",\"?\")}\")
@@ -603,9 +624,10 @@ going back to the earliest indexed commit.
 **Steps:**
 ```bash
 # DISCOVER: Get file history from API
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/<repo>/<file>/history?branch=<branch>' | python3 -c '
+# Response shape: {"path":..., "versions":[{"commit_hash","short_hash","commit_date",...}]}
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/history?repo=<repo>&path=<file>&branch=<branch>' | python3 -c '
 import sys, json
-versions = json.load(sys.stdin)
+versions = json.load(sys.stdin)[\"versions\"]
 print(f\"Total versions: {len(versions)}\")
 if versions:
     print(f\"Oldest: {versions[-1][\"commit_hash\"][:8]} {versions[-1].get(\"commit_date\",\"?\")}\")
@@ -636,9 +658,11 @@ docker exec inxr2-dev bash -c "grep -rh 'class \|def \|function ' /repos/test-re
 curl "http://localhost:9222/navigate?url=http://localhost:5173/search"
 curl "http://localhost:9222/wait?selector=input&timeout=3000"
 curl "http://localhost:9222/fill?selector=input&value=<discovered_word>"
-curl "http://localhost:9222/wait?selector=.MuiListItemButton-root&timeout=5000"
+# Search results render as .MuiListItem-root rows (NOT .MuiListItemButton-root); each row wraps a
+# clickable inner <button>. Match the row with .MuiListItem-root; click the inner button to navigate.
+curl "http://localhost:9222/wait?selector=.MuiListItem-root&timeout=5000"
 # VERIFY
-curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=5"
+curl "http://localhost:9222/elements?selector=.MuiListItem-root&limit=5"
 ```
 
 **Pass criteria:**
@@ -653,9 +677,9 @@ curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=5"
 ```bash
 # (Continuing from RT-13 with results visible)
 # Note the file path and line number shown in the first result
-curl "http://localhost:9222/text?selector=.MuiListItemButton-root"
-# Click it
-curl "http://localhost:9222/click?selector=.MuiListItemButton-root"
+curl "http://localhost:9222/text?selector=.MuiListItem-root"
+# Click it — each result is a .MuiListItem-root containing a clickable inner <button>
+curl "http://localhost:9222/click?selector=.MuiListItem-root button"
 curl "http://localhost:9222/url"
 ```
 
@@ -673,8 +697,8 @@ curl "http://localhost:9222/url"
 docker exec inxr2-dev bash -c "grep -rh 'def [a-z_]*(' /repos/test-repos/<repo>/ --include='*.py' | head -1"
 # Use the function name as a regex search
 curl "http://localhost:9222/navigate?url=http://localhost:5173/search?mode=regex&query=<function_pattern>"
-curl "http://localhost:9222/wait?selector=.MuiListItemButton-root&timeout=5000"
-curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=5"
+curl "http://localhost:9222/wait?selector=.MuiListItem-root&timeout=5000"
+curl "http://localhost:9222/elements?selector=.MuiListItem-root&limit=5"
 ```
 
 **Pass criteria:**
@@ -691,8 +715,8 @@ curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=5"
 docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-files | head -5"
 # Search for that filename
 curl "http://localhost:9222/navigate?url=http://localhost:5173/search?mode=file&query=<discovered_filename>"
-curl "http://localhost:9222/wait?selector=.MuiListItemButton-root&timeout=5000"
-curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=10"
+curl "http://localhost:9222/wait?selector=.MuiListItem-root&timeout=5000"
+curl "http://localhost:9222/elements?selector=.MuiListItem-root&limit=10"
 ```
 
 **Pass criteria:**
@@ -711,8 +735,8 @@ Verify that file search can find extensionless files (e.g., `Makefile`, `Dockerf
 docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-files | grep -v '\.' | head -5"
 # Search for an extensionless file
 curl "http://localhost:9222/navigate?url=http://localhost:5173/search?mode=file&query=<extensionless_file>"
-curl "http://localhost:9222/wait?selector=.MuiListItemButton-root&timeout=5000"
-curl "http://localhost:9222/elements?selector=.MuiListItemButton-root&limit=10"
+curl "http://localhost:9222/wait?selector=.MuiListItem-root&timeout=5000"
+curl "http://localhost:9222/elements?selector=.MuiListItem-root&limit=10"
 ```
 
 **Pass criteria:**
@@ -823,15 +847,20 @@ curl "http://localhost:9222/url"
 
 **Steps:**
 ```bash
-curl "http://localhost:9222/navigate?url=http://localhost:5173/"
+# The theme toggle lives on browse/inner pages (NOT the home page) and has aria-label
+# "Switch to dark mode" / "Switch to light mode" (DarkModeIcon/LightModeIcon).
+# Match it with [aria-label*='mode'] — this works in both theme states and avoids the home-page
+# grid/list view toggle, which is the only thing [aria-label*='Switch to'] matches on home.
+curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/<repo>/<file>?branch=<branch>"
+curl "http://localhost:9222/wait?selector=table&timeout=8000"
 # Get initial background color
 curl "http://localhost:9222/eval?script=getComputedStyle(document.body).backgroundColor"
 # Toggle theme
-curl "http://localhost:9222/click?selector=[aria-label*='Switch to']"
+curl "http://localhost:9222/click?selector=[aria-label*='mode']"
 # Get new background color
 curl "http://localhost:9222/eval?script=getComputedStyle(document.body).backgroundColor"
 # Toggle back
-curl "http://localhost:9222/click?selector=[aria-label*='Switch to']"
+curl "http://localhost:9222/click?selector=[aria-label*='mode']"
 curl "http://localhost:9222/eval?script=getComputedStyle(document.body).backgroundColor"
 ```
 
@@ -855,13 +884,13 @@ curl "http://localhost:9222/screenshot/save?path=/tmp/rt-22a-diff-theme1.png"
 # Get diff cell background colors
 curl "http://localhost:9222/eval?script=JSON.stringify([...document.querySelectorAll('td[style]')].slice(0,4).map(e=>e.style.backgroundColor))"
 # Toggle theme
-curl "http://localhost:9222/click?selector=[aria-label*='Switch to']"
+curl "http://localhost:9222/click?selector=[aria-label*='mode']"
 # Screenshot in other theme
 curl "http://localhost:9222/screenshot/save?path=/tmp/rt-22a-diff-theme2.png"
 # Get diff cell background colors in other theme
 curl "http://localhost:9222/eval?script=JSON.stringify([...document.querySelectorAll('td[style]')].slice(0,4).map(e=>e.style.backgroundColor))"
 # Toggle back
-curl "http://localhost:9222/click?selector=[aria-label*='Switch to']"
+curl "http://localhost:9222/click?selector=[aria-label*='mode']"
 ```
 
 **Pass criteria:**
@@ -923,11 +952,13 @@ REPO=$(docker exec inxr2-dev bash -c "curl -s http://localhost:8000/api/reposito
 FILE_DATA=$(docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/$REPO/symbol-tree?limit=5' | python3 -c 'import json,sys; d=json.load(sys.stdin); files=d.get(\"files\",[]); print(files[0][\"path\"] if files else \"\")'")
 # NAVIGATE to logical view
 curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/logical-view?repo=$REPO"
-curl "http://localhost:9222/wait?selector=[class*=tree],[class*=Tree]&timeout=10000"
-# VERIFY: Click a file to expand it and see symbols
-curl "http://localhost:9222/click?selector=[class*=file]:first-child,[class*=File]:first-child"
+# Container symbols (the file / top-level nodes) render as .MuiListItemButton-root rows
+curl "http://localhost:9222/wait?selector=.MuiListItemButton-root&timeout=10000"
+# VERIFY: Click a container to expand it; its leaf symbols render inside a nested .MuiCollapse-root
+curl "http://localhost:9222/click?selector=.MuiListItemButton-root"
 curl "http://localhost:9222/wait?timeout=2000"
-curl "http://localhost:9222/elements?selector=[class*=symbol],[class*=Symbol]&limit=10"
+# Leaf symbols are <button> elements inside the expanded .MuiCollapse-root
+curl "http://localhost:9222/elements?selector=.MuiCollapse-root button&limit=10"
 ```
 
 **Pass criteria:**
@@ -942,11 +973,12 @@ curl "http://localhost:9222/elements?selector=[class*=symbol],[class*=Symbol]&li
 ```bash
 # NAVIGATE to logical view with a repo
 curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/logical-view?repo=$REPO"
-curl "http://localhost:9222/wait?selector=[class*=tree],[class*=Tree]&timeout=10000"
-# Expand a file, then click a symbol
-curl "http://localhost:9222/click?selector=[class*=file]:first-child,[class*=File]:first-child"
+curl "http://localhost:9222/wait?selector=.MuiListItemButton-root&timeout=10000"
+# Expand a container symbol (.MuiListItemButton-root), then click a leaf symbol
+curl "http://localhost:9222/click?selector=.MuiListItemButton-root"
 curl "http://localhost:9222/wait?timeout=2000"
-curl "http://localhost:9222/click?selector=[class*=symbol]:first-child,[class*=Symbol]:first-child"
+# The navigating click is on the leaf symbol's <button> inside the nested .MuiCollapse-root
+curl "http://localhost:9222/click?selector=.MuiCollapse-root button"
 curl "http://localhost:9222/wait?timeout=3000"
 # VERIFY: URL changed to /browse with file path and line
 curl "http://localhost:9222/url"
@@ -1008,7 +1040,9 @@ curl "http://localhost:9222/elements?selector=[class*=dependency],[class*=Depend
 ```bash
 # DISCOVER: Get two different commits
 REPO=$(docker exec inxr2-dev bash -c "curl -s http://localhost:8000/api/repositories | python3 -c 'import json,sys; repos=json.load(sys.stdin); print(repos[0][\"name\"])'")
-COMMITS=$(docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/$REPO/commits?limit=2' | python3 -c 'import json,sys; cs=json.load(sys.stdin); print(cs[0][\"hash\"][:7],cs[1][\"hash\"][:7])'")
+# Commits come from /api/commits?repo=<name> (response: {"commits":[{hash, short_hash, ...}]}).
+# NOTE: /api/repositories/by-name/<repo>/commits does NOT exist — it falls through to the SPA HTML.
+COMMITS=$(docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/commits?repo=$REPO&limit=2' | python3 -c 'import json,sys; cs=json.load(sys.stdin)[\"commits\"]; print(cs[0][\"hash\"][:7],cs[1][\"hash\"][:7])'")
 # NAVIGATE to dependencies with specific commit
 COMMIT1=$(echo $COMMITS | cut -d' ' -f1)
 curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/dependencies?repo=$REPO&commit=$COMMIT1"
@@ -1078,21 +1112,29 @@ Also verify the reverse: browsing the new path at an old commit shows the old pa
 
 **Steps:**
 ```bash
-# DISCOVER: Find a rename event from the API
+# DISCOVER: Find a rename COMMIT from git (within the indexed --days window), then confirm the API
+# indexed it via /api/renames/by-commit. Response shape:
+#   {"renames":[{old_path, new_path, similarity, commit_id, commit_hash}], "total":N}
+# (There is no "list all renames" endpoint; the rename APIs are keyed by commit or by path.)
 REPO="inxr2"
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/$REPO/renames?limit=5' | python3 -c '
+RENAME_COMMIT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO log --since='10 days ago' --diff-filter=R --find-renames --format='%H' -1")
+echo "rename commit: $RENAME_COMMIT"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/renames/by-commit?repo=$REPO&commit=$RENAME_COMMIT' | python3 -c '
 import sys, json
 data = json.load(sys.stdin)
-for r in data.get(\"items\", [])[:3]:
+print(f\"total={data[\"total\"]}\")
+for r in data[\"renames\"][:3]:
     print(f\"old={r[\"old_path\"]} new={r[\"new_path\"]} commit={r[\"commit_hash\"][:8]}\")
 '"
-# Note an old_path, new_path, and commit_hash from the output above
+# Note an old_path and new_path from the output above
+
+# (Optional) Confirm the resolve-path endpoint backs the banner: browsing <new_path> at the parent
+# commit should report found=false with resolved_path=<old_path>:
+PARENT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO rev-parse ${RENAME_COMMIT}^")
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/renames/resolve-path?repo=$REPO&path=<new_path>&commit=$PARENT' | python3 -m json.tool"
 
 # NAVIGATE: Browse the new_path at the commit just BEFORE the rename
 # (the commit where old_path still existed)
-# Get the parent commit of the rename commit
-RENAME_COMMIT=<commit_hash_from_discover>
-PARENT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO rev-parse ${RENAME_COMMIT}^")
 curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/$REPO/<new_path>?commit=${PARENT}"
 curl "http://localhost:9222/wait?timeout=5000"
 
@@ -1115,18 +1157,25 @@ to a commit after), the diff viewer identifies both paths and shows the diff cor
 
 **Steps:**
 ```bash
-# DISCOVER: Find a rename event (from RT-32 or re-query)
+# DISCOVER: Find a rename commit (from RT-32 or re-query). Prefer a rename that ALSO changed content
+# (git status R<100), so the diff has an add/delete delta to render — pure R100 renames have none
+# (see note below). This finds the most recent rename with similarity < 100 if one exists, else any.
 REPO="inxr2"
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/$REPO/renames?limit=5' | python3 -c '
+RENAME_COMMIT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO log --since='10 days ago' --diff-filter=R --find-renames -M --format='%H' --name-status | awk '/^R[0-9]+/{if (\$1 != \"R100\") {print c; exit}} /^[0-9a-f]{40}\$/{c=\$1}' | head -1")
+# Fall back to the most recent rename of any similarity if no content-changing rename exists
+if [ -z "$RENAME_COMMIT" ]; then
+  RENAME_COMMIT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO log --since='10 days ago' --diff-filter=R --find-renames --format='%H' -1")
+fi
+echo "rename commit: $RENAME_COMMIT"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/renames/by-commit?repo=$REPO&commit=$RENAME_COMMIT' | python3 -c '
 import sys, json
 data = json.load(sys.stdin)
-for r in data.get(\"items\", [])[:3]:
-    print(f\"old={r[\"old_path\"]} new={r[\"new_path\"]} commit={r[\"commit_hash\"][:8]}\")
+for r in data[\"renames\"][:3]:
+    print(f\"old={r[\"old_path\"]} new={r[\"new_path\"]} similarity={r[\"similarity\"]}\")
 '"
-# Note old_path, new_path, rename_commit
+# Note old_path, new_path
 
 # Get commit just before the rename
-RENAME_COMMIT=<commit_hash>
 PARENT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO rev-parse ${RENAME_COMMIT}^")
 
 # NAVIGATE: Open new_path at rename_commit in diff mode, comparing against parent
@@ -1142,8 +1191,15 @@ curl "http://localhost:9222/screenshot/save?path=.tmp/rt-33-diff-rename.png"
 **Pass criteria:**
 - Diff viewer loads without error even though the file had a different path on the left side
 - The diff header or toolbar shows both the old path and the new path
-- Diff content renders correctly (additions/deletions visible)
-- The diff is not empty — the rename commit's file changes are shown
+- Diff content renders correctly (additions/deletions visible **when the rename also changed content**)
+
+**Note — pure renames have no diff delta:** if the only renames in the indexed window are R100
+(100% similarity, pure move with no content change), there is no add/delete delta to show — the
+"diff is not empty" criterion **cannot be exercised** and is not a failure. The DISCOVER step above
+prefers a rename with similarity < 100 so the delta is visible; when none exists, verify only that
+rename-following works (left side resolves to the old path, diff loads without error) and record
+that the rename was R100. To fully exercise the delta criterion, seed a commit that both renames
+**and** edits a file.
 
 ---
 
@@ -2189,7 +2245,7 @@ from src.client import HttpInxr2Client
 from src.tools import search_symbols
 async def main():
     client = HttpInxr2Client('http://localhost:8000')
-    result = await search_symbols.handle(client, {'query': 'BucketList', 'repository': 'travelbuddy'})
+    result = await search_symbols.handle(client, {'query': 'RouteLeg', 'repository': 'travelbuddy'})
     print(result)
     await client.close()
 asyncio.run(main())
@@ -2202,7 +2258,7 @@ from src.client import HttpInxr2Client
 from src.tools import search_code
 async def main():
     client = HttpInxr2Client('http://localhost:8000')
-    result = await search_code.handle(client, {'query': 'BucketList', 'repository': 'travelbuddy', 'extensions': 'swift', 'limit': 10})
+    result = await search_code.handle(client, {'query': 'RouteLeg', 'repository': 'travelbuddy', 'extensions': 'swift', 'limit': 10})
     print(result)
     swift_results = [l for l in result.splitlines() if '.swift' in l]
     print(f'Swift results: {len(swift_results)}')
@@ -2225,7 +2281,8 @@ Regression test for the `source_only` parameter — verifies that `source_only=t
 **Steps:**
 ```bash
 # DISCOVER: Find a term that appears in both docs and Swift source
-# (BucketList appears in README.md and in .swift files)
+# (UserProfile appears in .md docs and in .swift files; the previously-documented "BucketList"
+#  no longer exists in the indexed travelbuddy swift sources)
 
 # VERIFY: Without filter, markdown results appear
 docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
@@ -2234,7 +2291,7 @@ from src.client import HttpInxr2Client
 from src.tools import search_code
 async def main():
     client = HttpInxr2Client('http://localhost:8000')
-    result = await search_code.handle(client, {'query': 'BucketList', 'repository': 'travelbuddy', 'limit': 20})
+    result = await search_code.handle(client, {'query': 'UserProfile', 'repository': 'travelbuddy', 'limit': 20})
     print(result)
     md_results = [l for l in result.splitlines() if '.md' in l]
     print(f'Markdown results (expect > 0): {len(md_results)}')
@@ -2249,7 +2306,7 @@ from src.client import HttpInxr2Client
 from src.tools import search_code
 async def main():
     client = HttpInxr2Client('http://localhost:8000')
-    result = await search_code.handle(client, {'query': 'BucketList', 'repository': 'travelbuddy', 'source_only': True, 'limit': 20})
+    result = await search_code.handle(client, {'query': 'UserProfile', 'repository': 'travelbuddy', 'source_only': True, 'limit': 20})
     print(result)
     md_results = [l for l in result.splitlines() if '.md' in l]
     swift_results = [l for l in result.splitlines() if '.swift' in l]
@@ -2282,7 +2339,7 @@ asyncio.run(main())
 | IX-05 | Compare indexing performance vs history | No timing/count regressions |
 | IX-06 | Verify all git files at HEAD are indexed | FileFilter completeness (no silent drops) |
 
-### Phase 2: QA Browser (40 tests)
+### Phase 2: QA Browser (39 tests)
 
 | ID | Test | Validates Against |
 |----|------|-------------------|
@@ -2326,7 +2383,7 @@ asyncio.run(main())
 | RT-33 | Diff viewer rename following across rename boundary | Both paths in diff header, diff renders |
 | RT-34 | Mermaid diagrams render as SVG | SVG element present in DOM |
 
-### Phase 3: MCP Server (25 tests)
+### Phase 3: MCP Server (26 tests)
 
 | ID | Test | Validates Against |
 |----|------|-------------------|
@@ -2357,4 +2414,4 @@ asyncio.run(main())
 | MCP-25 | search_code finds content in code file bodies | Swift results via extensions filter |
 | MCP-26 | search_code source_only filter excludes non-source files | .md absent, .swift present |
 
-**Total: 75 test cases** (8 indexing + 40 browser + 27 MCP) — all verified against git/API, no hardcoded data.
+**Total: 73 test cases** (8 indexing + 39 browser + 26 MCP) — all verified against git/API, no hardcoded data.
