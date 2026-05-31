@@ -158,7 +158,7 @@ docker exec inxr2-dev bash -c "grep -rl 'require(' /repos/test-repos/<repo>/ --i
 # DISCOVER: Extract a require target
 docker exec inxr2-dev bash -c "grep -oP \"require\('\K[^']+\" /repos/test-repos/<repo>/<file> | head -3"
 # VERIFY: Check references via API (response shape: {file_id, file_path, references:[{reference_type, reference_text, source_line, ...}]})
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/by-path/references?repo=<repo>&path=<file>&limit=20' | python3 -m json.tool"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/by-path/references?repo=<repo>&path=<file>' | python3 -m json.tool"
 ```
 
 **Pass criteria:**
@@ -182,7 +182,7 @@ docker exec inxr2-dev bash -c "grep -rl 'export {' /repos/test-repos/<repo>/ --i
 # DISCOVER: Extract export names
 docker exec inxr2-dev bash -c "grep 'export' /repos/test-repos/<repo>/<file> | head -5"
 # VERIFY: Check references via API for that file
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/by-path/references?repo=<repo>&path=<file>&limit=30' | python3 -m json.tool"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/files/by-path/references?repo=<repo>&path=<file>' | python3 -m json.tool"
 ```
 
 **Pass criteria:**
