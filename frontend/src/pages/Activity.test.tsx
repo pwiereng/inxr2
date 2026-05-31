@@ -67,10 +67,16 @@ describe('Activity', () => {
     vi.mocked(api.getRepositories).mockResolvedValue(mockRepositories)
   })
 
-  it('shows loading spinner initially', () => {
+  it('shows loading spinner initially', async () => {
     vi.mocked(api.getActivityLog).mockReturnValue(new Promise(() => {}))
     renderActivity()
     expect(screen.getByRole('progressbar')).toBeInTheDocument()
+    // getActivityLog never resolves (spinner stays), but getRepositories resolves
+    // right after render. Flush that microtask inside act() so its setRepos update
+    // doesn't leak past this synchronous test and warn about an un-acted update.
+    await act(async () => {
+      await Promise.resolve()
+    })
   })
 
   it('renders entries after load', async () => {
