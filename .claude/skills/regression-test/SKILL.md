@@ -1,13 +1,13 @@
 ---
 name: regression-test
-description: "Runs the full regression test suite: resets DB, re-indexes all repos, starts services, then runs all 75 browser/indexing/MCP tests via the QA agent. Runs autonomously without prompting."
+description: "Runs the full regression test suite: resets DB, re-indexes all repos, starts services, then runs all 73 browser/indexing/MCP tests via the QA agent. Runs autonomously without prompting."
 user-invocable: true
 argument-hint: "[optional: 'indexing' or 'browser' to run only one phase]"
 ---
 
 # Regression Test Skill
 
-Runs the full regression test suite (75 tests) autonomously. See `docs/regression-tests.md` for detailed test procedures.
+Runs the full regression test suite (73 tests: 8 indexing + 39 browser + 26 MCP) autonomously. See `docs/regression-tests.md` for detailed test procedures.
 
 ## CRITICAL: Autonomy Rule
 
@@ -35,7 +35,11 @@ fi
 # Detect ports from .env or use defaults
 BACKEND_PORT=$(grep APP_PORT .env 2>/dev/null | cut -d= -f2 || echo 8000)
 FRONTEND_PORT=$(grep FRONTEND_PORT .env 2>/dev/null | cut -d= -f2 || echo 5173)
-QA_PORT=$(grep QA_PORT .env 2>/dev/null | cut -d= -f2 || echo 9222)
+# The QA/playwright host port: worktree .env files define PLAYWRIGHT_PORT (e.g. 9242/9252);
+# read that first, then fall back to QA_PORT, then the main-slot default 9222.
+QA_PORT=$(grep -E '^PLAYWRIGHT_PORT=' .env 2>/dev/null | cut -d= -f2)
+QA_PORT=${QA_PORT:-$(grep -E '^QA_PORT=' .env 2>/dev/null | cut -d= -f2)}
+QA_PORT=${QA_PORT:-9222}
 ```
 
 Use `$CONTAINER`, `$BACKEND_PORT`, `$FRONTEND_PORT`, and `$QA_PORT` in all commands throughout the run. For `docker exec` commands, use `$CONTAINER` instead of hardcoded `inxr2-dev`. For curl commands to the QA agent, use `localhost:$QA_PORT`. For API calls inside the container, always use `localhost:8000` (internal port).
@@ -123,7 +127,7 @@ The goal is that any developer reading the failure record can reproduce it exact
 
 ---
 
-## Phase 1: Indexing Regression (7 tests)
+## Phase 1: Indexing Regression (8 tests)
 
 ### Prerequisites Check
 
@@ -141,7 +145,7 @@ docker exec $CONTAINER inxr2 index --config config.yaml --reset-db --yes --days 
 
 **Pass:** Command completes without fatal errors. Output shows files processed, symbols extracted, references found.
 
-### IX-02 through IX-05
+### IX-02 through IX-06
 
 Follow the detailed steps in `docs/regression-tests.md` for each test:
 
@@ -150,11 +154,12 @@ Follow the detailed steps in `docs/regression-tests.md` for each test:
 - **IX-04:** For each of the 10 languages (Python, TypeScript, JavaScript, C, C++, Java, C#, Go, Ruby, Bash), discover a real symbol from git and verify it appears in the API
 - **IX-04a:** Verify reference extraction — bare identifiers, CommonJS `require()`, constructor `this.property`
 - **IX-04b:** Verify ES6 export/re-export references — named re-exports, local exports, default export of identifier, barrel re-exports
-- **IX-05:** Read `index.log`, compare current run against previous run for each repo+branch. Flag: elapsed >20% increase, symbol count decrease, reference resolution % decrease
+- **IX-05:** Read `index.log`, compare current run against previous run for each repo+branch. **Log the commits-indexed count alongside the timing** — the `--days 10` window slides between runs, so absolute symbol/elapsed counts are only apples-to-apples for single-commit repos. Flag: elapsed >20% increase at equal/lower commit count, symbol count decrease (single-commit repos, or multi-commit at equal/higher commits), reference resolution **%** decrease (window-independent)
+- **IX-06:** Verify all git files at HEAD are indexed (FileFilter completeness, #349) — `comm -23` of git-vs-API files is empty for each repo; `adapters/external/` files present for inxr2
 
 ---
 
-## Phase 2: QA Browser Regression (29 tests)
+## Phase 2: QA Browser Regression (39 tests)
 
 ### Prerequisites Check
 
@@ -183,27 +188,59 @@ Follow the detailed steps in `docs/regression-tests.md` for each test:
 
 If QA agent is not running and cannot be started, stop Phase 2 and report.
 
-### RT-01 through RT-23
+### RT-01 through RT-34
 
-Run all 29 browser tests following the detailed Discover → Navigate → Verify steps in `docs/regression-tests.md`:
+Run all 39 browser tests following the detailed Discover → Navigate → Verify steps in `docs/regression-tests.md`:
 
 | Tests | Area | Key Commands |
 |-------|------|-------------|
 | RT-01 to RT-03 | Home page | Repo cards, stats, navigation |
 | RT-04 to RT-05 | File tree | `git ls-tree` comparison |
-| RT-06 to RT-07 | Code viewer | File content, line numbers |
-| RT-08 to RT-10 | References | Symbol click, panel, search link |
+| RT-06 to RT-07 | Code viewer | File content, line numbers (line cell = `td:first-child`) |
+| RT-08 to RT-10 | References | Symbol click (styled `span:not(.css-0)`), panel, search link |
 | RT-11 | Blame | `git blame` comparison |
 | RT-12, RT-12a, RT-12b | Diff mode | Enter/exit, colors, version selectors |
-| RT-13 to RT-16, RT-16a | Search | Keyword, regex, file, extensionless |
+| RT-13 to RT-16, RT-16a | Search | Keyword, regex, file, extensionless (results = `.MuiListItem-root` + inner `button`) |
 | RT-17 to RT-18 | History | `git log` comparison, commit click |
 | RT-19 | Navigation | Tab context preservation |
 | RT-20 | Branches | Branch selector |
 | RT-21 | URL state | Reload preservation |
-| RT-22, RT-22a | Theme | Toggle, diff colors in both themes |
+| RT-22, RT-22a | Theme | Toggle (browse page, `[aria-label*='mode']`), diff colors in both themes |
 | RT-23 | Markdown | Heading rendering |
+| RT-24 to RT-27 | Logical View | Symbol tree, expand (`.MuiListItemButton-root` → leaf `.MuiCollapse-root button`), navigate, filters |
+| RT-28 to RT-30 | Dependencies | Packages, commit picker, empty state |
+| RT-31 | References → Logical View | Panel link navigation |
+| RT-32, RT-33 | Renames | Banner at old commit, diff rename-following (`/api/renames/*`) |
+| RT-34 | Mermaid | SVG rendering (#383) |
 
 For each test, use `curl http://localhost:$QA_PORT/...` for all browser interactions. Use `docker exec $CONTAINER ...` for git/API commands.
+
+---
+
+## Collect Component Versions
+
+Before writing the report, gather the version of every major component so the report records the
+exact stack the suite ran against (useful for diffing across runs). Run:
+
+```bash
+docker exec $CONTAINER bash -c '
+echo "inxr2: $(inxr2 --version 2>&1 | sed "s/^inxr2, version //")"
+echo "Python: $(python --version 2>&1 | cut -d" " -f2)"
+echo "FastAPI: $(pip show fastapi 2>/dev/null | awk "/^Version:/{print \$2}")"
+echo "Tree-sitter: $(pip show tree-sitter 2>/dev/null | awk "/^Version:/{print \$2}")"
+echo "MCP lib: $(pip show mcp 2>/dev/null | awk "/^Version:/{print \$2}")"
+echo "PostgreSQL: $(psql --version 2>&1 | awk "{print \$3}")"
+echo "Node: $(node --version 2>&1)"
+cd /workspace/frontend && node -e "const a={...require(\"./package.json\").dependencies,...require(\"./package.json\").devDependencies}; for (const k of [\"react\",\"vite\",\"typescript\",\"@mui/material\"]) console.log(k+\": \"+(a[k]||\"n/a\"))"
+echo "Codebase HEAD: $(git -C /workspace rev-parse --short HEAD)"
+'
+# Docker engine version (host, not container):
+docker --version
+```
+
+Capture these values into the **Component Versions** table in both the console summary and the saved
+report. If any command errors (a component changed its CLI), record `n/a` for that row and continue —
+version collection must never block the run.
 
 ---
 
@@ -214,21 +251,32 @@ After all tests complete, output a summary:
 ```
 ## Regression Test Results
 
-### Phase 1: Indexing (X/7 passed)
+### Component Versions
+| Component | Version |
+|-----------|---------|
+| inxr2 | <x.y.z> |
+| Python / FastAPI | <x> / <x> |
+| PostgreSQL | <x> |
+| Tree-sitter | <x> |
+| Node / React / Vite / TypeScript | <x> / <x> / <x> / <x> |
+| MCP lib | <x> |
+| Codebase HEAD | <short-sha> |
+
+### Phase 1: Indexing (X/8 passed)
 | ID | Test | Result |
 |----|------|--------|
 | IX-01 | Reset DB and index | PASS/FAIL |
 | IX-02 | Verify status | PASS/FAIL |
 | ... | ... | ... |
 
-### Phase 2: Browser (X/29 passed)
+### Phase 2: Browser (X/39 passed)
 | ID | Test | Result |
 |----|------|--------|
 | RT-01 | Home page repo cards | PASS/FAIL |
 | RT-02 | Repo card stats | PASS/FAIL |
 | ... | ... | ... |
 
-### Phase 3: MCP Server (X/18 passed)
+### Phase 3: MCP Server (X/26 passed)
 | ID | Test | Result |
 |----|------|--------|
 | MCP-01 | List repos | PASS/FAIL |
@@ -237,15 +285,15 @@ After all tests complete, output a summary:
 | ... | ... | ... |
 
 ### Summary
-- Indexing: X/7 passed
-- Browser: X/29 passed
-- MCP: X/18 passed
-- **Total: X/54 passed**
+- Indexing: X/8 passed
+- Browser: X/39 passed
+- MCP: X/26 passed
+- **Total: X/73 passed**
 - Failed: [list failures with ID and brief reason]
 - Screenshots: [list screenshot paths for any failures]
 ```
 
-If all pass: **"Regression suite: 54/54 passed (7 indexing + 29 browser + 18 MCP)."**
+If all pass: **"Regression suite: 73/73 passed (8 indexing + 39 browser + 26 MCP)."**
 
 ### Performance Comparison (from IX-05)
 
@@ -276,14 +324,32 @@ Write the file using the Write tool (not bash echo/heredoc). The file must follo
 
 | Phase | Passed | Total | Notes |
 |-------|--------|-------|-------|
-| Indexing | X | 7 | |
-| Browser | X | 29 | X skipped (list IDs) |
-| MCP | X | 18 | X failed (list IDs) |
-| **Total** | **X** | **54** | **X skipped, X failed** |
+| Indexing | X | 8 | |
+| Browser | X | 39 | X skipped (list IDs) |
+| MCP | X | 26 | X failed (list IDs) |
+| **Total** | **X** | **73** | **X skipped, X failed** |
+
+## Component Versions
+
+| Component | Version |
+|-----------|---------|
+| inxr2 | <x.y.z> |
+| Python | <x> |
+| FastAPI | <x> |
+| PostgreSQL | <x> |
+| Tree-sitter | <x> |
+| Node | <x> |
+| React | <x> |
+| Vite | <x> |
+| TypeScript | <x> |
+| MUI | <x> |
+| MCP lib | <x> |
+| Docker engine | <x> |
+| Codebase HEAD | <short-sha> |
 
 ---
 
-## Phase 1: Indexing (X/7 passed)
+## Phase 1: Indexing (X/8 passed)
 
 | ID | Test | Result | Notes |
 |----|------|--------|-------|
@@ -294,17 +360,21 @@ Write the file using the Write tool (not bash echo/heredoc). The file must follo
 | IX-04a | Reference extraction | PASS/FAIL | |
 | IX-04b | ES6 export/re-export references | PASS/FAIL | |
 | IX-05 | Performance comparison | PASS/FAIL | |
+| IX-06 | FileFilter completeness (#349) | PASS/FAIL | |
 
 ### IX-05 Performance Comparison
 
-| Repo | Branch | Elapsed (prev → now) | Symbols | Refs Resolved % |
-|------|--------|---------------------|---------|-----------------|
-| <repo> | <branch> | <prev>s → <now>s (<delta>%) | <count> (=/<delta>) | <pct>% |
+| Repo | Branch | Commits (prev → now) | Elapsed (prev → now) | Symbols | Refs Resolved % |
+|------|--------|---------------------|---------------------|---------|-----------------|
+| <repo> | <branch> | <prev> → <now> | <prev>s → <now>s (<delta>%) | <count> (=/<delta>) | <pct>% |
 ...
+
+(Log the commits-indexed count — the `--days 10` window slides, so absolute counts are only
+apples-to-apples for single-commit repos; the resolution % is window-independent.)
 
 ---
 
-## Phase 2: Browser (X/29 passed, X skipped)
+## Phase 2: Browser (X/39 passed, X skipped)
 
 | ID | Test | Result | Notes |
 |----|------|--------|-------|
@@ -313,12 +383,13 @@ Write the file using the Write tool (not bash echo/heredoc). The file must follo
 
 ---
 
-## Phase 3: MCP Server (X/18 passed)
+## Phase 3: MCP Server (X/26 passed)
 
 | ID | Test | Result | Notes |
 |----|------|--------|-------|
 | MCP-01 | List repos | PASS/FAIL | |
 ...
+| MCP-26 | search_code source_only filter | PASS/FAIL | |
 
 ### <ID> Failure Details  ← include only for failing tests
 
