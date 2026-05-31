@@ -30,7 +30,14 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       ...typescript.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
+      // eslint-plugin-react-hooks v7's `recommended` preset newly enables the full
+      // React Compiler rule set (set-state-in-effect, refs, immutability, purity,
+      // etc.) — ~41 violations across our core browse/search hooks. Those are
+      // behaviour-sensitive refactors, so we adopt the version bump now and pin the
+      // classic v5-equivalent rules here. Adopting the full preset is tracked as
+      // dedicated follow-ups (see GitHub issues linked from #447).
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/ban-ts-comment': [
         'error',
