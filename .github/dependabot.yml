@@ -1,5 +1,18 @@
-# Dependabot version updates — weekly, grouped to reduce PR noise.
-# Security updates are enabled separately in repo settings and are not throttled by this file.
+# Dependabot version updates — weekly.
+#
+# Strategy:
+#   - Minor/patch updates are batched into one group per ecosystem (low risk,
+#     fast to review/merge once CI is green).
+#   - MAJOR updates are deliberately NOT grouped, so each arrives as its own PR
+#     to be evaluated individually (majors often carry breaking changes — e.g. a
+#     new eslint/react-hooks major adds lint rules existing code violates).
+#   - Docker base-image MAJOR bumps are ignored entirely: runtime upgrades
+#     (Python, Node) are deliberate, separately-tested efforts, not routine
+#     dependency hygiene. Our CI lint/type-check runs on the GitHub runner
+#     toolchain and does NOT rebuild these images, so it cannot validate them.
+#
+# Security updates are enabled separately in repo settings and are not throttled
+# by this file.
 version: 2
 updates:
   # ----- Python (pip) -----
@@ -9,9 +22,12 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      python-dependencies:
+      python-minor-patch:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: pip
     directory: "/mcp-server"
@@ -19,9 +35,12 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      python-dependencies:
+      python-minor-patch:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: pip
     directory: "/qa-agent"
@@ -29,9 +48,12 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      python-dependencies:
+      python-minor-patch:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # ----- Frontend (npm) -----
   - package-ecosystem: npm
@@ -40,9 +62,12 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      npm-dependencies:
+      npm-minor-patch:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # ----- GitHub Actions -----
   - package-ecosystem: github-actions
@@ -56,20 +81,34 @@ updates:
           - "*"
 
   # ----- Docker -----
+  # Minor/patch base-image bumps only; major (runtime) bumps are ignored and
+  # handled deliberately. See strategy note above.
   - package-ecosystem: docker
     directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: docker
     directory: "/mcp-server"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: docker
     directory: "/qa-agent"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
