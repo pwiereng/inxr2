@@ -31,8 +31,7 @@
     /* Skip Lib Check */
     "skipLibCheck": true,
 
-    /* Path Mapping */
-    "baseUrl": ".",
+    /* Path Mapping (paths resolve relative to this file in TS 6; baseUrl removed — deprecated) */
     "paths": {
       "@/*": ["./src/*"]
     },
