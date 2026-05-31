@@ -206,9 +206,11 @@ describe('Search', () => {
     window.history.pushState({}, '', '?query=get_file_symbols_by_path')
     render(<Search />)
 
-    // Wait for results to appear
+    // Wait for the result chip to appear. Match the exact "Commit Message" chip
+    // text (not the regex, which also matches the "Commit Messages" filter
+    // dropdown and would resolve before the result row actually renders).
     await waitFor(() => {
-      expect(screen.getByText(/Commit Message/i)).toBeInTheDocument()
+      expect(screen.getByText('Commit Message')).toBeInTheDocument()
     })
 
     // Click the location link (repo name) to navigate — content text is now non-clickable
