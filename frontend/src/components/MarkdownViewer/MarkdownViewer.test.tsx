@@ -127,7 +127,7 @@ vi.mock('react-markdown', () => ({
     if (lastIndex < children.length || parts.length === 0) {
       parts.push(
         <div
-          key={key++}
+          key={key}
           dangerouslySetInnerHTML={{ __html: processMarkdownText(children.slice(lastIndex)) }}
         />
       )
