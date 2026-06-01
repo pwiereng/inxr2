@@ -175,9 +175,14 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
   })
 
   // ========== 6. Update refs with actual values ==========
-  resetRefsPanelRef.current = refsResult.resetRefsPanel
-  setErrorRef.current = dataResult.setError
-  fileVersionsRef.current = dataResult.fileVersions
+  // Refs are written in an effect (not during render) so the cross-hook wiring
+  // stays compliant with react-hooks/refs. The refs are only read inside
+  // callbacks, which run after this effect has committed the latest values.
+  useEffect(() => {
+    resetRefsPanelRef.current = refsResult.resetRefsPanel
+    setErrorRef.current = dataResult.setError
+    fileVersionsRef.current = dataResult.fileVersions
+  })
 
   // ========== Assemble return value ==========
 

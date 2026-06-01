@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useMemo, useEffect, useCallback } from 'react'
 import {
   Popper,
   Paper,
@@ -42,17 +42,15 @@ export function CodeContextMenu({
   const open = contextMenu !== null
 
   // Virtual anchor element for Popper positioning at mouse coordinates.
-  // useRef persists the object across renders so Popper always has a stable reference.
-  const anchorRef = useRef<VirtualElement>({
-    getBoundingClientRect: () => new DOMRect(0, 0, 0, 0),
-  })
-
-  // Update the virtual anchor position whenever contextMenu changes
-  if (contextMenu) {
-    anchorRef.current = {
-      getBoundingClientRect: () => new DOMRect(contextMenu.mouseX, contextMenu.mouseY, 0, 0),
-    }
-  }
+  // Derived with useMemo (not a ref written during render) so Popper gets a fresh
+  // reference whenever the coordinates change, which triggers it to reposition.
+  const anchorEl = useMemo<VirtualElement>(
+    () => ({
+      getBoundingClientRect: () =>
+        new DOMRect(contextMenu?.mouseX ?? 0, contextMenu?.mouseY ?? 0, 0, 0),
+    }),
+    [contextMenu?.mouseX, contextMenu?.mouseY]
+  )
 
   // Close on Escape key
   const handleKeyDown = useCallback(
@@ -72,12 +70,7 @@ export function CodeContextMenu({
   }, [open, handleKeyDown])
 
   return (
-    <Popper
-      open={open}
-      anchorEl={anchorRef.current}
-      placement="bottom-start"
-      style={{ zIndex: 1300 }}
-    >
+    <Popper open={open} anchorEl={anchorEl} placement="bottom-start" style={{ zIndex: 1300 }}>
       <ClickAwayListener onClickAway={onClose}>
         <Paper elevation={8} sx={{ minWidth: 180 }}>
           <MenuList autoFocusItem={false}>
