@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useMemo, useEffect, useCallback } from 'react'
 import {
   Popper,
   Paper,
@@ -42,15 +42,16 @@ export function SymbolContextMenu({
 }: SymbolContextMenuProps): React.ReactElement {
   const open = contextMenu !== null
 
-  const anchorRef = useRef<VirtualElement>({
-    getBoundingClientRect: () => new DOMRect(0, 0, 0, 0),
-  })
-
-  if (contextMenu) {
-    anchorRef.current = {
-      getBoundingClientRect: () => new DOMRect(contextMenu.mouseX, contextMenu.mouseY, 0, 0),
-    }
-  }
+  // Virtual anchor element for Popper positioning at mouse coordinates.
+  // Derived with useMemo (not a ref written during render) so Popper gets a fresh
+  // reference whenever the coordinates change, which triggers it to reposition.
+  const anchorEl = useMemo<VirtualElement>(
+    () => ({
+      getBoundingClientRect: () =>
+        new DOMRect(contextMenu?.mouseX ?? 0, contextMenu?.mouseY ?? 0, 0, 0),
+    }),
+    [contextMenu?.mouseX, contextMenu?.mouseY]
+  )
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -69,12 +70,7 @@ export function SymbolContextMenu({
   }, [open, handleKeyDown])
 
   return (
-    <Popper
-      open={open}
-      anchorEl={anchorRef.current}
-      placement="bottom-start"
-      style={{ zIndex: 1300 }}
-    >
+    <Popper open={open} anchorEl={anchorEl} placement="bottom-start" style={{ zIndex: 1300 }}>
       <ClickAwayListener onClickAway={onClose}>
         <Paper elevation={8} sx={{ minWidth: 200 }}>
           <MenuList autoFocusItem={false}>

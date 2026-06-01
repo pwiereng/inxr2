@@ -74,11 +74,13 @@ export function useBrowseData({
   const [rawLatestBranchCommit, setRawLatestBranchCommit] = useState<string | null | undefined>(
     undefined
   )
-  const commitRepoRef = useRef<string | undefined>(undefined)
+  // Which repo the resolved commit belongs to. Kept in state (not a ref) so it can
+  // be read during render without tripping react-hooks/refs; the effect below
+  // updates it together with rawLatestBranchCommit, so the pairing stays atomic.
+  const [commitRepo, setCommitRepo] = useState<string | undefined>(undefined)
   const commitRequestIdRef = useRef(0)
   // Safe value: undefined if the resolved commit doesn't belong to current repo
-  const latestBranchCommit =
-    commitRepoRef.current === urlState.repoName ? rawLatestBranchCommit : undefined
+  const latestBranchCommit = commitRepo === urlState.repoName ? rawLatestBranchCommit : undefined
   // Map of commit hash → commit date for temporal comparison (populated from getCommits)
   const [commitDateMap, setCommitDateMap] = useState<Map<string, string>>(new Map())
 
@@ -153,7 +155,7 @@ export function useBrowseData({
     const effectRepoName = urlState.repoName
 
     // Reset to pending so the tree-loading guard knows we're fetching
-    commitRepoRef.current = effectRepoName
+    setCommitRepo(effectRepoName)
     setRawLatestBranchCommit(undefined)
 
     getCommits(effectRepoName, branch || undefined, 500)

@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useMemo } from 'react'
 import { Popper, Paper, IconButton, Tooltip } from '@mui/material'
 import type { VirtualElement } from '@popperjs/core'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
@@ -25,20 +25,20 @@ export function SelectionToolbar({
 }: SelectionToolbarProps): React.ReactElement {
   const open = toolbar !== null
 
-  const anchorRef = useRef<VirtualElement>({
-    getBoundingClientRect: () => new DOMRect(0, 0, 0, 0),
-  })
-
-  if (toolbar) {
-    anchorRef.current = {
-      getBoundingClientRect: () => new DOMRect(toolbar.anchorX, toolbar.anchorY, 0, 0),
-    }
-  }
+  // Virtual anchor element for Popper positioning at the selection coordinates.
+  // Derived with useMemo (not a ref written during render) so Popper gets a fresh
+  // reference whenever the coordinates change, which triggers it to reposition.
+  const anchorEl = useMemo<VirtualElement>(
+    () => ({
+      getBoundingClientRect: () => new DOMRect(toolbar?.anchorX ?? 0, toolbar?.anchorY ?? 0, 0, 0),
+    }),
+    [toolbar?.anchorX, toolbar?.anchorY]
+  )
 
   return (
     <Popper
       open={open}
-      anchorEl={anchorRef.current}
+      anchorEl={anchorEl}
       placement="top"
       style={{ zIndex: 1300 }}
       modifiers={[{ name: 'offset', options: { offset: [0, 8] } }]}

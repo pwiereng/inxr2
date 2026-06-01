@@ -25,19 +25,18 @@ export default function Repositories(): React.ReactElement {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    const fetchStats = async (): Promise<void> => {
+      try {
+        const data = await getAllRepositoryStats()
+        setStats(data)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error')
+      } finally {
+        setLoading(false)
+      }
+    }
     fetchStats()
   }, [])
-
-  const fetchStats = async (): Promise<void> => {
-    try {
-      const data = await getAllRepositoryStats()
-      setStats(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   if (loading) {
     return (
