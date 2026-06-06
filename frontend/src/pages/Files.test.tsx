@@ -99,6 +99,22 @@ describe('Files', () => {
     expect(screen.getByText('1 file matching "app"')).toBeInTheDocument()
   })
 
+  it('filters files when a language is selected from the dropdown', async () => {
+    vi.mocked(api.getRepositoryFiles).mockResolvedValue(mockFiles)
+    const user = userEvent.setup()
+    renderFiles()
+
+    await waitFor(() => expect(screen.getByText('src/main.py')).toBeInTheDocument())
+
+    // Open the Language Select and pick "typescript"
+    await user.click(screen.getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: 'typescript' }))
+
+    await waitFor(() => expect(screen.queryByText('src/main.py')).not.toBeInTheDocument())
+    expect(screen.getByText('src/app.ts')).toBeInTheDocument()
+    expect(screen.getByText('1 file')).toBeInTheDocument()
+  })
+
   it('shows no-match message when filters exclude everything', async () => {
     vi.mocked(api.getRepositoryFiles).mockResolvedValue(mockFiles)
     const user = userEvent.setup()
