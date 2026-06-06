@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import Dependencies from './Dependencies'
+import type { TabValue } from '@/components/CodeHeader'
 import type { DependencyItem, DependenciesListResponse } from '@/lib/api'
 
 // Mock the API client — api.ts is frozen, so we only stub the one fn this page uses.
@@ -10,9 +11,27 @@ vi.mock('@/lib/api', () => ({
   getRepositoryDependencies: vi.fn(),
 }))
 
-// Neutralize CodeHeader (pulls repo/branch data from the API) to stay focused.
+// Neutralize CodeHeader (pulls repo/branch data from the API) but expose buttons
+// that invoke each callback, so the page's navigation handlers are exercised.
 vi.mock('@/components/CodeHeader', () => ({
-  CodeHeader: () => <div data-testid="code-header" />,
+  CodeHeader: (props: {
+    onRepoChange: (r: string) => void
+    onBranchChange: (b: string) => void
+    onCommitChange: (c: string) => void
+    onTabChange: (t: TabValue) => void
+  }) => (
+    <div data-testid="code-header">
+      <button onClick={() => props.onRepoChange('newrepo')}>repo</button>
+      <button onClick={() => props.onBranchChange('newbranch')}>branch</button>
+      <button onClick={() => props.onCommitChange('abc123')}>commit</button>
+      <button onClick={() => props.onTabChange('browse')}>tab-browse</button>
+      <button onClick={() => props.onTabChange('search')}>tab-search</button>
+      <button onClick={() => props.onTabChange('history')}>tab-history</button>
+      <button onClick={() => props.onTabChange('logical-view')}>tab-logical</button>
+      <button onClick={() => props.onTabChange('dependencies')}>tab-deps</button>
+      <button onClick={() => props.onTabChange('help')}>tab-help</button>
+    </div>
+  ),
 }))
 
 // Stub SelectionToolbar so its portal/clipboard wiring stays out of the way.
@@ -21,6 +40,11 @@ vi.mock('@/components/SelectionToolbar', () => ({
 }))
 
 import { getRepositoryDependencies } from '@/lib/api'
+
+function LocationDisplay() {
+  const loc = useLocation()
+  return <div data-testid="location">{loc.pathname + loc.search}</div>
+}
 
 function makeItem(overrides: Partial<DependencyItem> = {}): DependencyItem {
   return {
@@ -52,6 +76,7 @@ function renderDeps(entry = '/dependencies?repo=myrepo') {
   return render(
     <MemoryRouter initialEntries={[entry]}>
       <Dependencies />
+      <LocationDisplay />
     </MemoryRouter>
   )
 }
@@ -183,6 +208,7 @@ describe('Dependencies', () => {
         makeItem({
           id: 1,
           package_name: 'requests',
+          version_spec: null,
           resolved_version: '2.0.0',
           file_id: 10,
           file_path: 'requirements.txt',
@@ -190,6 +216,7 @@ describe('Dependencies', () => {
         makeItem({
           id: 2,
           package_name: 'requests',
+          version_spec: null,
           resolved_version: '2.31.0',
           file_id: 10,
           file_path: 'requirements.txt',
@@ -202,7 +229,133 @@ describe('Dependencies', () => {
     // Click the row's language chip to expand the group.
     await user.click(screen.getByText('python'))
 
+    // The package collapses to a single "2 versions" node...
     const versionsChip = await screen.findByText('2 versions')
     expect(versionsChip).toBeInTheDocument()
+
+    // ...whose detail rows show each version (toggling the node exercises its handler).
+    await user.click(versionsChip)
+    await waitFor(() => expect(screen.getByText('2.0.0')).toBeInTheDocument())
+    expect(screen.getByText('2.31.0')).toBeInTheDocument()
+  })
+
+  describe('navigation handlers', () => {
+    beforeEach(() => {
+      // Resolve so the page mounts past its loading branch for header-driven nav.
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(makeResponse([]))
+    })
+
+    it('handleRepoChange sets repo and drops branch/commit', async () => {
+      const user = userEvent.setup()
+      renderDeps('/dependencies?repo=old&branch=main&commit=deadbeef')
+
+      await user.click(screen.getByText('repo'))
+
+      expect(screen.getByTestId('location')).toHaveTextContent('/dependencies?repo=newrepo')
+      expect(screen.getByTestId('location')).not.toHaveTextContent('branch')
+    })
+
+    it('handleBranchChange sets branch and drops commit', async () => {
+      const user = userEvent.setup()
+      renderDeps('/dependencies?repo=myrepo&branch=main&commit=deadbeef')
+
+      await user.click(screen.getByText('branch'))
+
+      expect(screen.getByTestId('location')).toHaveTextContent('branch=newbranch')
+      expect(screen.getByTestId('location')).not.toHaveTextContent('commit')
+    })
+
+    it('handleCommitChange sets commit and keeps repo/branch', async () => {
+      const user = userEvent.setup()
+      renderDeps('/dependencies?repo=myrepo&branch=main')
+
+      await user.click(screen.getByText('commit'))
+
+      expect(screen.getByTestId('location')).toHaveTextContent('commit=abc123')
+      expect(screen.getByTestId('location')).toHaveTextContent('repo=myrepo')
+    })
+
+    it('handleTabChange → browse navigates to the repo browse path when repo is set', async () => {
+      const user = userEvent.setup()
+      renderDeps('/dependencies?repo=myrepo&branch=main&commit=deadbeef')
+
+      await user.click(screen.getByText('tab-browse'))
+
+      const loc = screen.getByTestId('location')
+      expect(loc).toHaveTextContent('/browse/myrepo')
+      expect(loc).toHaveTextContent('repo=myrepo')
+    })
+
+    it('handleTabChange → browse navigates home when no repo is set', async () => {
+      const user = userEvent.setup()
+      renderDeps('/dependencies')
+
+      await user.click(screen.getByText('tab-browse'))
+
+      const loc = screen.getByTestId('location')
+      expect(loc).toHaveTextContent('/')
+      expect(loc).not.toHaveTextContent('browse')
+    })
+
+    it('handleTabChange preserves repo/branch/commit into search/history/logical/deps/help', async () => {
+      const user = userEvent.setup()
+      const cases: Array<[string, string]> = [
+        ['tab-search', '/search'],
+        ['tab-history', '/history'],
+        ['tab-logical', '/logical-view'],
+        ['tab-deps', '/dependencies'],
+        ['tab-help', '/help'],
+      ]
+      for (const [button, path] of cases) {
+        const { unmount } = renderDeps('/dependencies?repo=myrepo&branch=main&commit=deadbeef')
+        await user.click(screen.getByText(button))
+        const loc = screen.getByTestId('location')
+        expect(loc).toHaveTextContent(path)
+        expect(loc).toHaveTextContent('repo=myrepo')
+        expect(loc).toHaveTextContent('branch=main')
+        expect(loc).toHaveTextContent('commit=deadbeef')
+        unmount()
+      }
+    })
+  })
+
+  describe('list navigation', () => {
+    it('clicking a file name navigates to its encoded browse path, preserving branch', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(
+        makeResponse([
+          makeItem({ id: 1, package_name: 'requests', file_id: 10, file_path: 'requirements.txt' }),
+        ])
+      )
+      renderDeps('/dependencies?repo=myrepo&branch=main')
+
+      await waitFor(() => expect(screen.getByText('requirements.txt')).toBeInTheDocument())
+      await user.click(screen.getByText('requirements.txt'))
+
+      const loc = screen.getByTestId('location')
+      expect(loc).toHaveTextContent('/browse/myrepo/requirements.txt')
+      expect(loc).toHaveTextContent('branch=main')
+    })
+
+    it('clicking "search usages" navigates to a dependency search for the package', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(
+        makeResponse([
+          makeItem({ id: 1, package_name: 'requests', file_id: 10, file_path: 'requirements.txt' }),
+        ])
+      )
+      renderDeps('/dependencies?repo=myrepo&branch=main')
+
+      await waitFor(() => expect(screen.getByText('requirements.txt')).toBeInTheDocument())
+      // Expand the group (via the language chip), then click the row's search button.
+      await user.click(screen.getByText('python'))
+      await user.click(await screen.findByRole('button', { name: /search usages of requests/i }))
+
+      const loc = screen.getByTestId('location')
+      expect(loc).toHaveTextContent('/search')
+      expect(loc).toHaveTextContent('query=requests')
+      expect(loc).toHaveTextContent('types=dependency')
+      expect(loc).toHaveTextContent('repo=myrepo')
+    })
   })
 })
