@@ -141,6 +141,26 @@ describe('History', () => {
     expect(screen.getByText('bbbbbbb')).toBeInTheDocument()
   })
 
+  it('scrolls the focused commit into view when the commit param matches a rendered hash', async () => {
+    // jsdom does not implement scrollIntoView; stub it so the focus effect runs.
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    const focusedHash = 'e'.repeat(40)
+    mockGetCommits.mockResolvedValue({
+      commits: [
+        makeCommit({ hash: 'f'.repeat(40), short_hash: 'fffffff' }),
+        makeCommit({ hash: focusedHash, short_hash: 'eeeeeee', message: 'Focused commit' }),
+      ],
+      total: 2,
+    })
+    renderHistory(`/history?repo=myrepo&commit=${focusedHash}`)
+
+    await waitFor(() => expect(screen.getByText('Focused commit')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+    )
+  })
+
   it('navigates to the browse view when an indexed commit hash is clicked', async () => {
     const user = userEvent.setup()
     mockGetCommits.mockResolvedValue({
@@ -212,7 +232,7 @@ describe('History', () => {
       expect(location).toHaveTextContent('branch=main')
     })
 
-    it('handleTabChange navigates to each destination tab', async () => {
+    it('handleTabChange navigates to each destination tab, preserving repo/branch/commit', async () => {
       const user = userEvent.setup()
       const cases: Array<[string, string]> = [
         ['hdr-browse', '/browse/myrepo'],
@@ -224,7 +244,14 @@ describe('History', () => {
       for (const [button, path] of cases) {
         const { unmount } = renderHistory('/history?repo=myrepo&branch=main&commit=deadbeef')
         await user.click(screen.getByText(button))
-        expect(screen.getByTestId('location')).toHaveTextContent(path)
+        const location = screen.getByTestId('location')
+        expect(location).toHaveTextContent(path)
+        // handleTabChange threads repo/branch/commit into the destination query;
+        // assert they survive so a regression dropping `?${params}` is caught
+        // (a bare '/search' would otherwise still match the path substring).
+        expect(location).toHaveTextContent('repo=myrepo')
+        expect(location).toHaveTextContent('branch=main')
+        expect(location).toHaveTextContent('commit=deadbeef')
         unmount()
       }
     })
