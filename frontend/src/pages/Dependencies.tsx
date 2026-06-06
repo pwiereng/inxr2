@@ -24,33 +24,23 @@ import SearchIcon from '@mui/icons-material/Search'
 import { CodeHeader } from '@/components/CodeHeader'
 import type { TabValue } from '@/components/CodeHeader'
 import { getRepositoryDependencies, type DependencyItem } from '@/lib/api'
+import {
+  type FileGroup,
+  type PackageGroup,
+  filterDependencies,
+  getAvailableLanguages,
+  getAvailableTypes,
+  groupByFile,
+  groupByPackage,
+  countDirect,
+  countTransitive,
+  getLanguageColor,
+  getTypeColor,
+  fileName,
+  fileDir,
+} from '@/lib/dependencyGrouping'
 import { useSelectionToolbar } from '@/hooks/useSelectionToolbar'
 import { SelectionToolbar } from '@/components/SelectionToolbar'
-
-// Language colors (One Dark Pro palette, consistent with LogicalView)
-const LANGUAGE_COLORS: Record<string, string> = {
-  python: '#61afef',
-  javascript: '#e5c07b',
-  java: '#d19a66',
-  csharp: '#c678dd',
-  swift: '#fa7343',
-}
-
-// Dependency type colors
-const TYPE_COLORS: Record<string, string> = {
-  runtime: '#98c379',
-  dev: '#61afef',
-  optional: '#e5c07b',
-  build: '#d19a66',
-  peer: '#c678dd',
-}
-
-interface FileGroup {
-  filePath: string
-  fileId: number
-  language: string
-  items: DependencyItem[]
-}
 
 export default function Dependencies(): React.ReactElement {
   const navigate = useNavigate()
@@ -77,21 +67,9 @@ export default function Dependencies(): React.ReactElement {
   const [selectedDirect, setSelectedDirect] = useState<boolean | null>(null)
 
   // Derive available languages and types from loaded items
-  const availableLanguages = useMemo(() => {
-    const langs = new Set<string>()
-    for (const item of items) {
-      langs.add(item.language)
-    }
-    return [...langs].sort()
-  }, [items])
+  const availableLanguages = useMemo(() => getAvailableLanguages(items), [items])
 
-  const availableTypes = useMemo(() => {
-    const types = new Set<string>()
-    for (const item of items) {
-      types.add(item.dependency_type)
-    }
-    return [...types].sort()
-  }, [items])
+  const availableTypes = useMemo(() => getAvailableTypes(items), [items])
 
   // Load dependencies when repo/branch/commit changes
   useEffect(() => {
@@ -132,46 +110,19 @@ export default function Dependencies(): React.ReactElement {
   }, [repoName, branch, commit])
 
   // Filter items
-  const filteredItems = useMemo(() => {
-    let result = items
-    if (selectedLanguage) {
-      result = result.filter((d) => d.language === selectedLanguage)
-    }
-    if (selectedType) {
-      result = result.filter((d) => d.dependency_type === selectedType)
-    }
-    if (selectedDirect !== null) {
-      result = result.filter((d) => d.is_direct === selectedDirect)
-    }
-    if (filterText) {
-      const lower = filterText.toLowerCase()
-      result = result.filter(
-        (d) =>
-          d.package_name.toLowerCase().includes(lower) ||
-          (d.file_path ?? '').toLowerCase().includes(lower)
-      )
-    }
-    return result
-  }, [items, selectedLanguage, selectedType, selectedDirect, filterText])
+  const filteredItems = useMemo(
+    () =>
+      filterDependencies(items, {
+        language: selectedLanguage,
+        type: selectedType,
+        direct: selectedDirect,
+        search: filterText,
+      }),
+    [items, selectedLanguage, selectedType, selectedDirect, filterText]
+  )
 
   // Group filtered items by manifest file
-  const fileGroups = useMemo(() => {
-    const groupMap = new Map<number, FileGroup>()
-    for (const item of filteredItems) {
-      let group = groupMap.get(item.file_id)
-      if (!group) {
-        group = {
-          filePath: item.file_path ?? '',
-          fileId: item.file_id,
-          language: item.language,
-          items: [],
-        }
-        groupMap.set(item.file_id, group)
-      }
-      group.items.push(item)
-    }
-    return [...groupMap.values()].sort((a, b) => a.filePath.localeCompare(b.filePath))
-  }, [filteredItems])
+  const fileGroups = useMemo(() => groupByFile(filteredItems), [filteredItems])
 
   // Toggle file expansion
   const toggleFile = (fileId: number) => {
@@ -260,8 +211,8 @@ export default function Dependencies(): React.ReactElement {
   }
 
   // Count summary
-  const directCount = filteredItems.filter((d) => d.is_direct).length
-  const transitiveCount = filteredItems.filter((d) => !d.is_direct).length
+  const directCount = countDirect(filteredItems)
+  const transitiveCount = countTransitive(filteredItems)
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -497,28 +448,6 @@ export default function Dependencies(): React.ReactElement {
 
 // --- Sub-components ---
 
-interface PackageGroup {
-  packageName: string
-  items: DependencyItem[]
-}
-
-/** Group items by package name, preserving sort order of first occurrence */
-function groupByPackage(items: DependencyItem[]): PackageGroup[] {
-  const map = new Map<string, DependencyItem[]>()
-  for (const item of items) {
-    const existing = map.get(item.package_name)
-    if (existing) {
-      existing.push(item)
-    } else {
-      map.set(item.package_name, [item])
-    }
-  }
-  return [...map.entries()].map(([packageName, pkgItems]) => ({
-    packageName,
-    items: pkgItems,
-  }))
-}
-
 interface FileGroupNodeProps {
   group: FileGroup
   isExpanded: boolean
@@ -535,17 +464,6 @@ function FileGroupNode({
   onSearchUsages,
 }: FileGroupNodeProps): React.ReactElement {
   const [expandedPackages, setExpandedPackages] = useState<Set<string>>(new Set())
-
-  const fileName = (path: string) => {
-    const parts = path.split('/')
-    return parts[parts.length - 1] ?? path
-  }
-
-  const fileDir = (path: string) => {
-    const parts = path.split('/')
-    if (parts.length <= 1) return ''
-    return parts.slice(0, -1).join('/') + '/'
-  }
 
   const dir = group.filePath ? fileDir(group.filePath) : ''
   const name = group.filePath ? fileName(group.filePath) : `(file #${group.fileId})`
@@ -622,8 +540,8 @@ function FileGroupNode({
                 sx={{
                   height: 18,
                   fontSize: '0.65rem',
-                  color: LANGUAGE_COLORS[group.language] ?? '#abb2bf',
-                  borderColor: LANGUAGE_COLORS[group.language] ?? '#abb2bf',
+                  color: getLanguageColor(group.language),
+                  borderColor: getLanguageColor(group.language),
                 }}
               />
             </Box>
@@ -799,8 +717,8 @@ function DependencyNode({ item, onSearchUsages }: DependencyNodeProps): React.Re
         sx={{
           height: 18,
           fontSize: '0.65rem',
-          color: TYPE_COLORS[item.dependency_type] ?? '#abb2bf',
-          borderColor: TYPE_COLORS[item.dependency_type] ?? '#abb2bf',
+          color: getTypeColor(item.dependency_type),
+          borderColor: getTypeColor(item.dependency_type),
         }}
       />
 
@@ -877,8 +795,8 @@ function DependencyVersionNode({ item }: DependencyNodeProps): React.ReactElemen
         sx={{
           height: 18,
           fontSize: '0.65rem',
-          color: TYPE_COLORS[item.dependency_type] ?? '#abb2bf',
-          borderColor: TYPE_COLORS[item.dependency_type] ?? '#abb2bf',
+          color: getTypeColor(item.dependency_type),
+          borderColor: getTypeColor(item.dependency_type),
         }}
       />
 
