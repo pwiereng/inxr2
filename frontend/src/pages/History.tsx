@@ -12,6 +12,12 @@ import {
 } from '@mui/material'
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { getCommits, type CommitInfo } from '@/lib/api'
+import {
+  splitCommitMessage,
+  makeLoadKey,
+  shouldLoadCommits,
+  buildCommitBrowseTarget,
+} from '@/lib/commitHistory'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
 import { CopyButton } from '@/components/CopyButton/CopyButton'
 import { useSelectionToolbar } from '@/hooks/useSelectionToolbar'
@@ -46,8 +52,8 @@ export function History(): React.ReactElement {
       return
     }
 
-    const key = `${repoName}:${branch ?? ''}`
-    if (loadedKeyRef.current === key) {
+    const key = makeLoadKey(repoName, branch)
+    if (!shouldLoadCommits(loadedKeyRef.current, key)) {
       return
     }
     // Set optimistically so that if React StrictMode runs this effect
@@ -138,11 +144,7 @@ export function History(): React.ReactElement {
     // Only navigate to browse for indexed commits (files are browseable)
     if (!commitInfo.is_indexed || !repoName) return
 
-    const params = new URLSearchParams()
-    if (branch) params.set('branch', branch)
-    params.set('commit', commitInfo.hash)
-    params.set('co', '1') // Show only changed files by default
-    navigate(`/browse/${repoName}?${params.toString()}`)
+    navigate(buildCommitBrowseTarget(repoName, branch, commitInfo.hash))
   }
 
   // Format date for display (always UTC)
@@ -185,9 +187,7 @@ export function History(): React.ReactElement {
             <List disablePadding>
               {commits.map((commitInfo, index) => {
                 const isFocused = commit === commitInfo.hash
-                const messageParts = commitInfo.message.split('\n')
-                const summary = messageParts[0] || ''
-                const body = messageParts.slice(1).join('\n').trim()
+                const { summary, body } = splitCommitMessage(commitInfo.message)
                 return (
                   <ListItem
                     key={commitInfo.hash}
