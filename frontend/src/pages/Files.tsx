@@ -24,20 +24,12 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 import { formatFileSize } from '@/lib/fileUtils'
-
-interface File {
-  id: number
-  repository_id: number
-  commit_id: number
-  path: string
-  language: string | null
-  size_bytes: number
-  line_count: number | null
-}
+import { getRepositoryFiles, type FileInfo } from '@/lib/api'
+import { getLanguageColor, getUniqueLanguages, filterFiles } from '@/lib/fileFilters'
 
 export default function Files(): React.ReactElement {
   const { repositoryId } = useParams<{ repositoryId: string }>()
-  const [files, setFiles] = useState<File[]>([])
+  const [files, setFiles] = useState<FileInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -46,11 +38,7 @@ export default function Files(): React.ReactElement {
   useEffect(() => {
     const fetchFiles = async () => {
       try {
-        const response = await fetch(`http://localhost:8000/api/repositories/${repositoryId}/files`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch files')
-        }
-        const data = await response.json()
+        const data = await getRepositoryFiles(Number(repositoryId))
         setFiles(data)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error')
@@ -64,28 +52,11 @@ export default function Files(): React.ReactElement {
     }
   }, [repositoryId])
 
-  const getLanguageColor = (language: string | null): 'primary' | 'secondary' | 'default' => {
-    if (!language) return 'default'
-    const colors: Record<string, 'primary' | 'secondary'> = {
-      python: 'primary',
-      javascript: 'secondary',
-      typescript: 'primary',
-      java: 'secondary',
-      go: 'primary',
-      rust: 'secondary',
-    }
-    return colors[language.toLowerCase()] || 'default'
-  }
-
   // Get unique languages for filter
-  const languages = Array.from(new Set(files.map((f) => f.language).filter(Boolean))).sort()
+  const languages = getUniqueLanguages(files)
 
   // Filter files
-  const filteredFiles = files.filter((file) => {
-    const matchesSearch = file.path.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesLanguage = !filterLanguage || file.language === filterLanguage
-    return matchesSearch && matchesLanguage
-  })
+  const filteredFiles = filterFiles(files, searchTerm, filterLanguage)
 
   if (loading) {
     return (
