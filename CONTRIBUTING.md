@@ -584,6 +584,75 @@ describe('CodeViewer', () => {
 });
 ```
 
+### Page-Level Test Conventions
+
+Page components (`src/pages/`) are URL-driven — they read `repo`/`branch`/`commit` from the
+router and navigate on interaction — and often bury reusable logic in JSX. The following
+conventions emerged from the frontend coverage initiative (#465–477) and are **required** for
+new page tests:
+
+**1. Extract pure logic into a per-page `lib/` module, then unit-test it exhaustively.**
+Filtering, grouping, formatting, and URL/key building belong in `src/lib/<page>.ts` (types-only
+import from `@/lib/api` — no React/MUI), so they can be tested without rendering. Keep side
+effects (data fetching, `navigate()`, refs, `useState`) in the component. Examples:
+`lib/fileFilters.ts`, `lib/commitHistory.ts`, `lib/dependencyGrouping.ts`.
+
+**2. Render with `MemoryRouter` + a `LocationDisplay` probe — not `@/test/utils`.**
+`@/test/utils` wraps with `BrowserRouter`, which can't set `initialEntries` or expose the
+resulting URL. Page tests must control inbound params and assert outbound navigation, so use
+`MemoryRouter` directly:
+
+```typescript
+function LocationDisplay() {
+  const loc = useLocation();
+  return <div data-testid="location">{loc.pathname + loc.search}</div>;
+}
+
+function renderPage(entry = '/dependencies?repo=myrepo') {
+  return render(
+    <MemoryRouter initialEntries={[entry]}>
+      <MyPage />
+      <LocationDisplay />
+    </MemoryRouter>
+  );
+}
+```
+
+**3. Stub `CodeHeader` with one button per callback** so the page's header-driven navigation
+handlers are actually exercised. A bare `<div />` stub leaves `handleTabChange` /
+`handleRepoChange` / etc. at 0% coverage:
+
+```typescript
+vi.mock('@/components/CodeHeader', () => ({
+  CodeHeader: (props: { onTabChange: (t: TabValue) => void /* ...other callbacks */ }) => (
+    <div data-testid="code-header">
+      <button onClick={() => props.onTabChange('search')}>tab-search</button>
+      {/* one button per callback / tab value */}
+    </div>
+  ),
+}));
+```
+
+**4. Assert the FULL destination URL, including surviving query params — never the path prefix
+alone.** Navigation handlers thread `repo`/`branch`/`commit` into the destination. A prefix-only
+assertion (`toHaveTextContent('/search')`) silently passes even when a regression drops
+`?${params}` and loses that context. Assert each param survives:
+
+```typescript
+const loc = screen.getByTestId('location');
+expect(loc).toHaveTextContent('/search');
+expect(loc).toHaveTextContent('repo=myrepo');
+expect(loc).toHaveTextContent('branch=main');
+expect(loc).toHaveTextContent('commit=deadbeef');
+```
+
+This exact gap recurred across the #465–477 reviews; asserting the full URL is the fix. Avoid
+near-tautological checks like `toHaveTextContent('/')` — pair or replace them with an exact match.
+
+**5. Mock the API at the module boundary** (`vi.mock('@/lib/api')`) and cover every render
+branch — loading, error, empty, populated — plus each interactive handler (filters, expansion,
+and the navigation above).
+
 ### Frontend Tools Configuration
 
 **package.json scripts:**
