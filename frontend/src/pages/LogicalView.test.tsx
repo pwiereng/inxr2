@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import LogicalView from './LogicalView'
@@ -890,12 +890,14 @@ describe('LogicalView', () => {
       await waitFor(() => expect(screen.getByText('app.py')).toBeInTheDocument())
       const findField = screen.getByPlaceholderText('Find symbol...')
       await user.type(findField, 'doThing')
-      // The clear button appears once there is text; clicking empties the field.
-      const clearButtons = screen.getAllByRole('button')
-      // Clear by re-querying via the input value going back to empty.
-      await user.clear(findField)
+      expect(findField).toHaveValue('doThing')
+      // The clear button (a ClearIcon IconButton) only renders once the field
+      // has text. Scope to this field's TextField root so we click its own
+      // clear button — exercising the onClick={() => setSymbolSearch('')} branch.
+      const fieldRoot = findField.closest('.MuiTextField-root') as HTMLElement
+      const clearButton = within(fieldRoot).getByRole('button')
+      await user.click(clearButton)
       expect(findField).toHaveValue('')
-      expect(clearButtons.length).toBeGreaterThan(0)
     })
   })
 
