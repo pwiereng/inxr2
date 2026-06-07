@@ -341,7 +341,12 @@ describe('LogicalView', () => {
       mockGetSymbolTree.mockReset()
       renderView('/logical-view')
       await user.click(screen.getByText('hdr-browse'))
-      expect(screen.getByTestId('location')).toHaveTextContent('/')
+      // Exact match, not toHaveTextContent('/') — the starting '/logical-view'
+      // already contains '/', so a substring check could not catch a regression
+      // that left us on the original page (CONTRIBUTING Page-Test Convention #4).
+      const loc = screen.getByTestId('location')
+      expect(loc.textContent).toBe('/')
+      expect(loc).not.toHaveTextContent('logical-view')
     })
   })
 
@@ -368,6 +373,43 @@ describe('LogicalView', () => {
       expect(loc).toHaveTextContent('branch=main')
       expect(loc).toHaveTextContent('commit=deadbeef')
       expect(loc).toHaveTextContent('line=5')
+    })
+
+    it('handleInheritanceClick navigates to the inheritance target on a plain click', async () => {
+      const user = userEvent.setup()
+      mockGetSymbolTree.mockImplementation(async (_repo, params) => {
+        if (params?.file_id) {
+          return tierSymbols([
+            makeTreeSymbol({
+              id: 100,
+              name: 'Derived',
+              kind: 'class',
+              has_children: false,
+              inheritance: [
+                {
+                  reference_text: 'Base',
+                  target_symbol_id: 99,
+                  target_file_id: 2,
+                  target_file_path: 'src/base.py',
+                  target_line: 10,
+                },
+              ],
+            }),
+          ])
+        }
+        return tier1([makeFile({ file_id: 1, path: 'src/app.py' })])
+      })
+      renderView('/logical-view?repo=myrepo&branch=main&commit=deadbeef')
+
+      await user.click(await screen.findByText('app.py'))
+      // A plain (non-Cmd/Ctrl) click on the "extends" chip navigates to Browse.
+      await user.click(await screen.findByText('extends Base'))
+
+      const loc = screen.getByTestId('location')
+      expect(loc).toHaveTextContent('/browse/myrepo/src/base.py')
+      expect(loc).toHaveTextContent('branch=main')
+      expect(loc).toHaveTextContent('commit=deadbeef')
+      expect(loc).toHaveTextContent('line=10')
     })
   })
 
@@ -433,7 +475,14 @@ describe('LogicalView', () => {
 
     it('the find-symbol field issues a debounced search and applies the match filter', async () => {
       const user = userEvent.setup()
-      mockGetSymbolTree.mockResolvedValue(tier1([makeFile({ file_id: 1, path: 'src/app.py' })]))
+      mockGetSymbolTree.mockResolvedValue(
+        tier1([
+          makeFile({ file_id: 1, path: 'src/app.py' }),
+          makeFile({ file_id: 2, path: 'src/other.py' }),
+        ])
+      )
+      // The search only matches a symbol in file 1, so the match-file-id filter
+      // should keep app.py and drop other.py.
       mockSearchSymbols.mockResolvedValue({
         items: [makeApiSymbol({ id: 300, file_id: 1 })],
         total: 1,
@@ -443,6 +492,7 @@ describe('LogicalView', () => {
       renderView()
 
       await waitFor(() => expect(screen.getByText('app.py')).toBeInTheDocument())
+      expect(screen.getByText('other.py')).toBeInTheDocument()
       await user.type(screen.getByPlaceholderText('Find symbol...'), 'doThing')
 
       await waitFor(() =>
@@ -450,7 +500,8 @@ describe('LogicalView', () => {
           expect.objectContaining({ q: 'doThing', repository_id: 1 })
         )
       )
-      // The matched file survives the symbol-search file-id filter.
+      // The matched file survives; the non-matching file is filtered out.
+      await waitFor(() => expect(screen.queryByText('other.py')).not.toBeInTheDocument())
       expect(screen.getByText('app.py')).toBeInTheDocument()
     })
   })
