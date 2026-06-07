@@ -1017,3 +1017,21 @@ class TestBranchScopedResolution:
         ref = await ref_repo.find_by_id(1)
         assert ref is not None
         assert ref.target_symbol_id == 1
+
+
+class TestResolutionProgressPercent:
+    """Branch coverage for ResolutionProgress.percent."""
+
+    def test_percent_zero_total(self) -> None:
+        from inxr2.application.use_cases.indexing.resolve_references import (
+            ResolutionProgress,
+        )
+
+        assert ResolutionProgress(resolved=0, total=0).percent == 100
+
+    def test_percent_partial(self) -> None:
+        from inxr2.application.use_cases.indexing.resolve_references import (
+            ResolutionProgress,
+        )
+
+        assert ResolutionProgress(resolved=5, total=10).percent == 50

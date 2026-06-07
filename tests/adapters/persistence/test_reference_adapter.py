@@ -1046,3 +1046,156 @@ class TestPostgresReferenceRepositoryResolution:
         await ref_adapter.prepare_resolution(repo_id)
         await ref_adapter.prepare_resolution(repo_id)
         # Should not raise
+
+
+@pytest.mark.asyncio
+class TestPostgresReferenceRepositoryBranchPermutations:
+    """Targeted branch coverage for filter permutations."""
+
+    async def _repo_with_ext_refs(self, db_session: AsyncSession, name: str) -> int:
+        from inxr2.domain.entities import File
+
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+        ref_adapter = PostgresReferenceRepository(db_session)
+
+        repo = await repo_adapter.save(RepositoryFactory.create(name=name))
+        assert repo.id is not None
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="a" * 40)
+        )
+        assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
+
+        for path, ext, chash in [
+            ("ref.py", ".py", "refext_py0" + "0" * 30),
+            ("ref.ts", ".ts", "refext_ts0" + "0" * 30),
+            ("refMakefile", None, "refext_no0" + "0" * 30),
+        ]:
+            f = await file_adapter.save(
+                File(
+                    repository_id=repo.id,
+                    path=path,
+                    content_hash=chash,
+                    size_bytes=10,
+                    language="python",
+                    extension=ext,
+                )
+            )
+            assert f.id is not None
+            await file_adapter.link_file_to_commit(f.id, commit.id)
+            await ref_adapter.save(
+                ReferenceFactory.create(
+                    repository_id=repo.id,
+                    source_file_id=f.id,
+                    reference_text="refX",
+                    source_line=1,
+                )
+            )
+        await db_session.commit()
+        return repo.id
+
+    async def test_search_global_latest_scope(self, db_session: AsyncSession) -> None:
+        repo_id, _, file_id = await _setup_repo_commit_file(db_session, "ref-glob")
+        adapter = PostgresReferenceRepository(db_session)
+        await adapter.save(
+            ReferenceFactory.create(
+                repository_id=repo_id,
+                source_file_id=file_id,
+                reference_text="globref",
+                source_line=1,
+            )
+        )
+        await db_session.commit()
+        _, total = await adapter.search_by_text("globref", scope="latest")
+        assert total >= 1
+
+    async def test_search_no_repo_no_scope(self, db_session: AsyncSession) -> None:
+        repo_id, _, file_id = await _setup_repo_commit_file(db_session, "ref-noscope")
+        adapter = PostgresReferenceRepository(db_session)
+        await adapter.save(
+            ReferenceFactory.create(
+                repository_id=repo_id,
+                source_file_id=file_id,
+                reference_text="noscoperef",
+                source_line=1,
+            )
+        )
+        await db_session.commit()
+        # No repo, no scope → neither scoping branch taken.
+        _, total = await adapter.search_by_text("noscoperef")
+        assert total >= 1
+
+    async def test_search_with_commit_id(self, db_session: AsyncSession) -> None:
+        repo_id, commit_id, file_id = await _setup_repo_commit_file(
+            db_session, "ref-commit"
+        )
+        adapter = PostgresReferenceRepository(db_session)
+        await adapter.save(
+            ReferenceFactory.create(
+                repository_id=repo_id,
+                source_file_id=file_id,
+                reference_text="commitref",
+                source_line=1,
+            )
+        )
+        await db_session.commit()
+        _, total = await adapter.search_by_text(
+            "commitref", repository_id=repo_id, commit_id=commit_id
+        )
+        assert total == 1
+
+    async def test_search_extensions_real_and_none(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id = await self._repo_with_ext_refs(db_session, "ref-ext-rn")
+        adapter = PostgresReferenceRepository(db_session)
+        _, total = await adapter.search_by_text(
+            "refX", repository_id=repo_id, extensions=[".py", "(none)"]
+        )
+        assert total == 2
+
+    async def test_search_extensions_only_none(self, db_session: AsyncSession) -> None:
+        repo_id = await self._repo_with_ext_refs(db_session, "ref-ext-n")
+        adapter = PostgresReferenceRepository(db_session)
+        _, total = await adapter.search_by_text(
+            "refX", repository_id=repo_id, extensions=["(none)"]
+        )
+        assert total == 1
+
+    async def test_search_extensions_only_real(self, db_session: AsyncSession) -> None:
+        repo_id = await self._repo_with_ext_refs(db_session, "ref-ext-r")
+        adapter = PostgresReferenceRepository(db_session)
+        _, total = await adapter.search_by_text(
+            "refX", repository_id=repo_id, extensions=[".ts"]
+        )
+        assert total == 1
+
+    async def test_find_references_to_symbol_commit_and_repo(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, commit_id, file_id = await _setup_repo_commit_file(
+            db_session, "ref-fts-cr"
+        )
+        sym_adapter = PostgresSymbolRepository(db_session)
+        symbol = await sym_adapter.save(
+            SymbolFactory.create(file_id=file_id, repository_id=repo_id, name="target")
+        )
+        assert symbol.id is not None
+        adapter = PostgresReferenceRepository(db_session)
+        await adapter.save(
+            ReferenceFactory.create(
+                repository_id=repo_id,
+                source_file_id=file_id,
+                reference_text="target",
+                source_line=3,
+                target_symbol_id=symbol.id,
+            )
+        )
+        await db_session.commit()
+        # commit_id + repository_id both set → repo filter inside commit branch.
+        results = await adapter.find_references_to_symbol(
+            symbol.id, repository_id=repo_id, commit_id=commit_id
+        )
+        assert len(results) >= 1

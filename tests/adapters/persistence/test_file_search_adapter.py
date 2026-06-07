@@ -524,3 +524,139 @@ class TestPostgresFileSearchRepositorySearchByName:
         assert total == 2
         repo_ids = {r.repository_id for r in results}
         assert repo_ids == {repo1.id, repo2.id}
+
+
+@pytest.mark.asyncio
+class TestSearchByNameExtensions:
+    """Extension-filter branch permutations for search_by_name."""
+
+    async def _setup(self, db_session: AsyncSession) -> tuple[int, int]:
+        from inxr2.domain.entities import File
+
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(RepositoryFactory.create(name="ext-repo"))
+        assert repo.id is not None
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="e" * 40)
+        )
+        assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
+
+        for path, ext, chash in [
+            ("src/widget.py", ".py", "ext_py0000" + "0" * 30),
+            ("src/widget.ts", ".ts", "ext_ts0000" + "0" * 30),
+            ("widget_makefile", None, "ext_none00" + "0" * 30),
+        ]:
+            f = await file_adapter.save(
+                File(
+                    repository_id=repo.id,
+                    path=path,
+                    content_hash=chash,
+                    size_bytes=10,
+                    language="python",
+                    extension=ext,
+                )
+            )
+            assert f.id is not None
+            await file_adapter.link_file_to_commit(f.id, commit.id)
+        await db_session.commit()
+        return repo.id, commit.id
+
+    async def test_real_and_none_extensions(self, db_session: AsyncSession) -> None:
+        repo_id, _ = await self._setup(db_session)
+        adapter = PostgresFileSearchRepository(db_session)
+        results, total = await adapter.search_by_name(
+            "widget", repository_id=repo_id, extensions=[".py", "(none)"]
+        )
+        paths = {f.path for f in results}
+        assert total == 2
+        assert paths == {"src/widget.py", "widget_makefile"}
+
+    async def test_only_none_extension(self, db_session: AsyncSession) -> None:
+        repo_id, _ = await self._setup(db_session)
+        adapter = PostgresFileSearchRepository(db_session)
+        results, total = await adapter.search_by_name(
+            "widget", repository_id=repo_id, extensions=["(none)"]
+        )
+        assert total == 1
+        assert results[0].path == "widget_makefile"
+
+    async def test_only_real_extensions(self, db_session: AsyncSession) -> None:
+        repo_id, _ = await self._setup(db_session)
+        adapter = PostgresFileSearchRepository(db_session)
+        results, total = await adapter.search_by_name(
+            "widget", repository_id=repo_id, extensions=[".ts"]
+        )
+        assert total == 1
+        assert results[0].path == "src/widget.ts"
+
+
+@pytest.mark.asyncio
+class TestGetDistinctExtensions:
+    """Branch permutations for get_distinct_extensions."""
+
+    async def _setup(self, db_session: AsyncSession) -> tuple[int, int]:
+        from inxr2.domain.entities import File
+
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+
+        repo = await repo_adapter.save(RepositoryFactory.create(name="distinct-repo"))
+        assert repo.id is not None
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="d" * 40)
+        )
+        assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
+
+        for path, ext, chash in [
+            ("a.py", ".py", "dist_py000" + "0" * 30),
+            ("b.ts", ".ts", "dist_ts000" + "0" * 30),
+            ("Makefile", None, "dist_none0" + "0" * 30),
+        ]:
+            f = await file_adapter.save(
+                File(
+                    repository_id=repo.id,
+                    path=path,
+                    content_hash=chash,
+                    size_bytes=10,
+                    language="python",
+                    extension=ext,
+                )
+            )
+            assert f.id is not None
+            await file_adapter.link_file_to_commit(f.id, commit.id)
+        await db_session.commit()
+        return repo.id, commit.id
+
+    async def test_by_repository_and_branch(self, db_session: AsyncSession) -> None:
+        repo_id, _ = await self._setup(db_session)
+        adapter = PostgresFileSearchRepository(db_session)
+        exts = await adapter.get_distinct_extensions(
+            repository_id=repo_id, branch="main"
+        )
+        # "(none)" sentinel is prepended because Makefile has no extension.
+        assert exts[0] == "(none)"
+        assert ".py" in exts and ".ts" in exts
+
+    async def test_by_repository_without_branch(self, db_session: AsyncSession) -> None:
+        repo_id, _ = await self._setup(db_session)
+        adapter = PostgresFileSearchRepository(db_session)
+        exts = await adapter.get_distinct_extensions(repository_id=repo_id)
+        assert ".py" in exts and ".ts" in exts
+
+    async def test_latest_scope(self, db_session: AsyncSession) -> None:
+        repo_id, _ = await self._setup(db_session)
+        adapter = PostgresFileSearchRepository(db_session)
+        exts = await adapter.get_distinct_extensions(scope="latest")
+        assert ".py" in exts and ".ts" in exts
+
+    async def test_no_repo_no_scope(self, db_session: AsyncSession) -> None:
+        repo_id, _ = await self._setup(db_session)
+        adapter = PostgresFileSearchRepository(db_session)
+        exts = await adapter.get_distinct_extensions()
+        assert ".py" in exts and ".ts" in exts

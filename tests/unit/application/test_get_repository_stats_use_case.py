@@ -626,3 +626,49 @@ class TestGetRepositoryStatsUseCaseEdgeCases:
 
         # Should count 1 file (from HEAD commit), not 2
         assert stats.total_files == 1
+
+
+class TestDeduplicateFilesByPath:
+    """Branch coverage for the _deduplicate_files_by_path helper."""
+
+    def _use_case(self) -> GetRepositoryStatsUseCase:
+        file_repo = InMemoryFileRepository()
+        return GetRepositoryStatsUseCase(
+            repository_repo=InMemoryRepositoryRepository(),
+            file_repo=file_repo,
+            file_version_repo=InMemoryFileVersionRepository(file_repo),
+            symbol_repo=InMemorySymbolRepository(),
+            reference_repo=InMemoryReferenceRepository(),
+            commit_repo=InMemoryCommitRepository(),
+        )
+
+    def _file(self, file_id: int, path: str) -> File:
+        return File(
+            id=file_id,
+            repository_id=1,
+            path=path,
+            content_hash=f"h{file_id}",
+            size_bytes=10,
+            language="python",
+        )
+
+    def test_keeps_highest_id_per_path(self) -> None:
+        use_case = self._use_case()
+        files = [
+            self._file(1, "a.py"),
+            self._file(3, "a.py"),  # newer version of a.py
+            self._file(2, "b.py"),
+        ]
+        result = use_case._deduplicate_files_by_path(files)
+        by_path = {f.path: f.id for f in result}
+        assert by_path == {"a.py": 3, "b.py": 2}
+
+    def test_lower_id_does_not_replace(self) -> None:
+        use_case = self._use_case()
+        files = [
+            self._file(5, "a.py"),
+            self._file(2, "a.py"),  # older version — must not replace
+        ]
+        result = use_case._deduplicate_files_by_path(files)
+        assert len(result) == 1
+        assert result[0].id == 5

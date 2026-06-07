@@ -154,3 +154,68 @@ class TestEdgeCases:
     def test_empty_csproj(self, parser: CSharpDependencyParser) -> None:
         content = '<Project Sdk="Microsoft.NET.Sdk"></Project>'
         assert parser.parse(content, "App.csproj") == []
+
+
+class TestBranchCoverageEdgeCases:
+    """Edge-case branch coverage for the C# dependency parser."""
+
+    def test_parse_unknown_basename(self, parser: CSharpDependencyParser) -> None:
+        assert parser.parse("x", "weird.txt") == []
+
+    def test_csproj_version_child_and_no_name(
+        self, parser: CSharpDependencyParser
+    ) -> None:
+        content = """\
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json">
+      <Version>13.0.1</Version>
+    </PackageReference>
+    <PackageReference Version="1.0.0" />
+    <PackageReference Include="Moq" Version="4.0.0" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
+"""
+        deps = parser.parse(content, "app.csproj")
+        by_name = {d["package_name"]: d for d in deps}
+        # version pulled from child element
+        assert by_name["Newtonsoft.Json"]["version_spec"] == "13.0.1"
+        # PackageReference with no Include/Update is skipped
+        assert all(d["package_name"] for d in deps)
+        # PrivateAssets=all → dev
+        assert by_name["Moq"]["dependency_type"] == "dev"
+
+    def test_packages_lock_non_dict_entries(
+        self, parser: CSharpDependencyParser
+    ) -> None:
+        content = """\
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "RealPkg": {"type": "Direct", "resolved": "1.0.0", "requested": "[1.0.0,)"},
+      "BadPkg": "not-a-dict"
+    },
+    "badframework": "not-a-dict"
+  }
+}
+"""
+        deps = parser.parse(content, "packages.lock.json")
+        by_name = {d["package_name"]: d for d in deps}
+        assert by_name["RealPkg"]["is_direct"] is True
+        assert "BadPkg" not in by_name
+
+    def test_directory_packages_props(self, parser: CSharpDependencyParser) -> None:
+        content = """\
+<Project>
+  <ItemGroup>
+    <PackageVersion Include="Serilog" Version="2.0.0" />
+    <PackageVersion Version="9.9.9" />
+  </ItemGroup>
+</Project>
+"""
+        deps = parser.parse(content, "Directory.Packages.props")
+        by_name = {d["package_name"]: d for d in deps}
+        assert by_name["Serilog"]["version_spec"] == "2.0.0"
+        # entry with no Include is skipped
+        assert len(deps) == 1

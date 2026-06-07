@@ -451,3 +451,74 @@ class TestGetSymbolReferencesWithBranchFiltering:
 
         # Should find no references
         assert result.total == 0
+
+
+class TestGetSymbolReferencesCommitResolution:
+    """Branch coverage for commit_hash resolution paths."""
+
+    def _symbol_repo(self) -> InMemorySymbolRepository:
+        repo = InMemorySymbolRepository()
+        repo._symbols[1] = Symbol(
+            id=1,
+            file_id=1,
+            repository_id=1,
+            name="save",
+            kind=SymbolKind.FUNCTION,
+            start_line=1,
+            start_column=0,
+            end_line=2,
+            end_column=0,
+        )
+        return repo
+
+    def _commit_repo(self) -> InMemoryCommitRepository:
+        repo = InMemoryCommitRepository()
+        repo._commits[1] = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("abc123def456"),
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+        )
+        return repo
+
+    @pytest.mark.asyncio
+    async def test_commit_hash_resolved(self) -> None:
+        use_case = GetSymbolReferencesUseCase(
+            symbol_repo=self._symbol_repo(),
+            reference_repo=InMemoryReferenceRepository(),
+            file_repo=InMemoryFileRepository(),
+            commit_repo=self._commit_repo(),
+        )
+        result = await use_case.execute(
+            GetSymbolReferencesRequest(
+                symbol_id=1, by_name=False, commit_hash="abc123def456"
+            )
+        )
+        assert result.symbol_name == "save"
+
+    @pytest.mark.asyncio
+    async def test_commit_hash_without_commit_repo_raises(self) -> None:
+        use_case = GetSymbolReferencesUseCase(
+            symbol_repo=self._symbol_repo(),
+            reference_repo=InMemoryReferenceRepository(),
+            file_repo=InMemoryFileRepository(),
+            commit_repo=None,
+        )
+        with pytest.raises(ValueError, match="commit repository is not available"):
+            await use_case.execute(
+                GetSymbolReferencesRequest(symbol_id=1, commit_hash="abc123def456")
+            )
+
+    @pytest.mark.asyncio
+    async def test_unknown_commit_hash_raises(self) -> None:
+        use_case = GetSymbolReferencesUseCase(
+            symbol_repo=self._symbol_repo(),
+            reference_repo=InMemoryReferenceRepository(),
+            file_repo=InMemoryFileRepository(),
+            commit_repo=self._commit_repo(),
+        )
+        with pytest.raises(ValueError, match="Unknown commit hash"):
+            await use_case.execute(
+                GetSymbolReferencesRequest(symbol_id=1, commit_hash="deadbeef")
+            )
