@@ -890,6 +890,45 @@ describe('Browse', () => {
       )
       // Swap button only renders when the reference is NOT newer.
       expect(screen.getByTestId('SwapHorizIcon')).toBeInTheDocument()
+      // Rename chips: left = resolved_path basename, right = current filePath basename.
+      expect(screen.getByText('old.ts')).toBeInTheDocument()
+      expect(screen.getByText('a.ts')).toBeInTheDocument()
+    })
+
+    it('swaps the diff panels when the swap affordance is clicked', async () => {
+      const user = userEvent.setup()
+      const swapDiffPanels = vi.fn()
+      renderBrowse(
+        diff({
+          computedState: { referenceIsNewer: false, temporalOrderKnown: true },
+          actions: { ...noopActions(), swapDiffPanels },
+        })
+      )
+      await user.click(iconButton('SwapHorizIcon'))
+      expect(swapDiffPanels).toHaveBeenCalledTimes(1)
+    })
+
+    it('builds a forward-direction rename tooltip when the file was renamed away', async () => {
+      const user = userEvent.setup()
+      // renamed_from null + renamed_to set drives the "current → renamed_to" tooltip branch.
+      const renamedToInfo: ResolvePathResult = {
+        found: true,
+        resolved_path: 'src/new.ts',
+        renamed_from: null,
+        renamed_to: 'src/new.ts',
+        rename_commit_hash: 'b'.repeat(40),
+      }
+      renderBrowse(
+        diff({
+          diffState: {
+            diffContent: makeFileContent({ content: 'const x = 2\n' }),
+            diffRenameInfo: renamedToInfo,
+          },
+        })
+      )
+      await user.hover(screen.getByText('new.ts'))
+      // currentPath ('src/a.ts') → renamed_to ('src/new.ts')
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('src/a.ts → src/new.ts')
     })
 
     it('shows the same-version hint when both panels show identical content', () => {
