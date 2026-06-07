@@ -7,7 +7,6 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Collapse,
   CircularProgress,
   Alert,
   TextField,
@@ -15,13 +14,6 @@ import {
   Chip,
   Tooltip,
 } from '@mui/material'
-import FolderIcon from '@mui/icons-material/Folder'
-import FolderOpenIcon from '@mui/icons-material/FolderOpen'
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import ChevronRightIcon from '@mui/icons-material/ChevronRight'
-import ClassIcon from '@mui/icons-material/Category'
-import FunctionIcon from '@mui/icons-material/Functions'
-import FieldIcon from '@mui/icons-material/DataObject'
 import SearchIcon from '@mui/icons-material/Search'
 import BlockIcon from '@mui/icons-material/Block'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
@@ -29,7 +21,6 @@ import TagIcon from '@mui/icons-material/Tag'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import ClearIcon from '@mui/icons-material/Clear'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import IconButton from '@mui/material/IconButton'
 import { CodeHeader } from '@/components/CodeHeader'
 import type { TabValue } from '@/components/CodeHeader'
@@ -47,70 +38,27 @@ import {
   type SymbolTreeInheritance,
   type SymbolTreeResponse,
 } from '@/lib/api'
-
-// Symbol kind groupings for display
-const KIND_ICONS: Record<string, React.ReactNode> = {
-  class: <ClassIcon fontSize="small" sx={{ color: '#e5c07b' }} />,
-  interface: <ClassIcon fontSize="small" sx={{ color: '#56b6c2' }} />,
-  struct: <ClassIcon fontSize="small" sx={{ color: '#d19a66' }} />,
-  record: <ClassIcon fontSize="small" sx={{ color: '#d19a66' }} />,
-  enum: <ClassIcon fontSize="small" sx={{ color: '#c678dd' }} />,
-  function: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
-  method: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
-  staticmethod: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
-  classmethod: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
-  constructor: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
-  getter: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
-  setter: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
-  variable: <FieldIcon fontSize="small" sx={{ color: '#abb2bf' }} />,
-  class_variable: <FieldIcon fontSize="small" sx={{ color: '#d19a66' }} />,
-  instance_variable: <FieldIcon fontSize="small" sx={{ color: '#abb2bf' }} />,
-  constant: <FieldIcon fontSize="small" sx={{ color: '#d19a66' }} />,
-}
-
-const KIND_COLORS: Record<string, string> = {
-  class: '#e5c07b',
-  interface: '#56b6c2',
-  struct: '#d19a66',
-  record: '#d19a66',
-  enum: '#c678dd',
-  function: '#61afef',
-  method: '#61afef',
-  staticmethod: '#61afef',
-  classmethod: '#61afef',
-  constant: '#d19a66',
-  variable: '#abb2bf',
-  class_variable: '#d19a66',
-  instance_variable: '#abb2bf',
-  field: '#abb2bf',
-  property: '#abb2bf',
-}
-
-function getKindColor(kind: string): string {
-  return KIND_COLORS[kind] ?? '#abb2bf'
-}
-
-function getKindIcon(kind: string): React.ReactNode {
-  return KIND_ICONS[kind] ?? <FieldIcon fontSize="small" sx={{ color: '#abb2bf' }} />
-}
-
-function getKindLabel(kind: string, plural = false): string {
-  const label = kind.replace(/_/g, ' ')
-  if (!plural) return label
-  if (label.endsWith('y') && !label.endsWith('ay')) return label.slice(0, -1) + 'ies'
-  if (label.endsWith('s')) return label + 'es'
-  return label + 's'
-}
+import {
+  getKindColor,
+  getKindLabel,
+  getAvailableLanguages,
+  filterFiles,
+  filterKindSymbols,
+  groupKindSymbols,
+  computeSummaryStats,
+  fileName,
+  fileDir,
+  type SymbolChildren,
+} from '@/lib/logicalView'
+import { getKindIcon } from '@/components/logicalView/kindIcons'
+import { FileNode } from '@/components/logicalView/FileNode'
+import { KindSymbolNode } from '@/components/logicalView/KindSymbolNode'
 
 const KIND_PAGE_SIZE = 100
 
 interface ExpandedState {
   files: Set<number>
   symbols: Set<number>
-}
-
-interface SymbolChildren {
-  [parentId: number]: SymbolTreeSymbol[]
 }
 
 export default function LogicalView(): React.ReactElement {
@@ -204,13 +152,7 @@ export default function LogicalView(): React.ReactElement {
   const initialFileExpanded = useRef(false)
 
   // Derive available languages from loaded files
-  const availableLanguages = useMemo(() => {
-    const langs = new Set<string>()
-    for (const f of files) {
-      if (f.language) langs.add(f.language)
-    }
-    return [...langs].sort()
-  }, [files])
+  const availableLanguages = useMemo(() => getAvailableLanguages(files), [files])
 
   // Available kinds and total counts from backend (tier 1 response)
   const [availableKinds, setAvailableKinds] = useState<string[]>([])
@@ -813,139 +755,47 @@ export default function LogicalView(): React.ReactElement {
   }
 
   // Filter files by language and text
-  const filteredFiles = useMemo(() => {
-    let result = files
-    if (selectedLanguage) {
-      result = result.filter((f) => f.language === selectedLanguage)
-    }
-    if (filterText) {
-      const lower = filterText.toLowerCase()
-      result = result.filter(
-        (f) =>
-          f.path.toLowerCase().includes(lower) ||
-          (fileSymbols[f.file_id] ?? []).some((s) => s.name.toLowerCase().includes(lower))
-      )
-    }
-    if (excludeText) {
-      const lower = excludeText.toLowerCase()
-      result = result.filter(
-        (f) =>
-          !f.path.toLowerCase().includes(lower) &&
-          !(fileSymbols[f.file_id] ?? []).some((s) => s.name.toLowerCase().includes(lower))
-      )
-    }
-    if (symbolSearchMatchFileIds) {
-      result = result.filter((f) => symbolSearchMatchFileIds.has(f.file_id))
-    }
-    return result
-  }, [files, selectedLanguage, filterText, excludeText, fileSymbols, symbolSearchMatchFileIds])
+  const filteredFiles = useMemo(
+    () =>
+      filterFiles(files, {
+        selectedLanguage,
+        filterText,
+        excludeText,
+        fileSymbols,
+        symbolSearchMatchFileIds,
+      }),
+    [files, selectedLanguage, filterText, excludeText, fileSymbols, symbolSearchMatchFileIds]
+  )
 
   // Filter kind-mode symbols by text, language, and symbol search
-  const filteredKindSymbols = useMemo(() => {
-    let result = kindSymbols
-    if (selectedLanguage) {
-      result = result.filter((s) => {
-        // Match language from file extension
-        const ext = s.file_path?.split('.').pop()?.toLowerCase()
-        const langMap: Record<string, string> = {
-          py: 'python',
-          ts: 'typescript',
-          tsx: 'typescript',
-          js: 'javascript',
-          jsx: 'javascript',
-          rb: 'ruby',
-          go: 'go',
-          rs: 'rust',
-          java: 'java',
-          cs: 'csharp',
-          cpp: 'cpp',
-          c: 'c',
-          h: 'cpp',
-          sh: 'bash',
-          bash: 'bash',
-        }
-        return ext ? langMap[ext] === selectedLanguage : false
-      })
-    }
-    if (filterText) {
-      const lower = filterText.toLowerCase()
-      result = result.filter(
-        (s) =>
-          s.name.toLowerCase().includes(lower) ||
-          (s.file_path?.toLowerCase().includes(lower) ?? false)
-      )
-    }
-    if (excludeText) {
-      const lower = excludeText.toLowerCase()
-      result = result.filter(
-        (s) =>
-          !s.name.toLowerCase().includes(lower) &&
-          !(s.file_path?.toLowerCase().includes(lower) ?? false)
-      )
-    }
-    if (symbolSearch.trim()) {
-      const lower = symbolSearch.trim().toLowerCase()
-      result = result.filter((s) => s.name.toLowerCase().includes(lower))
-    }
-    return result
-  }, [kindSymbols, selectedLanguage, filterText, excludeText, symbolSearch])
+  const filteredKindSymbols = useMemo(
+    () =>
+      filterKindSymbols(kindSymbols, {
+        selectedLanguage,
+        filterText,
+        excludeText,
+        symbolSearch,
+      }),
+    [kindSymbols, selectedLanguage, filterText, excludeText, symbolSearch]
+  )
 
   // Group kind mode symbols by parent class (from qualified_name)
-  const groupedKindSymbols = useMemo(() => {
-    const groups: {
-      groupKey: string
-      className: string | null
-      filePath: string | null
-      symbols: ApiSymbol[]
-    }[] = []
-    const groupMap = new Map<string, { filePath: string | null; symbols: ApiSymbol[] }>()
-    const ungrouped: ApiSymbol[] = []
-
-    for (const sym of filteredKindSymbols) {
-      // Extract parent class from qualified_name (e.g., "ClassName.method" -> "ClassName")
-      const qn = sym.qualified_name
-      const dotIdx = qn ? qn.lastIndexOf('.') : -1
-      const parentName = dotIdx > 0 ? qn!.slice(0, dotIdx) : null
-
-      if (parentName) {
-        const key = `${parentName}::${sym.file_path ?? ''}`
-        const existing = groupMap.get(key)
-        if (existing) {
-          existing.symbols.push(sym)
-        } else {
-          const group = { filePath: sym.file_path, symbols: [sym] }
-          groupMap.set(key, group)
-        }
-      } else {
-        ungrouped.push(sym)
-      }
-    }
-
-    // Sort groups by class name, ungrouped items first
-    if (ungrouped.length > 0) {
-      groups.push({ groupKey: '__ungrouped', className: null, filePath: null, symbols: ungrouped })
-    }
-    const sortedEntries = [...groupMap.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-    for (const [key, group] of sortedEntries) {
-      groups.push({
-        groupKey: key,
-        className: key.split('::')[0]!,
-        filePath: group.filePath,
-        symbols: group.symbols,
-      })
-    }
-
-    return groups
-  }, [filteredKindSymbols])
+  const groupedKindSymbols = useMemo(
+    () => groupKindSymbols(filteredKindSymbols),
+    [filteredKindSymbols]
+  )
 
   // Summary stats — use filtered file count, filter to active kind when in kind mode
-  const summaryStats = useMemo(() => {
-    if (activeKind) {
-      const count = filteredKindSymbols.length
-      return { files: filteredFiles.length, kinds: count > 0 ? { [activeKind]: count } : {} }
-    }
-    return { files: filteredFiles.length, kinds: totalKindCounts }
-  }, [activeKind, filteredFiles, filteredKindSymbols, totalKindCounts])
+  const summaryStats = useMemo(
+    () =>
+      computeSummaryStats({
+        activeKind,
+        filteredFilesCount: filteredFiles.length,
+        filteredKindSymbolsCount: filteredKindSymbols.length,
+        totalKindCounts,
+      }),
+    [activeKind, filteredFiles, filteredKindSymbols, totalKindCounts]
+  )
 
   // Restore scroll position after filter/search changes re-render the list
   useLayoutEffect(() => {
@@ -959,17 +809,6 @@ export default function LogicalView(): React.ReactElement {
       savedScrollTop.current = scrollRef.current.scrollTop
     }
   }, [])
-
-  const fileName = (path: string) => {
-    const parts = path.split('/')
-    return parts[parts.length - 1] ?? path
-  }
-
-  const fileDir = (path: string) => {
-    const parts = path.split('/')
-    if (parts.length <= 1) return ''
-    return parts.slice(0, -1).join('/') + '/'
-  }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -1343,8 +1182,6 @@ export default function LogicalView(): React.ReactElement {
                           onInheritanceClick={handleInheritanceClick}
                           onSymbolContextMenu={handleSymbolContextMenu}
                           onSwitchToOutline={switchToOutline}
-                          fileName={fileName}
-                          fileDir={fileDir}
                           indent={group.className ? 1 : 0}
                         />
                       ))}
@@ -1386,8 +1223,6 @@ export default function LogicalView(): React.ReactElement {
                   onSymbolClick={handleSymbolClick}
                   onInheritanceClick={handleInheritanceClick}
                   onSymbolContextMenu={handleSymbolContextMenu}
-                  fileName={fileName}
-                  fileDir={fileDir}
                 />
               ))}
             </List>
@@ -1420,515 +1255,5 @@ export default function LogicalView(): React.ReactElement {
         onClose={handleToolbarClose}
       />
     </Box>
-  )
-}
-
-// --- Sub-components ---
-
-interface FileNodeProps {
-  file: SymbolTreeFile
-  isExpanded: boolean
-  isExpanding: boolean
-  symbols: SymbolTreeSymbol[] | undefined
-  showKindCounts: boolean
-  highlightedSymbolIds: Set<number>
-  symbolChildren: SymbolChildren
-  expandedSymbols: Set<number>
-  expandingSymbol: number | null
-  onToggle: (fileId: number) => void
-  onToggleSymbol: (symbolId: number) => void
-  onSymbolClick: (symbol: SymbolTreeSymbol) => void
-  onInheritanceClick: (inh: SymbolTreeInheritance, e: React.MouseEvent) => void
-  onSymbolContextMenu: (symbol: SymbolTreeSymbol, e: React.MouseEvent) => void
-  fileName: (path: string) => string
-  fileDir: (path: string) => string
-}
-
-function FileNode({
-  file,
-  isExpanded,
-  isExpanding,
-  symbols,
-  showKindCounts,
-  highlightedSymbolIds,
-  symbolChildren,
-  expandedSymbols,
-  expandingSymbol,
-  onToggle,
-  onToggleSymbol,
-  onSymbolClick,
-  onInheritanceClick,
-  onSymbolContextMenu,
-  fileName,
-  fileDir,
-}: FileNodeProps): React.ReactElement {
-  const dir = fileDir(file.path)
-  const name = fileName(file.path)
-
-  return (
-    <>
-      <ListItemButton
-        data-file-id={file.file_id}
-        onClick={() => onToggle(file.file_id)}
-        sx={{ py: 0.5 }}
-      >
-        <ListItemIcon sx={{ minWidth: 28 }}>
-          {isExpanding ? (
-            <CircularProgress size={16} />
-          ) : isExpanded ? (
-            <ExpandMoreIcon fontSize="small" />
-          ) : (
-            <ChevronRightIcon fontSize="small" />
-          )}
-        </ListItemIcon>
-        <ListItemIcon sx={{ minWidth: 28 }}>
-          {isExpanded ? (
-            <FolderOpenIcon fontSize="small" color="primary" />
-          ) : (
-            <FolderIcon fontSize="small" color="primary" />
-          )}
-        </ListItemIcon>
-        <ListItemText
-          primary={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="body2" component="span" sx={{ fontFamily: 'monospace' }}>
-                <Typography
-                  variant="body2"
-                  component="span"
-                  color="text.secondary"
-                  sx={{ fontFamily: 'monospace' }}
-                >
-                  {dir}
-                </Typography>
-                {name}
-              </Typography>
-              <Chip
-                label={file.symbol_count}
-                size="small"
-                variant="outlined"
-                sx={{ height: 18, fontSize: '0.7rem' }}
-              />
-              {showKindCounts &&
-                Object.entries(file.all_kind_counts)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([kind, count]) => (
-                    <Chip
-                      key={kind}
-                      label={`${count} ${getKindLabel(kind, count !== 1)}`}
-                      size="small"
-                      sx={{
-                        height: 18,
-                        fontSize: '0.65rem',
-                        backgroundColor: getKindColor(kind) + '22',
-                        color: getKindColor(kind),
-                        borderColor: getKindColor(kind) + '44',
-                        border: '1px solid',
-                      }}
-                    />
-                  ))}
-            </Box>
-          }
-        />
-      </ListItemButton>
-
-      <Collapse in={isExpanded} timeout="auto">
-        {symbols?.map((symbol) => (
-          <SymbolNode
-            key={symbol.id}
-            symbol={symbol}
-            level={1}
-            children={symbolChildren[symbol.id]}
-            expandedSymbols={expandedSymbols}
-            expandingSymbol={expandingSymbol}
-            symbolChildren={symbolChildren}
-            highlightedSymbolIds={highlightedSymbolIds}
-            onToggle={onToggleSymbol}
-            onClick={onSymbolClick}
-            onInheritanceClick={onInheritanceClick}
-            onContextMenuAction={onSymbolContextMenu}
-          />
-        ))}
-      </Collapse>
-    </>
-  )
-}
-
-interface SymbolNodeProps {
-  symbol: SymbolTreeSymbol
-  level: number
-  children: SymbolTreeSymbol[] | undefined
-  expandedSymbols: Set<number>
-  expandingSymbol: number | null
-  symbolChildren: SymbolChildren
-  highlightedSymbolIds: Set<number>
-  onToggle: (symbolId: number) => void
-  onClick: (symbol: SymbolTreeSymbol) => void
-  onInheritanceClick: (inh: SymbolTreeInheritance, e: React.MouseEvent) => void
-  onContextMenuAction: (symbol: SymbolTreeSymbol, e: React.MouseEvent) => void
-}
-
-function SymbolNode({
-  symbol,
-  level,
-  children,
-  expandedSymbols,
-  expandingSymbol,
-  symbolChildren,
-  highlightedSymbolIds,
-  onToggle,
-  onClick,
-  onInheritanceClick,
-  onContextMenuAction,
-}: SymbolNodeProps): React.ReactElement {
-  const isExpanded = expandedSymbols.has(symbol.id)
-  const isExpanding = expandingSymbol === symbol.id
-  const indent = level * 24
-  const isHighlighted = highlightedSymbolIds.size > 0 && highlightedSymbolIds.has(symbol.id)
-
-  const handleNavigate = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    onClick(symbol)
-  }
-
-  const rowContent = (
-    <>
-      {symbol.has_children && (
-        <ListItemIcon sx={{ minWidth: 20 }}>
-          {isExpanding ? (
-            <CircularProgress size={14} />
-          ) : isExpanded ? (
-            <ExpandMoreIcon sx={{ fontSize: 16 }} />
-          ) : (
-            <ChevronRightIcon sx={{ fontSize: 16 }} />
-          )}
-        </ListItemIcon>
-      )}
-      {!symbol.has_children && <Box sx={{ width: 20 }} />}
-
-      <ListItemIcon sx={{ minWidth: 24 }}>{getKindIcon(symbol.kind)}</ListItemIcon>
-
-      <ListItemText
-        primary={
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-            <Typography
-              variant="body2"
-              component="span"
-              sx={{
-                fontFamily: 'monospace',
-                fontWeight: symbol.has_children || isHighlighted ? 500 : 400,
-                userSelect: 'text',
-                ...(isHighlighted && {
-                  color: '#61afef',
-                }),
-              }}
-            >
-              {symbol.name}
-              {symbol.kind === 'function' ||
-              symbol.kind === 'method' ||
-              symbol.kind === 'constructor' ||
-              symbol.kind === 'staticmethod' ||
-              symbol.kind === 'classmethod'
-                ? '()'
-                : ''}
-            </Typography>
-            <Tooltip title={`Go to line ${symbol.start_line}`} arrow>
-              <IconButton
-                size="small"
-                onClick={handleNavigate}
-                sx={{ p: 0.25 }}
-                aria-label={`Go to line ${symbol.start_line}`}
-              >
-                <ArrowForwardIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-            </Tooltip>
-
-            <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace' }}>
-              {getKindLabel(symbol.kind)}
-            </Typography>
-
-            {symbol.inheritance.map((inh, i) => (
-              <Tooltip
-                key={i}
-                title={
-                  inh.target_file_path
-                    ? `Click: go to source | ${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+Click: locate in tree`
-                    : ''
-                }
-                arrow
-              >
-                <Chip
-                  label={`extends ${inh.reference_text}`}
-                  size="small"
-                  variant="outlined"
-                  color="info"
-                  sx={{
-                    height: 18,
-                    fontSize: '0.65rem',
-                    cursor: inh.target_file_path ? 'pointer' : 'default',
-                  }}
-                  onClick={
-                    inh.target_file_path
-                      ? (e) => {
-                          e.stopPropagation()
-                          onInheritanceClick(inh, e)
-                        }
-                      : undefined
-                  }
-                />
-              </Tooltip>
-            ))}
-          </Box>
-        }
-      />
-    </>
-  )
-
-  const rowSx = {
-    pl: `${indent + 16}px`,
-    py: 0.25,
-    ...(isHighlighted && {
-      backgroundColor: 'rgba(97, 175, 239, 0.12)',
-    }),
-  }
-
-  return (
-    <>
-      {symbol.has_children ? (
-        <ListItemButton
-          onClick={() => onToggle(symbol.id)}
-          onContextMenu={(e) => onContextMenuAction(symbol, e)}
-          sx={rowSx}
-        >
-          {rowContent}
-        </ListItemButton>
-      ) : (
-        <Box
-          onContextMenu={(e) => onContextMenuAction(symbol, e)}
-          sx={{
-            ...rowSx,
-            display: 'flex',
-            alignItems: 'center',
-            pl: `${indent + 16}px`,
-            '&:hover': { backgroundColor: 'action.hover' },
-          }}
-        >
-          {rowContent}
-        </Box>
-      )}
-
-      {symbol.has_children && (
-        <Collapse in={isExpanded} timeout="auto">
-          {children?.map((child) => (
-            <SymbolNode
-              key={child.id}
-              symbol={child}
-              level={level + 1}
-              children={symbolChildren[child.id]}
-              expandedSymbols={expandedSymbols}
-              expandingSymbol={expandingSymbol}
-              symbolChildren={symbolChildren}
-              highlightedSymbolIds={highlightedSymbolIds}
-              onToggle={onToggle}
-              onClick={onClick}
-              onInheritanceClick={onInheritanceClick}
-              onContextMenuAction={onContextMenuAction}
-            />
-          ))}
-        </Collapse>
-      )}
-    </>
-  )
-}
-
-// --- Kind mode symbol node ---
-
-interface KindSymbolNodeProps {
-  symbol: ApiSymbol
-  isExpanded: boolean
-  isExpanding: boolean
-  children: SymbolTreeSymbol[] | undefined
-  symbolChildren: SymbolChildren
-  expandedSymbols: Set<number>
-  expandingSymbol: number | null
-  onToggle: (symbolId: number) => void
-  onSymbolClick: (symbol: SymbolTreeSymbol) => void
-  onInheritanceClick: (inh: SymbolTreeInheritance, e: React.MouseEvent) => void
-  onSymbolContextMenu: (symbol: SymbolTreeSymbol, e: React.MouseEvent) => void
-  onSwitchToOutline: (filePath: string) => void
-  fileName: (path: string) => string
-  fileDir: (path: string) => string
-  indent?: number
-}
-
-function KindSymbolNode({
-  symbol,
-  isExpanded,
-  isExpanding,
-  children,
-  symbolChildren,
-  expandedSymbols,
-  expandingSymbol,
-  onToggle,
-  onSymbolClick,
-  onInheritanceClick,
-  onSymbolContextMenu,
-  onSwitchToOutline,
-  fileName,
-  fileDir,
-  indent = 0,
-}: KindSymbolNodeProps): React.ReactElement {
-  const isCallable =
-    symbol.kind === 'function' ||
-    symbol.kind === 'method' ||
-    symbol.kind === 'constructor' ||
-    symbol.kind === 'staticmethod' ||
-    symbol.kind === 'classmethod'
-
-  const isContainer =
-    symbol.kind === 'class' ||
-    symbol.kind === 'interface' ||
-    symbol.kind === 'struct' ||
-    symbol.kind === 'record' ||
-    symbol.kind === 'enum' ||
-    symbol.kind === 'namespace'
-
-  // Convert ApiSymbol to SymbolTreeSymbol shape for navigation
-  const asTreeSymbol: SymbolTreeSymbol = useMemo(
-    () => ({
-      id: symbol.id,
-      name: symbol.name,
-      kind: symbol.kind,
-      start_line: symbol.start_line,
-      end_line: symbol.end_line,
-      file_path: symbol.file_path,
-      has_children: isContainer,
-      signature: symbol.signature,
-      inheritance: [],
-    }),
-    [symbol, isContainer]
-  )
-
-  const kindRowContent = (
-    <>
-      {isContainer && (
-        <ListItemIcon sx={{ minWidth: 28 }}>
-          {isExpanding ? (
-            <CircularProgress size={16} />
-          ) : isExpanded ? (
-            <ExpandMoreIcon fontSize="small" />
-          ) : (
-            <ChevronRightIcon fontSize="small" />
-          )}
-        </ListItemIcon>
-      )}
-      {!isContainer && <Box sx={{ width: 28 }} />}
-      <ListItemIcon sx={{ minWidth: 24 }}>{getKindIcon(symbol.kind)}</ListItemIcon>
-      <ListItemText
-        primary={
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-            <Typography
-              variant="body2"
-              component="span"
-              sx={{
-                fontFamily: 'monospace',
-                fontWeight: 500,
-                userSelect: 'text',
-              }}
-            >
-              {symbol.name}
-              {isCallable ? '()' : ''}
-            </Typography>
-            <Tooltip title={`Go to line ${symbol.start_line}`} arrow>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onSymbolClick(asTreeSymbol)
-                }}
-                sx={{ p: 0.25 }}
-                aria-label={`Go to line ${symbol.start_line}`}
-              >
-                <ArrowForwardIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-            </Tooltip>
-            {symbol.file_path && (
-              <Tooltip title="View in Outline mode" arrow>
-                <Typography
-                  variant="caption"
-                  component="span"
-                  sx={{
-                    fontFamily: 'monospace',
-                    color: 'text.secondary',
-                    cursor: 'pointer',
-                    '&:hover': { color: 'primary.main', textDecoration: 'underline' },
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onSwitchToOutline(symbol.file_path!)
-                  }}
-                >
-                  {fileDir(symbol.file_path)}
-                  <Typography
-                    variant="caption"
-                    component="span"
-                    sx={{ fontFamily: 'monospace', color: 'text.primary' }}
-                  >
-                    {fileName(symbol.file_path)}
-                  </Typography>
-                </Typography>
-              </Tooltip>
-            )}
-          </Box>
-        }
-      />
-    </>
-  )
-
-  return (
-    <>
-      {isContainer ? (
-        <ListItemButton
-          onClick={() => onToggle(symbol.id)}
-          onContextMenu={(e) => onSymbolContextMenu(asTreeSymbol, e)}
-          sx={{ py: 0.5, pl: 2 + indent * 3 }}
-        >
-          {kindRowContent}
-        </ListItemButton>
-      ) : (
-        <Box
-          onContextMenu={(e) => onSymbolContextMenu(asTreeSymbol, e)}
-          sx={{
-            py: 0.5,
-            pl: 2 + indent * 3,
-            display: 'flex',
-            alignItems: 'center',
-            '&:hover': { backgroundColor: 'action.hover' },
-          }}
-        >
-          {kindRowContent}
-        </Box>
-      )}
-
-      {isContainer && (
-        <Collapse in={isExpanded} timeout="auto">
-          {children?.map((child) => (
-            <SymbolNode
-              key={child.id}
-              symbol={child}
-              level={1}
-              children={symbolChildren[child.id]}
-              expandedSymbols={expandedSymbols}
-              expandingSymbol={expandingSymbol}
-              symbolChildren={symbolChildren}
-              highlightedSymbolIds={new Set()}
-              onToggle={onToggle}
-              onClick={onSymbolClick}
-              onInheritanceClick={onInheritanceClick}
-              onContextMenuAction={onSymbolContextMenu}
-            />
-          ))}
-        </Collapse>
-      )}
-    </>
   )
 }
