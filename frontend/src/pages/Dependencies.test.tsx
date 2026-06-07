@@ -357,5 +357,305 @@ describe('Dependencies', () => {
       expect(loc).toHaveTextContent('types=dependency')
       expect(loc).toHaveTextContent('repo=myrepo')
     })
+
+    it('clicking a file name carries both branch and commit into the browse path', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(
+        makeResponse([
+          makeItem({
+            id: 1,
+            package_name: 'requests',
+            file_id: 10,
+            file_path: 'src/requirements.txt',
+          }),
+        ])
+      )
+      renderDeps('/dependencies?repo=myrepo&branch=main&commit=deadbeef')
+
+      await waitFor(() => expect(screen.getByText('requirements.txt')).toBeInTheDocument())
+      // Each path segment is encoded; the slash between dir and file is preserved.
+      await user.click(screen.getByText('requirements.txt'))
+
+      const loc = screen.getByTestId('location')
+      expect(loc).toHaveTextContent('/browse/myrepo/src/requirements.txt')
+      expect(loc).toHaveTextContent('branch=main')
+      expect(loc).toHaveTextContent('commit=deadbeef')
+    })
+
+    it('search usages from a row carries the branch param', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(
+        makeResponse([
+          makeItem({ id: 1, package_name: 'requests', file_id: 10, file_path: 'requirements.txt' }),
+        ])
+      )
+      renderDeps('/dependencies?repo=myrepo&branch=feature')
+
+      await waitFor(() => expect(screen.getByText('requirements.txt')).toBeInTheDocument())
+      await user.click(screen.getByText('python'))
+      await user.click(await screen.findByRole('button', { name: /search usages of requests/i }))
+
+      const loc = screen.getByTestId('location')
+      expect(loc).toHaveTextContent('/search')
+      expect(loc).toHaveTextContent('query=requests')
+      expect(loc).toHaveTextContent('branch=feature')
+    })
+  })
+
+  describe('filter chips and toggles', () => {
+    function twoTypeResponse() {
+      return makeResponse([
+        makeItem({
+          id: 1,
+          package_name: 'requests',
+          dependency_type: 'runtime',
+          is_direct: true,
+          file_id: 10,
+          file_path: 'requirements.txt',
+        }),
+        makeItem({
+          id: 2,
+          package_name: 'pytest',
+          dependency_type: 'dev',
+          is_direct: false,
+          file_id: 10,
+          file_path: 'requirements.txt',
+        }),
+      ])
+    }
+
+    it('narrows by a type chip, toggles it off, and resets via the Type "All" chip', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(twoTypeResponse())
+      renderDeps()
+
+      await waitFor(() => expect(screen.getByText(/2 packages in 1 files/i)).toBeInTheDocument())
+      // Only one language here, so the only "All" chips are Type then Scope.
+      const typeAll = () => screen.getAllByRole('button', { name: 'All' })[0] as HTMLElement
+
+      // Select the "dev" type chip → only the dev dependency remains.
+      await user.click(screen.getByRole('button', { name: 'dev' }))
+      await waitFor(() => expect(screen.getByText(/1 packages in 1 files/i)).toBeInTheDocument())
+
+      // Toggling the same chip again clears the filter → back to both.
+      await user.click(screen.getByRole('button', { name: 'dev' }))
+      await waitFor(() => expect(screen.getByText(/2 packages in 1 files/i)).toBeInTheDocument())
+
+      // Re-select "dev", then reset with the Type "All" chip.
+      await user.click(screen.getByRole('button', { name: 'dev' }))
+      await waitFor(() => expect(screen.getByText(/1 packages in 1 files/i)).toBeInTheDocument())
+      await user.click(typeAll())
+      await waitFor(() => expect(screen.getByText(/2 packages in 1 files/i)).toBeInTheDocument())
+    })
+
+    it('narrows to direct dependencies via the Scope chip and resets by re-clicking', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(twoTypeResponse())
+      renderDeps()
+
+      await waitFor(() => expect(screen.getByText(/2 packages in 1 files/i)).toBeInTheDocument())
+
+      // Direct (1) → only the direct dependency remains. The label count reflects
+      // the currently filtered list, so it stays "Direct (1)" once applied.
+      await user.click(screen.getByRole('button', { name: /Direct \(1\)/i }))
+      await waitFor(() => expect(screen.getByText(/1 packages in 1 files/i)).toBeInTheDocument())
+      expect(screen.getByText('requests')).toBeInTheDocument()
+      expect(screen.queryByText('pytest')).not.toBeInTheDocument()
+
+      // Toggling Direct again clears scope → both reappear (count returns to 2).
+      await user.click(screen.getByRole('button', { name: /Direct \(1\)/i }))
+      await waitFor(() => expect(screen.getByText(/2 packages in 1 files/i)).toBeInTheDocument())
+    })
+
+    it('narrows to transitive dependencies via the Scope chip and resets via Scope "All"', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(twoTypeResponse())
+      renderDeps()
+
+      await waitFor(() => expect(screen.getByText(/2 packages in 1 files/i)).toBeInTheDocument())
+      const scopeAll = () => screen.getAllByRole('button', { name: 'All' })[1] as HTMLElement
+
+      // Transitive (1) → only the transitive dependency remains.
+      await user.click(screen.getByRole('button', { name: /Transitive \(1\)/i }))
+      await waitFor(() => expect(screen.getByText(/1 packages in 1 files/i)).toBeInTheDocument())
+      expect(screen.getByText('pytest')).toBeInTheDocument()
+      expect(screen.queryByText('requests')).not.toBeInTheDocument()
+
+      // Re-clicking Transitive clears the scope.
+      await user.click(screen.getByRole('button', { name: /Transitive \(1\)/i }))
+      await waitFor(() => expect(screen.getByText(/2 packages in 1 files/i)).toBeInTheDocument())
+
+      // Select Transitive again, then reset with the Scope "All" chip.
+      await user.click(screen.getByRole('button', { name: /Transitive \(1\)/i }))
+      await waitFor(() => expect(screen.getByText(/1 packages in 1 files/i)).toBeInTheDocument())
+      await user.click(scopeAll())
+      await waitFor(() => expect(screen.getByText(/2 packages in 1 files/i)).toBeInTheDocument())
+    })
+
+    it('shows the indexed commit hash in the summary', async () => {
+      vi.mocked(getRepositoryDependencies).mockResolvedValue({
+        ...makeResponse([makeItem()]),
+        commit_hash: 'abcdef1234567890',
+      })
+      renderDeps()
+
+      await waitFor(() => expect(screen.getByText('abcdef1')).toBeInTheDocument())
+    })
+  })
+
+  describe('group rendering edge cases', () => {
+    it('falls back to a "(file #id)" label and disables navigation when file_path is missing', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(
+        makeResponse([makeItem({ id: 1, package_name: 'requests', file_id: 99, file_path: null })])
+      )
+      renderDeps('/dependencies?repo=myrepo&branch=main')
+
+      await waitFor(() => expect(screen.getByText('(file #99)')).toBeInTheDocument())
+
+      // The fallback label is not a navigation target — clicking it does nothing.
+      await user.click(screen.getByText('(file #99)'))
+      const loc = screen.getByTestId('location')
+      expect(loc).toHaveTextContent('/dependencies')
+      expect(loc).not.toHaveTextContent('/browse')
+    })
+
+    it('collapses an expanded file group when toggled again', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(
+        makeResponse([
+          makeItem({ id: 1, package_name: 'requests', file_id: 10, file_path: 'requirements.txt' }),
+        ])
+      )
+      renderDeps()
+
+      await waitFor(() => expect(screen.getByText('requirements.txt')).toBeInTheDocument())
+
+      // Expand via the language chip → the search button appears.
+      await user.click(screen.getByText('python'))
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /search usages of requests/i })
+        ).toBeInTheDocument()
+      )
+
+      // Collapse via the same chip → the search button is removed.
+      await user.click(screen.getByText('python'))
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: /search usages of requests/i })
+        ).not.toBeInTheDocument()
+      )
+    })
+
+    it('collapses an expanded multi-version package group when toggled again', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(
+        makeResponse([
+          makeItem({
+            id: 1,
+            package_name: 'requests',
+            version_spec: null,
+            resolved_version: '2.0.0',
+            file_id: 10,
+            file_path: 'requirements.txt',
+          }),
+          makeItem({
+            id: 2,
+            package_name: 'requests',
+            version_spec: null,
+            resolved_version: '2.31.0',
+            file_id: 10,
+            file_path: 'requirements.txt',
+          }),
+        ])
+      )
+      renderDeps()
+
+      await waitFor(() => expect(screen.getByText('requirements.txt')).toBeInTheDocument())
+      await user.click(screen.getByText('python'))
+
+      const versionsChip = await screen.findByText('2 versions')
+      // Expand the package group → both version rows are listed and, with both the
+      // file and package groups open, no collapsed (ChevronRight) chevrons remain.
+      await user.click(versionsChip)
+      await waitFor(() => expect(screen.getByText('2.0.0')).toBeInTheDocument())
+      expect(screen.queryByTestId('ChevronRightIcon')).not.toBeInTheDocument()
+
+      // Collapse it again (exercises togglePackage's delete path) → the package
+      // group's chevron flips back to ChevronRight.
+      await user.click(versionsChip)
+      await waitFor(() => expect(screen.getByTestId('ChevronRightIcon')).toBeInTheDocument())
+    })
+
+    it('renders a single-version row using resolved_version and a transitive badge', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(
+        makeResponse([
+          makeItem({
+            id: 1,
+            package_name: 'requests',
+            version_spec: null,
+            resolved_version: '2.31.0',
+            is_direct: false,
+            file_id: 10,
+            file_path: 'requirements.txt',
+          }),
+        ])
+      )
+      renderDeps()
+
+      await waitFor(() => expect(screen.getByText('requirements.txt')).toBeInTheDocument())
+      await user.click(screen.getByText('python'))
+
+      // version_spec is null → the row falls back to resolved_version.
+      await waitFor(() => expect(screen.getByText('2.31.0')).toBeInTheDocument())
+      // is_direct false → the row carries a "transitive" badge.
+      expect(screen.getByText('transitive')).toBeInTheDocument()
+    })
+
+    it('shows "(no version)" and a transitive badge for version rows lacking any version', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getRepositoryDependencies).mockResolvedValue(
+        makeResponse([
+          makeItem({
+            id: 1,
+            package_name: 'requests',
+            version_spec: null,
+            resolved_version: null,
+            is_direct: false,
+            file_id: 10,
+            file_path: 'requirements.txt',
+          }),
+          makeItem({
+            id: 2,
+            package_name: 'requests',
+            version_spec: null,
+            resolved_version: '2.31.0',
+            is_direct: true,
+            file_id: 10,
+            file_path: 'requirements.txt',
+          }),
+        ])
+      )
+      renderDeps()
+
+      await waitFor(() => expect(screen.getByText('requirements.txt')).toBeInTheDocument())
+      await user.click(screen.getByText('python'))
+      await user.click(await screen.findByText('2 versions'))
+
+      // The version-less item renders the "(no version)" placeholder.
+      await waitFor(() => expect(screen.getByText('(no version)')).toBeInTheDocument())
+      // is_direct false → that version row carries a "transitive" badge.
+      expect(screen.getByText('transitive')).toBeInTheDocument()
+    })
+  })
+
+  it('falls back to a generic message when the API rejects with a non-Error', async () => {
+    vi.mocked(getRepositoryDependencies).mockRejectedValue('plain string failure')
+    renderDeps()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/failed to load dependencies/i)
+    )
   })
 })
