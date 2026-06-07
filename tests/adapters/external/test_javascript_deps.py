@@ -268,3 +268,118 @@ class TestEdgeCases:
     def test_invalid_json(self, parser: JavaScriptDependencyParser) -> None:
         assert parser.parse("{invalid", "package.json") == []
         assert parser.parse("{invalid", "package-lock.json") == []
+
+
+class TestBranchCoverageEdgeCases:
+    """Edge-case branch coverage for the JS dependency parser."""
+
+    def test_parse_unknown_basename_returns_empty(
+        self, parser: JavaScriptDependencyParser
+    ) -> None:
+        assert parser.parse("{}", "some/unknown.txt") == []
+
+    def test_package_lock_v2_dep_types(
+        self, parser: JavaScriptDependencyParser
+    ) -> None:
+        content = """\
+{
+  "packages": {
+    "": {"name": "root"},
+    "node_modules/react": {"version": "18.0.0"},
+    "node_modules/@scope/dev": {"version": "1.0.0", "dev": true},
+    "node_modules/peerlib": {"version": "2.0.0", "peer": true},
+    "node_modules/optlib": {"version": "3.0.0", "optional": true},
+    "node_modules/a/node_modules/nested": {"version": "4.0.0"}
+  }
+}
+"""
+        deps = parser.parse(content, "package-lock.json")
+        by_name = {d["package_name"]: d for d in deps}
+        assert by_name["react"]["dependency_type"] == "runtime"
+        assert by_name["@scope/dev"]["dependency_type"] == "dev"
+        assert by_name["peerlib"]["dependency_type"] == "peer"
+        assert by_name["optlib"]["dependency_type"] == "optional"
+        # Top-level node_modules entry is direct; nested is transitive.
+        assert by_name["react"]["is_direct"] is True
+        assert by_name["nested"]["is_direct"] is False
+
+    def test_package_lock_v1_nested(self, parser: JavaScriptDependencyParser) -> None:
+        content = """\
+{
+  "dependencies": {
+    "top": {
+      "version": "1.0.0",
+      "dev": true,
+      "dependencies": {
+        "child": {"version": "2.0.0"}
+      }
+    }
+  }
+}
+"""
+        deps = parser.parse(content, "package-lock.json")
+        by_name = {d["package_name"]: d for d in deps}
+        assert by_name["top"]["dependency_type"] == "dev"
+        assert by_name["top"]["is_direct"] is True
+        assert by_name["child"]["is_direct"] is False
+
+    def test_yarn_lock_quoted_and_colon_versions(
+        self, parser: JavaScriptDependencyParser
+    ) -> None:
+        content = """\
+# yarn lockfile v1
+
+left-pad@^1.0.0:
+  version "1.3.0"
+  resolved "https://example.com/left-pad"
+
+"@scope/berry@npm:^2.0.0":
+  version: 2.1.0
+"""
+        deps = parser.parse(content, "yarn.lock")
+        by_name = {d["package_name"]: d for d in deps}
+        assert by_name["left-pad"]["resolved_version"] == "1.3.0"
+        assert by_name["@scope/berry"]["resolved_version"] == "2.1.0"
+
+    def test_yarn_lock_entry_without_version_skipped(
+        self, parser: JavaScriptDependencyParser
+    ) -> None:
+        content = """\
+no-version@^1.0.0:
+  resolved "https://example.com/x"
+
+has-version@^1.0.0:
+  version "1.0.0"
+"""
+        deps = parser.parse(content, "yarn.lock")
+        names = {d["package_name"] for d in deps}
+        # Entry with no version line is not emitted.
+        assert "no-version" not in names
+        assert "has-version" in names
+
+    def test_pnpm_non_dict_and_unmatched_key(
+        self, parser: JavaScriptDependencyParser
+    ) -> None:
+        content = """\
+lockfileVersion: '6.0'
+packages:
+  /react@18.2.0:
+    dev: false
+  /devpkg@1.0.0:
+    dev: true
+  not-a-valid-key:
+    resolution: {}
+  /scalar-info: just-a-string
+"""
+        deps = parser.parse(content, "pnpm-lock.yaml")
+        by_name = {d["package_name"]: d for d in deps}
+        assert by_name["react"]["dependency_type"] == "runtime"
+        assert by_name["devpkg"]["dependency_type"] == "dev"
+        # "not-a-valid-key" doesn't match the name@version regex → skipped.
+        assert "not-a-valid-key" not in by_name
+
+    def test_pnpm_non_dict_root_returns_empty(
+        self, parser: JavaScriptDependencyParser
+    ) -> None:
+        # Top-level YAML that isn't a mapping → empty result.
+        assert parser.parse("- just\n- a\n- list\n", "pnpm-lock.yaml") == []

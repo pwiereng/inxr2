@@ -1060,3 +1060,244 @@ class TestPostgresSymbolRepositoryUpdateParent:
     ) -> None:
         adapter = PostgresSymbolRepository(db_session)
         assert await adapter.update_parent_symbol_ids({}) == 0
+
+
+@pytest.mark.asyncio
+class TestPostgresSymbolRepositoryBranchPermutations:
+    """Targeted branch coverage for filter permutations across methods."""
+
+    async def test_search_with_commit_and_repository(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, commit_id, file_id = await _setup_repo_commit_file(
+            db_session, "sym-perm-cr"
+        )
+        adapter = PostgresSymbolRepository(db_session)
+        await adapter.save_many(
+            [SymbolFactory.create(file_id=file_id, repository_id=repo_id, name="zed")]
+        )
+        results, total = await adapter.search_by_name(
+            "zed", repository_id=repo_id, commit_id=commit_id
+        )
+        assert total == 1
+        assert results[0].name == "zed"
+
+    async def test_search_with_interface_kind_alias(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, _commit_id, file_id = await _setup_repo_commit_file(
+            db_session, "sym-perm-iface"
+        )
+        adapter = PostgresSymbolRepository(db_session)
+        await adapter.save_many(
+            [
+                SymbolFactory.create(
+                    file_id=file_id,
+                    repository_id=repo_id,
+                    name="MyProto",
+                    kind=SymbolKind.PROTOCOL,
+                ),
+            ]
+        )
+        # kind="interface" aliases to ["interface", "protocol"] (len > 1).
+        results, total = await adapter.search_by_name(
+            "MyProto", repository_id=repo_id, kind="interface"
+        )
+        assert total == 1
+        assert results[0].name == "MyProto"
+
+    async def _repo_with_extension_files(
+        self, db_session: AsyncSession, name: str
+    ) -> int:
+        from inxr2.domain.entities import File
+
+        repo_adapter = PostgresRepositoryAdapter(db_session)
+        commit_adapter = PostgresCommitRepository(db_session)
+        file_adapter = PostgresFileRepository(db_session)
+        sym_adapter = PostgresSymbolRepository(db_session)
+
+        repo = await repo_adapter.save(RepositoryFactory.create(name=name))
+        assert repo.id is not None
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="b" * 40)
+        )
+        assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
+
+        for path, ext, chash in [
+            ("sym.py", ".py", "symext_py0" + "0" * 30),
+            ("sym.ts", ".ts", "symext_ts0" + "0" * 30),
+            ("symMakefile", None, "symext_no0" + "0" * 30),
+        ]:
+            f = await file_adapter.save(
+                File(
+                    repository_id=repo.id,
+                    path=path,
+                    content_hash=chash,
+                    size_bytes=10,
+                    language="python",
+                    extension=ext,
+                )
+            )
+            assert f.id is not None
+            await file_adapter.link_file_to_commit(f.id, commit.id)
+            await sym_adapter.save(
+                SymbolFactory.create(file_id=f.id, repository_id=repo.id, name="symX")
+            )
+        await db_session.commit()
+        return repo.id
+
+    async def test_search_extensions_real_and_none(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id = await self._repo_with_extension_files(db_session, "sym-ext-rn")
+        adapter = PostgresSymbolRepository(db_session)
+        _, total = await adapter.search_by_name(
+            "symX", repository_id=repo_id, extensions=[".py", "(none)"]
+        )
+        assert total == 2
+
+    async def test_search_extensions_only_none(self, db_session: AsyncSession) -> None:
+        repo_id = await self._repo_with_extension_files(db_session, "sym-ext-n")
+        adapter = PostgresSymbolRepository(db_session)
+        _, total = await adapter.search_by_name(
+            "symX", repository_id=repo_id, extensions=["(none)"]
+        )
+        assert total == 1
+
+    async def test_search_extensions_only_real(self, db_session: AsyncSession) -> None:
+        repo_id = await self._repo_with_extension_files(db_session, "sym-ext-r")
+        adapter = PostgresSymbolRepository(db_session)
+        _, total = await adapter.search_by_name(
+            "symX", repository_id=repo_id, extensions=[".ts"]
+        )
+        assert total == 1
+
+    async def test_find_by_exact_name_no_repository(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, _commit_id, file_id = await _setup_repo_commit_file(
+            db_session, "sym-exact-norepo"
+        )
+        adapter = PostgresSymbolRepository(db_session)
+        await adapter.save_many(
+            [
+                SymbolFactory.create(
+                    file_id=file_id, repository_id=repo_id, name="uniqfn"
+                )
+            ]
+        )
+        await db_session.commit()
+        # repository_id=None and commit_id=None → no scoping applied.
+        results = await adapter.find_by_exact_name("uniqfn")
+        assert any(s.name == "uniqfn" for s in results)
+
+    async def test_list_files_with_symbols_commit_language_kinds(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, commit_id, file_id = await _setup_repo_commit_file(
+            db_session, "sym-lfws-perm"
+        )
+        adapter = PostgresSymbolRepository(db_session)
+        await adapter.save_many(
+            [
+                SymbolFactory.create(
+                    file_id=file_id,
+                    repository_id=repo_id,
+                    name="topfn",
+                    kind=SymbolKind.FUNCTION,
+                ),
+            ]
+        )
+        # commit_id + language + kinds branches all taken.
+        results = await adapter.list_files_with_symbols(
+            repo_id,
+            commit_id=commit_id,
+            language="python",
+            kinds=["function"],
+        )
+        assert any(r[1] == "src/main.py" for r in results)
+
+    async def test_list_files_with_symbols_kinds_latest(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, _commit_id, file_id = await _setup_repo_commit_file(
+            db_session, "sym-lfws-kinds-latest"
+        )
+        adapter = PostgresSymbolRepository(db_session)
+        await adapter.save_many(
+            [
+                SymbolFactory.create(
+                    file_id=file_id,
+                    repository_id=repo_id,
+                    name="topfn2",
+                    kind=SymbolKind.FUNCTION,
+                ),
+            ]
+        )
+        # No commit_id → kinds subquery takes the latest-file-version branch.
+        results = await adapter.list_files_with_symbols(repo_id, kinds=["function"])
+        assert any(r[1] == "src/main.py" for r in results)
+
+    async def test_list_distinct_kinds_commit_and_language(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, commit_id, file_id = await _setup_repo_commit_file(
+            db_session, "sym-ldk-perm"
+        )
+        adapter = PostgresSymbolRepository(db_session)
+        await adapter.save_many(
+            [
+                SymbolFactory.create(
+                    file_id=file_id,
+                    repository_id=repo_id,
+                    name="fnk",
+                    kind=SymbolKind.FUNCTION,
+                ),
+            ]
+        )
+        kinds = await adapter.list_distinct_kinds(
+            repo_id, commit_id=commit_id, language="python"
+        )
+        assert "function" in kinds
+
+    async def test_search_commit_without_repository(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, commit_id, file_id = await _setup_repo_commit_file(
+            db_session, "sym-commit-norepo"
+        )
+        adapter = PostgresSymbolRepository(db_session)
+        await adapter.save_many(
+            [SymbolFactory.create(file_id=file_id, repository_id=repo_id, name="cnr")]
+        )
+        await db_session.commit()
+        # commit_id set but repository_id None → skips the repo filter.
+        results, total = await adapter.search_by_name("cnr", commit_id=commit_id)
+        assert total == 1
+
+    async def test_search_global_latest_scope(self, db_session: AsyncSession) -> None:
+        repo_id, _commit_id, file_id = await _setup_repo_commit_file(
+            db_session, "sym-global-latest"
+        )
+        adapter = PostgresSymbolRepository(db_session)
+        await adapter.save_many(
+            [SymbolFactory.create(file_id=file_id, repository_id=repo_id, name="glob")]
+        )
+        await db_session.commit()
+        # No repo, no commit, scope="latest" → HEAD-of-default-branch global search.
+        results, total = await adapter.search_by_name("glob", scope="latest")
+        assert total >= 1
+
+    async def test_search_match_all_wildcard(self, db_session: AsyncSession) -> None:
+        repo_id, _commit_id, file_id = await _setup_repo_commit_file(
+            db_session, "sym-wildcard"
+        )
+        adapter = PostgresSymbolRepository(db_session)
+        await adapter.save_many(
+            [SymbolFactory.create(file_id=file_id, repository_id=repo_id, name="anyfn")]
+        )
+        await db_session.commit()
+        # name="*" → skips the name filter entirely.
+        results, total = await adapter.search_by_name("*", repository_id=repo_id)
+        assert total >= 1

@@ -45,6 +45,7 @@ import { DirectoryListing } from '@/components/DirectoryListing'
 import { useBrowseState } from '@/hooks/useBrowseState'
 import { getFileBlame, type BlameLine } from '@/lib/api'
 import { isMarkdownFile, detectLanguage } from '@/lib/fileUtils'
+import { getShortHash, getVersionDisplay, getTabNavTarget } from '@/lib/browseView'
 
 interface BrowseProps {
   /** Repository name (overrides URL param) */
@@ -168,21 +169,9 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
     isRenderedContent,
   ])
 
-  // Get short hash for display
-  const getShortHash = (hash: string | null | undefined) => {
-    if (!hash) return 'latest'
-    return hash.substring(0, 7)
-  }
-
-  // Get display text for left panel version in tree/refs dropdown
-  const getLeftVersionDisplay = () => {
-    return comparisonCommit ? comparisonCommit.substring(0, 7) : '...'
-  }
-
-  // Get display text for right panel version in tree/refs dropdown
-  const getRightVersionDisplay = () => {
-    return globalReferenceCommit ? globalReferenceCommit.substring(0, 7) : '...'
-  }
+  // Display text for the left/right panel version in the tree/refs dropdowns.
+  const getLeftVersionDisplay = () => getVersionDisplay(comparisonCommit)
+  const getRightVersionDisplay = () => getVersionDisplay(globalReferenceCommit)
 
   // CodeHeader handlers
   const handleRepoChange = (newRepoName: string) => {
@@ -199,31 +188,12 @@ export default function Browse({ repoName: repoNameProp }: BrowseProps): React.R
   }
 
   const handleTabChange = (tab: TabValue) => {
-    const params = new URLSearchParams()
-    if (repoName) params.set('repo', repoName)
-    if (selectedBranch) params.set('branch', selectedBranch)
-    if (urlState.selectedCommit) params.set('commit', urlState.selectedCommit)
-
-    switch (tab) {
-      case 'browse':
-        // Already on browse
-        break
-      case 'search':
-        navigate(`/search?${params.toString()}`)
-        break
-      case 'history':
-        navigate(`/history?${params.toString()}`)
-        break
-      case 'logical-view':
-        navigate(`/logical-view?${params.toString()}`)
-        break
-      case 'dependencies':
-        navigate(`/dependencies?${params.toString()}`)
-        break
-      case 'help':
-        navigate(`/help?${params.toString()}`)
-        break
-    }
+    const target = getTabNavTarget(tab, {
+      repoName,
+      selectedBranch,
+      selectedCommit: urlState.selectedCommit,
+    })
+    if (target) navigate(target)
   }
 
   const handleBlameCommitClick = (commitHash: string) => {

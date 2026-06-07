@@ -225,3 +225,46 @@ Short paragraph.
 
         chunks = parser.parse("   \n\n  ", "whitespace.txt")
         assert len(chunks) == 0
+
+
+class TestFlushLastBufferBranches:
+    """Cover the 'don't forget the last chunk' branches across parsers."""
+
+    @pytest.fixture
+    def parser(self) -> PlaintextParser:
+        return PlaintextParser()
+
+    def test_markdown_last_paragraph(self, parser: PlaintextParser) -> None:
+        # Ends without a trailing blank line → final paragraph flushed after loop.
+        content = "# Title\n\nFirst paragraph.\n\nLast paragraph with no trailing blank"
+        chunks = parser.parse(content, "doc.md")
+        assert any("Last paragraph" in c.content for c in chunks)
+
+    def test_yaml_last_chunk(self, parser: PlaintextParser) -> None:
+        content = "key1: value1\nkey2: value2\nkey3: value3"
+        chunks = parser.parse(content, "config.yaml")
+        assert len(chunks) >= 1
+
+    def test_dockerfile_multiple_instructions(self, parser: PlaintextParser) -> None:
+        content = (
+            "FROM python:3.11\n"
+            "RUN pip install foo \\\n"
+            "    bar\n"
+            "COPY . /app\n"
+            'CMD ["python", "app.py"]'
+        )
+        chunks = parser.parse(content, "Dockerfile")
+        # Multiple instructions → both the mid-loop save and final flush run.
+        assert len(chunks) >= 2
+
+    def test_structured_json_last_chunk(self, parser: PlaintextParser) -> None:
+        content = (
+            "{\n" + "\n".join(f'  "k{i}": {i},' for i in range(60)) + '\n  "last": 1\n}'
+        )
+        chunks = parser.parse(content, "data.json")
+        assert len(chunks) >= 1
+
+    def test_plain_text_last_chunk(self, parser: PlaintextParser) -> None:
+        content = "\n".join(f"line {i}" for i in range(120))
+        chunks = parser.parse(content, "notes.txt")
+        assert len(chunks) >= 1

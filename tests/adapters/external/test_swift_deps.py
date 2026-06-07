@@ -413,3 +413,44 @@ class TestPackageNameFromUrl:
 }"""
         deps = parser.parse(content, "Package.resolved")
         assert deps[0]["package_name"] == "my-lib"
+
+
+class TestBranchCoverageEdgeCases:
+    """Edge-case branch coverage for the Swift dependency parser."""
+
+    def test_parse_unknown_basename(self, parser: SwiftDependencyParser) -> None:
+        assert parser.parse("x", "weird.txt") == []
+
+    def test_package_swift_branch_and_revision(
+        self, parser: SwiftDependencyParser
+    ) -> None:
+        content = """\
+// swift-tools-version:5.5
+import PackageDescription
+let package = Package(
+    name: "App",
+    dependencies: [
+        .package(url: "https://github.com/a/Branchy.git", branch: "main"),
+        .package(url: "https://github.com/b/Revvy.git", revision: "abc123"),
+        .package(url: "https://github.com/c/Plain.git"),
+    ]
+)
+"""
+        deps = parser.parse(content, "Package.swift")
+        by_name = {d["package_name"]: d for d in deps}
+        assert by_name["Branchy"]["version_spec"] == "branch: main"
+        assert by_name["Revvy"]["version_spec"] == "revision: abc123"
+        # No version constraint → spec is None.
+        assert by_name["Plain"]["version_spec"] is None
+
+    def test_string_with_escaped_quote_in_line_comment_stripper(
+        self, parser: SwiftDependencyParser
+    ) -> None:
+        # Escape sequence inside a string literal must not break // detection.
+        content = r"""
+let s = "a \" b" // trailing comment
+.package(url: "https://github.com/d/Escaped.git", from: "1.0.0")
+"""
+        deps = parser.parse(content, "Package.swift")
+        by_name = {d["package_name"]: d for d in deps}
+        assert by_name["Escaped"]["version_spec"] == ">= 1.0.0"

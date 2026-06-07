@@ -329,3 +329,94 @@ class TestPostgresCommitRepository:
         # Should still only have one association
         branches = await adapter.get_branches_for_commit(saved.id)
         assert branches == ["main"]
+
+
+@pytest.mark.asyncio
+class TestPostgresCommitRepositoryBranchCoverage:
+    """Targeted branch coverage for edge cases."""
+
+    async def _repo(self, db_session: AsyncSession, name: str) -> int:
+        repo = await PostgresRepositoryAdapter(db_session).save(
+            RepositoryFactory.create(name=name)
+        )
+        assert repo.id is not None
+        return repo.id
+
+    async def test_save_many_with_existing_id_merges(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id = await self._repo(db_session, "cm-merge")
+        adapter = PostgresCommitRepository(db_session)
+        saved = await adapter.save(
+            CommitFactory.create(repository_id=repo_id, commit_hash="a" * 40)
+        )
+        assert saved.id is not None
+        # save_many with a commit that already has an id → merge path.
+        result = await adapter.save_many([saved])
+        assert result[0].id == saved.id
+
+    async def test_find_by_ids_empty_returns_empty(
+        self, db_session: AsyncSession
+    ) -> None:
+        adapter = PostgresCommitRepository(db_session)
+        assert await adapter.find_by_ids([]) == []
+
+    async def test_find_by_hash_short_prefix(self, db_session: AsyncSession) -> None:
+        repo_id = await self._repo(db_session, "cm-shorthash")
+        adapter = PostgresCommitRepository(db_session)
+        full = "abcdef" + "0" * 34
+        await adapter.save(
+            CommitFactory.create(repository_id=repo_id, commit_hash=full)
+        )
+        await db_session.commit()
+        # short (prefix) hash → startswith matching branch.
+        found = await adapter.find_by_hash(repo_id, "abcdef")
+        assert found is not None
+        assert found.commit_hash.value == full
+
+    async def test_link_commit_to_branches_empty_is_noop(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id = await self._repo(db_session, "cm-emptybranches")
+        adapter = PostgresCommitRepository(db_session)
+        commit = await adapter.save(
+            CommitFactory.create(repository_id=repo_id, commit_hash="b" * 40)
+        )
+        assert commit.id is not None
+        # Empty branch list → early return, no rows created.
+        await adapter.link_commit_to_branches(repo_id, commit.id, [])
+        assert await adapter.get_branches_for_commit(commit.id) == []
+
+    async def test_link_commit_to_branches_skips_existing(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id = await self._repo(db_session, "cm-multibranch")
+        adapter = PostgresCommitRepository(db_session)
+        commit = await adapter.save(
+            CommitFactory.create(repository_id=repo_id, commit_hash="c" * 40)
+        )
+        assert commit.id is not None
+        await adapter.link_commit_to_branch(repo_id, commit.id, "main")
+        # "main" already linked; only "dev" is newly inserted.
+        await adapter.link_commit_to_branches(repo_id, commit.id, ["main", "dev"])
+        branches = set(await adapter.get_branches_for_commit(commit.id))
+        assert branches == {"main", "dev"}
+
+    async def test_get_branches_for_commits_empty(
+        self, db_session: AsyncSession
+    ) -> None:
+        adapter = PostgresCommitRepository(db_session)
+        assert await adapter.get_branches_for_commits([]) == {}
+
+    async def test_get_branches_for_commits_groups(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id = await self._repo(db_session, "cm-grouping")
+        adapter = PostgresCommitRepository(db_session)
+        commit = await adapter.save(
+            CommitFactory.create(repository_id=repo_id, commit_hash="d" * 40)
+        )
+        assert commit.id is not None
+        await adapter.link_commit_to_branches(repo_id, commit.id, ["main", "release"])
+        result = await adapter.get_branches_for_commits([commit.id])
+        assert set(result[commit.id]) == {"main", "release"}

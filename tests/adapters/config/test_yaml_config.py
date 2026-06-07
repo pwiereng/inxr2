@@ -385,3 +385,61 @@ class TestAppConfigModel:
 
         names = config.get_repository_names()
         assert names == ["repo1", "repo2"]
+
+
+class TestYamlConfigValidateAndLoadConfig:
+    """Branch coverage for validate() and the load_config() convenience fn."""
+
+    def test_validate_empty_file(self, tmp_path: Path) -> None:
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("")
+        errors = YamlConfigService().validate(cfg)
+        assert errors == ["Configuration file is empty"]
+
+    def test_validate_missing_file(self, tmp_path: Path) -> None:
+        errors = YamlConfigService().validate(tmp_path / "nope.yaml")
+        assert errors and "not found" in errors[0]
+
+    def test_validate_path_not_a_git_repo(self, tmp_path: Path) -> None:
+        repo_dir = tmp_path / "plain"
+        repo_dir.mkdir()  # exists but no .git
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text(f"repositories:\n  - name: r\n    path: {repo_dir}\n")
+        errors = YamlConfigService().validate(cfg)
+        assert any("not a git repository" in e for e in errors)
+
+    def test_validate_path_missing(self, tmp_path: Path) -> None:
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text(f"repositories:\n  - name: r\n    path: {tmp_path / 'ghost'}\n")
+        errors = YamlConfigService().validate(cfg)
+        assert any("does not exist" in e for e in errors)
+
+    def test_validate_valid_git_repo(self, tmp_path: Path) -> None:
+        repo_dir = tmp_path / "good"
+        (repo_dir / ".git").mkdir(parents=True)
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text(f"repositories:\n  - name: r\n    path: {repo_dir}\n")
+        assert YamlConfigService().validate(cfg) == []
+
+    def test_validate_invalid_yaml(self, tmp_path: Path) -> None:
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("repositories: [unclosed\n")
+        errors = YamlConfigService().validate(cfg)
+        assert any("Invalid YAML syntax" in e for e in errors)
+
+    def test_validate_schema_error(self, tmp_path: Path) -> None:
+        cfg = tmp_path / "config.yaml"
+        # repositories should be a list — a string fails Pydantic validation.
+        cfg.write_text("repositories: not-a-list\n")
+        errors = YamlConfigService().validate(cfg)
+        assert errors  # at least one validation error reported
+
+    def test_load_config_convenience(self, tmp_path: Path) -> None:
+        from inxr2.adapters.config.yaml_config import load_config
+
+        repo_dir = tmp_path / "good"
+        (repo_dir / ".git").mkdir(parents=True)
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text(f"repositories:\n  - name: r\n    path: {repo_dir}\n")
+        config = load_config(str(cfg))
+        assert config.repositories[0].name == "r"
