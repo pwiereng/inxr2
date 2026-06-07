@@ -450,3 +450,75 @@ class TestResolveFileUseCaseEdgeCases:
         # not commit 2 (latest on main, but unlinked)
         assert response.commit.id == 1
         assert response.file.path == "src/old_file.py"
+
+
+class TestResolveFileBranchModeEdges:
+    """Branch coverage for branch-mode resolution paths."""
+
+    @pytest.mark.asyncio
+    async def test_branch_with_no_commits_raises_commit_not_found(self) -> None:
+        repository_repo = InMemoryRepositoryRepository()
+        repository_repo.add(Repository(id=1, name="test-repo", url="/path"))
+        commit_repo = InMemoryCommitRepository()
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
+        use_case = ResolveFileUseCase(
+            repository_repo=repository_repo,
+            file_repo=file_repo,
+            file_version_repo=file_version_repo,
+            commit_repo=commit_repo,
+        )
+        request = ResolveFileRequest(
+            repository_name="test-repo",
+            file_path="src/main.py",
+            branch="feature-x",
+        )
+        with pytest.raises(CommitNotFound):
+            await use_case.execute(request)
+
+    @pytest.mark.asyncio
+    async def test_branch_mode_fallback_to_versions(self) -> None:
+        repository_repo = InMemoryRepositoryRepository()
+        repository_repo.add(
+            Repository(id=1, name="test-repo", url="/path", default_branch="main")
+        )
+        commit_repo = InMemoryCommitRepository()
+        commit = Commit(
+            id=1,
+            repository_id=1,
+            commit_hash=CommitHash("aaa111"),
+            author_date=datetime(2025, 1, 1),
+            commit_date=datetime(2025, 1, 1),
+        )
+        commit_repo.add(commit)
+        commit_repo._branch_commits[(1, "main", 1)] = True
+
+        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        file_repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/main.py",
+                content_hash="hash1",
+                size_bytes=100,
+                language="Python",
+            )
+        )
+        # File linked to the commit so version lookup + linked-commit resolution work,
+        # but find_by_path at the branch HEAD requires the commit_files link.
+        file_repo._commit_files.add((1, 1))
+
+        file_version_repo = InMemoryFileVersionRepository(file_repo)
+        use_case = ResolveFileUseCase(
+            repository_repo=repository_repo,
+            file_repo=file_repo,
+            file_version_repo=file_version_repo,
+            commit_repo=commit_repo,
+        )
+        request = ResolveFileRequest(
+            repository_name="test-repo",
+            file_path="src/main.py",
+            branch="main",
+        )
+        response = await use_case.execute(request)
+        assert response.file.path == "src/main.py"
