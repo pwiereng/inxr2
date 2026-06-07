@@ -361,6 +361,22 @@ describe('Browse', () => {
       expect(screen.getByTestId('diff-code-viewer')).toBeInTheDocument()
     })
 
+    it('handleSearchText fires from the diff viewer too', async () => {
+      const user = userEvent.setup()
+      renderBrowse(
+        makeState({
+          urlState: { filePath: 'src/a.ts', diffMode: true, selectedCommit: 'deadbeef' },
+          dataState: { fileContent: makeFileContent() },
+          diffState: { diffContent: makeFileContent({ content: 'const x = 2\n' }) },
+        })
+      )
+      await user.click(screen.getByText('diff-search'))
+      const loc = screen.getByTestId('location')
+      expect(loc).toHaveTextContent('/search')
+      expect(loc).toHaveTextContent('query=needle')
+      expect(loc).toHaveTextContent('repo=myrepo')
+    })
+
     it('shows a spinner in diff mode while diff content loads', () => {
       renderBrowse(
         makeState({
@@ -424,6 +440,31 @@ describe('Browse', () => {
         })
       )
       expect(screen.getByText('File not changed in this revision')).toBeInTheDocument()
+    })
+  })
+
+  describe('references side panel', () => {
+    it('is hidden by default', () => {
+      renderBrowse(makeState())
+      expect(screen.queryByTestId('references-panel')).not.toBeInTheDocument()
+    })
+
+    it('renders the ReferencesPanel when refsPanelOpen is set', () => {
+      renderBrowse(makeState({ uiState: { refsPanelOpen: true } }))
+      expect(screen.getByTestId('references-panel')).toBeInTheDocument()
+    })
+
+    it('renders the refs panel with its diff-mode version selector in diff mode', () => {
+      renderBrowse(
+        makeState({
+          urlState: { filePath: 'src/a.ts', diffMode: true },
+          dataState: { fileContent: makeFileContent() },
+          diffState: { diffContent: makeFileContent({ content: 'const x = 2\n' }) },
+          uiState: { refsPanelOpen: true },
+        })
+      )
+      expect(screen.getByTestId('references-panel')).toBeInTheDocument()
+      expect(screen.getByText('Refs @')).toBeInTheDocument()
     })
   })
 
