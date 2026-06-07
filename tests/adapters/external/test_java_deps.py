@@ -167,3 +167,53 @@ class TestEdgeCases:
 
     def test_empty(self, parser: JavaDependencyParser) -> None:
         assert parser.parse("", "build.gradle") == []
+
+
+class TestBranchCoverageEdgeCases:
+    """Edge-case branch coverage for the Java dependency parser."""
+
+    def test_parse_unknown_basename(self, parser: JavaDependencyParser) -> None:
+        assert parser.parse("x", "weird.txt") == []
+
+    def test_pom_properties_management_and_incomplete_deps(
+        self, parser: JavaDependencyParser
+    ) -> None:
+        content = """\
+<project>
+  <properties>
+    <spring.version>5.3.0</spring.version>
+    <empty.prop></empty.prop>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-core</artifactId>
+      <version>${spring.version}</version>
+    </dependency>
+    <dependency>
+      <artifactId>missing-group</artifactId>
+    </dependency>
+  </dependencies>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.example</groupId>
+        <artifactId>bom</artifactId>
+        <version>1.0.0</version>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <artifactId>also-incomplete</artifactId>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>
+"""
+        deps = parser.parse(content, "pom.xml")
+        by_name = {d["package_name"]: d for d in deps}
+        # property ${spring.version} resolved
+        assert by_name["org.springframework:spring-core"]["version_spec"] == "5.3.0"
+        # dependency missing groupId is skipped
+        assert "missing-group" not in str(by_name)
+        # managed dependency with import scope marked managed
+        assert by_name["com.example:bom"]["extras"]["managed"] is True

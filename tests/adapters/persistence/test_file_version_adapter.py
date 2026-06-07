@@ -707,3 +707,113 @@ class TestFileVersionDedupByContentHash:
         assert len(versions) == 2
         assert versions[0].content_hash == "hash_b" + "0" * 34  # newer content
         assert versions[1].content_hash == "hash_a" + "0" * 34  # older content
+
+
+@pytest.mark.asyncio
+class TestPostgresFileVersionRepositoryBranchCoverage:
+    """Targeted branch coverage for edge cases."""
+
+    async def _setup(self, db_session: AsyncSession, name: str) -> tuple[int, int, int]:
+        repo = await PostgresRepositoryAdapter(db_session).save(
+            RepositoryFactory.create(name=name)
+        )
+        assert repo.id is not None
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="a" * 40)
+        )
+        assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(repo.id, commit.id, "main")
+        file_adapter = PostgresFileRepository(db_session)
+        file = await file_adapter.save(
+            FileFactory.create(
+                repository_id=repo.id, path="src/main.py", content_hash="b" * 40
+            )
+        )
+        assert file.id is not None
+        await file_adapter.link_file_to_commit(file.id, commit.id)
+        await db_session.commit()
+        return repo.id, commit.id, file.id
+
+    async def test_list_at_or_before_commit_empty_fallback(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo = await PostgresRepositoryAdapter(db_session).save(
+            RepositoryFactory.create(name="fv-empty")
+        )
+        assert repo.id is not None
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="e" * 40)
+        )
+        assert commit.id is not None
+        await db_session.commit()
+        adapter = PostgresFileVersionRepository(db_session)
+        # Commit has no commit_files → falls through to the empty return.
+        assert await adapter.list_at_or_before_commit(repo.id, commit.id) == []
+
+    async def test_list_at_or_before_commit_returns_files(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, commit_id, _file_id = await self._setup(db_session, "fv-files")
+        adapter = PostgresFileVersionRepository(db_session)
+        files = await adapter.list_at_or_before_commit(repo_id, commit_id)
+        assert len(files) == 1
+
+    async def test_find_by_path_commit_hash_short_prefix(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, _commit_id, _file_id = await self._setup(db_session, "fv-short")
+        adapter = PostgresFileVersionRepository(db_session)
+        # Short prefix of "aaaa..." → startswith hash filter.
+        found = await adapter.find_by_repository_path_and_commit_hash(
+            repo_id, "src/main.py", "aaaa"
+        )
+        assert found is not None
+
+    async def test_find_by_path_commit_hash_not_found(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, _commit_id, _file_id = await self._setup(db_session, "fv-notfound")
+        adapter = PostgresFileVersionRepository(db_session)
+        # No commit matches → target_commit None → returns None.
+        found = await adapter.find_by_repository_path_and_commit_hash(
+            repo_id, "src/main.py", "f" * 40
+        )
+        assert found is None
+
+    async def test_list_changed_at_commit_empty(self, db_session: AsyncSession) -> None:
+        repo = await PostgresRepositoryAdapter(db_session).save(
+            RepositoryFactory.create(name="fv-changed-empty")
+        )
+        assert repo.id is not None
+        commit_adapter = PostgresCommitRepository(db_session)
+        commit = await commit_adapter.save(
+            CommitFactory.create(repository_id=repo.id, commit_hash="d" * 40)
+        )
+        assert commit.id is not None
+        await db_session.commit()
+        adapter = PostgresFileVersionRepository(db_session)
+        # Commit with no files → early empty return.
+        assert await adapter.list_changed_at_commit(repo.id, commit.id) == []
+
+    async def test_get_commit_ids_branch_without_repo_raises(
+        self, db_session: AsyncSession
+    ) -> None:
+        adapter = PostgresFileVersionRepository(db_session)
+        with pytest.raises(ValueError, match="repository_id is required"):
+            await adapter.get_commit_ids_for_files([1], branch="main")
+
+    async def test_get_commit_ids_empty_files(self, db_session: AsyncSession) -> None:
+        adapter = PostgresFileVersionRepository(db_session)
+        assert await adapter.get_commit_ids_for_files([]) == {}
+
+    async def test_get_commit_ids_with_branch_filter(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, commit_id, file_id = await self._setup(db_session, "fv-branchfilter")
+        adapter = PostgresFileVersionRepository(db_session)
+        result = await adapter.get_commit_ids_for_files(
+            [file_id], repository_id=repo_id, branch="main"
+        )
+        assert commit_id in result.get(file_id, [])

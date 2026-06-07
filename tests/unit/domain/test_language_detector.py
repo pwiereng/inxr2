@@ -169,3 +169,32 @@ class TestDetectFromShebang:
 
     def test_crlf_env_shebang(self) -> None:
         assert LanguageDetector.detect_from_shebang("#!/usr/bin/env bash\r") == "bash"
+
+
+class TestShebangAndTextFileBranches:
+    """Branch coverage for shebang env-skipping and is_text_file edges."""
+
+    def test_shebang_env_with_only_flags(self) -> None:
+        # All tokens are flags → loop exhausts → returns None.
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env -S") is None
+
+    def test_shebang_env_token_is_env(self) -> None:
+        # A literal "env" token is skipped; nothing else → None.
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env env") is None
+
+    def test_shebang_env_flag_then_interpreter(self) -> None:
+        # Flag skipped, then real interpreter resolves.
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env -S bash") == "bash"
+
+    def test_shebang_direct_env_returns_none(self) -> None:
+        # Direct /bin/env path (no args) → interpreter "env" → None.
+        assert LanguageDetector.detect_from_shebang("#!/usr/bin/env") is None
+
+    def test_is_text_file_no_extension(self) -> None:
+        assert LanguageDetector.is_text_file("Makefile") is True
+
+    def test_is_text_file_known_config_extension(self) -> None:
+        assert LanguageDetector.is_text_file("poetry.lock") is True
+
+    def test_is_text_file_unknown_extension(self) -> None:
+        assert LanguageDetector.is_text_file("mystery.xyz") is False

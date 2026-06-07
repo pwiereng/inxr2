@@ -620,3 +620,71 @@ class TestDeleteByFile:
         # Second delete should return 0, not error
         count = await adapter.delete_by_file(file_id)
         assert count == 0
+
+
+@pytest.mark.asyncio
+class TestSearchByPackageName:
+    """search_by_package_name() — filter and scope branch permutations."""
+
+    async def test_all_filters_applied(self, db_session: AsyncSession) -> None:
+        repo_id, _commit_id, file_id = await _setup(db_session)
+        adapter = PostgresDependencyRepository(db_session)
+        await adapter.save_many(
+            [
+                _dep(
+                    file_id,
+                    repo_id,
+                    package_name="fastapi",
+                    language="python",
+                    dependency_type="runtime",
+                    is_direct=True,
+                ),
+                _dep(
+                    file_id,
+                    repo_id,
+                    package_name="fastapi-cli",
+                    language="javascript",
+                    dependency_type="dev",
+                    is_direct=False,
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        deps, total = await adapter.search_by_package_name(
+            query="fastapi",
+            repository_id=repo_id,
+            language="python",
+            dependency_type="runtime",
+            is_direct=True,
+            branch="main",
+        )
+
+        assert total == 1
+        assert [d.package_name for d in deps] == ["fastapi"]
+
+    async def test_no_filters_latest_scope(self, db_session: AsyncSession) -> None:
+        repo_id, _commit_id, file_id = await _setup(db_session)
+        adapter = PostgresDependencyRepository(db_session)
+        await adapter.save_many([_dep(file_id, repo_id, package_name="requests")])
+        await db_session.commit()
+
+        # No filters → falls through to the scope=="latest" HEAD subquery.
+        deps, total = await adapter.search_by_package_name(query="requests")
+
+        assert total == 1
+        assert deps[0].package_name == "requests"
+
+    async def test_no_filters_no_scope_returns_all_versions(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo_id, _commit_id, file_id = await _setup(db_session)
+        adapter = PostgresDependencyRepository(db_session)
+        await adapter.save_many([_dep(file_id, repo_id, package_name="numpy")])
+        await db_session.commit()
+
+        # scope=None and no repo/branch → no file-version scoping applied.
+        deps, total = await adapter.search_by_package_name(query="numpy", scope=None)
+
+        assert total == 1
+        assert deps[0].package_name == "numpy"

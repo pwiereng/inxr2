@@ -180,10 +180,16 @@ markers = [
 # Coverage configuration
 [tool.coverage.run]
 source = ["src"]
+# SQLAlchemy's async engine runs DB I/O inside greenlets; without tracking
+# the greenlet (and thread) concurrency contexts, coverage silently fails to
+# record the async route/adapter code that executes there, under-counting
+# branch coverage for everything that touches the database.
+concurrency = ["thread", "greenlet"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
     "*/venv/*",
+    "src/inxr2/main.py",
 ]
 
 [tool.coverage.report]

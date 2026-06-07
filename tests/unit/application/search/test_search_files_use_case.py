@@ -696,3 +696,55 @@ class TestValidateExtensions:
         from inxr2.adapters.api.routes.search import _validate_extensions
 
         assert _validate_extensions(None) is None
+
+
+class _BadFileSearchRepo(InMemoryFileSearchRepository):
+    """Search repo that returns deliberately malformed file rows."""
+
+    def __init__(self, files: list[File]) -> None:
+        super().__init__(InMemoryFileRepository())
+        self._bad_files = files
+
+    async def search_by_name(
+        self, *args: object, **kwargs: object
+    ) -> tuple[list[File], int]:
+        return self._bad_files, len(self._bad_files)
+
+
+class TestSearchFilesDataIntegrity:
+    """Branch coverage for the data-integrity guard clauses."""
+
+    def _use_case(self, files: list[File]) -> SearchFilesUseCase:
+        return SearchFilesUseCase(
+            file_search_repo=_BadFileSearchRepo(files),
+            repository_repo=InMemoryRepositoryRepository(),
+            commit_repo=InMemoryCommitRepository(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_file_with_no_id_raises(self) -> None:
+        bad = File(
+            id=None,
+            repository_id=1,
+            path="src/x.py",
+            content_hash="h",
+            size_bytes=1,
+        )
+        use_case = self._use_case([bad])
+        with pytest.raises(ValueError, match="incomplete data"):
+            await use_case.execute(SearchFilesRequest(query="x"))
+
+    @pytest.mark.asyncio
+    async def test_file_with_unknown_repository_raises(self) -> None:
+        # Valid id but repository_id not present in the repository repo →
+        # repo_map lookup fails.
+        bad = File(
+            id=5,
+            repository_id=999,
+            path="src/y.py",
+            content_hash="h",
+            size_bytes=1,
+        )
+        use_case = self._use_case([bad])
+        with pytest.raises(ValueError, match="unknown repository"):
+            await use_case.execute(SearchFilesRequest(query="y"))
