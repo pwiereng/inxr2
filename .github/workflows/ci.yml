@@ -168,6 +168,48 @@ jobs:
         working-directory: mcp-server
 
   # ---------------------------------------------------------------------------
+  # Lockfile drift check: the committed requirements*.lock files must match what
+  # uv resolves from the pyproject.toml files + requirements-build.in. Fails if a
+  # dependency is edited without regenerating the locks, so CI/containers can't
+  # silently drift from pyproject.
+  # ---------------------------------------------------------------------------
+  lockfiles:
+    name: Lockfiles Up-to-date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      # Pin uv so regeneration is byte-reproducible (verified identical across
+      # the arm64 dev container and amd64 CI). The committed locks act as version
+      # preferences, so a new upstream release alone won't flip this check — only
+      # an actual edit to a pyproject.toml / requirements-build.in that the locks
+      # don't yet reflect will.
+      - name: Install uv
+        run: pip install "uv==0.11.21"
+
+      - name: Regenerate lockfiles
+        run: |
+          python -m uv pip compile pyproject.toml mcp-server/pyproject.toml requirements-build.in \
+            --extra dev --generate-hashes -o requirements.lock
+          python -m uv pip compile pyproject.toml requirements-build.in \
+            --generate-hashes -o requirements-prod.lock
+          python -m uv pip compile mcp-server/pyproject.toml requirements-build.in \
+            --generate-hashes -o mcp-server/requirements-prod.lock
+
+      - name: Verify lockfiles are up to date
+        run: |
+          if ! git diff --exit-code -- \
+              requirements.lock requirements-prod.lock mcp-server/requirements-prod.lock; then
+            echo "::error::Lockfiles are out of date. Regenerate them with the uv pip compile" \
+                 "commands above (also documented in the Dockerfile.dev comment) and commit the result."
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
   # Secret scanning (every PR and push to main)
   # ---------------------------------------------------------------------------
   secret-scan:
