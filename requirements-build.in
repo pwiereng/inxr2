@@ -1,0 +1,14 @@
+# Build backends for the editable installs.
+# These mirror the [build-system].requires in both pyproject.toml files:
+#   - inxr2 (pyproject.toml)            -> setuptools, wheel
+#   - inxr2-mcp-server (mcp-server/...) -> hatchling
+# Including them in requirements.lock lets the Dockerfile install them with
+# hashes into the outer env and build the editable packages with
+# --no-build-isolation, so the build toolchain is reproducible too (no fresh,
+# unpinned build backends fetched from PyPI per build).
+setuptools>=65.0
+wheel>=0.46.2
+hatchling
+# editables is hatchling's dynamic build requirement for editable installs
+# (its get_requires_for_build_editable hook); needed under --no-build-isolation.
+editables

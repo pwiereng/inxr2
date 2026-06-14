@@ -9,8 +9,12 @@ WORKDIR /build/frontend
 # Copy frontend package files
 COPY frontend/package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies — the full set, including devDependencies. The build
+# tooling (vite, typescript) lives in devDependencies, so `npm ci --only=production`
+# would omit it and `npm run build` (vite build) fails with "vite: not found".
+# This is a multi-stage build: node_modules stays in this builder stage; only
+# the built dist/ is copied into the final image, so devDeps don't ship.
+RUN npm ci
 
 # Copy frontend source
 COPY frontend/ ./
@@ -30,13 +34,20 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python package files
-COPY pyproject.toml ./
+COPY pyproject.toml requirements-prod.lock ./
 COPY src/ ./src/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade 'pip>=26.0' 'wheel>=0.46.2' && \
-    pip install --no-cache-dir build && \
-    pip install --no-cache-dir .
+# Install runtime dependencies from the hash-pinned lock (reproducible), then
+# the inxr2 package itself without re-resolving. requirements-prod.lock is the
+# runtime-only resolution (NO [dev] tooling) generated from pyproject.toml +
+# requirements-build.in, run from the repo root:
+#   uv pip compile pyproject.toml requirements-build.in \
+#       --generate-hashes -o requirements-prod.lock
+# --no-build-isolation builds the wheel against the locked setuptools/wheel
+# instead of fetching unpinned, unhashed build backends fresh from PyPI.
+RUN pip install --no-cache-dir --upgrade 'pip>=26.0' && \
+    pip install --no-cache-dir --require-hashes -r requirements-prod.lock && \
+    pip install --no-cache-dir --no-deps --no-build-isolation .
 
 # Stage 3: Final production image
 FROM python:3.11-slim
