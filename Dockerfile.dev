@@ -45,22 +45,30 @@ RUN python --version && \
 # Set working directory
 WORKDIR /workspace
 
-# Install Python packages into system Python at build time
+# Install Python packages into system Python at build time from a fully
+# resolved, hash-pinned lockfile so container builds are reproducible.
 # Docker provides isolation, so no venv is needed.
-# A minimal package structure is created for the editable install; the real
+#
+# requirements.lock is generated from BOTH pyproject.toml files (the dev
+# container shares one Python env between inxr2 and the MCP server, so they
+# are locked together) via:
+#   uv pip compile pyproject.toml mcp-server/pyproject.toml \
+#       --extra dev --generate-hashes -o requirements.lock
+# Regenerate it whenever a dependency in either pyproject.toml changes.
+#
+# A minimal package structure is created for the editable installs; the real
 # source is bind-mounted at runtime and picked up via the .pth file in
-# site-packages.
-COPY pyproject.toml README.md ./
-RUN mkdir -p src/inxr2 && touch src/inxr2/__init__.py && \
-    pip install --no-cache-dir --upgrade 'pip>=26.0' 'wheel>=0.46.2' && \
-    pip install -e '.[dev]' && \
-    rm -rf src
-
-# Install MCP server dependencies at build time
+# site-packages. Editable installs use --no-deps so they install only the
+# local package and never re-resolve (and drift from) the locked dep set.
+COPY pyproject.toml README.md requirements.lock ./
 COPY mcp-server/pyproject.toml /tmp/mcp-server/pyproject.toml
 COPY mcp-server/src/ /tmp/mcp-server/src/
-RUN pip install -e /tmp/mcp-server && \
-    rm -rf /tmp/mcp-server
+RUN pip install --no-cache-dir --upgrade 'pip>=26.0' 'wheel>=0.46.2' && \
+    pip install --no-cache-dir --require-hashes -r requirements.lock && \
+    mkdir -p src/inxr2 && touch src/inxr2/__init__.py && \
+    pip install --no-cache-dir --no-deps -e . && \
+    pip install --no-cache-dir --no-deps -e /tmp/mcp-server && \
+    rm -rf src /tmp/mcp-server
 
 # Create non-root user for development
 ARG USERNAME=devuser
