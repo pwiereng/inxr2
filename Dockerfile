@@ -9,8 +9,12 @@ WORKDIR /build/frontend
 # Copy frontend package files
 COPY frontend/package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies — the full set, including devDependencies. The build
+# tooling (vite, typescript) lives in devDependencies, so `npm ci --only=production`
+# would omit it and `npm run build` (vite build) fails with "vite: not found".
+# This is a multi-stage build: node_modules stays in this builder stage; only
+# the built dist/ is copied into the final image, so devDeps don't ship.
+RUN npm ci
 
 # Copy frontend source
 COPY frontend/ ./
