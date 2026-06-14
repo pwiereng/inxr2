@@ -13,6 +13,13 @@
 #
 # Security updates are enabled separately in repo settings and are not throttled
 # by this file.
+#
+# ⚠️ TEMPORARILY DISABLED (2026-06-14): version-update PRs are turned OFF for
+# every ecosystem via `open-pull-requests-limit: 0`. The config is kept intact
+# so it can be re-enabled by restoring the limits (e.g. back to 5) once the
+# project is ready to take routine dependency PRs again. NOTE: this only
+# disables *version* updates — *security* updates come from repo settings and
+# are unaffected; disable those under Settings → Code security if also unwanted.
 version: 2
 updates:
   # ----- Python (pip) -----
@@ -20,7 +27,7 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       python-minor-patch:
         patterns:
@@ -33,7 +40,7 @@ updates:
     directory: "/mcp-server"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       python-minor-patch:
         patterns:
@@ -46,7 +53,7 @@ updates:
     directory: "/qa-agent"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       python-minor-patch:
         patterns:
@@ -60,7 +67,7 @@ updates:
     directory: "/frontend"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       npm-minor-patch:
         patterns:
@@ -74,7 +81,7 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       github-actions:
         patterns:
@@ -87,7 +94,7 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     ignore:
       - dependency-name: "*"
         update-types:
@@ -97,7 +104,7 @@ updates:
     directory: "/mcp-server"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     ignore:
       - dependency-name: "*"
         update-types:
@@ -107,7 +114,7 @@ updates:
     directory: "/qa-agent"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     ignore:
       - dependency-name: "*"
         update-types:
