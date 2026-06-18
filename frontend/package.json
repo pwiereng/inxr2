@@ -24,7 +24,7 @@
     "@mui/material": "^5.15.0",
     "@types/diff": "^7.0.2",
     "diff": "^8.0.3",
-    "dompurify": "^3.4.8",
+    "dompurify": "^3.4.11",
     "mermaid": "^11.13.0",
     "prismjs": "^1.29.0",
     "react": "^19.2.7",
