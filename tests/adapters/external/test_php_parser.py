@@ -192,6 +192,23 @@ class TestPhpReferences:
         )
 
     @pytest.mark.asyncio
+    async def test_new_self_static_parent_not_instantiation(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """`new self()`/`new static()`/`new parent()` name pseudo-classes and
+        must not emit dangling instantiation refs."""
+        code = """<?php
+class Factory {
+    public function a() { return new static(); }
+    public function b() { return new self(); }
+    public function c() { return new parent(); }
+}
+"""
+        _, refs = await parse(parser_service, code)
+        inst = {r.reference_text for r in refs if r.reference_type == "instantiation"}
+        assert not (inst & {"static", "self", "parent"})
+
+    @pytest.mark.asyncio
     async def test_function_call(self, parser_service: TreeSitterService) -> None:
         code = "<?php\nfunction f() { helper_fn(1); }\n"
         _, refs = await parse(parser_service, code)
@@ -208,6 +225,17 @@ class TestPhpReferences:
         call_texts = {r.reference_text for r in refs if r.reference_type == "call"}
         assert "strlen" not in call_texts
         assert "count" not in call_texts
+
+    @pytest.mark.asyncio
+    async def test_mixed_case_builtin_call_is_filtered(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """PHP function names are case-insensitive; non-canonical casing of a
+        built-in must still be filtered."""
+        code = "<?php\nfunction f() { Strlen('a'); COUNT([]); Array_map('x', []); }\n"
+        _, refs = await parse(parser_service, code)
+        call_texts = {r.reference_text for r in refs if r.reference_type == "call"}
+        assert not (call_texts & {"Strlen", "COUNT", "Array_map"})
 
     @pytest.mark.asyncio
     async def test_method_call(self, parser_service: TreeSitterService) -> None:

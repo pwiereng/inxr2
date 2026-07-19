@@ -64,6 +64,27 @@ class TestComposerJson:
         framework = next(d for d in deps if d["package_name"] == "laravel/framework")
         assert framework["source_line"] is not None
 
+    def test_source_line_anchored_to_section(self, parser: PhpDependencyParser) -> None:
+        """A package token appearing earlier in the file (a scripts command
+        referencing the same token) must not steal the source_line — it must
+        point at the occurrence inside the require block."""
+        content = """{
+  "name": "acme/app",
+  "scripts": {
+    "test": "monolog/monolog --run"
+  },
+  "require": {
+    "monolog/monolog": "^3.0"
+  }
+}"""
+        deps = parser.parse(content, "composer.json")
+        monolog = next(d for d in deps if d["package_name"] == "monolog/monolog")
+        lines = content.splitlines()
+        # The require-block occurrence is on line 7 (1-based), not the line 4
+        # scripts command that also mentions the token.
+        assert lines[monolog["source_line"] - 1].strip().startswith('"monolog/monolog"')
+        assert '"^3.0"' in lines[monolog["source_line"] - 1]
+
     def test_invalid_json_returns_empty(self, parser: PhpDependencyParser) -> None:
         assert parser.parse("{ not valid", "composer.json") == []
 

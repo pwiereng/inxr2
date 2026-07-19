@@ -72,8 +72,12 @@ class PhpDependencyParser(BaseDependencyParser):
             section_data = data.get(section)
             if not isinstance(section_data, dict):
                 continue
-            # Reset per section — sections may appear in any order in the file.
-            last_line = 0
+            # Anchor the line search to the section's opening line so a package
+            # token that also appears earlier (top-level "name", "scripts", an
+            # autoload path) can't steal the match. Sections may appear in any
+            # order, so this is resolved independently per section.
+            section_line = self._find_line(lines, f'"{section}"')
+            last_line = section_line if section_line is not None else 0
             for name, version in section_data.items():
                 if _is_platform_requirement(name):
                     continue

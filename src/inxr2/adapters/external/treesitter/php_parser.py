@@ -334,7 +334,10 @@ class PhpParser(BaseLanguageParser):
                     resolved = simple_name(callee)
                     if resolved is not None:
                         func_name, func_node = resolved
-                        if func_name not in PHP_BUILTINS:
+                        # PHP function names are case-insensitive; PHP_BUILTINS
+                        # is stored lowercase, so fold before the membership test
+                        # (Strlen/COUNT must be filtered like strlen/count).
+                        if func_name.lower() not in PHP_BUILTINS:
                             add_reference(
                                 self._make_reference(
                                     func_name, "call", func_node, scope
@@ -367,11 +370,16 @@ class PhpParser(BaseLanguageParser):
                     resolved = simple_name(child)
                     if resolved is not None:
                         cls_name, cls_node = resolved
-                        add_reference(
-                            self._make_reference(
-                                cls_name, "instantiation", cls_node, scope
+                        # `new self()` / `new static()` / `new parent()` name a
+                        # pseudo-class, not a real symbol — skip so we don't emit
+                        # dangling instantiation refs. (PHP class names are
+                        # case-insensitive, so fold before the check.)
+                        if cls_name.lower() not in PHP_PRIMITIVE_TYPES:
+                            add_reference(
+                                self._make_reference(
+                                    cls_name, "instantiation", cls_node, scope
+                                )
                             )
-                        )
                         break
             elif node_type == "class_constant_access_expression":
                 _emit_scope_class(node, scope)
