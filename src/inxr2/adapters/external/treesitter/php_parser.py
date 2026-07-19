@@ -325,7 +325,9 @@ class PhpParser(BaseLanguageParser):
                     return child
             return None
 
-        def extract_references(node: Node, scope: str | None) -> None:
+        def extract_references(
+            node: Node, scope: str | None, namespace: str | None
+        ) -> None:
             node_type = node.type
 
             if node_type == "function_call_expression":
@@ -387,16 +389,33 @@ class PhpParser(BaseLanguageParser):
                 resolved = simple_name(node.children[0]) if node.children else None
                 if resolved is not None:
                     type_name, type_node = resolved
-                    if type_name not in PHP_PRIMITIVE_TYPES:
+                    # PHP type names are case-insensitive; a capitalized scalar
+                    # hint (Int/Array/Void) parses as a named_type, so fold
+                    # before the primitive check to avoid a dangling ref.
+                    if type_name.lower() not in PHP_PRIMITIVE_TYPES:
                         add_reference(
                             self._make_reference(
                                 type_name, "type_annotation", type_node, scope
                             )
                         )
 
-            child_scope = _scope_for_children(node, scope)
+            # Thread scope AND namespace into children so reference scopes match
+            # the namespace-qualified scopes the symbol pass produces.
+            child_scope = _scope_for_children(node, scope, namespace)
+            child_ns = namespace
             for child in node.children:
-                extract_references(child, child_scope)
+                if child.type == "namespace_definition":
+                    ns_node = first_child(child, "namespace_name")
+                    ns_name = get_text(ns_node) if ns_node is not None else None
+                    if first_child(child, "compound_statement") is not None:
+                        # Braced form: namespace applies to this subtree only.
+                        extract_references(child, child_scope, ns_name)
+                    else:
+                        # Semicolon form: applies to the rest of the file.
+                        extract_references(child, child_scope, ns_name)
+                        child_ns = ns_name
+                else:
+                    extract_references(child, child_scope, child_ns)
 
         def _emit_scope_class(node: Node, scope: str | None) -> None:
             """Emit a usage ref for the class in ``Class::member`` expressions."""
@@ -406,13 +425,21 @@ class PhpParser(BaseLanguageParser):
             resolved = simple_name(first)
             if resolved is not None:
                 cls_name, cls_node = resolved
-                if cls_name not in PHP_PRIMITIVE_TYPES:
+                # Case-insensitive: keep in step with the other primitive filters.
+                if cls_name.lower() not in PHP_PRIMITIVE_TYPES:
                     add_reference(
                         self._make_reference(cls_name, "usage", cls_node, scope)
                     )
 
-        def _scope_for_children(node: Node, scope: str | None) -> str | None:
-            """Compute the scope string for a node's children."""
+        def _scope_for_children(
+            node: Node, scope: str | None, namespace: str | None
+        ) -> str | None:
+            """Compute the scope string for a node's children.
+
+            Class/interface/trait/enum scopes are namespace-qualified so that
+            reference scopes match the qualified names emitted by the symbol
+            pass (e.g. ``App\\Models\\User::method``).
+            """
             if node.type in (
                 "class_declaration",
                 "interface_declaration",
@@ -421,7 +448,7 @@ class PhpParser(BaseLanguageParser):
             ):
                 name_node = name_node_of(node)
                 if name_node is not None:
-                    return get_text(name_node)
+                    return qualify(get_text(name_node), namespace)
             elif node.type in ("method_declaration", "function_definition"):
                 name_node = name_node_of(node)
                 if name_node is not None:
@@ -435,7 +462,7 @@ class PhpParser(BaseLanguageParser):
             current_namespace = process_top_level(child, current_namespace)
 
         # Second pass: references.
-        extract_references(root, None)
+        extract_references(root, None, None)
 
         return symbols, references
 

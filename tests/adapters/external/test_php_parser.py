@@ -297,6 +297,41 @@ class Factory {
         }
         assert not (type_refs & {"int", "string", "void"})
 
+    @pytest.mark.asyncio
+    async def test_capitalized_primitive_type_not_annotated(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """PHP type names are case-insensitive; capitalized scalar hints parse
+        as named_type and must still be filtered (no dangling refs)."""
+        code = "<?php\nfunction f(Array $x): Int {}\nfunction g(): Void {}\n"
+        _, refs = await parse(parser_service, code)
+        type_refs = {
+            r.reference_text for r in refs if r.reference_type == "type_annotation"
+        }
+        assert not (type_refs & {"Array", "Int", "Void"})
+
+    @pytest.mark.asyncio
+    async def test_reference_scope_is_namespace_qualified(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """A call ref inside a namespaced class must carry the same
+        namespace-qualified scope the symbol pass produces for its members."""
+        code = """<?php
+namespace App\\Models;
+class User {
+    public function save(): void { helper_fn(); }
+}
+"""
+        symbols, refs = await parse(parser_service, code)
+        method = next(s for s in symbols if s.kind == "method")
+        assert method.scope == "App\\Models\\User"
+        call = next(
+            r
+            for r in refs
+            if r.reference_type == "call" and r.reference_text == "helper_fn"
+        )
+        assert call.scope == "App\\Models\\User::save"
+
 
 class TestPhpComments:
     @pytest.mark.asyncio
