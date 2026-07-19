@@ -8,6 +8,7 @@ describe('getPrismLanguage', () => {
     expect(getPrismLanguage('dockerfile')).toBe('docker')
     expect(getPrismLanguage('toml')).toBe('toml')
     expect(getPrismLanguage('swift')).toBe('swift')
+    expect(getPrismLanguage('php')).toBe('php')
   })
 
   it('is case-insensitive', () => {

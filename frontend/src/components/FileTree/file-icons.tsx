@@ -188,6 +188,7 @@ const EXTENSION_ICONS: Record<string, FileIconConfig> = {
   // Scripting
   rb: { label: 'RB', color: '#CC342D' },
   php: { label: 'PHP', color: '#777BB4' },
+  phtml: { label: 'PHP', color: '#777BB4' },
   pl: { label: 'PL', color: '#39457E' },
   pm: { label: 'PM', color: '#39457E' },
   lua: { label: 'LU', color: '#2C2D72' },
@@ -394,6 +395,8 @@ const FILENAME_ICONS: Record<string, FileIconConfig> = {
   'cargo.lock': { label: 'CG', color: '#DEA584' },
   'go.mod': { label: 'GO', color: '#00ADD8' },
   'go.sum': { label: 'GO', color: '#00ADD8' },
+  'composer.json': { label: 'CP', color: '#885630' },
+  'composer.lock': { label: 'CP', color: '#885630' },
   'build.gradle': { label: 'GDL', color: '#02303A' },
   'pom.xml': { label: 'MV', color: '#C71A36' },
   license: { label: 'LIC', color: '#D4AF37' },

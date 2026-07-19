@@ -74,6 +74,7 @@ class LanguageDetector:
         ".rake": "ruby",
         # PHP
         ".php": "php",
+        ".phtml": "php",
         # Swift
         ".swift": "swift",
         # Objective-C

@@ -35,6 +35,10 @@ class TestSupportsFile:
         assert service.supports_file("packages.lock.json")
         assert service.supports_file("Directory.Packages.props")
 
+    def test_php_files(self, service: DependencyParserService) -> None:
+        assert service.supports_file("composer.json")
+        assert service.supports_file("composer.lock")
+
     def test_nested_paths(self, service: DependencyParserService) -> None:
         assert service.supports_file("backend/pyproject.toml")
         assert service.supports_file("frontend/package.json")
@@ -89,6 +93,12 @@ dependencies = ["fastapi>=0.100"]
         deps = service.parse(content, "App.csproj")
         assert len(deps) == 1
         assert deps[0].language == "csharp"
+
+    def test_dispatches_to_php(self, service: DependencyParserService) -> None:
+        content = '{"require": {"laravel/framework": "^10.0"}}'
+        deps = service.parse(content, "composer.json")
+        assert len(deps) == 1
+        assert deps[0].language == "php"
 
     def test_unsupported_file(self, service: DependencyParserService) -> None:
         deps = service.parse("anything", "unknown.txt")

@@ -68,3 +68,6 @@ class SymbolKind(StrEnum):
     ENUM_CASE = "enum_case"  # Swift enum case members
     INIT = "init"  # Swift initializer declarations
     ACTOR = "actor"  # Swift actor declarations
+
+    # PHP-specific kinds
+    TRAIT = "trait"  # PHP trait declarations

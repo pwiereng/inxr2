@@ -66,6 +66,7 @@ const EXTENSION_LANGUAGE_MAP: Record<string, string> = {
   '.rs': 'rust',
   '.rb': 'ruby',
   '.php': 'php',
+  '.phtml': 'php',
   '.swift': 'swift',
   '.kt': 'kotlin',
   '.scala': 'scala',
