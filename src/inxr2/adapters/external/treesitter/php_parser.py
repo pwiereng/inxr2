@@ -306,32 +306,33 @@ class PhpParser(BaseLanguageParser):
 
         def iter_with_namespace(
             node: Node, namespace: str | None
-        ) -> list[tuple[Node, str | None]]:
-            """Yield ``(child, namespace)`` for each child of ``node``.
+        ) -> list[tuple[Node, str | None, Node | None]]:
+            """Yield ``(child, namespace, braced_body)`` for each child of ``node``.
 
             Encodes PHP's namespace scoping in one place (shared by the symbol
             and reference passes so their scopes can't silently diverge): a
             braced namespace applies to its own subtree only; a semicolon
-            namespace leaks to all following siblings.
+            namespace leaks to all following siblings. ``braced_body`` is the
+            namespace's compound_statement (braced form) or None, computed once
+            here so callers don't re-decode it.
             """
-            pairs: list[tuple[Node, str | None]] = []
+            pairs: list[tuple[Node, str | None, Node | None]] = []
             current = namespace
             for child in node.children:
                 if child.type == "namespace_definition":
                     ns_name, braced_body = namespace_of(child)
-                    pairs.append((child, ns_name))
+                    pairs.append((child, ns_name, braced_body))
                     if braced_body is None:
                         # Semicolon form applies to the rest of the file.
                         current = ns_name
                 else:
-                    pairs.append((child, current))
+                    pairs.append((child, current, None))
             return pairs
 
         def process_declarations(node: Node, namespace: str | None) -> None:
             """Extract symbols from a declaration container (file or namespace)."""
-            for child, ns in iter_with_namespace(node, namespace):
+            for child, ns, braced_body in iter_with_namespace(node, namespace):
                 if child.type == "namespace_definition":
-                    _, braced_body = namespace_of(child)
                     if braced_body is not None:
                         process_declarations(braced_body, ns)
                 elif child.type == "class_declaration":
@@ -465,7 +466,7 @@ class PhpParser(BaseLanguageParser):
             # the namespace-qualified scopes the symbol pass produces. Namespace
             # threading is shared with the symbol pass via iter_with_namespace.
             child_scope = _scope_for_children(node, scope, namespace)
-            for child, child_ns in iter_with_namespace(node, namespace):
+            for child, child_ns, _ in iter_with_namespace(node, namespace):
                 extract_references(child, child_scope, child_ns)
 
         def _emit_scope_class(node: Node, scope: str | None) -> None:
