@@ -370,20 +370,34 @@ class PhpParser(BaseLanguageParser):
                     resolved = simple_name(callee)
                     if resolved is not None:
                         func_name, func_node = resolved
-                        # Only discard as a builtin when the call is *unqualified*
-                        # (a bare `name`, not `App\count()`) and does not resolve
-                        # to a same-file user function *in the caller's own
-                        # namespace* — otherwise a namespaced/local function whose
-                        # name collides with a builtin would lose all its call
-                        # references. PHP names are case-insensitive, so fold
-                        # before the (lowercase) membership tests.
+                        # The builtin filter applies to calls that resolve to a
+                        # global function: bare names (`strlen()`, resolved in the
+                        # current namespace) and root-qualified single segments
+                        # (`\strlen()`, resolved in the global namespace). A
+                        # namespaced call (`App\count()`, i.e. a qualified_name
+                        # WITH a namespace_name) is a user function and is never
+                        # filtered. Discard only when it doesn't resolve to a
+                        # same-file user function in its effective namespace,
+                        # else a shadowing user function loses its call refs.
+                        # PHP names are case-insensitive, so fold before testing.
+                        is_root_qualified = callee.type == "qualified_name" and not any(
+                            c.type == "namespace_name" for c in callee.children
+                        )
+                        if callee.type == "name":
+                            call_ns = namespace  # unqualified → current namespace
+                            filterable = True
+                        elif is_root_qualified:
+                            call_ns = None  # \strlen → global namespace
+                            filterable = True
+                        else:
+                            call_ns = namespace
+                            filterable = False  # namespaced user function
                         folded = func_name.lower()
                         resolves_locally = (
-                            qualify(func_name, namespace).lower()
-                            in local_function_qnames
+                            qualify(func_name, call_ns).lower() in local_function_qnames
                         )
                         is_builtin = (
-                            callee.type == "name"
+                            filterable
                             and folded in PHP_BUILTINS
                             and not resolves_locally
                         )

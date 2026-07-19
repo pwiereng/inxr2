@@ -267,6 +267,18 @@ function caller() { count([1, 2]); }
         )
 
     @pytest.mark.asyncio
+    async def test_root_qualified_builtin_is_filtered(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """A root-qualified global call (\\strlen()) resolves to the builtin —
+        fully-qualifying globals is a common idiom in namespaced code — and
+        must be filtered like the unqualified form."""
+        code = "<?php\nnamespace App;\nfunction f() { \\strlen('a'); \\count([]); }\n"
+        _, refs = await parse(parser_service, code)
+        call_texts = {r.reference_text for r in refs if r.reference_type == "call"}
+        assert not (call_texts & {"strlen", "count"})
+
+    @pytest.mark.asyncio
     async def test_method_call(self, parser_service: TreeSitterService) -> None:
         code = "<?php\nfunction f($repo) { $repo->save($x); }\n"
         _, refs = await parse(parser_service, code)

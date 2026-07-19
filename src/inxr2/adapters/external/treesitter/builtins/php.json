@@ -51,7 +51,7 @@
     "getenv", "putenv", "phpversion", "extension_loaded",
     "spl_autoload_register", "iterator_to_array", "spl_object_hash",
     "spl_object_id", "class_implements", "class_parents", "class_uses",
-    "fopen", "fputcsv", "fgetcsv", "ob_start", "ob_get_clean", "ob_get_contents",
+    "fputcsv", "fgetcsv", "ob_start", "ob_get_clean", "ob_get_contents",
     "header", "setcookie", "session_start", "http_response_code"
   ],
   "primitive_types": [
