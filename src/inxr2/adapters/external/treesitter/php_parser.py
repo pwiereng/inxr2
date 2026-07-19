@@ -285,33 +285,59 @@ class PhpParser(BaseLanguageParser):
             walk(node)
             return found
 
-        def process_top_level(node: Node, namespace: str | None) -> str | None:
-            """Dispatch a top-level node; returns the (possibly new) namespace."""
-            if node.type == "namespace_definition":
-                ns_name_node = first_child(node, "namespace_name")
-                ns_name = get_text(ns_name_node) if ns_name_node is not None else None
-                body = first_child(node, "compound_statement")
-                if body is not None:
-                    # Braced form: declarations are nested; namespace does not
-                    # leak to following siblings.
-                    for child in body.children:
-                        process_top_level(child, ns_name)
-                    return namespace
-                # Semicolon form: applies to the rest of the file.
-                return ns_name
-            if node.type == "class_declaration":
-                process_type_declaration(node, "class", namespace)
-            elif node.type == "interface_declaration":
-                process_type_declaration(node, "interface", namespace)
-            elif node.type == "trait_declaration":
-                process_type_declaration(node, "trait", namespace)
-            elif node.type == "enum_declaration":
-                process_type_declaration(node, "enum", namespace)
-            elif node.type == "function_definition":
-                process_function(node, namespace)
-            elif node.type == "namespace_use_declaration":
-                process_use_import(node, namespace)
-            return namespace
+        def namespace_of(node: Node) -> tuple[str | None, Node | None]:
+            """For a namespace_definition, return (name, braced_body).
+
+            ``braced_body`` is the compound_statement for the braced form
+            (``namespace App { ... }``) or None for the semicolon form
+            (``namespace App;``).
+            """
+            ns_node = first_child(node, "namespace_name")
+            ns_name = get_text(ns_node) if ns_node is not None else None
+            return ns_name, first_child(node, "compound_statement")
+
+        def iter_with_namespace(
+            node: Node, namespace: str | None
+        ) -> list[tuple[Node, str | None]]:
+            """Yield ``(child, namespace)`` for each child of ``node``.
+
+            Encodes PHP's namespace scoping in one place (shared by the symbol
+            and reference passes so their scopes can't silently diverge): a
+            braced namespace applies to its own subtree only; a semicolon
+            namespace leaks to all following siblings.
+            """
+            pairs: list[tuple[Node, str | None]] = []
+            current = namespace
+            for child in node.children:
+                if child.type == "namespace_definition":
+                    ns_name, braced_body = namespace_of(child)
+                    pairs.append((child, ns_name))
+                    if braced_body is None:
+                        # Semicolon form applies to the rest of the file.
+                        current = ns_name
+                else:
+                    pairs.append((child, current))
+            return pairs
+
+        def process_declarations(node: Node, namespace: str | None) -> None:
+            """Extract symbols from a declaration container (file or namespace)."""
+            for child, ns in iter_with_namespace(node, namespace):
+                if child.type == "namespace_definition":
+                    _, braced_body = namespace_of(child)
+                    if braced_body is not None:
+                        process_declarations(braced_body, ns)
+                elif child.type == "class_declaration":
+                    process_type_declaration(child, "class", ns)
+                elif child.type == "interface_declaration":
+                    process_type_declaration(child, "interface", ns)
+                elif child.type == "trait_declaration":
+                    process_type_declaration(child, "trait", ns)
+                elif child.type == "enum_declaration":
+                    process_type_declaration(child, "enum", ns)
+                elif child.type == "function_definition":
+                    process_function(child, ns)
+                elif child.type == "namespace_use_declaration":
+                    process_use_import(child, ns)
 
         # --- Reference extraction ---
 
@@ -336,10 +362,19 @@ class PhpParser(BaseLanguageParser):
                     resolved = simple_name(callee)
                     if resolved is not None:
                         func_name, func_node = resolved
-                        # PHP function names are case-insensitive; PHP_BUILTINS
-                        # is stored lowercase, so fold before the membership test
-                        # (Strlen/COUNT must be filtered like strlen/count).
-                        if func_name.lower() not in PHP_BUILTINS:
+                        # Only discard as a builtin when the call is *unqualified*
+                        # (a bare `name`, not `App\count()`) and not shadowed by a
+                        # same-file user function — otherwise a namespaced/local
+                        # function whose name collides with a builtin would lose
+                        # all its call references. PHP names are case-insensitive,
+                        # so fold before the (lowercase) membership tests.
+                        folded = func_name.lower()
+                        is_builtin = (
+                            callee.type == "name"
+                            and folded in PHP_BUILTINS
+                            and folded not in local_function_names
+                        )
+                        if not is_builtin:
                             add_reference(
                                 self._make_reference(
                                     func_name, "call", func_node, scope
@@ -400,22 +435,11 @@ class PhpParser(BaseLanguageParser):
                         )
 
             # Thread scope AND namespace into children so reference scopes match
-            # the namespace-qualified scopes the symbol pass produces.
+            # the namespace-qualified scopes the symbol pass produces. Namespace
+            # threading is shared with the symbol pass via iter_with_namespace.
             child_scope = _scope_for_children(node, scope, namespace)
-            child_ns = namespace
-            for child in node.children:
-                if child.type == "namespace_definition":
-                    ns_node = first_child(child, "namespace_name")
-                    ns_name = get_text(ns_node) if ns_node is not None else None
-                    if first_child(child, "compound_statement") is not None:
-                        # Braced form: namespace applies to this subtree only.
-                        extract_references(child, child_scope, ns_name)
-                    else:
-                        # Semicolon form: applies to the rest of the file.
-                        extract_references(child, child_scope, ns_name)
-                        child_ns = ns_name
-                else:
-                    extract_references(child, child_scope, child_ns)
+            for child, child_ns in iter_with_namespace(node, namespace):
+                extract_references(child, child_scope, child_ns)
 
         def _emit_scope_class(node: Node, scope: str | None) -> None:
             """Emit a usage ref for the class in ``Class::member`` expressions."""
@@ -457,9 +481,16 @@ class PhpParser(BaseLanguageParser):
             return scope
 
         # First pass: symbols (namespace threads through top-level siblings).
-        current_namespace: str | None = None
-        for child in root.children:
-            current_namespace = process_top_level(child, current_namespace)
+        process_declarations(root, None)
+
+        # User functions declared anywhere in this file. An unqualified call to
+        # one of these is a real reference even if the name collides with a PHP
+        # builtin, so it must not be filtered out.
+        local_function_names: set[str] = set()
+        for fn in _descendants(root, "function_definition"):
+            fn_name_node = name_node_of(fn)
+            if fn_name_node is not None:
+                local_function_names.add(get_text(fn_name_node).lower())
 
         # Second pass: references.
         extract_references(root, None, None)

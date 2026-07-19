@@ -238,6 +238,35 @@ class Factory {
         assert not (call_texts & {"Strlen", "COUNT", "Array_map"})
 
     @pytest.mark.asyncio
+    async def test_user_function_shadowing_builtin_is_kept(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """A same-file user function whose name collides with a builtin must
+        keep its call references — the builtin filter only applies to
+        unqualified, unshadowed names."""
+        code = """<?php
+namespace App;
+function count($x) { return 0; }
+function caller() { count([1, 2]); }
+"""
+        _, refs = await parse(parser_service, code)
+        assert any(
+            r.reference_type == "call" and r.reference_text == "count" for r in refs
+        )
+
+    @pytest.mark.asyncio
+    async def test_qualified_call_not_filtered_as_builtin(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """A namespace-qualified call (App\\count()) is a user function even if
+        the last segment collides with a builtin — must not be filtered."""
+        code = "<?php\nfunction f() { \\App\\count([1]); }\n"
+        _, refs = await parse(parser_service, code)
+        assert any(
+            r.reference_type == "call" and r.reference_text == "count" for r in refs
+        )
+
+    @pytest.mark.asyncio
     async def test_method_call(self, parser_service: TreeSitterService) -> None:
         code = "<?php\nfunction f($repo) { $repo->save($x); }\n"
         _, refs = await parse(parser_service, code)

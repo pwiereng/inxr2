@@ -139,6 +139,21 @@ describe('KindSymbolNode', () => {
       has_children: true,
     })
   })
+
+  it('treats a PHP trait as an expandable container', () => {
+    const { props } = renderNode({
+      symbol: makeApiSymbol({ id: 15, name: 'HasTimestamps', kind: 'trait' }),
+      isExpanded: true,
+      children: [makeChild({ name: 'touch' })],
+    })
+    // Container kinds render children and report has_children on interaction.
+    expect(screen.getByText('touch()')).toBeInTheDocument()
+    fireContextMenu(screen.getByText('HasTimestamps'))
+    expect(vi.mocked(props.onSymbolContextMenu).mock.calls[0]![0]).toMatchObject({
+      id: 15,
+      has_children: true,
+    })
+  })
 })
 
 function fireContextMenu(el: Element) {
