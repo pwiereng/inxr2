@@ -96,6 +96,12 @@ class TestLanguageDetector:
         assert LanguageDetector.detect("app.rb") == "ruby"
         assert LanguageDetector.detect("tasks.rake") == "ruby"
 
+    def test_detect_php_extensions(self) -> None:
+        """Test detecting PHP files by extension."""
+        assert LanguageDetector.detect("User.php") == "php"
+        assert LanguageDetector.detect("template.phtml") == "php"
+        assert LanguageDetector.detect("Index.PHP") == "php"
+
     def test_detect_sh_extension_is_bash(self) -> None:
         """Test that .sh and .bash files are detected as bash."""
         assert LanguageDetector.detect("script.sh") == "bash"

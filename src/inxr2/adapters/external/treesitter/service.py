@@ -23,6 +23,7 @@ from .c_cpp_parser import CppParser
 from .csharp_parser import CSharpParser
 from .go_parser import GoParser
 from .java_parser import JavaParser
+from .php_parser import PhpParser
 from .python_parser import PythonParser
 from .ruby_parser import RubyParser
 from .swift_parser import SwiftParser
@@ -53,6 +54,7 @@ class TreeSitterService(ParserServicePort):
         "ruby": [".rb", ".rake"],
         "bash": [".sh", ".bash"],
         "swift": [".swift"],
+        "php": [".php", ".phtml"],
     }
 
     def __init__(self) -> None:
@@ -170,6 +172,15 @@ class TreeSitterService(ParserServicePort):
         except ImportError as e:
             logger.warning(f"Tree-sitter grammar for swift not available: {e}")
 
+        try:
+            import tree_sitter_php as tsphp
+
+            # language_php handles files that mix HTML and PHP (the default for
+            # .php/.phtml); language_php_only is PHP-only.
+            _init_language("php", tsphp.language_php, PhpParser)
+        except ImportError as e:
+            logger.warning(f"Tree-sitter grammar for php not available: {e}")
+
         loaded = list(self._parsers.keys())
         if loaded:
             logger.debug(
@@ -224,6 +235,8 @@ class TreeSitterService(ParserServicePort):
             return self._parsers.get("cpp")
         elif language == "swift":
             return self._parsers.get("swift")
+        elif language == "php":
+            return self._parsers.get("php")
 
         return None
 

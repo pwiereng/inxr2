@@ -10,6 +10,12 @@ describe('getKindIcon', () => {
     expect(isValidElement(icon)).toBe(true)
   })
 
+  it('maps the PHP trait kind to a dedicated (non-fallback) icon', () => {
+    const icon = getKindIcon('trait')
+    expect(icon).toBe(KIND_ICONS.trait)
+    expect(isValidElement(icon)).toBe(true)
+  })
+
   it('returns a fallback icon element for an unknown kind', () => {
     const icon = getKindIcon('totally_unknown')
     expect(isValidElement(icon)).toBe(true)

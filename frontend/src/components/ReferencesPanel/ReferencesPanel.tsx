@@ -71,6 +71,7 @@ function getSymbolKindIcon(kind: string) {
     case 'delegate':
       return <FunctionsIcon fontSize="small" />
     case 'class':
+    case 'trait':
       return <ClassIcon fontSize="small" />
     case 'interface':
     case 'type':

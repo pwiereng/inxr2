@@ -17,6 +17,7 @@ export const LANGUAGE_COLORS: Record<string, string> = {
   java: '#d19a66',
   csharp: '#c678dd',
   swift: '#fa7343',
+  php: '#777bb4',
 }
 
 // Dependency type colors

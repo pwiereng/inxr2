@@ -25,3 +25,7 @@ class ReferenceType(StrEnum):
     PROTOCOL_CONFORMANCE = (
         "protocol_conformance"  # Swift protocol conformance declaration
     )
+
+    # PHP-specific reference types
+    IMPLEMENTATION = "implementation"  # PHP `implements` interface declaration
+    TRAIT_USE = "trait_use"  # PHP `use TraitName;` inside a class/trait/enum body

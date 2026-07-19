@@ -31,6 +31,7 @@ describe('getLanguageColor', () => {
     expect(getLanguageColor('java')).toBe('secondary')
     expect(getLanguageColor('go')).toBe('primary')
     expect(getLanguageColor('rust')).toBe('secondary')
+    expect(getLanguageColor('php')).toBe('primary')
   })
 
   it('is case-insensitive', () => {

@@ -96,6 +96,8 @@ describe('detectLanguage', () => {
     expect(detectLanguage('settings.ini', null)).toBe('ini')
     expect(detectLanguage('style.css', null)).toBe('css')
     expect(detectLanguage('query.sql', null)).toBe('sql')
+    expect(detectLanguage('User.php', null)).toBe('php')
+    expect(detectLanguage('template.phtml', null)).toBe('php')
   })
 
   it('detects language from filename for special files', () => {

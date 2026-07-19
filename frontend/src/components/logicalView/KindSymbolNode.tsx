@@ -69,6 +69,7 @@ export function KindSymbolNode({
     symbol.kind === 'struct' ||
     symbol.kind === 'record' ||
     symbol.kind === 'enum' ||
+    symbol.kind === 'trait' ||
     symbol.kind === 'namespace'
 
   // Convert ApiSymbol to SymbolTreeSymbol shape for navigation

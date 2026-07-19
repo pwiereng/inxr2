@@ -8,6 +8,7 @@ from .csharp_deps import CSharpDependencyParser
 from .go_deps import GoDependencyParser
 from .java_deps import JavaDependencyParser
 from .javascript_deps import JavaScriptDependencyParser
+from .php_deps import PhpDependencyParser
 from .python_deps import PythonDependencyParser
 from .ruby_deps import RubyDependencyParser
 from .swift_deps import SwiftDependencyParser
@@ -35,6 +36,7 @@ class DependencyParserService(DependencyParserServicePort):
                 GoDependencyParser(),
                 RubyDependencyParser(),
                 SwiftDependencyParser(),
+                PhpDependencyParser(),
             ]
         return self._parsers
 

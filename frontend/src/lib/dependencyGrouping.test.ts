@@ -38,6 +38,7 @@ describe('getLanguageColor', () => {
   it('returns the mapped color for a known language', () => {
     expect(getLanguageColor('python')).toBe(LANGUAGE_COLORS.python)
     expect(getLanguageColor('swift')).toBe('#fa7343')
+    expect(getLanguageColor('php')).toBe('#777bb4')
   })
 
   it('returns the default for an unknown language', () => {

@@ -54,4 +54,5 @@ SUPPORTED_LANGUAGES_WITH_PARSERS = (
     "ruby",
     "bash",
     "swift",
+    "php",
 )
