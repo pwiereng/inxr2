@@ -33,6 +33,7 @@ function getSymbolIcon(
 ) {
   switch (kind.toLowerCase()) {
     case 'class':
+    case 'trait':
       return <ClassIcon fontSize="small" sx={{ color: palette.class }} />
     case 'function':
     case 'method':
@@ -54,6 +55,7 @@ function getKindColor(
 ): 'primary' | 'secondary' | 'success' | 'warning' | 'info' | 'default' {
   switch (kind.toLowerCase()) {
     case 'class':
+    case 'trait':
       return 'success'
     case 'function':
     case 'delegate':

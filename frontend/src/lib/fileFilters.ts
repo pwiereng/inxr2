@@ -15,6 +15,7 @@ const LANGUAGE_COLORS: Record<string, 'primary' | 'secondary'> = {
   java: 'secondary',
   go: 'primary',
   rust: 'secondary',
+  php: 'primary',
 }
 
 /**

@@ -15,6 +15,7 @@ export const KIND_ICONS: Record<string, ReactNode> = {
   struct: <ClassIcon fontSize="small" sx={{ color: '#d19a66' }} />,
   record: <ClassIcon fontSize="small" sx={{ color: '#d19a66' }} />,
   enum: <ClassIcon fontSize="small" sx={{ color: '#c678dd' }} />,
+  trait: <ClassIcon fontSize="small" sx={{ color: '#98c379' }} />,
   function: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
   method: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,
   staticmethod: <FunctionIcon fontSize="small" sx={{ color: '#61afef' }} />,

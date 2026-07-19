@@ -37,6 +37,13 @@ class PhpParser(BaseLanguageParser):
         symbols: list[dict[str, Any]] = []
         references: list[dict[str, Any]] = []
 
+        # Namespace-qualified, case-folded names of user functions declared in
+        # this file (populated by the symbol pass). An unqualified call that
+        # resolves to one of these is a real reference even when the bare name
+        # collides with a PHP builtin; a call in a *different* namespace does not
+        # resolve here and is correctly treated as the builtin.
+        local_function_qnames: set[str] = set()
+
         def get_text(node: Node) -> str:
             return self._get_text(node, content)
 
@@ -242,6 +249,7 @@ class PhpParser(BaseLanguageParser):
             if name_node is None:
                 return
             func_name = get_text(name_node)
+            local_function_qnames.add(qualify(func_name, namespace).lower())
             symbols.append(
                 self._make_symbol(
                     func_name,
@@ -363,16 +371,21 @@ class PhpParser(BaseLanguageParser):
                     if resolved is not None:
                         func_name, func_node = resolved
                         # Only discard as a builtin when the call is *unqualified*
-                        # (a bare `name`, not `App\count()`) and not shadowed by a
-                        # same-file user function — otherwise a namespaced/local
-                        # function whose name collides with a builtin would lose
-                        # all its call references. PHP names are case-insensitive,
-                        # so fold before the (lowercase) membership tests.
+                        # (a bare `name`, not `App\count()`) and does not resolve
+                        # to a same-file user function *in the caller's own
+                        # namespace* — otherwise a namespaced/local function whose
+                        # name collides with a builtin would lose all its call
+                        # references. PHP names are case-insensitive, so fold
+                        # before the (lowercase) membership tests.
                         folded = func_name.lower()
+                        resolves_locally = (
+                            qualify(func_name, namespace).lower()
+                            in local_function_qnames
+                        )
                         is_builtin = (
                             callee.type == "name"
                             and folded in PHP_BUILTINS
-                            and folded not in local_function_names
+                            and not resolves_locally
                         )
                         if not is_builtin:
                             add_reference(
@@ -477,20 +490,17 @@ class PhpParser(BaseLanguageParser):
                 name_node = name_node_of(node)
                 if name_node is not None:
                     func_name = get_text(name_node)
-                    return f"{scope}::{func_name}" if scope else func_name
+                    # Methods nest under the (already-qualified) class scope;
+                    # top-level functions are qualified with the namespace so
+                    # their reference scope matches the symbol's qualified_name.
+                    if scope:
+                        return f"{scope}::{func_name}"
+                    return qualify(func_name, namespace)
             return scope
 
-        # First pass: symbols (namespace threads through top-level siblings).
+        # First pass: symbols (also populates local_function_qnames used by the
+        # reference pass's builtin-shadow check).
         process_declarations(root, None)
-
-        # User functions declared anywhere in this file. An unqualified call to
-        # one of these is a real reference even if the name collides with a PHP
-        # builtin, so it must not be filtered out.
-        local_function_names: set[str] = set()
-        for fn in _descendants(root, "function_definition"):
-            fn_name_node = name_node_of(fn)
-            if fn_name_node is not None:
-                local_function_names.add(get_text(fn_name_node).lower())
 
         # Second pass: references.
         extract_references(root, None, None)

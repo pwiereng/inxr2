@@ -361,6 +361,52 @@ class User {
         )
         assert call.scope == "App\\Models\\User::save"
 
+    @pytest.mark.asyncio
+    async def test_top_level_function_reference_scope_is_qualified(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """A call inside a namespaced *top-level* function must carry the
+        namespace-qualified scope matching the function symbol's qualified_name
+        (not the bare function name)."""
+        code = """<?php
+namespace App;
+function greet() { helper(); }
+"""
+        symbols, refs = await parse(parser_service, code)
+        fn = next(s for s in symbols if s.kind == "function")
+        assert fn.qualified_name == "App\\greet"
+        call = next(
+            r
+            for r in refs
+            if r.reference_type == "call" and r.reference_text == "helper"
+        )
+        assert call.scope == "App\\greet"
+
+    @pytest.mark.asyncio
+    async def test_builtin_shadow_is_namespace_scoped(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        """A user function shadows a builtin only within its own namespace: a
+        call to the same bare name in a different namespace resolves to the
+        builtin and must be filtered."""
+        code = """<?php
+namespace A;
+function count($x) { return 0; }
+function inA() { count([1]); }
+
+namespace B;
+function inB() { count([2]); }
+"""
+        _, refs = await parse(parser_service, code)
+        count_calls = [
+            r
+            for r in refs
+            if r.reference_type == "call" and r.reference_text == "count"
+        ]
+        # Kept in namespace A (A\count exists), filtered in namespace B.
+        scopes = {r.scope for r in count_calls}
+        assert scopes == {"A\\inA"}
+
 
 class TestPhpComments:
     @pytest.mark.asyncio

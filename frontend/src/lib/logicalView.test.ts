@@ -67,6 +67,7 @@ describe('getKindColor', () => {
     expect(getKindColor('class')).toBe('#e5c07b')
     expect(getKindColor('function')).toBe('#61afef')
     expect(getKindColor('enum')).toBe('#c678dd')
+    expect(getKindColor('trait')).toBe('#98c379')
   })
 
   it('falls back to the default color for an unknown kind', () => {
@@ -127,6 +128,8 @@ describe('languageFromPath', () => {
     expect(languageFromPath('a/b/c.py')).toBe('python')
     expect(languageFromPath('x.tsx')).toBe('typescript')
     expect(languageFromPath('main.h')).toBe('cpp')
+    expect(languageFromPath('app/Models/User.php')).toBe('php')
+    expect(languageFromPath('view.phtml')).toBe('php')
   })
 
   it('returns null for unknown extensions, no extension, or missing path', () => {
