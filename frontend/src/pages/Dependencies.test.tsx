@@ -40,6 +40,7 @@ vi.mock('@/components/SelectionToolbar', () => ({
 }))
 
 import { getRepositoryDependencies } from '@/lib/api'
+import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 
 function LocationDisplay() {
   const loc = useLocation()
@@ -74,7 +75,7 @@ function makeResponse(items: DependencyItem[]): DependenciesListResponse {
 
 function renderDeps(entry = '/dependencies?repo=myrepo') {
   return render(
-    <MemoryRouter initialEntries={[entry]}>
+    <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE_FLAGS}>
       <Dependencies />
       <LocationDisplay />
     </MemoryRouter>

@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { AppProvider, useApp } from '@/contexts/AppContext'
+import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 import { darkTheme, lightTheme } from '@/theme'
 
 interface AllProvidersProps {
@@ -31,7 +32,7 @@ function ThemeWrapper({ children }: { children: React.ReactNode }) {
  */
 function AllProviders({ children }: AllProvidersProps) {
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter future={ROUTER_FUTURE_FLAGS}>
       <AppProvider>
         <ThemeWrapper>{children}</ThemeWrapper>
       </AppProvider>

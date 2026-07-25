@@ -467,7 +467,8 @@ class TestWriteCsvLog:
         log = tmp_path / "index.log"
         assert log.exists()
 
-        rows = list(csv.reader(log.open()))
+        with log.open() as f:
+            rows = list(csv.reader(f))
         assert len(rows) == 2
         assert rows[0][0] == "timestamp"
         assert rows[0][-1] == "db_size_added_mb"
@@ -482,7 +483,8 @@ class TestWriteCsvLog:
         _write_csv_log(_FakeResponse())
         _write_csv_log(_FakeResponse(branch="dev", commits_indexed=10))
 
-        rows = list(csv.reader((tmp_path / "index.log").open()))
+        with (tmp_path / "index.log").open() as f:
+            rows = list(csv.reader(f))
         assert len(rows) == 3
         # Only one header row
         assert rows[0][0] == "timestamp"
@@ -513,7 +515,8 @@ class TestWriteCsvLog:
         )
         _write_csv_log(resp)
 
-        rows = list(csv.reader((tmp_path / "index.log").open()))
+        with (tmp_path / "index.log").open() as f:
+            rows = list(csv.reader(f))
         data = rows[1]
         # columns: ts, repo, branch, commits, files_at_head, processed, failed,
         #          file_versions_new, file_versions_cached, symbols, refs, resolved,
@@ -553,6 +556,7 @@ class TestWriteCsvLog:
         monkeypatch.chdir(tmp_path)
         _write_csv_log(_FakeResponse())
 
-        rows = list(csv.reader((tmp_path / "index.log").open()))
+        with (tmp_path / "index.log").open() as f:
+            rows = list(csv.reader(f))
         assert len(rows[0]) == 18
         assert len(rows[1]) == 18

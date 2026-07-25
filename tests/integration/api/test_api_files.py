@@ -1,10 +1,8 @@
 """Integration tests for /api/files and /api/renames endpoints."""
 
-from collections.abc import AsyncGenerator
 from datetime import datetime
 
 import pytest
-import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +19,6 @@ from inxr2.adapters.persistence.repositories.repository_adapter import (
 )
 from inxr2.domain.entities import Commit, File, FileRename, Repository
 from inxr2.domain.value_objects import CommitHash
-from inxr2.infrastructure.fastapi.app import create_app
 
 
 def make_test_commit_hash(prefix: str) -> CommitHash:
@@ -36,22 +33,6 @@ def make_test_commit_hash(prefix: str) -> CommitHash:
     # Ensure exactly 40 characters (standard git commit hash length)
     padded = (prefix + "0" * 40)[:40]
     return CommitHash(padded)
-
-
-@pytest_asyncio.fixture
-async def test_app(db_session: AsyncSession) -> FastAPI:
-    """Create a FastAPI app with overridden database session."""
-    from inxr2.infrastructure.database import get_db_session
-
-    app = create_app()
-
-    # Override the database session dependency
-    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
-        yield db_session
-
-    app.dependency_overrides[get_db_session] = override_get_db
-
-    return app
 
 
 @pytest.mark.asyncio

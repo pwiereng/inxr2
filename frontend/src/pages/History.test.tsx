@@ -52,6 +52,7 @@ vi.mock('@/components/CopyButton/CopyButton', () => ({
 }))
 
 import { getCommits } from '@/lib/api'
+import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 const mockGetCommits = vi.mocked(getCommits)
 
 function LocationDisplay() {
@@ -61,7 +62,7 @@ function LocationDisplay() {
 
 function renderHistory(entry = '/history') {
   return render(
-    <MemoryRouter initialEntries={[entry]}>
+    <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE_FLAGS}>
       <History />
       <LocationDisplay />
     </MemoryRouter>

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import Help from './Help'
 import type { TabValue } from '@/components/CodeHeader'
+import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 
 // Neutralize CodeHeader (pulls repo/branch data from @/lib/api) so these tests
 // stay focused on Help itself. The stub exposes buttons that invoke each
@@ -44,7 +45,7 @@ function LocationDisplay() {
 
 function renderHelp(entry = '/help') {
   return render(
-    <MemoryRouter initialEntries={[entry]}>
+    <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE_FLAGS}>
       <Help />
       <LocationDisplay />
     </MemoryRouter>

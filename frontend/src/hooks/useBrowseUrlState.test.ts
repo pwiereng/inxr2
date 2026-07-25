@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { useBrowseUrlState, encodeFilePath, type UseBrowseUrlStateRefs } from './useBrowseUrlState'
+import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 
 // ---------------------------------------------------------------------------
 // Location probe — records the live router location so navigation handlers can
@@ -33,7 +34,7 @@ function renderUrlState(entry: string, repoNameProp?: string) {
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(
       MemoryRouter,
-      { initialEntries: [entry] },
+      { initialEntries: [entry], future: ROUTER_FUTURE_FLAGS },
       createElement(
         Routes,
         null,
