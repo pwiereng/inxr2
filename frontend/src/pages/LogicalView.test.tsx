@@ -293,6 +293,27 @@ describe('LogicalView', () => {
       expect(iconStyle.color).toBe('rgb(229, 192, 123)') // KIND_COLORS.class
       expect(iconStyle.fontSize).toBe('1.25rem') // fontSize="small"
     })
+
+    // The active chip is the state the fix is really about: filled + primary is
+    // where MUI's chip-icon rules would otherwise repaint the icon (they add
+    // MuiChip-iconColorPrimary and resolve the colour to `inherit`).
+    it('keeps the kind icon styling on the active, filled chip too', async () => {
+      mockGetSymbolTree.mockResolvedValue(tier1([makeFile()]))
+      mockSearchSymbols.mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 })
+      renderView('/logical-view?repo=myrepo&branch=main&commit=deadbeef&kind=class')
+      const chip = await screen.findByRole('button', { name: 'class' })
+
+      // Guard the premise: without this the test would silently re-check the
+      // outlined chip and assert nothing new.
+      expect(chip).toHaveClass('MuiChip-filled')
+      expect(chip).toHaveClass('MuiChip-colorPrimary')
+      expect(chip.querySelector('.MuiChip-iconColorPrimary')).not.toBeNull()
+
+      const icon = chip.querySelector('svg')!
+      const iconStyle = getComputedStyle(icon)
+      expect(iconStyle.color).toBe('rgb(229, 192, 123)') // KIND_COLORS.class
+      expect(iconStyle.fontSize).toBe('1.25rem') // fontSize="small"
+    })
   })
 
   describe('branch/commit resolution effect', () => {
