@@ -1,6 +1,6 @@
 ---
 name: critique-pr
-description: "Independent code review of a PR authored by another Claude session. Reads the diff, runs 5 parallel review agents, scores issues by confidence, and posts inline comments via the GitHub Reviews API. On re-runs, checks whether prior review comments were addressed and posts a follow-up verdict. Does NOT fix anything."
+description: "Independent code review of a PR authored by another Claude session. Uses the code-review skill as its finding engine, adds inxr2-specific supplemental agents, scores issues by confidence, and posts inline comments via the GitHub Reviews API. On re-runs, checks whether prior review comments were addressed and posts a follow-up verdict. Does NOT fix anything."
 user-invocable: true
 argument-hint: "<PR number>"
 ---
@@ -48,9 +48,11 @@ gh pr diff $PR
 
 Read the PR title and description carefully — the description explains intent.
 
-## Step 4: Launch 5 Parallel Review Agents
+## Step 4: Generate Findings
 
-Launch all five agents simultaneously. Each agent receives: the PR number, the full diff, the list of changed files, and the PR description. Each agent returns a list of issues in the format:
+The finding engine is the **`code-review` skill** plus three inxr2-specific supplemental
+agents that `code-review` does not cover. Run both, then merge their issues into one list
+using the format below:
 
 ```
 ISSUE: <one-line description>
@@ -60,20 +62,25 @@ CATEGORY: <Bugs|Architecture|Tests|TypeSafety|ErrorHandling|Security|CodeQuality
 DETAIL: <specific evidence — quote the problematic code>
 ```
 
-### Agent 1 — Bug & Correctness Scanner
+### Step 4A — Run the code-review skill as the primary engine
 
-Reads only the diff. Looks for:
-- Off-by-one errors, wrong conditions, incorrect logic
-- Unhandled edge cases (empty lists, None values, empty strings)
-- Race conditions or ordering issues
-- Wrong variable used (copy-paste errors)
-- Incorrect type handling (e.g., treating `str | None` as `str`)
-- Python: missing type hints, use of `Any` where a proper type exists
-- TypeScript: use of `any`, missing null checks on indexed access
+Invoke the `code-review` skill (`Skill` tool, name `code-review:code-review`, args = the PR
+number). It launches parallel review agents (CLAUDE.md compliance, bug scan, git blame/history,
+prior-PR comments, code-comment adherence) and scores each finding 0–100 for confidence.
 
-Focus on large bugs. Ignore style nitpicks and issues a linter would catch.
+**Use it as the engine only — do NOT let it post.** Run its review + scoring methodology
+(its steps 3–6) and **capture the surviving scored findings**, but STOP before its final
+posting step (its step 8 `gh pr comment`) — critique-pr owns posting (Step 7, inline via the
+Reviews API). Likewise ignore its eligibility-skip: the user explicitly invoked critique-pr,
+so proceed even if code-review would skip a "trivial" PR. Convert each surviving finding into
+the ISSUE format above, keeping its confidence score.
 
-### Agent 2 — Clean Architecture Agent
+### Step 4B — Supplemental inxr2 agents (not covered by code-review)
+
+Launch these three agents in parallel. Each receives the PR number, full diff, changed-file
+list, and PR description, and returns issues in the ISSUE format above.
+
+**Supplement 1 — Clean Architecture**
 
 Reads the changed files in full (not just diff) from the PR branch:
 ```bash
@@ -92,7 +99,7 @@ Looks for:
 - SQL injection via string concatenation (use parameterized queries)
 - Path traversal (unsanitized file paths from user input)
 
-### Agent 3 — Test Quality Agent
+**Supplement 2 — Test Quality**
 
 Reads the test files changed and the code they test. Looks for:
 - Missing tests for new behavior — every code change needs a test
@@ -103,28 +110,7 @@ Reads the test files changed and the code they test. Looks for:
 - Bug fixes without a regression test — project rule: **every bug fix needs a regression test**
 - Missing test for the specific scenario the PR describes fixing
 
-### Agent 4 — Git History Agent
-
-Runs these commands to gather context:
-```bash
-# See who last touched each changed file and why
-git log --oneline -10 -- <file_path>
-git blame -L <start>,<end> -- <file_path>
-
-# Find prior PRs that touched these files
-gh pr list --state merged --json number,title,files \
-  --jq '[.[] | select(.files[].path == "<file_path>")]'
-
-# Read comments on those prior PRs
-gh pr view <prior_pr_number> --json reviews,comments
-```
-
-Looks for:
-- Recurring issues that were flagged before and are being re-introduced
-- Patterns in the file's history that suggest the current change is heading in a known-bad direction
-- Prior PR comments that apply equally to the current change
-
-### Agent 5 — MCP Navigation Agent
+**Supplement 3 — MCP Navigation (blast radius)**
 
 Uses inxr2 MCP tools to check the blast radius of changed symbols:
 
@@ -150,11 +136,19 @@ For each non-trivial symbol modified (function signature, class, type alias):
 - Run `get_change_impact` — flags if callers are not updated
 - Run `find_references` — checks for call sites that may be broken
 
-Also checks CLAUDE.md adherence for anything not covered by other agents.
+### Step 4C — Merge
+
+Combine the code-review findings (Step 4A) with the supplemental findings (Step 4B) into one
+list. De-duplicate: if code-review and a supplement flag the same file+line concern, keep one
+(prefer the entry with the more specific evidence). code-review findings arrive pre-scored;
+supplemental findings are scored next in Step 5.
 
 ## Step 5: Score Issues by Confidence
 
-For each issue returned by the five agents, launch a parallel **Haiku agent** to score it:
+code-review findings (Step 4A) already carry a confidence score — reuse it. Score only the
+**supplemental** findings (Step 4B) here.
+
+For each supplemental issue (Step 4B), launch a parallel **Haiku agent** to score it:
 
 Give each Haiku agent the issue description, the relevant code snippet, and this scoring rubric verbatim:
 
@@ -243,7 +237,7 @@ gh pr view $PR --json reviews --jq '.reviews[-1]'
 ---
 🔍 **Code Review posted on PR #<number>:** <url>
    <N> inline comments | event: COMMENT
-   Agents: 5 reviewers, <M> issues found, <K> survived confidence filter (≥75)
+   Engine: code-review skill + 3 inxr2 supplements, <M> issues found, <K> survived confidence filter (≥75)
    Top issues: <1-line summary>
 ```
 
@@ -288,7 +282,7 @@ For every issue previously raised, determine:
 
 ## Step 5bR: Fresh Parallel Scan
 
-Re-run the same 5 parallel agents from Step 4 on the current diff, treating the PR as if seen for the first time. Apply the same confidence-scoring pass (Step 5). Any issues surviving the filter that were **not** flagged in the original review are new findings.
+Re-run the full finding engine from Step 4 (the `code-review` skill as the primary engine, Step 4A, plus the three supplemental agents, Step 4B) on the current diff, treating the PR as if seen for the first time. Apply the same confidence-scoring pass (Step 5). Any issues surviving the filter that were **not** flagged in the original review are new findings.
 
 ## Step 6R: Post Follow-up Review
 
