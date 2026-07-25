@@ -258,6 +258,43 @@ describe('LogicalView', () => {
     })
   })
 
+  // Regression cover for #517: MUI's Chip clones its `icon` element to attach
+  // .MuiChip-icon, so a fragment-rooted icon made React log "Invalid prop
+  // `className` supplied to `React.Fragment`" on every render. The fix hands Chip
+  // a span wrapper — these two tests pin both halves of it: no warning, and no
+  // change to how the kind icon itself renders.
+  describe('kind filter chips', () => {
+    it('renders the kind chips without React complaining about Fragment props', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockGetSymbolTree.mockResolvedValue(tier1([makeFile()]))
+      renderView()
+      await waitFor(() => expect(screen.getByText('Outline')).toBeInTheDocument())
+      expect(screen.getByRole('button', { name: 'class' })).toBeInTheDocument()
+
+      const fragmentWarnings = consoleError.mock.calls.filter((args) =>
+        args.some((arg) => typeof arg === 'string' && arg.includes('React.Fragment'))
+      )
+      expect(fragmentWarnings).toEqual([])
+    })
+
+    it('keeps the kind icon at its own colour, size and flush spacing', async () => {
+      mockGetSymbolTree.mockResolvedValue(tier1([makeFile()]))
+      renderView()
+      const chip = await screen.findByRole('button', { name: 'class' })
+
+      // The wrapper span is what MUI decorates; the icon inside keeps its styling.
+      const wrapper = chip.querySelector('.MuiChip-icon')
+      expect(wrapper?.tagName).toBe('SPAN')
+      expect(getComputedStyle(wrapper!).marginLeft).toBe('0px')
+      expect(getComputedStyle(wrapper!).marginRight).toBe('0px')
+
+      const icon = chip.querySelector('svg')!
+      const iconStyle = getComputedStyle(icon)
+      expect(iconStyle.color).toBe('rgb(229, 192, 123)') // KIND_COLORS.class
+      expect(iconStyle.fontSize).toBe('1.25rem') // fontSize="small"
+    })
+  })
+
   describe('branch/commit resolution effect', () => {
     it('resolves the default branch and latest commit into the URL when missing', async () => {
       mockGetRepositoryByName.mockResolvedValue(makeRepo({ default_branch: 'main' }))
