@@ -24,6 +24,30 @@ Executed after merging changes into main (worktree cleanup step 5).
    curl http://localhost:9222/health  # verify
    ```
 
+## Known Issues That Affect Expected Results
+
+Open bugs found by previous runs. Where a test's stated criterion currently fails, the failure is
+**expected** — record it and move on rather than re-investigating.
+
+| Issue | Affects | What you'll see |
+|-------|---------|-----------------|
+| [#520](https://github.com/pwiereng/inxr2/issues/520) | RT-12a | Diff colours are positional, so they invert when the newer commit is on the left. Case A passes, Case B inverts. |
+| [#521](https://github.com/pwiereng/inxr2/issues/521) | IX-05 | `index.log` header lists 15 columns but rows carry 18 — parse positionally, never by header name. |
+| [#522](https://github.com/pwiereng/inxr2/issues/522) | RT-12a, RT-12b, RT-33 | `?branch=X&diff=Y` drops `diff`. Always pass **both** `commit=` and `branch=` alongside `diff=`. |
+| [#523](https://github.com/pwiereng/inxr2/issues/523) | MCP-06, MCP-20 | `/api/symbols/{id}/references` returns `total` == page size. Query with `limit=500` before comparing counts. |
+| [#524](https://github.com/pwiereng/inxr2/issues/524) | RT-33 | Diff header shows only the post-rename path. |
+| [#525](https://github.com/pwiereng/inxr2/issues/525) | Phase 3 setup | MCP SSE server may not be running; start it manually before MCP-21. |
+
+## Environment Notes
+
+- **Python 3.11 f-strings.** The container runs Python 3.11, which cannot reuse the outer quote
+  character inside an f-string expression. Snippets like `f"{s[\"name\"]}"` raise
+  `SyntaxError: f-string: unmatched '['`. Use `%`-formatting or a different inner quote in any
+  inline `python3 -c` you add.
+- **Long-running step.** IX-01 takes ~27 min on a full 20-repo reset (the `git` repo alone is
+  ~26 min of it). Run it in the background and poll rather than blocking.
+- **Scratch files** belong in `.tmp/` in the project root (gitignored), not `/tmp`.
+
 ## Base URLs
 
 - Frontend: `http://localhost:5173` (from host or dev container)
@@ -123,26 +147,52 @@ docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/s
 
 ## IX-04: Verify Multi-Language Symbol Extraction
 
-For each language (Python, TypeScript, JavaScript, C, C++, Java, C#, Go, Ruby, Bash), pick a repo that uses it,
-find a real symbol name from git, and verify it appears in the API.
+For each language, pick a repo that uses it, find a real symbol name from git, and verify it
+appears in the API.
+
+> ⚠️ **`/api/symbols` filters by `repository_id`, not `repository_name`.** FastAPI silently ignores
+> unknown query params, so passing `repository_name=<repo>` returns **unfiltered cross-repo
+> results** — a symbol that genuinely exists can look missing because the response is full of
+> same-named symbols from other repos. Resolve the id first.
 
 **Steps (per language):**
 ```bash
+# 0. DISCOVER: Resolve repository name -> id (needed for every filtered /api/symbols call)
+docker exec inxr2-dev bash -c "curl -s http://localhost:8000/api/repositories | python3 -c '
+import sys, json
+print(json.dumps({r[\"name\"]: r[\"id\"] for r in json.load(sys.stdin)}, indent=2))
+'"
 # 1. DISCOVER: Find a source file in the repo
 docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-files '*.py' | head -3"
 # 2. DISCOVER: Extract a class/function name from that file
 docker exec inxr2-dev bash -c "grep -E 'class |def |function |interface |struct ' /repos/test-repos/<repo>/<file> | head -3"
-# 3. VERIFY: Search for that symbol name via API
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=<discovered_name>&repository_name=<repo>&limit=3' | python3 -m json.tool"
+# 3. VERIFY: Search for that symbol name via API (repository_id, NOT repository_name)
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=<discovered_name>&repository_id=<repo_id>&limit=3' | python3 -m json.tool"
 ```
 
-**Languages to cover:** Python (`*.py`), TypeScript (`*.ts`/`*.tsx`), JavaScript (`*.js`/`*.jsx`),
-C (`*.c`/`*.h`), C++ (`*.cpp`/`*.hpp`), Java (`*.java`), C# (`*.cs`), Go (`*.go`), Ruby (`*.rb`),
-Bash (`*.sh`).
+**Languages to cover (12).** Suggested repo per language — any repo in `config.yaml` declaring that
+language works:
+
+| Language | Globs | Suggested repo |
+|----------|-------|----------------|
+| Python | `*.py` | inxr2 |
+| TypeScript | `*.ts` / `*.tsx` | inxr2 |
+| JavaScript | `*.js` / `*.jsx` | express |
+| C | `*.c` / `*.h` | cJSON |
+| C++ | `*.cpp` / `*.hpp` | spdlog |
+| Java | `*.java` | Java |
+| C# | `*.cs` | clean-architecture |
+| Go | `*.go` | bubbletea |
+| Ruby | `*.rb` | sinatra |
+| Bash | `*.sh` (also extensionless) | Bash-Snippets |
+| Swift | `*.swift` | travelbuddy |
+| PHP | `*.php` | interview-technical-challenge-2 |
 
 **Pass criteria:**
 - For each language, at least one symbol is found via the API
 - Symbol kind matches what was found in the source (e.g., `grep 'class Foo'` → API returns symbol with kind=class)
+- Some symbols legitimately carry more than one kind (e.g. Java `class` + `constructor`, Ruby
+  `class` + `module`); the discovered kind being *among* them is a pass
 
 ---
 
@@ -208,6 +258,25 @@ performance regressions.
 docker exec inxr2-dev bash -c "cat /workspace/index.log"
 ```
 
+> ⚠️ **Do not parse `index.log` by header name — the header is stale (issue #521).** Rows carry 18
+> columns but the file's header row still lists the original 15, because the header is only written
+> when the file does not yet exist. A `csv.DictReader` parse silently shifts columns (`symbols_found`
+> reads `file_versions_cached`, `elapsed_seconds` reads `references_resolved`, …), producing
+> nonsense like "resolution 592.4%". Parse **positionally, keyed off the field count**:
+>
+> ```
+> 18-col: ts,repo,branch,commits,files_at_head,files_processed,files_failed,
+>         file_versions_new,file_versions_cached,symbols,refs_found,refs_resolved,
+>         elapsed,indexing,resolving,lines,db_mb,db_added_mb
+> 15-col: ts,repo,branch,commits,files_at_head,files_processed,files_failed,
+>         files_reused,symbols,refs_found,refs_resolved,elapsed,indexing,resolving,lines
+> ```
+>
+> Check the split with:
+> ```bash
+> docker exec inxr2-dev bash -c "awk -F, 'NR==1{print NF\" header cols\"} NR>1{c[NF]++} END{for(k in c) print k\" cols: \"c[k]\" rows\"}' /workspace/index.log"
+> ```
+
 **Analysis:**
 
 For each repo+branch combination, compare the **current run** (from IX-01) against the
@@ -271,7 +340,18 @@ indexer.
 HEAD_HASH=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> rev-parse HEAD")
 
 # DISCOVER: List all files git sees at HEAD (no filtering)
-docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-tree -r --name-only $HEAD_HASH" | sort > /tmp/git_files.txt
+#   -z          -> no path quoting, so non-ASCII filenames compare correctly
+#   type==blob  -> excludes submodule gitlinks (mode 160000), which are not files
+docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> ls-tree -r -z $HEAD_HASH" \
+  | python3 -c "
+import sys
+for ent in sys.stdin.read().split('\0'):
+    if not ent:
+        continue
+    meta, _, path = ent.partition('\t')
+    if meta.split()[1] == 'blob':
+        print(path)
+" | sort > /tmp/git_files.txt
 
 # VERIFY: Get all files the API knows about at that commit (flatten tree response)
 docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/<repo>/tree?commit=$HEAD_HASH' | python3 -c \"
@@ -321,6 +401,15 @@ comm -23 /tmp/git_files.txt /tmp/api_files.txt
 **Note:** Directory-based exclusions are opt-in via `exclude_paths` in config — there are
 no hardcoded directory skip rules. If a committed file is missing and its path doesn't
 match a minified/bundled pattern or a configured `exclude_paths` entry, that is a bug.
+
+**Two known false positives** if you use a plain `ls-tree -r --name-only` (both fixed by the
+DISCOVER command above):
+1. **Quoted non-ASCII paths.** `core.quotePath` defaults to true, so git emits
+   `"examples/downloads/files/CCTV\345\244\247..."` while the API returns the decoded UTF-8 path.
+   Affects 2 files in `express`. Fixed by `-z`.
+2. **Submodule gitlinks.** `ls-tree -r` lists mode-160000 entries (e.g. `sha1collisiondetection`
+   in `git`), which are commits, not files, and are correctly absent from the API. Fixed by the
+   `type == blob` filter.
 
 ---
 
@@ -598,21 +687,47 @@ print(f\"Versions: {len(versions)}\")
 for v in versions[:3]:
     print(f\"  commit={v[\"commit_hash\"][:8]} date={v.get(\"commit_date\",\"?\")}\")
 '"
-# NAVIGATE: Enter diff mode with an older commit on the right
-# (select a newer commit on left, older on right — the "inverted" case)
-curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/<repo>/<file>?branch=<branch>&diff=<older_commit>"
-curl "http://localhost:9222/wait?selector=table&timeout=5000"
-# VERIFY: Check diff background colors
-curl "http://localhost:9222/eval?script=document.querySelector('[style*=\"background\"]')?.style.backgroundColor"
-# Take screenshot for visual verification
-curl "http://localhost:9222/screenshot/save?path=/tmp/rt-12a-diff-colors.png"
+# DISCOVER: Ground truth for the delta, so the colour counts can be checked against git
+docker exec inxr2-dev bash -c "git -C /repos/test-repos/<repo> diff --numstat <older_commit> <newer_commit> -- <file>"
+#   -> "<added>  <removed>  <file>"   going older -> newer
+
+# NAVIGATE: Both orientations must be exercised.
+#   Case A - older on the left  (the orientation the UI produces by default)
+curl -G "http://localhost:9222/navigate" --data-urlencode \
+  "url=http://host.docker.internal:5173/browse/<repo>/<file>?commit=<newer_commit>&branch=<branch>&diff=<older_commit>"
+curl "http://localhost:9222/wait?selector=table&timeout=12000"
+# VERIFY: count row background colours (they are emotion classes, NOT inline styles)
+curl -G "http://localhost:9222/eval" --data-urlencode \
+  'script=JSON.stringify([...document.querySelectorAll("tr")].map(r=>getComputedStyle(r).backgroundColor).reduce((a,c)=>{if(c!=="rgba(0, 0, 0, 0)")a[c]=(a[c]||0)+1;return a},{}))'
+curl "http://localhost:9222/screenshot/save?path=.tmp/rt-12a-normal-older-left.png"
+
+#   Case B - newer on the left (commit/diff swapped)
+curl -G "http://localhost:9222/navigate" --data-urlencode \
+  "url=http://host.docker.internal:5173/browse/<repo>/<file>?commit=<older_commit>&branch=<branch>&diff=<newer_commit>"
+curl "http://localhost:9222/wait?selector=table&timeout=12000"
+# same eval + screenshot to .tmp/rt-12a-inverted-newer-left.png
+
+# VERIFY: temporal chips are present on the panel headers in both cases
+curl -G "http://localhost:9222/eval" --data-urlencode \
+  'script=JSON.stringify([...document.querySelectorAll(".MuiChip-root")].map(e=>e.textContent.trim()))'
 ```
+
+> ⚠️ **`diff` requires BOTH `commit=` and `branch=` in the URL (issue #522).** The older form
+> `?branch=<branch>&diff=<commit>` is silently rewritten to `?branch=<branch>&commit=<head>` — the
+> `diff` param is dropped during branch→commit resolution and diff mode never engages.
 
 **Pass criteria:**
 - Lines present only in the newer version have green/addition background
 - Lines present only in the older version have red/pink/deletion background
+- Green/red row counts match `git diff --numstat <older> <newer>`
 - Colors are correct regardless of which side (left/right) each commit appears on
-- URL shows temporal labels (e.g., "older"/"newer" or "FORK" badge) if applicable
+- `older` / `newer` chips appear on the panel headers, and a "Swap panels" control is available
+
+> 🐞 **Known failure (issue #520):** the third criterion currently fails. Colouring is *positional*
+> (left = red, right = green), so Case B inverts: the newer-only lines render red and the
+> older-only lines render green. The `older`/`newer` chips and swap button from PR #201 are
+> present and correct — only the colours are positional. Until #520 is resolved, Case A passing
+> and Case B inverting is the **expected observed state**; record it rather than re-investigating.
 
 ---
 
@@ -633,17 +748,29 @@ if versions:
     print(f\"Oldest: {versions[-1][\"commit_hash\"][:8]} {versions[-1].get(\"commit_date\",\"?\")}\")
     print(f\"Newest: {versions[0][\"commit_hash\"][:8]} {versions[0].get(\"commit_date\",\"?\")}\")
 '"
-# NAVIGATE: Enter diff mode
-curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/<repo>/<file>?branch=<branch>&diff=true"
-curl "http://localhost:9222/wait?selector=table&timeout=5000"
-# VERIFY: Check version selector options
-curl "http://localhost:9222/elements?selector=select option,div[role='listbox'] li&limit=30"
+# NAVIGATE: Enter diff mode (needs BOTH commit= and branch=, see #522 note in RT-12a)
+curl -G "http://localhost:9222/navigate" --data-urlencode \
+  "url=http://host.docker.internal:5173/browse/<repo>/<file>?commit=<head_commit>&branch=<branch>&diff=<older_commit>"
+curl "http://localhost:9222/wait?selector=table&timeout=12000"
+
+# VERIFY: open the version selector and list its options.
+# MUI Select does NOT open on a programmatic .click() — dispatch a real mousedown.
+curl -G "http://localhost:9222/eval" --data-urlencode \
+  'script=(()=>{const t=[...document.querySelectorAll(".MuiSelect-select")].find(e=>/UTC/.test(e.textContent));if(!t)return "notfound";t.dispatchEvent(new MouseEvent("mousedown",{bubbles:true}));return "opened"})()'
+curl -G "http://localhost:9222/eval" --data-urlencode \
+  'script=JSON.stringify([...document.querySelectorAll(".MuiMenuItem-root, [role=option]")].map(e=>e.textContent.trim().replace(/\s+/g," ")))'
 ```
 
 **Pass criteria:**
 - Version selectors include commits spanning the full range (from oldest to newest indexed)
-- The oldest commit in the version selector matches the oldest version from the API
-- Number of selectable versions matches the number of distinct file versions from the API
+- Every distinct file version returned by `/api/files/history` appears among the options
+- The file's own versions appear at the top of the list, newest first, with HEAD marked
+
+**Note — the selector lists all branch commits, not just the file's versions.** This is by design:
+`frontend/src/components/VersionSelector/VersionSelector.tsx` fetches up to **500** branch commits
+and separately marks the ones that modified the file (`fileChangeHashes` → edit icon), so you can
+diff against any commit. So "number of options == number of file versions" is **not** a valid
+check — the options are a superset. Verify containment instead.
 
 ---
 
@@ -655,18 +782,28 @@ curl "http://localhost:9222/elements?selector=select option,div[role='listbox'] 
 docker exec inxr2-dev bash -c "grep -rh 'class \|def \|function ' /repos/test-repos/<repo>/ --include='*.py' --include='*.ts' | head -1"
 # Extract a word from that line to use as search term
 # NAVIGATE
-curl "http://localhost:9222/navigate?url=http://localhost:5173/search"
-curl "http://localhost:9222/wait?selector=input&timeout=3000"
-curl "http://localhost:9222/fill?selector=input&value=<discovered_word>"
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/search"
+# NOTE: the FIRST <input> on the search page is the repository-filter autocomplete
+# (placeholder "Repository..."), NOT the query box. selector=input fills the wrong field and the
+# search never runs. Target the query box explicitly, then press Enter.
+curl -G "http://localhost:9222/fill" \
+  --data-urlencode "selector=input[placeholder='Enter search query...']" \
+  --data-urlencode "value=<discovered_word>"
+curl -G "http://localhost:9222/keyboard" --data-urlencode "key=Enter"
 # Search results render as .MuiListItem-root rows (NOT .MuiListItemButton-root); each row wraps a
 # clickable inner <button>. Match the row with .MuiListItem-root; click the inner button to navigate.
-curl "http://localhost:9222/wait?selector=.MuiListItem-root&timeout=5000"
+curl "http://localhost:9222/wait?selector=.MuiListItem-root&timeout=10000"
 # VERIFY
 curl "http://localhost:9222/elements?selector=.MuiListItem-root&limit=5"
+curl -G "http://localhost:9222/eval" --data-urlencode \
+  'script=JSON.stringify((document.body.innerText.match(/Found \d+ results|No results found/)||["?"])[0])'
 ```
 
+Navigating straight to `/search?query=<term>` also runs the search and is fine for the
+URL-driven tests (RT-15, RT-16, RT-16a); RT-13 specifically exercises the input box.
+
 **Pass criteria:**
-- At least 1 search result returned
+- At least 1 search result returned, and the "Found N results" header appears
 - Result file paths exist in the repository (verify via `git ls-files`)
 
 ---
@@ -695,14 +832,21 @@ curl "http://localhost:9222/url"
 ```bash
 # DISCOVER: Find a function pattern in git
 docker exec inxr2-dev bash -c "grep -rh 'def [a-z_]*(' /repos/test-repos/<repo>/ --include='*.py' | head -1"
-# Use the function name as a regex search
-curl "http://localhost:9222/navigate?url=http://localhost:5173/search?mode=regex&query=<function_pattern>"
-curl "http://localhost:9222/wait?selector=.MuiListItem-root&timeout=5000"
+# Use the function name as a regex search.
+# ⚠️ Percent-encode regex metacharacters. A raw "+" in a query string decodes to a SPACE, so
+#    query=def should_[a-z_]+  arrives as  "def should_[a-z_] "  and matches nothing.
+#    Encode as %2B (and note the QA agent needs it double-encoded when passed inside ?url=).
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/search%3Fmode=regex%26query=def%2520should_%255Ba-z_%255D%252B"
+curl "http://localhost:9222/wait?selector=.MuiListItem-root&timeout=10000"
 curl "http://localhost:9222/elements?selector=.MuiListItem-root&limit=5"
+# Cross-check the same pattern against the API — counts should agree
+docker exec inxr2-dev bash -c "curl -s -G 'http://localhost:8000/api/search/text' \
+  --data-urlencode 'q=<function_pattern>' --data-urlencode 'mode=regex' --data-urlencode 'limit=5' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"total\"])'"
 ```
 
 **Pass criteria:**
-- Results appear matching the regex pattern
+- Results appear matching the regex pattern, and the count agrees with `/api/search/text?mode=regex`
 - Result file paths exist in the repository
 
 ---
@@ -771,8 +915,9 @@ curl "http://localhost:9222/text?selector=.MuiListItem-root"
 **Steps:**
 ```bash
 # (Continuing from RT-17)
-# Click first indexed commit
-curl "http://localhost:9222/click?selector=.MuiListItem-root"
+# Click first indexed commit. As in RT-14, the row itself is not clickable — the clickable
+# element is the inner <button>. Clicking .MuiListItem-root alone does nothing.
+curl "http://localhost:9222/click?selector=.MuiListItem-root button"
 curl "http://localhost:9222/url"
 ```
 
@@ -810,17 +955,33 @@ curl "http://localhost:9222/url"
 
 **Steps:**
 ```bash
-# DISCOVER: Get branches from git for a multi-branch repo (e.g., inxr2)
+# DISCOVER: local branches (what the indexer can actually resolve) vs all refs
+docker exec inxr2-dev git -C /repos/test-repos/inxr2 branch --format='%(refname:short)'
 docker exec inxr2-dev git -C /repos/test-repos/inxr2 branch -a --format='%(refname:short)'
+# DISCOVER: which branches the API considers INDEXED (commit_count > 0)
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/inxr2/branches' | python3 -c '
+import sys, json
+bs = json.load(sys.stdin)[\"branches\"]
+print(\"indexed:\", [(b[\"name\"], b[\"commit_count\"]) for b in bs if b[\"commit_count\"] > 0])
+print(\"unindexed:\", [b[\"name\"] for b in bs if b[\"commit_count\"] == 0][:5])
+'"
 # NAVIGATE
-curl "http://localhost:9222/navigate?url=http://localhost:5173/browse/inxr2?branch=main"
-curl "http://localhost:9222/wait?selector=.MuiSelect-select&timeout=5000"
+curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/inxr2?branch=main"
+curl "http://localhost:9222/wait?selector=.MuiSelect-select&timeout=8000"
 curl "http://localhost:9222/elements?selector=.MuiSelect-select&limit=5"
 ```
 
 **Pass criteria:**
-- Branch selector is present and shows current branch name
-- At least the branches listed in `config.yaml` for that repo are available
+- Branch selector is present and shows the current branch name
+- Every branch reported as **indexed** by the API is selectable
+
+**Note — expect one indexed branch per repo in the default run.** `config.yaml` declares a second
+branch only for `multidockerdevcontainer` (`feature/oidc-authentication`), and that branch is
+skipped by design: non-primary branches with no commits inside the `--days` window are skipped by
+`src/inxr2/cli.py` (it prints `Skipped: No commits within last N days`). So the selector legitimately
+shows a single branch. The `inxr2` test repo also carries several remote-only `dependabot/*` refs
+which have no local branch and are correctly reported as unindexed — do not expect them in the
+selector. To exercise a genuinely multi-branch selector, index with a wider `--days` window.
 
 ---
 
@@ -1112,21 +1273,23 @@ Also verify the reverse: browsing the new path at an old commit shows the old pa
 
 **Steps:**
 ```bash
-# DISCOVER: Find a rename COMMIT from git (within the indexed --days window), then confirm the API
-# indexed it via /api/renames/by-commit. Response shape:
-#   {"renames":[{old_path, new_path, similarity, commit_id, commit_hash}], "total":N}
-# (There is no "list all renames" endpoint; the rename APIs are keyed by commit or by path.)
-REPO="inxr2"
-RENAME_COMMIT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO log --since='10 days ago' --diff-filter=R --find-renames --format='%H' -1")
-echo "rename commit: $RENAME_COMMIT"
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/renames/by-commit?repo=$REPO&commit=$RENAME_COMMIT' | python3 -c '
-import sys, json
-data = json.load(sys.stdin)
-print(f\"total={data[\"total\"]}\")
-for r in data[\"renames\"][:3]:
-    print(f\"old={r[\"old_path\"]} new={r[\"new_path\"]} commit={r[\"commit_hash\"][:8]}\")
-'"
-# Note an old_path and new_path from the output above
+# DISCOVER: Find a rename that was ACTUALLY INDEXED, across all repos.
+#
+# ⚠️ Do NOT assume the rename lives in `inxr2`. Which renames land in the index depends entirely on
+# what the sliding `--days` window happened to cover; in the 2026-07-25 run inxr2's 8 indexed
+# commits contained zero renames, while `interview-technical-challenge-2` and `git` had one each.
+# There is no "list all renames" endpoint (the rename APIs are keyed by commit or by path), so
+# query the table directly to find the candidates:
+docker exec inxr2-dev bash -c 'PGPASSWORD=inxr2_dev_password psql -h 127.0.0.1 -U inxr2_user -d inxr2_dev -tAc "
+  select r.name, c.commit_hash, fr.old_path, fr.new_path, fr.similarity
+  from file_renames fr
+  join commits c      on c.id = fr.commit_id
+  join repositories r on r.id = c.repository_id
+  order by fr.similarity"'
+
+# Pick one and set REPO / RENAME_COMMIT / old_path / new_path from that row, then confirm via the
+# API. Response shape: {"renames":[{old_path, new_path, similarity, commit_id, commit_hash}], "total":N}
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/renames/by-commit?repo=$REPO&commit=$RENAME_COMMIT' | python3 -m json.tool"
 
 # (Optional) Confirm the resolve-path endpoint backs the banner: browsing <new_path> at the parent
 # commit should report found=false with resolved_path=<old_path>:
@@ -1157,49 +1320,54 @@ to a commit after), the diff viewer identifies both paths and shows the diff cor
 
 **Steps:**
 ```bash
-# DISCOVER: Find a rename commit (from RT-32 or re-query). Prefer a rename that ALSO changed content
-# (git status R<100), so the diff has an add/delete delta to render — pure R100 renames have none
-# (see note below). This finds the most recent rename with similarity < 100 if one exists, else any.
-REPO="inxr2"
-RENAME_COMMIT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO log --since='10 days ago' --diff-filter=R --find-renames -M --format='%H' --name-status | awk '/^R[0-9]+/{if (\$1 != \"R100\") {print c; exit}} /^[0-9a-f]{40}\$/{c=\$1}' | head -1")
-# Fall back to the most recent rename of any similarity if no content-changing rename exists
-if [ -z "$RENAME_COMMIT" ]; then
-  RENAME_COMMIT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO log --since='10 days ago' --diff-filter=R --find-renames --format='%H' -1")
-fi
-echo "rename commit: $RENAME_COMMIT"
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/renames/by-commit?repo=$REPO&commit=$RENAME_COMMIT' | python3 -c '
-import sys, json
-data = json.load(sys.stdin)
-for r in data[\"renames\"][:3]:
-    print(f\"old={r[\"old_path\"]} new={r[\"new_path\"]} similarity={r[\"similarity\"]}\")
-'"
-# Note old_path, new_path
+# DISCOVER: Reuse the SQL query from RT-32, which is already ordered by similarity ascending.
+# Prefer a row with similarity < 100 — a rename that ALSO changed content, so the diff has an
+# add/delete delta to render. Pure R100 renames have none (see note below).
+#
+# In the 2026-07-25 run the best candidate was:
+#   repo       = interview-technical-challenge-2
+#   commit     = 7d91f46900d6ca680ccc90dbe40ddcaf88e6028c   (similarity 92)
+#   old_path   = scripts/parking-repl.py
+#   new_path   = src/myapp/scripts/parking-repl.py
+# Do not hardcode these — re-run the query, they move with the --days window.
 
-# Get commit just before the rename
+# Get commit just before the rename, and the ground-truth delta
 PARENT=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO rev-parse ${RENAME_COMMIT}^")
+docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO diff --numstat -M $PARENT $RENAME_COMMIT -- <old_path> <new_path>"
+#   -> "<added>  <removed>  {old => new}/path"
 
-# NAVIGATE: Open new_path at rename_commit in diff mode, comparing against parent
-curl "http://localhost:9222/navigate?url=http://host.docker.internal:5173/browse/$REPO/<new_path>?commit=$RENAME_COMMIT&diff=$PARENT"
-curl "http://localhost:9222/wait?selector=table&timeout=8000"
+# NAVIGATE: Open new_path at rename_commit in diff mode, comparing against parent.
+# Needs BOTH commit= and branch= (see the #522 note in RT-12a).
+BRANCH=$(docker exec inxr2-dev bash -c "git -C /repos/test-repos/$REPO rev-parse --abbrev-ref HEAD")
+curl -G "http://localhost:9222/navigate" --data-urlencode \
+  "url=http://host.docker.internal:5173/browse/$REPO/<new_path>?commit=$RENAME_COMMIT&branch=$BRANCH&diff=$PARENT"
+curl "http://localhost:9222/wait?selector=table&timeout=12000"
 
-# VERIFY: Both paths appear in the diff header/toolbar
+# VERIFY: green/red row counts match the git delta
+curl -G "http://localhost:9222/eval" --data-urlencode \
+  'script=JSON.stringify([...document.querySelectorAll("tr")].map(r=>getComputedStyle(r).backgroundColor).reduce((a,c)=>{if(c!=="rgba(0, 0, 0, 0)")a[c]=(a[c]||0)+1;return a},{}))'
+# VERIFY: look for the old path as chrome (not just inside the file's own content)
 curl "http://localhost:9222/text?selector=body"
-# Take screenshot for visual verification
 curl "http://localhost:9222/screenshot/save?path=.tmp/rt-33-diff-rename.png"
 ```
 
 **Pass criteria:**
 - Diff viewer loads without error even though the file had a different path on the left side
+- Diff content renders correctly — green/red row counts match `git diff --numstat -M`
+  (**when the rename also changed content**)
 - The diff header or toolbar shows both the old path and the new path
-- Diff content renders correctly (additions/deletions visible **when the rename also changed content**)
+
+> 🐞 **Known failure (issue #524):** the third criterion currently fails — only the post-rename path
+> is displayed, and the left panel is labelled by commit hash alone. When grepping the page for the
+> old path, note that matches inside the diffed file's own content don't count; the old path must
+> appear as chrome.
 
 **Note — pure renames have no diff delta:** if the only renames in the indexed window are R100
 (100% similarity, pure move with no content change), there is no add/delete delta to show — the
-"diff is not empty" criterion **cannot be exercised** and is not a failure. The DISCOVER step above
-prefers a rename with similarity < 100 so the delta is visible; when none exists, verify only that
-rename-following works (left side resolves to the old path, diff loads without error) and record
-that the rename was R100. To fully exercise the delta criterion, seed a commit that both renames
-**and** edits a file.
+delta criterion **cannot be exercised** and is not a failure. Prefer a rename with similarity < 100;
+when none exists, verify only that rename-following works (left side resolves to the old path, diff
+loads without error) and record that the rename was R100. The 2026-05-31 runs could only find R100
+renames; 2026-07-25 was the first run to confirm the delta path (17 added / 4 removed, matching git).
 
 ---
 
@@ -1245,10 +1413,28 @@ docker exec -d inxr2-dev inxr2 serve --reload
 
 # Install MCP server dependencies (if not already installed)
 docker exec inxr2-dev pip install -e "/workspace/mcp-server[dev]"
+
+# MCP-21 goes over the SSE transport, so the MCP server must be listening on :3000.
+# ⚠️ It does NOT always auto-start with the container despite mcp-server/README.md (issue #525).
+docker exec inxr2-dev bash -c "ps aux | grep -c '[m]cp'"
+curl -s -o /dev/null -w '%{http_code}\n' --max-time 3 http://localhost:3000/sse
+# If not running, start it:
+docker exec -d -w /workspace/mcp-server inxr2-dev bash -c \
+  "MCP_TRANSPORT=sse MCP_PORT=3000 INXR2_API_URL=http://localhost:8000 python -m src.server > /tmp/mcp.log 2>&1"
 ```
 
-Note: MCP tool tests are run by invoking the tool handlers directly with the real HTTP client,
-not through MCP protocol. This tests the full path: tool handler -> httpx -> INXR2 API -> PostgreSQL.
+Note: except for MCP-21, MCP tool tests are run by invoking the tool handlers directly with the
+real HTTP client, not through MCP protocol. This tests the full path:
+tool handler -> httpx -> INXR2 API -> PostgreSQL.
+
+**Running the handlers directly requires `PYTHONPATH`** — `from src.client import ...` fails
+otherwise, even with `-w /workspace/mcp-server`:
+
+```bash
+docker exec -w /workspace/mcp-server inxr2-dev bash -c "PYTHONPATH=/workspace/mcp-server python3 <<'PY'
+...
+PY"
+```
 
 ---
 
@@ -1282,9 +1468,11 @@ asyncio.run(main())
 
 **Steps:**
 ```bash
-# DISCOVER: Get branches for a multi-branch repo from API
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/inxr2' | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"id\"])'"
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/<repo_id>/branches' | python3 -c '
+# DISCOVER: Get branches from the API.
+# ⚠️ The route is /api/repositories/by-name/{name}/branches. There is NO
+#    /api/repositories/{id}/branches — that path falls through to the SPA catch-all and returns
+#    HTTP 200 with an HTML body, which fails JSON parsing in a confusing way.
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/repositories/by-name/inxr2/branches' | python3 -c '
 import sys, json
 branches = json.load(sys.stdin)[\"branches\"]
 indexed = [b for b in branches if b[\"commit_count\"] > 0]
@@ -1363,8 +1551,10 @@ asyncio.run(main())
 "
 
 # VERIFY: kind=interface expands to include Swift protocols (KIND_ALIASES regression — bug #385)
-# DISCOVER: Confirm the repo has protocol-kinded symbols via API
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=&repository_name=travelbuddy&kind=protocol&limit=3' | python3 -c '
+# DISCOVER: Confirm the repo has protocol-kinded symbols via API.
+# ⚠️ Use repository_id — /api/symbols ignores repository_name (see the warning in IX-04).
+# Resolve it with: curl -s .../api/repositories | python3 -c '...{r["name"]: r["id"]}...'
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=&repository_id=<travelbuddy_id>&kind=protocol&limit=3' | python3 -c '
 import sys, json
 items = json.load(sys.stdin)[\"items\"]
 print(f\"Protocol symbols in travelbuddy: {len(items)}\")
@@ -1454,8 +1644,13 @@ asyncio.run(main())
 "
 ```
 
+> ⚠️ **The API's `total` here is the page size, not the true count (issue #523).**
+> `/api/symbols/{id}/references` computes `total` *after* applying `limit`, so `limit=5` reports
+> `total: 5` even when there are 46 references. Do **not** treat a larger MCP count as a mismatch —
+> re-query with `limit=500` to get the real total before comparing.
+
 **Pass criteria:**
-- MCP reference count matches API total
+- MCP reference count matches the API total **fetched with a limit above the real count**
 - Reference types (import, call, usage, type_annotation) are shown
 - File paths and line numbers match the API data
 
@@ -1570,11 +1765,11 @@ asyncio.run(main())
 
 **Steps:**
 ```bash
-docker exec -w /workspace/mcp-server inxr2-dev python -m pytest tests/ -v
+docker exec -w /workspace/mcp-server inxr2-dev python -m pytest tests/ -q
 ```
 
 **Pass criteria:**
-- All tests pass (currently 133 tests)
+- All tests pass (154 as of 2026-07-25; the count grows — treat it as a floor, not an equality check)
 - No warnings or errors
 
 ---
@@ -1591,9 +1786,10 @@ This test verifies that each URL loads the correct file and highlights the corre
 
 **Steps:**
 ```bash
-# Use container-internal frontend URL for QA agent navigation
-# (QA agent browser can reach dev container by hostname, not localhost)
-FE_URL="http://inxr2-dev:5173"
+# Frontend base URL that the QA agent's BROWSER will navigate to.
+# Use host.docker.internal — the same host the rest of Phase 2 uses — so the generated URLs are
+# directly clickable from the QA agent without rewriting.
+FE_URL="http://host.docker.internal:5173"
 QA="http://localhost:9222"
 
 # --- Step 1: DISCOVER — Get browse URLs from all 4 MCP tools ---
@@ -1737,8 +1933,9 @@ async def main():
     client = HttpInxr2Client('http://localhost:8000')
     result = await find_dead_code.handle(client, {'repository': '$REPO', 'limit': 10})
     print(result)
-    # Verify output structure
-    assert 'Unreferenced symbols' in result or 'No unreferenced symbols' in result
+    # Verify output structure. The header reads:
+    #   "Dead code in '<repo>': N symbols with no references (showing M)"
+    assert 'symbols with no references' in result or 'No unreferenced symbols' in result
     await client.close()
 asyncio.run(main())
 "
@@ -1749,6 +1946,8 @@ asyncio.run(main())
 - Each symbol entry includes kind, name, file path, and line number
 - Output header shows count of unreferenced symbols found
 - Results are limited to the requested `limit`
+- The tool declares its sampling cap rather than truncating silently — expect a line like
+  `Note: scanned 200 of 9021 symbols — results may be incomplete.`
 
 ---
 
@@ -1999,10 +2198,12 @@ what the symbols API knows about that file.
 
 **Steps:**
 ```bash
-# DISCOVER: Pick a known file with symbols from the API
+# DISCOVER: Pick a known file with symbols from the API.
+# ⚠️ This endpoint's params are `repo` and `path` (NOT repository_name / file_path — those return
+#    HTTP 422 "Field required").
 REPO="inxr2"
 FILE="src/inxr2/domain/services/file_filter.py"
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols/file-structure?repository_name=$REPO&file_path=$FILE' | python3 -m json.tool | head -40"
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols/file-structure?repo=$REPO&path=$FILE' | python3 -m json.tool | head -40"
 
 # VERIFY: MCP tool returns the same structure
 docker exec -w /workspace/mcp-server inxr2-dev python3 -c "
@@ -2037,19 +2238,24 @@ categorizes them as source, test, or config files.
 
 **Steps:**
 ```bash
-# DISCOVER: Pick a symbol with known references from the API
+# DISCOVER: Pick a symbol with known references from the API.
+# ⚠️ Filter by repository_id (see the warning in IX-04); resolve REPO_ID from /api/repositories.
 REPO="inxr2"
+REPO_ID=$(docker exec inxr2-dev bash -c "curl -s http://localhost:8000/api/repositories | python3 -c '
+import sys, json
+print({r[\"name\"]: r[\"id\"] for r in json.load(sys.stdin)}[\"inxr2\"])'")
 SYMBOL="FileFilter"
-docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=$SYMBOL&repository_name=$REPO&limit=3' | python3 -c '
+docker exec inxr2-dev bash -c "curl -s 'http://localhost:8000/api/symbols?q=$SYMBOL&repository_id=$REPO_ID&limit=3' | python3 -c '
 import sys, json
 items = json.load(sys.stdin)[\"items\"]
 for s in items:
     print(f\"{s[\"name\"]} [{s[\"kind\"]}] id={s[\"id\"]}\")
 '"
-# Get reference count for the symbol from API
+# Get reference count for the symbol from API.
+# ⚠️ Use a limit ABOVE the real count — `total` is the page size, not the true total (issue #523).
 docker exec inxr2-dev bash -c "
-SID=\$(curl -s 'http://localhost:8000/api/symbols?q=$SYMBOL&repository_name=$REPO&limit=1' | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"items\"][0][\"id\"])')
-curl -s \"http://localhost:8000/api/symbols/\$SID/references?by_name=true&limit=20\" | python3 -c '
+SID=\$(curl -s 'http://localhost:8000/api/symbols?q=$SYMBOL&repository_id=$REPO_ID&limit=1' | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"items\"][0][\"id\"])')
+curl -s \"http://localhost:8000/api/symbols/\$SID/references?by_name=true&limit=500\" | python3 -c '
 import sys, json
 data = json.load(sys.stdin)
 print(f\"Total references: {data[\"total\"]}\")
@@ -2094,7 +2300,10 @@ asyncio.run(main())
 ```
 
 **Pass criteria:**
-- Output groups dependent files into **Source files**, **Test files**, and **Config files** sections
+- Output groups dependent files into **Source files**, **Test files**, and **Config files** sections.
+  Empty groups are omitted — `FileFilter` has no config dependents, so no "Config files" section
+  appears, which is correct, not a failure. Pick a symbol referenced from a config file to exercise
+  that group.
 - Test files (paths containing `test`, `spec`, `__tests__`) appear in the test section
 - Source file count at depth=1 matches the direct reference count from the API
 - depth=2 output contains at least as many files as depth=1 (transitive adds more)
@@ -2333,7 +2542,7 @@ asyncio.run(main())
 | IX-01 | Reset DB and index all repos (10 days) | Full indexing pipeline |
 | IX-02 | Verify indexing status | All repos indexed with data |
 | IX-03 | Verify API serves indexed data | API returns all repos from config |
-| IX-04 | Verify multi-language symbol extraction (10 langs) | Each parser produces correct symbols |
+| IX-04 | Verify multi-language symbol extraction (12 langs) | Each parser produces correct symbols |
 | IX-04a | Verify reference extraction (bare ids, require, this) | Reference extraction pipeline |
 | IX-04b | Verify ES6 export/re-export references | Export/re-export reference patterns |
 | IX-05 | Compare indexing performance vs history | No timing/count regressions |
