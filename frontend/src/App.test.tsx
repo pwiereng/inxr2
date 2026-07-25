@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import App from './App'
+import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 
 // Mock the API module
 vi.mock('@/lib/api', () => ({
@@ -24,10 +25,7 @@ const mockRepositories = [
 // Wrapper that provides Router context for App
 const renderApp = (initialEntries: string[] = ['/']) => {
   return render(
-    <MemoryRouter
-      initialEntries={initialEntries}
-      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-    >
+    <MemoryRouter initialEntries={initialEntries} future={ROUTER_FUTURE_FLAGS}>
       <App />
     </MemoryRouter>
   )

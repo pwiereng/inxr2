@@ -7,6 +7,24 @@ from fastapi.testclient import TestClient
 from inxr2.infrastructure.fastapi.app import create_app
 
 
+@pytest.fixture(autouse=True)
+def _no_http_query_logging(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable the DB-backed HTTP query log for every test in this module.
+
+    These tests exercise the app factory itself — routing, CORS, metadata — and
+    have no interest in the query log. Left enabled, every request to an /api/*
+    path opens a real connection against DATABASE_URL (the *dev* database, since
+    nothing here overrides it) and writes a query_log row, which both violates
+    test isolation and leaks an asyncpg connection per app instance.
+
+    The flag is read at import time into a module global, so patching the
+    attribute is the only thing that takes effect after import.
+    """
+    monkeypatch.setattr(
+        "inxr2.infrastructure.fastapi.app._LOG_HTTP_REQUESTS", False, raising=True
+    )
+
+
 class TestCreateApp:
     """Tests for create_app function."""
 

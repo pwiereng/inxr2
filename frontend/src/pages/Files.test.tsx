@@ -6,6 +6,7 @@ import Files from './Files'
 import * as api from '@/lib/api'
 import type { FileInfo } from '@/lib/api'
 import { AppProvider } from '@/contexts/AppContext'
+import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 
 vi.mock('@/lib/api', () => ({
   getRepositoryFiles: vi.fn(),
@@ -34,7 +35,7 @@ const mockFiles: FileInfo[] = [
 
 function renderFiles() {
   return render(
-    <MemoryRouter initialEntries={['/repositories/1/files']}>
+    <MemoryRouter initialEntries={['/repositories/1/files']} future={ROUTER_FUTURE_FLAGS}>
       <AppProvider>
         <Routes>
           <Route path="/repositories/:repositoryId/files" element={<Files />} />
@@ -130,7 +131,7 @@ describe('Files', () => {
   it('does not fetch when repositoryId is missing', async () => {
     vi.mocked(api.getRepositoryFiles).mockResolvedValue(mockFiles)
     render(
-      <MemoryRouter initialEntries={['/files']}>
+      <MemoryRouter initialEntries={['/files']} future={ROUTER_FUTURE_FLAGS}>
         <AppProvider>
           <Routes>
             <Route path="/files" element={<Files />} />

@@ -138,6 +138,7 @@ vi.mock('@/components/CopyButton/CopyButton', () => ({
 
 import { useBrowseState } from '@/hooks/useBrowseState'
 import { getFileBlame } from '@/lib/api'
+import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 type BrowseStateResult = ReturnType<typeof useBrowseState>
 const mockUseBrowseState = vi.mocked(useBrowseState)
 const mockGetFileBlame = vi.mocked(getFileBlame)
@@ -309,7 +310,7 @@ function makeState(o: StateOverrides = {}): BrowseStateResult {
 function renderBrowse(state: BrowseStateResult, entry = '/browse/myrepo') {
   mockUseBrowseState.mockReturnValue(state)
   return render(
-    <MemoryRouter initialEntries={[entry]}>
+    <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE_FLAGS}>
       <Browse />
       <LocationDisplay />
     </MemoryRouter>
@@ -1106,7 +1107,7 @@ describe('Browse', () => {
       // reference makes React bail out); the Browse instance stays mounted so
       // its internal blameEnabled state survives the transition.
       const tree = () => (
-        <MemoryRouter initialEntries={['/browse/myrepo']}>
+        <MemoryRouter initialEntries={['/browse/myrepo']} future={ROUTER_FUTURE_FLAGS}>
           <Browse />
           <LocationDisplay />
         </MemoryRouter>

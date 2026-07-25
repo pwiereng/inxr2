@@ -83,6 +83,7 @@ vi.mock('@/hooks/useSelectionToolbar', () => ({
 }))
 
 import { getSymbolTree, searchSymbols, getRepositoryByName, getCommits } from '@/lib/api'
+import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 const mockGetSymbolTree = vi.mocked(getSymbolTree)
 const mockSearchSymbols = vi.mocked(searchSymbols)
 const mockGetRepositoryByName = vi.mocked(getRepositoryByName)
@@ -95,7 +96,7 @@ function LocationDisplay() {
 
 function renderView(entry = '/logical-view?repo=myrepo&branch=main&commit=deadbeef') {
   return render(
-    <MemoryRouter initialEntries={[entry]}>
+    <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE_FLAGS}>
       <LogicalView />
       <LocationDisplay />
     </MemoryRouter>
@@ -1235,13 +1236,19 @@ describe('LogicalView', () => {
 
       await user.click(await screen.findByText('app.py'))
       const chip = await screen.findByText('extends Base')
-      const callsBefore = mockGetSymbolTree.mock.calls.length
+      // Expanding the file navigates, and v7_startTransition defers that router
+      // update, so the expansion's follow-up symbol fetch lands *after* the chip
+      // renders. Wait for it to settle and reset the call log, so the assertion
+      // below measures only what the Cmd+click itself triggers.
+      await waitFor(() => expect(mockGetSymbolTree).toHaveBeenCalledTimes(3))
+      mockGetSymbolTree.mockClear()
+
       await user.keyboard('{Meta>}')
       await user.click(chip)
       await user.keyboard('{/Meta}')
 
       // targetFileId == null → the handler returns early: no fetch, no nav.
-      expect(mockGetSymbolTree.mock.calls.length).toBe(callsBefore)
+      expect(mockGetSymbolTree).not.toHaveBeenCalled()
       expect(screen.getByTestId('location')).not.toHaveTextContent('/browse/')
     })
   })

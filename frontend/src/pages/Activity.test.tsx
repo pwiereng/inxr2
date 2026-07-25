@@ -6,6 +6,7 @@ import Activity from './Activity'
 import * as api from '@/lib/api'
 import type { Repository } from '@/lib/api'
 import { AppProvider } from '@/contexts/AppContext'
+import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 
 vi.mock('@/lib/api', () => ({
   getActivityLog: vi.fn(),
@@ -41,7 +42,7 @@ const mockEntries = [
 
 function renderActivity() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={ROUTER_FUTURE_FLAGS}>
       <AppProvider>
         <Activity />
       </AppProvider>
