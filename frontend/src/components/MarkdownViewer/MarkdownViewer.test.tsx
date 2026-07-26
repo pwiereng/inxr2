@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act, waitFor } from '@testing-library/react'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import { MarkdownViewer, MermaidDiagram } from './MarkdownViewer'
@@ -298,6 +298,12 @@ describe('MermaidDiagram', () => {
     })
   })
 
+  afterEach(() => {
+    // Restore any console spy installed by an individual test so the rest of the
+    // suite keeps surfacing unexpected console.error output.
+    vi.restoreAllMocks()
+  })
+
   it('renders SVG when mermaid.render resolves', async () => {
     const { default: mermaidMock } = await import('mermaid')
     vi.mocked(mermaidMock.render).mockResolvedValue({
@@ -359,11 +365,19 @@ describe('MermaidDiagram', () => {
 
   it('falls back to code block when mermaid.render rejects', async () => {
     const { default: mermaidMock } = await import('mermaid')
-    vi.mocked(mermaidMock.render).mockRejectedValue(new Error('parse error'))
+    const renderError = new Error('parse error')
+    vi.mocked(mermaidMock.render).mockRejectedValue(renderError)
+    // The component is expected to log here — capture the call instead of letting
+    // this deliberate failure print to the suite's stderr. Restored in afterEach.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     renderWithTheme(<MermaidDiagram code="invalid mermaid" isDark={false} />)
     // Fallback: the code should appear in a <pre><code> block
     expect(screen.getByText('invalid mermaid')).toBeInTheDocument()
+    // The failure is still reported to the console for diagnostics.
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith('MermaidDiagram render failed:', renderError)
+    })
   })
 
   it('passes dark theme from MarkdownViewer to mermaid render', async () => {
