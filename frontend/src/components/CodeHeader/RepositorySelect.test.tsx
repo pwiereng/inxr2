@@ -39,9 +39,10 @@ describe('RepositorySelect', () => {
     vi.restoreAllMocks()
   })
 
-  it('should not warn about an invalid Autocomplete value when the repo is unknown', () => {
+  it('should not warn about an invalid Autocomplete value when the repo is unknown', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = userEvent.setup()
 
     render(
       <RepositorySelect
@@ -55,12 +56,23 @@ describe('RepositorySelect', () => {
 
     // The selector shows what the URL requested rather than silently switching away from it
     expect(screen.getByRole('combobox')).toHaveValue('ghost-repo')
+
+    // ...and it is a real option, not just a displayed string: the dropdown offers it
+    // alongside the loaded repos, so reopening the menu doesn't drop the requested repo.
+    await user.click(screen.getByRole('button', { name: /open/i }))
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'inxr2',
+      'other-repo',
+      'ghost-repo',
+    ])
+
     expect(invalidValueCalls()).toHaveLength(0)
   })
 
-  it('should not warn about an invalid Autocomplete value on the search tab', () => {
+  it('should not warn about an invalid Autocomplete value on the search tab', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
+    const user = userEvent.setup()
 
     render(
       <RepositorySelect
@@ -73,6 +85,17 @@ describe('RepositorySelect', () => {
     )
 
     expect(screen.getByRole('combobox')).toHaveValue('ghost-repo')
+
+    // The search tab's custom filterOptions strips and re-prepends ALL_REPOS_OPTION, so this
+    // also covers the injected value surviving that path exactly once, with no duplicate.
+    await user.click(screen.getByRole('button', { name: /open/i }))
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'All Repositories',
+      'inxr2',
+      'other-repo',
+      'ghost-repo',
+    ])
+
     expect(invalidValueCalls()).toHaveLength(0)
   })
 
