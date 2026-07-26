@@ -96,22 +96,25 @@ export function SymbolContextMenu({
               </ListItemIcon>
               <ListItemText>Search symbol</ListItemText>
             </MenuItem>
-            {contextMenu?.hasDefinition && (
-              <>
-                <Divider />
-                <MenuItem
-                  onClick={() => {
-                    onClose()
-                    onGoToDefinition()
-                  }}
-                >
-                  <ListItemIcon>
-                    <OpenInNewIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText>Go to definition</ListItemText>
-                </MenuItem>
-              </>
-            )}
+            {/* An array, not a Fragment: MenuList walks its children to inject focus
+                props, and a Fragment can neither be counted nor cloned. */}
+            {contextMenu?.hasDefinition
+              ? [
+                  <Divider key="definition-divider" />,
+                  <MenuItem
+                    key="go-to-definition"
+                    onClick={() => {
+                      onClose()
+                      onGoToDefinition()
+                    }}
+                  >
+                    <ListItemIcon>
+                      <OpenInNewIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>Go to definition</ListItemText>
+                  </MenuItem>,
+                ]
+              : null}
           </MenuList>
         </Paper>
       </ClickAwayListener>
