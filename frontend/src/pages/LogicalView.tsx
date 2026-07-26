@@ -980,7 +980,17 @@ export default function LogicalView(): React.ReactElement {
                     key={kind}
                     label={getKindLabel(kind)}
                     size="small"
-                    icon={<>{getKindIcon(kind)}</>}
+                    // Chip clones its `icon` to attach .MuiChip-icon. A Fragment
+                    // cannot take that className (React warns, #517), and putting
+                    // it on the icon itself would let MUI's chip-icon rules
+                    // override the kind colour and size. Hand Chip a plain span to
+                    // decorate instead, and zero the margins it adds so the chip
+                    // renders exactly as before.
+                    icon={
+                      <Box component="span" sx={{ display: 'flex' }}>
+                        {getKindIcon(kind)}
+                      </Box>
+                    }
                     variant={activeKind === kind ? 'filled' : 'outlined'}
                     color={activeKind === kind ? 'primary' : 'default'}
                     onClick={() => {
@@ -988,7 +998,7 @@ export default function LogicalView(): React.ReactElement {
                       setActiveKind(newKind)
                       updateUrlState({ kind: newKind })
                     }}
-                    sx={{ height: 24 }}
+                    sx={{ height: 24, '& .MuiChip-icon': { ml: 0, mr: 0 } }}
                   />
                 ))}
                 {activeKind === null && (
