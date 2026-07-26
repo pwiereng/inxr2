@@ -32,10 +32,17 @@ export function RepositorySelect({
   }
 
   if (repositories.length > 1 || currentTab === 'search') {
+    const repoNames = repositories.map((r) => r.name)
+
+    // The URL can name a repo that is not in the loaded list (deleted repo, typo, stale
+    // bookmark). Keep it as an option so the selector shows what the URL actually requested
+    // instead of quietly disagreeing with it — and so MUI doesn't warn about an unmatched value.
+    const unknownRepo = repoName && !repoNames.includes(repoName) ? [repoName] : []
+
     const options =
       currentTab === 'search'
-        ? [ALL_REPOS_OPTION, ...repositories.map((r) => r.name)]
-        : repositories.map((r) => r.name)
+        ? [ALL_REPOS_OPTION, ...repoNames, ...unknownRepo]
+        : [...repoNames, ...unknownRepo]
 
     const value = repoName || (currentTab === 'search' ? ALL_REPOS_OPTION : undefined)
 
