@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@/test/utils'
 import Search from './Search'
 import * as api from '@/lib/api'
+import { expectConsoleError } from '@/test/consoleGuard'
 
 /**
  * Helper to find an element whose textContent matches, even when the text
@@ -165,24 +166,20 @@ describe('Search', () => {
   })
 
   it('should display API error message', async () => {
-    // Suppress expected console.error from the component's error handler
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      mockSearchText.mockRejectedValue(new Error('API error'))
+    // Declared for the suite-wide console guard; see consoleGuard.ts.
+    expectConsoleError('Search failed:', 'the page logs the search failure it renders as an error')
+    mockSearchText.mockRejectedValue(new Error('API error'))
 
-      // Render with query param to trigger search
-      window.history.pushState({}, '', '?query=test')
-      render(<Search />)
+    // Render with query param to trigger search
+    window.history.pushState({}, '', '?query=test')
+    render(<Search />)
 
-      await waitFor(
-        () => {
-          expect(screen.getByText(/API error/i)).toBeInTheDocument()
-        },
-        { timeout: 1000 }
-      )
-    } finally {
-      consoleSpy.mockRestore()
-    }
+    await waitFor(
+      () => {
+        expect(screen.getByText(/API error/i)).toBeInTheDocument()
+      },
+      { timeout: 1000 }
+    )
   })
 
   it('should navigate to history when clicking a commit_message result', async () => {

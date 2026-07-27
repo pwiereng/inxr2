@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@/test/utils'
 import { fireEvent } from '@testing-library/react'
+import { consoleCalls } from '@/test/consoleGuard'
 import { CommitSelect } from './CommitSelect'
 import type { CommitInfo } from '@/lib/api'
 
@@ -32,14 +33,7 @@ const mockCommits: CommitInfo[] = [
 ]
 
 describe('CommitSelect', () => {
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
   it('should not produce MUI out-of-range warning when commit is not in options', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-
     render(
       <CommitSelect
         commits={mockCommits}
@@ -52,13 +46,10 @@ describe('CommitSelect', () => {
     // Should show "latest" as the rendered value since commit is not in list
     expect(screen.getByText('latest')).toBeInTheDocument()
 
-    // Should NOT have any MUI out-of-range warnings
-    const warnCalls = vi.mocked(console.warn).mock.calls
-    const errorCalls = vi.mocked(console.error).mock.calls
-    const allCalls = [...warnCalls, ...errorCalls]
-    const outOfRangeCalls = allCalls.filter((args) =>
-      args.some((arg) => typeof arg === 'string' && arg.includes('out-of-range'))
-    )
+    // Should NOT have any MUI out-of-range warnings. The suite-wide console
+    // guard (consoleGuard.ts) already fails this test on any console output;
+    // naming the wording keeps the #517 regression explicit in the failure.
+    const outOfRangeCalls = consoleCalls().filter((call) => call.text.includes('out-of-range'))
     expect(outOfRangeCalls).toHaveLength(0)
   })
 

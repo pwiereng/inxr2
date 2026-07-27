@@ -5,6 +5,11 @@ import type { UseBrowseDiffStateParams, UseBrowseDiffStateResult } from './useBr
 import type { BrowseUrlState } from './useBrowseTypes'
 import * as api from '@/lib/api'
 import { ApiError } from '@/lib/api'
+import { consoleCallArgs, expectConsoleError } from '@/test/consoleGuard'
+
+// The messages the hook logs before falling back to empty diff state.
+const LOAD_FAILURE_LOG = 'Failed to load diff file:'
+const RENAME_FAILURE_LOG = 'Failed to resolve rename or load content at resolved path:'
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof api>()
@@ -203,7 +208,8 @@ describe('useBrowseDiffState', () => {
     })
 
     it('does not attempt rename resolution for non-404 errors', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      // Declared for the suite-wide console guard; see consoleGuard.ts.
+      expectConsoleError(LOAD_FAILURE_LOG, 'the hook logs the load error it recovers from')
       mockGetFileContentByPathAtCommit.mockRejectedValue(new ApiError('Internal Server Error', 500))
 
       const urlState = makeUrlState({ diffCommit: 'commit-a' })
@@ -214,7 +220,6 @@ describe('useBrowseDiffState', () => {
       })
       expect(mockResolveFilePath).not.toHaveBeenCalled()
       expect(result.current.diffRenameInfo).toBeNull()
-      consoleSpy.mockRestore()
     })
 
     it('clears diffRenameInfo when rename resolution finds no resolved path', async () => {
@@ -260,7 +265,10 @@ describe('useBrowseDiffState', () => {
     })
 
     it('logs unexpected errors from rename resolution attempt', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      expectConsoleError(
+        RENAME_FAILURE_LOG,
+        'the hook logs the rename-resolution error it swallows'
+      )
       mockGetFileContentByPathAtCommit.mockRejectedValue(new ApiError('Not Found', 404))
       mockResolveFilePath.mockRejectedValue(new ApiError('Internal Server Error', 500))
 
@@ -270,12 +278,8 @@ describe('useBrowseDiffState', () => {
       await vi.waitFor(() => {
         expect(result.current.diffLoading).toBe(false)
       })
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Failed to resolve rename or load content at resolved path:',
-        expect.any(ApiError)
-      )
+      expect(consoleCallArgs('error')).toContainEqual([RENAME_FAILURE_LOG, expect.any(ApiError)])
       expect(result.current.diffRenameInfo).toBeNull()
-      consoleSpy.mockRestore()
     })
 
     it('clears diffRenameInfo on successful load (no rename)', async () => {

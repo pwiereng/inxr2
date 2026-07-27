@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@/test/utils'
+import { consoleCallArgs, expectConsoleError } from '@/test/consoleGuard'
 import { CodeHeader } from './CodeHeader'
 import { formatDateYMD } from '@/lib/dateUtils'
 
@@ -798,48 +799,59 @@ describe('CodeHeader', () => {
       const api = await import('@/lib/api')
       vi.mocked(api.getRepositories).mockRejectedValue(new Error('Failed to load repositories'))
 
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      // Declared so the suite-wide console guard permits it, and so this test
+      // fails if the header ever stops reporting the failure. See consoleGuard.ts.
+      expectConsoleError(
+        'Failed to load repositories:',
+        'the header logs the repository fetch failure it recovers from'
+      )
 
       render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
-        expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect(consoleCallArgs('error')).toContainEqual([
           'Failed to load repositories:',
-          expect.any(Error)
-        )
+          expect.any(Error),
+        ])
       })
-
-      consoleErrorSpy.mockRestore()
     })
 
     it('should handle branch loading error gracefully', async () => {
       const api = await import('@/lib/api')
       vi.mocked(api.getRepositoryBranches).mockRejectedValue(new Error('Failed to load branches'))
 
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      expectConsoleError(
+        'Failed to load branches:',
+        'the header logs the branch fetch failure it recovers from'
+      )
 
       render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
-        expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to load branches:', expect.any(Error))
+        expect(consoleCallArgs('error')).toContainEqual([
+          'Failed to load branches:',
+          expect.any(Error),
+        ])
       })
-
-      consoleErrorSpy.mockRestore()
     })
 
     it('should handle commit loading error gracefully', async () => {
       const api = await import('@/lib/api')
       vi.mocked(api.getCommits).mockRejectedValue(new Error('Failed to load commits'))
 
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      expectConsoleError(
+        'Failed to load commits:',
+        'the header logs the commit fetch failure it recovers from'
+      )
 
       render(<CodeHeader {...defaultProps} />)
 
       await waitFor(() => {
-        expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to load commits:', expect.any(Error))
+        expect(consoleCallArgs('error')).toContainEqual([
+          'Failed to load commits:',
+          expect.any(Error),
+        ])
       })
-
-      consoleErrorSpy.mockRestore()
     })
   })
 })

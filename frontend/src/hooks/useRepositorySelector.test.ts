@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useRepositorySelector } from './useRepositorySelector'
 import * as api from '@/lib/api'
+import { consoleCallArgs, expectConsoleError } from '@/test/consoleGuard'
 
 // Mock the API module
 vi.mock('@/lib/api', () => ({
@@ -161,7 +162,10 @@ describe('useRepositorySelector', () => {
 
     it('should handle repository loading error', async () => {
       mockGetRepositories.mockRejectedValue(new Error('Network error'))
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      expectConsoleError(
+        'Failed to load repositories:',
+        'the hook logs the repository fetch failure it recovers from'
+      )
 
       const { result } = await renderRepositorySelectorHook({
         repoName: null,
@@ -171,12 +175,10 @@ describe('useRepositorySelector', () => {
 
       expect(result.current.repositories).toEqual([])
       expect(result.current.loadingRepos).toBe(false)
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect(consoleCallArgs('error')).toContainEqual([
         'Failed to load repositories:',
-        expect.any(Error)
-      )
-
-      consoleErrorSpy.mockRestore()
+        expect.any(Error),
+      ])
     })
   })
 
@@ -204,14 +206,18 @@ describe('useRepositorySelector', () => {
 
     it('should clear branches on error', async () => {
       mockGetRepositoryBranches.mockRejectedValue(new Error('Branch error'))
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      expectConsoleError(
+        'Failed to load branches:',
+        'the hook logs the branch fetch failure it recovers from'
+      )
 
       const { result } = await renderRepositorySelectorHook()
 
       expect(result.current.branches).toEqual([])
-      expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to load branches:', expect.any(Error))
-
-      consoleErrorSpy.mockRestore()
+      expect(consoleCallArgs('error')).toContainEqual([
+        'Failed to load branches:',
+        expect.any(Error),
+      ])
     })
   })
 
@@ -248,14 +254,18 @@ describe('useRepositorySelector', () => {
 
     it('should clear commits on error', async () => {
       mockGetCommits.mockRejectedValue(new Error('Commit error'))
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      expectConsoleError(
+        'Failed to load commits:',
+        'the hook logs the commit fetch failure it recovers from'
+      )
 
       const { result } = await renderRepositorySelectorHook()
 
       expect(result.current.commits).toEqual([])
-      expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to load commits:', expect.any(Error))
-
-      consoleErrorSpy.mockRestore()
+      expect(consoleCallArgs('error')).toContainEqual([
+        'Failed to load commits:',
+        expect.any(Error),
+      ])
     })
   })
 

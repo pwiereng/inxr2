@@ -1,14 +1,24 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@/test/utils'
+import { allowConsoleError } from '@/test/consoleGuard'
 import { ErrorBoundary } from './ErrorBoundary'
 
-// Suppress console.error from ErrorBoundary.componentDidCatch during tests
+// Catching an error is the whole point of this component, and both it and React
+// report the catch on console.error. `allow` rather than `expect` because the
+// first test renders a child that never throws.
 beforeEach(() => {
-  vi.spyOn(console, 'error').mockImplementation(() => {})
-})
-
-afterEach(() => {
-  vi.restoreAllMocks()
+  allowConsoleError(
+    'ErrorBoundary caught an error:',
+    'componentDidCatch logs the error it handled — see ErrorBoundary.tsx'
+  )
+  allowConsoleError(
+    'The above error occurred in the <ProblemChild> component',
+    "React's dev-only report for an error a boundary caught — the child throws on purpose"
+  )
+  allowConsoleError(
+    'The above error occurred in the <ToggleChild> component',
+    "React's dev-only report for an error a boundary caught — the child throws on purpose"
+  )
 })
 
 function ProblemChild({ shouldThrow = true }: { shouldThrow?: boolean }) {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { consoleCalls } from '@/test/consoleGuard'
 import { SymbolContextMenu, type SymbolContextMenuState } from './SymbolContextMenu'
 
 // The exact text MUI's MenuList logs when handed a Fragment child, so this guard
@@ -108,11 +109,12 @@ describe('SymbolContextMenu', () => {
     }
 
     it('renders without MUI complaining about a Fragment child', () => {
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
       render(<SymbolContextMenu contextMenu={menuWithDefinition} {...defaultHandlers} />)
       expect(screen.getByText('Go to definition')).toBeInTheDocument()
 
-      const messages = consoleError.mock.calls.map((args) => args.join(' '))
+      // Read what the suite-wide console guard recorded (consoleGuard.ts) rather
+      // than spying — a spy would hide everything else this render logs.
+      const messages = consoleCalls('error').map((call) => call.text)
       expect(messages.filter((m) => m.includes(FRAGMENT_CHILD_WARNING))).toEqual([])
       // Also assert nothing else was logged. Matching MUI's wording alone would let a
       // reintroduced Fragment slip through if MUI ever rewords the warning; rendering

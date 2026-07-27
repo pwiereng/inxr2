@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { ApiClient, type FetchFunction } from './api-client'
+import { consoleCallArgs, expectConsoleError } from '@/test/consoleGuard'
 import type { HealthResponse, HelloResponse } from '@/types/api'
 
 describe('ApiClient', () => {
@@ -24,8 +25,8 @@ describe('ApiClient', () => {
     })
 
     it('should throw error when request fails', async () => {
-      // Suppress expected console.error during this test
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      // Declared for the suite-wide console guard; see consoleGuard.ts.
+      expectConsoleError('API request failed:', 'the client logs before rethrowing the HTTP error')
 
       // Inject a fetch that returns an error
       const mockFetch: FetchFunction = async () => {
@@ -35,9 +36,7 @@ describe('ApiClient', () => {
       const client = new ApiClient('/api', mockFetch)
 
       await expect(client.health()).rejects.toThrow('HTTP error! status: 404')
-      expect(consoleSpy).toHaveBeenCalledWith('API request failed:', expect.any(Error))
-
-      consoleSpy.mockRestore()
+      expect(consoleCallArgs('error')).toContainEqual(['API request failed:', expect.any(Error)])
     })
   })
 

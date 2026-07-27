@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@/test/utils'
+import { consoleCalls } from '@/test/consoleGuard'
 import { BranchSelect } from './BranchSelect'
 import type { BranchInfo } from '@/lib/api'
 
@@ -21,14 +22,7 @@ const mockBranches: BranchInfo[] = [
 ]
 
 describe('BranchSelect', () => {
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
   it('should not produce MUI out-of-range warning when branch is not in options', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-
     render(
       <BranchSelect
         branches={mockBranches}
@@ -42,13 +36,10 @@ describe('BranchSelect', () => {
     // Should display the fallback defaultBranch when branch is not in options
     expect(screen.getByText('main')).toBeInTheDocument()
 
-    // Should NOT have any MUI out-of-range warnings
-    const warnCalls = vi.mocked(console.warn).mock.calls
-    const errorCalls = vi.mocked(console.error).mock.calls
-    const allCalls = [...warnCalls, ...errorCalls]
-    const outOfRangeCalls = allCalls.filter((args) =>
-      args.some((arg) => typeof arg === 'string' && arg.includes('out-of-range'))
-    )
+    // Should NOT have any MUI out-of-range warnings. The suite-wide console
+    // guard (consoleGuard.ts) already fails this test on any console output;
+    // naming the wording keeps the #517 regression explicit in the failure.
+    const outOfRangeCalls = consoleCalls().filter((call) => call.text.includes('out-of-range'))
     expect(outOfRangeCalls).toHaveLength(0)
   })
 

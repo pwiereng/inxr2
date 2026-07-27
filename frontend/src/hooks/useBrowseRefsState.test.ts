@@ -4,7 +4,14 @@ import { useBrowseRefsState, type UseBrowseRefsStateParams } from './useBrowseRe
 import type { BrowseUrlState } from './useBrowseTypes'
 import type { NavigateFunction } from 'react-router-dom'
 import * as api from '@/lib/api'
+import { expectConsoleError } from '@/test/consoleGuard'
 import type { Symbol, FileSymbol, FileReference, Repository } from '@/lib/api'
+
+// The two messages the hook logs before swallowing a fetch error. Tests that
+// trigger those paths declare them, which both satisfies the suite-wide console
+// guard (consoleGuard.ts) and asserts the error is still reported.
+const SYMBOL_FETCH_LOG = 'Failed to get symbol:'
+const REFERENCE_FETCH_LOG = 'Failed to get symbol for reference:'
 
 /** Extract the URL string passed to the first navigate() call. */
 function navUrl(navigate: NavigateFunction): string {
@@ -220,13 +227,12 @@ describe('useBrowseRefsState — symbol click handlers', () => {
 
   it('handleSymbolClick swallows fetch errors', async () => {
     mockGetSymbol.mockRejectedValue(new Error('boom'))
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expectConsoleError(SYMBOL_FETCH_LOG, 'the handler logs the fetch error it swallows')
     const { result } = renderHook(() => useBrowseRefsState(makeParams()))
     await act(async () => {
       await result.current.handleSymbolClick({ id: 5 } as FileSymbol)
     })
     expect(result.current.selectedSymbol).toBeNull()
-    spy.mockRestore()
   })
 
   it('handleDiffSymbolClick on the right panel writes ap=r and rp=r (lines 146-147)', async () => {
@@ -252,14 +258,13 @@ describe('useBrowseRefsState — symbol click handlers', () => {
 
   it('handleDiffSymbolClick swallows errors', async () => {
     mockGetSymbol.mockRejectedValue(new Error('boom'))
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expectConsoleError(SYMBOL_FETCH_LOG, 'the handler logs the fetch error it swallows')
     const params = makeParams()
     const { result } = renderHook(() => useBrowseRefsState(params))
     await act(async () => {
       await result.current.handleDiffSymbolClick({ id: 9 } as FileSymbol, 'right')
     })
     expect(params.updateUrlParams).not.toHaveBeenCalled()
-    spy.mockRestore()
   })
 })
 
@@ -307,7 +312,7 @@ describe('useBrowseRefsState — reference click handlers', () => {
 
   it('handleCodeReferenceClick swallows fetch errors', async () => {
     mockGetSymbol.mockRejectedValue(new Error('boom'))
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expectConsoleError(REFERENCE_FETCH_LOG, 'the handler logs the fetch error it swallows')
     const { result } = renderHook(() => useBrowseRefsState(makeParams()))
     await act(async () => {
       await result.current.handleCodeReferenceClick({
@@ -316,7 +321,6 @@ describe('useBrowseRefsState — reference click handlers', () => {
       } as FileReference)
     })
     expect(result.current.selectedSymbol).toBeNull()
-    spy.mockRestore()
   })
 
   it('handleDiffReferenceClick with no target searches by name on the right panel (lines 176,185-186)', async () => {
@@ -371,7 +375,7 @@ describe('useBrowseRefsState — reference click handlers', () => {
 
   it('handleDiffReferenceClick swallows fetch errors', async () => {
     mockGetSymbol.mockRejectedValue(new Error('boom'))
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expectConsoleError(REFERENCE_FETCH_LOG, 'the handler logs the fetch error it swallows')
     const params = makeParams()
     const { result } = renderHook(() => useBrowseRefsState(params))
     await act(async () => {
@@ -381,7 +385,6 @@ describe('useBrowseRefsState — reference click handlers', () => {
       )
     })
     expect(params.updateUrlParams).not.toHaveBeenCalled()
-    spy.mockRestore()
   })
 })
 

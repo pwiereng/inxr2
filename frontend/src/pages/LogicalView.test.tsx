@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import LogicalView from './LogicalView'
+import { consoleCalls } from '@/test/consoleGuard'
 import type { TabValue } from '@/components/CodeHeader'
 import type {
   Repository,
@@ -265,14 +266,15 @@ describe('LogicalView', () => {
   // change to how the kind icon itself renders.
   describe('kind filter chips', () => {
     it('renders the kind chips without React complaining about Fragment props', async () => {
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
       mockGetSymbolTree.mockResolvedValue(tier1([makeFile()]))
       renderView()
       await waitFor(() => expect(screen.getByText('Outline')).toBeInTheDocument())
       expect(screen.getByRole('button', { name: 'class' })).toBeInTheDocument()
 
-      const fragmentWarnings = consoleError.mock.calls.filter((args) =>
-        args.some((arg) => typeof arg === 'string' && arg.includes('React.Fragment'))
+      // Read what the suite-wide console guard recorded (consoleGuard.ts) rather
+      // than spying — a spy would hide everything else this render logs.
+      const fragmentWarnings = consoleCalls('error').filter((call) =>
+        call.text.includes('React.Fragment')
       )
       expect(fragmentWarnings).toEqual([])
     })

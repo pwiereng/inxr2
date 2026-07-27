@@ -248,6 +248,38 @@ frontend/              # Frontend tests (separate)
     └── test/          # Vitest tests
 ```
 
+### Frontend: console.error / console.warn fail the test
+
+React and MUI report developer mistakes through `console.error` / `console.warn`
+— a Fragment handed to a cloning parent, a Select value outside its options.
+Those calls return normally, so the suite used to stay green and the warning was
+only visible to whoever read the scrollback. Four real bugs (#517, #527, #528,
+#531) hid there.
+
+`frontend/src/test/setup.ts` now collects both channels and fails the test that
+logged, naming it and quoting the message. Nothing throws at call time — React
+calls `console.error` mid-render — so the failure lands in `afterEach`, attached
+to the test that finished.
+
+If a test logs on purpose, declare it *before* the code that logs. The
+declaration permits the message and asserts it actually happened:
+
+```ts
+import { consoleCallArgs, expectConsoleError } from '@/test/consoleGuard'
+
+expectConsoleError('Failed to load blame:', 'the page logs the fetch failure it survives')
+render(<Browse />)
+await waitFor(() =>
+  expect(consoleCallArgs('error')).toContainEqual(['Failed to load blame:', expect.any(Error)])
+)
+```
+
+Use `allowConsoleError` / `allowConsoleWarn` for a log only some tests in a
+shared `beforeEach` will trigger. Prefer these over `vi.spyOn(console, 'error')`:
+a spy hides *everything* the test logs, including the warnings this exists to
+catch. See `frontend/src/test/consoleGuard.ts` for the full contract and the
+rules for the (currently empty) suite-wide allowlist.
+
 ## Development Workflow
 
 ### Before Making Changes
