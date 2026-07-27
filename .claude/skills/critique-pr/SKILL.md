@@ -62,6 +62,40 @@ CATEGORY: <Bugs|Architecture|Tests|TypeSafety|ErrorHandling|Security|CodeQuality
 DETAIL: <specific evidence — quote the problematic code>
 ```
 
+### Step 4.0 — Scale the engine to the PR (triage first)
+
+Match effort to the change; do NOT run the full panel on everything.
+
+- **Trivial / test-only / a few lines** (a doc tweak, a one-line guard, a scoped test spy):
+  verify the change yourself by reading it plus a targeted check, or run 1–2 focused agents.
+  Skip Clean Architecture / MCP blast-radius when nothing in those domains is touched.
+- **Moderate** (a component or use-case change, a handful of files): run the code-review engine
+  plus the supplements that apply; drop the N/A ones.
+- **Large / high-blast-radius / contested** (multi-file, shared infra, dependency bumps, or a PR
+  that disputes the issue's premise): run the FULL panel — all engine agents + all three
+  supplements.
+
+Scaling down is a judgment call you make **and disclose in the report** ("scaled to N agents
+because …"). When unsure, err toward more coverage for review/audit-shaped PRs, less for obvious
+mechanical ones.
+
+### Step 4.1 — Verify empirically, don't just argue
+
+The highest-value findings this skill has produced came from an agent **running code** rather than
+reasoning about it — confirming a claimed a11y regression by running the test against the pre-fix
+component, measuring which database a fixture writes to, reproducing a matcher bug by executing the
+guard. Whenever a finding — or the PR's own claim — is checkable by running it, instruct the agent
+to check it and report the result:
+
+- Use the PR's worktree container `inxr2-<branch>-dev` (frontend at `/workspace/frontend`), or
+  `docker exec inxr2-dev` on `main` to test the **pre-change** state (main still holds it until merge).
+- Agents may write throwaway scratch tests / temporarily revert a file to measure — they MUST
+  restore the container clean afterward (`git status` empty).
+
+"Plausible by inspection" is not "confirmed." A finding an agent **reproduced by execution**
+outranks one it only argued, and two agents independently reaching the same finding is far stronger
+than one — weight confidence accordingly in Step 5.
+
 ### Step 4A — Run the code-review skill as the primary engine
 
 Invoke the `code-review` skill (`Skill` tool, name `code-review:code-review`, args = the PR
@@ -237,7 +271,8 @@ gh pr view $PR --json reviews --jq '.reviews[-1]'
 ---
 🔍 **Code Review posted on PR #<number>:** <url>
    <N> inline comments | event: COMMENT
-   Engine: code-review skill + 3 inxr2 supplements, <M> issues found, <K> survived confidence filter (≥75)
+   Engine: <how you scaled — e.g. "full panel" / "2 focused agents" / "direct verification">, <M> issues found, <K> survived confidence filter (≥75)
+   Verified by running: <what an agent executed to confirm, or "n/a">
    Top issues: <1-line summary>
 ```
 
