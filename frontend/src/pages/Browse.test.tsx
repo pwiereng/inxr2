@@ -139,6 +139,7 @@ vi.mock('@/components/CopyButton/CopyButton', () => ({
 import { useBrowseState } from '@/hooks/useBrowseState'
 import { getFileBlame } from '@/lib/api'
 import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
+import { consoleCallArgs, expectConsoleError } from '@/test/consoleGuard'
 type BrowseStateResult = ReturnType<typeof useBrowseState>
 const mockUseBrowseState = vi.mocked(useBrowseState)
 const mockGetFileBlame = vi.mocked(getFileBlame)
@@ -1132,7 +1133,11 @@ describe('Browse', () => {
 
     it('surfaces blame fetch errors without crashing', async () => {
       const user = userEvent.setup()
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      // Declared for the suite-wide console guard; see consoleGuard.ts.
+      expectConsoleError(
+        'Failed to load blame:',
+        'the page logs the blame fetch failure it survives'
+      )
       mockGetFileBlame.mockRejectedValue(new Error('blame boom'))
       renderBrowse(
         makeState({
@@ -1141,7 +1146,12 @@ describe('Browse', () => {
         })
       )
       await user.click(iconButton('HistoryToggleOffIcon'))
-      await waitFor(() => expect(consoleError).toHaveBeenCalled())
+      await waitFor(() =>
+        expect(consoleCallArgs('error')).toContainEqual([
+          'Failed to load blame:',
+          expect.any(Error),
+        ])
+      )
       // The viewer is still mounted after the failed fetch.
       expect(screen.getByTestId('stub-code-viewer')).toBeInTheDocument()
     })

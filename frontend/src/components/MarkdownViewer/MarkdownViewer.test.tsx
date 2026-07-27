@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act, waitFor } from '@testing-library/react'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
+import { consoleCallArgs, expectConsoleError } from '@/test/consoleGuard'
 import { MarkdownViewer, MermaidDiagram } from './MarkdownViewer'
 
 // react-markdown v10 is ESM-only and doesn't render in jsdom.
@@ -367,16 +368,24 @@ describe('MermaidDiagram', () => {
     const { default: mermaidMock } = await import('mermaid')
     const renderError = new Error('parse error')
     vi.mocked(mermaidMock.render).mockRejectedValue(renderError)
-    // The component is expected to log here — capture the call instead of letting
-    // this deliberate failure print to the suite's stderr. Restored in afterEach.
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // Declaring the log up front is what stops the suite-wide console guard from
+    // failing this test, and it asserts the log still happens — if the component
+    // ever stops reporting the failure, this test goes red. See consoleGuard.ts.
+    expectConsoleError(
+      'MermaidDiagram render failed:',
+      'the fallback path reports the render failure it recovers from — #532'
+    )
 
     renderWithTheme(<MermaidDiagram code="invalid mermaid" isDark={false} />)
     // Fallback: the code should appear in a <pre><code> block
     expect(screen.getByText('invalid mermaid')).toBeInTheDocument()
-    // The failure is still reported to the console for diagnostics.
+    // The failure is still reported to the console for diagnostics, with the
+    // original error attached.
     await waitFor(() => {
-      expect(errorSpy).toHaveBeenCalledWith('MermaidDiagram render failed:', renderError)
+      expect(consoleCallArgs('error')).toContainEqual([
+        'MermaidDiagram render failed:',
+        renderError,
+      ])
     })
   })
 

@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen } from '@/test/utils'
+import { consoleCalls } from '@/test/consoleGuard'
 import { RepositorySelect } from './RepositorySelect'
 import type { Repository } from '@/lib/api'
 
@@ -25,23 +26,18 @@ const mockRepositories: Repository[] = [
   },
 ]
 
-function invalidValueCalls(): unknown[][] {
-  const allCalls = [...vi.mocked(console.warn).mock.calls, ...vi.mocked(console.error).mock.calls]
-  return allCalls.filter((args) =>
-    args.some(
-      (arg) => typeof arg === 'string' && arg.includes('provided to Autocomplete is invalid')
-    )
-  )
+// The suite-wide console guard already fails any test that logs (see
+// consoleGuard.ts), so these read the recorded calls rather than spying. Naming
+// MUI's specific wording keeps the #530 regression explicit: if the warning
+// comes back, this fails pointing straight at the cause.
+function invalidValueCalls(): string[] {
+  return consoleCalls()
+    .map((call) => call.text)
+    .filter((text) => text.includes('provided to Autocomplete is invalid'))
 }
 
 describe('RepositorySelect', () => {
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
   it('should not warn about an invalid Autocomplete value when the repo is unknown', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     const user = userEvent.setup()
 
     render(
@@ -70,8 +66,6 @@ describe('RepositorySelect', () => {
   })
 
   it('should not warn about an invalid Autocomplete value on the search tab', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    vi.spyOn(console, 'error').mockImplementation(() => {})
     const user = userEvent.setup()
 
     render(

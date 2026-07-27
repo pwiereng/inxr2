@@ -9,9 +9,14 @@ import '@testing-library/jest-dom'
 import { expect, afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import * as matchers from '@testing-library/jest-dom/matchers'
+import { assertConsoleClean, installConsoleGuard } from './consoleGuard'
 
 // Extend Vitest's expect with jest-dom matchers
 expect.extend(matchers)
+
+// Collect console.error/console.warn instead of printing them, so an undeclared
+// one can fail its own test below. See consoleGuard.ts for the opt-out. (#533)
+installConsoleGuard()
 
 afterEach(() => {
   cleanup()
@@ -22,4 +27,8 @@ afterEach(() => {
   // Prevent theme state from leaking between tests
   localStorage.removeItem('themeMode')
   document.body.classList.remove('prism-dark', 'prism-light')
+  // Last: cleanup() above can make React log during unmount, and those messages
+  // belong to the test that just finished. Throws if anything was logged that
+  // the test did not declare.
+  assertConsoleClean()
 })

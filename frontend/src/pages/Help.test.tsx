@@ -5,6 +5,10 @@ import { MemoryRouter, useLocation } from 'react-router-dom'
 import Help from './Help'
 import type { TabValue } from '@/components/CodeHeader'
 import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
+import { expectConsoleError } from '@/test/consoleGuard'
+
+// The message Help logs when the HELP.md fetch fails.
+const HELP_LOAD_LOG = 'Error loading help content:'
 
 // Neutralize CodeHeader (pulls repo/branch data from @/lib/api) so these tests
 // stay focused on Help itself. The stub exposes buttons that invoke each
@@ -83,7 +87,8 @@ describe('Help', () => {
   })
 
   it('renders fallback content when the fetch responds with !ok', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // Declared for the suite-wide console guard; see consoleGuard.ts.
+    expectConsoleError(HELP_LOAD_LOG, 'the page logs the fetch failure behind its fallback copy')
     mockFetch.mockResolvedValue({
       ok: false,
       status: 404,
@@ -98,7 +103,7 @@ describe('Help', () => {
   })
 
   it('renders fallback content when the fetch rejects', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expectConsoleError(HELP_LOAD_LOG, 'the page logs the fetch failure behind its fallback copy')
     mockFetch.mockRejectedValue(new Error('network down'))
     renderHelp()
 
