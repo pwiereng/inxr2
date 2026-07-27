@@ -18,6 +18,12 @@
  * the end of `setup.ts`'s `afterEach`, so a failure is attributed to the test
  * that finished, with the full console text quoted.
  *
+ * One caveat: there is no `beforeEach` reset, so anything logged before the
+ * first test body runs — at module scope or in `beforeAll` — is flushed by the
+ * first test's `afterEach` and named as that test's output. That is deliberate:
+ * resetting per test would drop those messages silently, and a slightly
+ * misattributed failure beats no failure at all.
+ *
  * Writing a test that logs on purpose
  * -----------------------------------
  * Declare it *before* the code that logs. The declaration both permits the
@@ -52,14 +58,22 @@ export interface ConsoleCall {
   text: string
 }
 
-/** A message a test declared it expects (`expectConsole*` / `allowConsole*`). */
+/**
+ * A message a test declared it expects (`expectConsole*` / `allowConsole*`).
+ *
+ * Declarations are matched as sets, not paired off one-to-one with calls: a
+ * call is permitted if *any* declaration matches it, and a required declaration
+ * is satisfied if *any* call matches it. Substring matchers overlap easily
+ * (`'foo'` also matches `'foobar'`), and pairing made the outcome depend on
+ * registration order — a broad declaration would absorb the call a more
+ * specific one was declared for, which then failed as "never happened".
+ */
 interface Declaration {
   level: ConsoleLevel
   matcher: string | RegExp
   reason: string
   /** `true` for `expectConsole*`: the message must actually be logged. */
   required: boolean
-  matched: boolean
 }
 
 /** A message tolerated suite-wide, for third-party logs we cannot fix. */
@@ -154,12 +168,13 @@ function declare(
   reason: string,
   required: boolean
 ): void {
-  declarations.push({ level, matcher, reason, required, matched: false })
+  declarations.push({ level, matcher, reason, required })
 }
 
 /**
- * Declare that this test expects a `console.error` matching `matcher`. The
- * message is permitted, and the test fails if it never arrives.
+ * Declare that this test expects a `console.error` matching `matcher`. Every
+ * matching message is permitted, however many arrive, and the test fails if
+ * none does. Declare once per distinct message, not once per expected call.
  *
  * @param matcher Substring of, or pattern for, the expected message.
  * @param reason Why logging here is correct — shown when the log goes missing.
@@ -224,27 +239,31 @@ export function installConsoleGuard(): void {
  * either way, so one failing test does not contaminate the next.
  *
  * Called at the end of `setup.ts`'s `afterEach` — after RTL `cleanup()`, so
- * warnings logged during unmount are attributed to the right test.
+ * warnings logged during unmount are attributed to the right test. The
+ * exception is output from module scope or `beforeAll`, which lands on the
+ * first test of the file (see the caveat in this file's header).
  */
 export function assertConsoleClean(): void {
   const testName = expect.getState().currentTestName ?? 'unknown test'
-  const unexpected: ConsoleCall[] = []
+  // Set matching in both directions, so neither result depends on the order
+  // declarations were registered in (see the Declaration doc above).
+  const unexpected = captured.filter(
+    (call) =>
+      !declarations.some(
+        (declaration) => declaration.level === call.level && matches(declaration.matcher, call.text)
+      ) &&
+      !GLOBAL_ALLOWLIST.some(
+        (entry) => entry.level === call.level && matches(entry.matcher, call.text)
+      )
+  )
 
-  for (const call of captured) {
-    const declaration = declarations.find(
-      (candidate) => candidate.level === call.level && matches(candidate.matcher, call.text)
-    )
-    if (declaration) {
-      declaration.matched = true
-      continue
-    }
-    const allowed = GLOBAL_ALLOWLIST.some(
-      (entry) => entry.level === call.level && matches(entry.matcher, call.text)
-    )
-    if (!allowed) unexpected.push(call)
-  }
-
-  const missing = declarations.filter((declaration) => declaration.required && !declaration.matched)
+  const missing = declarations.filter(
+    (declaration) =>
+      declaration.required &&
+      !captured.some(
+        (call) => call.level === declaration.level && matches(declaration.matcher, call.text)
+      )
+  )
 
   resetConsoleGuard()
 

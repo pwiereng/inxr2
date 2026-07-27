@@ -108,6 +108,38 @@ describe('console guard', () => {
     expect(message).not.toContain('declared boom')
   })
 
+  // Regression cover for the review finding on #536: matching used to be
+  // "first registered wins", so a broad declaration could absorb the call a
+  // later, more specific one was declared for — and the specific one was then
+  // reported as never having happened, purely because of registration order.
+  it('satisfies a specific declaration that a broader one would have absorbed', () => {
+    expectConsoleError('foo', 'broad declaration, registered first')
+    expectConsoleError('foobar extra text', 'specific declaration, registered second')
+    console.error('foobar extra text')
+    console.error('foo on its own')
+
+    expect(() => assertConsoleClean()).not.toThrow()
+  })
+
+  it('satisfies duplicate declarations from the same message', () => {
+    // Declarations are satisfied as a set, not paired off against calls, so a
+    // duplicate declaration is redundant rather than an unmet expectation.
+    expectConsoleError('dup', 'first of two identical declarations')
+    expectConsoleError('dup', 'second of two identical declarations')
+    console.error('dup')
+
+    expect(() => assertConsoleClean()).not.toThrow()
+  })
+
+  it('permits repeats of a message once its declaration is satisfied', () => {
+    expectConsoleError('chatty', 'one declaration covers every repeat')
+    console.error('chatty')
+    console.error('chatty')
+    console.error('chatty')
+
+    expect(() => assertConsoleClean()).not.toThrow()
+  })
+
   it("substitutes React's %o/%s format specifiers into the message text", () => {
     // React reports a caught error as console.error('%o\n\n%s\n\n%s', …), so the
     // guard has to format it or declarations would have to match punctuation.
