@@ -1,6 +1,23 @@
 # Development Dockerfile for INXR2
 # This image includes Python, Node.js, PostgreSQL server, and all development tools
 
+# Node.js toolchain source, pinned by digest.
+#
+# Node is copied out of the official image rather than installed from the
+# NodeSource apt repo: that repo is a third-party host with no pinning story,
+# and when it started returning 403 for its GPG key and package indices the
+# dev image could not be built at all (issue #538). The official image is on
+# Docker Hub, which this build already depends on for the Python base, so this
+# adds no new trust domain — and the digest makes the Node/npm versions
+# reproducible instead of "whatever node_20.x resolves to today".
+#
+# Must stay on the same Debian release as the base image below (trixie), since
+# the copied `node` binary links against the base image's glibc/libstdc++.
+#
+# To update: pick a tag, resolve its multi-arch index digest, and paste it here:
+#   docker buildx imagetools inspect node:20-trixie-slim | head -3
+FROM node:20-trixie-slim@sha256:abfbe12cc943141a0c9e8c0a57d710df1dadd95d35e8662cc02958b284d1f35b AS node
+
 FROM python:3.11-slim
 
 # Prevent Python from writing pyc files and buffering stdout/stderr
@@ -22,23 +39,40 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     # Process utilities (pkill, pgrep, ps, top)
     procps \
-    # Node.js (install from NodeSource via signed apt repo)
+    # HTTP client (used ad hoc for API pokes and downloads during development)
     curl \
-    gnupg \
-    && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
-       > /etc/apt/sources.list.d/nodesource.list \
-    && apt-get update \
-    && apt-get install -y nodejs \
-    # Tree-sitter build dependencies
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Verify installations
+# Node.js + npm, copied from the digest-pinned official image above.
+#
+# Only the Node-owned paths are copied, NOT all of /usr/local — the Python base
+# image keeps its interpreter and stdlib under /usr/local, so copying the whole
+# tree would clobber Python. node_modules carries npm and corepack; the bin
+# symlinks into it are recreated here because `npm`/`npx`/`corepack` in the
+# source image are relative symlinks that COPY does not resolve. corepack is
+# kept because the NodeSource package this replaces also shipped it.
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+    ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
+    ln -s ../lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack
+
+# Verify installations. The node check encodes frontend/package.json "engines"
+# (^20.19.0 || >=22.0.0) so that a bad digest bump — a 21.x tag, or a 20.x
+# older than 20.19 — fails the build here, on the manual update path documented
+# above. A bare major-version floor would let both of those through.
+#
+# The range is duplicated rather than read from frontend/package.json: that
+# file is bind-mounted at runtime, not present at build time, and COPYing it in
+# here would make every frontend dependency bump invalidate the expensive pip
+# layer below. Keep this in sync when "engines" changes.
+#
+# This is the only enforcement point. There is no .npmrc in the repo, so
+# engine-strict defaults to false and `npm ci` merely warns on a mismatch.
 RUN python --version && \
     node --version && \
+    node -e 'const [maj, min] = process.versions.node.split(".").map(Number); if (!((maj === 20 && min >= 19) || maj >= 22)) { throw new Error("node " + process.version + " does not satisfy frontend/package.json engines ^20.19.0 || >=22.0.0"); }' && \
     npm --version && \
     git --version
 
