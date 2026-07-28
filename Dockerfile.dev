@@ -58,12 +58,21 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
     ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
     ln -s ../lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack
 
-# Verify installations. The node check also asserts the major version still
-# satisfies frontend/package.json "engines", so a bad digest bump fails the
-# build here rather than at `npm ci` time.
+# Verify installations. The node check encodes frontend/package.json "engines"
+# (^20.19.0 || >=22.0.0) so that a bad digest bump — a 21.x tag, or a 20.x
+# older than 20.19 — fails the build here, on the manual update path documented
+# above. A bare major-version floor would let both of those through.
+#
+# The range is duplicated rather than read from frontend/package.json: that
+# file is bind-mounted at runtime, not present at build time, and COPYing it in
+# here would make every frontend dependency bump invalidate the expensive pip
+# layer below. Keep this in sync when "engines" changes.
+#
+# This is the only enforcement point. There is no .npmrc in the repo, so
+# engine-strict defaults to false and `npm ci` merely warns on a mismatch.
 RUN python --version && \
     node --version && \
-    node -e 'if (+process.versions.node.split(".")[0] < 20) { throw new Error("node >= 20 required"); }' && \
+    node -e 'const [maj, min] = process.versions.node.split(".").map(Number); if (!((maj === 20 && min >= 19) || maj >= 22)) { throw new Error("node " + process.version + " does not satisfy frontend/package.json engines ^20.19.0 || >=22.0.0"); }' && \
     npm --version && \
     git --version
 
