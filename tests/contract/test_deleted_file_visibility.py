@@ -584,3 +584,54 @@ class TestHeadIsLastIndexedCommit:
         head = await repos.commit.find_latest_by_branch(data["repo_id"], "main")
 
         assert head is not None and head.id == data["commit_b"]
+
+
+class TestDistinctExtensionsAtHead:
+    """The search extension filter lists only extensions present at the head."""
+
+    async def _setup(self, repos: Repos, same_second: bool) -> int:
+        """B is the head and deletes gone.rs, which only A contains.
+
+        With ``same_second`` both commits share a timestamp and B is saved
+        first (newest-first indexing), so only index_status identifies B.
+        """
+        repo_id = await create_test_repo(repos)
+        commit_b = await create_test_commit(
+            repos, repo_id, "b" * 40, date_offset_days=1, branch="main"
+        )
+        commit_a = await create_test_commit(
+            repos,
+            repo_id,
+            "a" * 40,
+            date_offset_days=1 if same_second else 0,
+            branch="main",
+        )
+        keep = await create_test_file(
+            repos, repo_id, commit_a, "src/keep.py", "k" * 40, extension=".py"
+        )
+        await repos.file.link_file_to_commit(keep, commit_b)
+        await create_test_file(
+            repos, repo_id, commit_a, "src/gone.rs", "g" * 40, extension=".rs"
+        )
+        await repos.index_status.save(
+            IndexStatus(
+                repository_id=repo_id,
+                branch="main",
+                indexing_status="completed",
+                last_indexed_commit="b" * 40,
+            )
+        )
+        return repo_id
+
+    @pytest.mark.parametrize("branch", ["main", None])
+    @pytest.mark.parametrize("same_second", [False, True])
+    async def test_deleted_file_extension_not_listed(
+        self, repos: Repos, branch: str | None, same_second: bool
+    ) -> None:
+        repo_id = await self._setup(repos, same_second)
+
+        exts = await repos.file_search.get_distinct_extensions(
+            repository_id=repo_id, branch=branch
+        )
+
+        assert exts == [".py"]

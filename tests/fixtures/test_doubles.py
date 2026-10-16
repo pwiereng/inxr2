@@ -1028,10 +1028,11 @@ class InMemoryFileSearchRepository(FileSearchPort):
                 f for f in self._file_repo._files.values() if f.id in head_file_ids
             ]
         elif repository_id is not None:
+            latest_ids = self._file_repo._compute_latest_file_ids(repository_id, branch)
             candidate_files = [
                 f
                 for f in self._file_repo._files.values()
-                if f.repository_id == repository_id
+                if f.repository_id == repository_id and f.id in latest_ids
             ]
         else:
             candidate_files = list(self._file_repo._files.values())

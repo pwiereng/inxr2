@@ -6,8 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....application.ports.repositories import FileSearchPort
 from ....domain.entities import File
 from ..mappers import FileMapper
-from ..models.branch_commit import BranchCommitModel
-from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from .query_utils import NONE_SENTINEL, split_extension_filter
@@ -128,32 +126,12 @@ class PostgresFileSearchRepository(FileSearchPort):
         query_stmt = select(FileModel.extension)
 
         if repository_id is not None:
-            query_stmt = query_stmt.where(FileModel.repository_id == repository_id)
-
-            if branch is not None:
-                # Filter to files at the latest commit on this branch
-                latest_commit = (
-                    select(CommitModel.id)
-                    .join(
-                        BranchCommitModel,
-                        BranchCommitModel.commit_id == CommitModel.id,
-                    )
-                    .where(
-                        CommitModel.repository_id == repository_id,
-                        BranchCommitModel.branch == branch,
-                        BranchCommitModel.repository_id == repository_id,
-                    )
-                    .order_by(CommitModel.commit_date.desc(), CommitModel.id.desc())
-                    .limit(1)
-                    .scalar_subquery()
-                )
-                query_stmt = query_stmt.where(
-                    FileModel.id.in_(
-                        select(CommitFileModel.file_id).where(
-                            CommitFileModel.commit_id == latest_commit
-                        )
-                    )
-                )
+            # Files at the branch head (default branch when none is given)
+            latest = latest_file_ids_subquery(repository_id, branch)
+            query_stmt = query_stmt.where(
+                FileModel.repository_id == repository_id,
+                FileModel.id.in_(select(latest.c.max_id)),
+            )
         elif scope == "latest":
             head_fids = head_file_ids_subquery()
             query_stmt = query_stmt.where(FileModel.id.in_(select(head_fids.c.file_id)))

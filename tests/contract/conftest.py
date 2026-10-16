@@ -204,6 +204,7 @@ async def create_test_file(
     commit_id: int,
     path: str,
     content_hash: str,
+    extension: str | None = None,
 ) -> int:
     """Create (or reuse) a test file version, link it to the commit, and return its ID.
 
@@ -216,6 +217,7 @@ async def create_test_file(
         content_hash=content_hash,
         size_bytes=100,
         language="python",
+        extension=extension,
     )
     assert file.id is not None
     await repos.file.link_file_to_commit(file.id, commit_id)
