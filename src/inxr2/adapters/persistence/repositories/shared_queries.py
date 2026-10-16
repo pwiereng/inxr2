@@ -57,6 +57,20 @@ LATEST_FILE_IDS_SQL = """
 """
 
 
+# ---------------------------------------------------------------------------
+# Files of one exact commit, by hash (reference resolution's target pool when
+# the indexer passes the commit it just indexed).
+# Bind parameters: :repo_id, :head_commit
+# ---------------------------------------------------------------------------
+COMMIT_FILE_IDS_SQL = """
+    SELECT cf.file_id
+    FROM commit_files cf
+    JOIN commits c ON c.id = cf.commit_id
+    WHERE c.repository_id = :repo_id
+      AND c.commit_hash = :head_commit
+"""
+
+
 def branch_head_commits_subquery(
     repository_id: int | None = None,
     branch: str | None = None,

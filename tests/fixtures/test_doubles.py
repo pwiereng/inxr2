@@ -1700,8 +1700,8 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         self._symbol_repo = symbol_repo
         self._file_repo = file_repo
         self._commit_repo = commit_repo
-        # repository_id -> branch recorded by prepare_resolution
-        self._resolution_branch: dict[int, str | None] = {}
+        # repository_id -> (branch, head_commit) recorded by prepare_resolution
+        self._resolution_scope: dict[int, tuple[str | None, str | None]] = {}
 
     async def save(self, reference: Reference) -> Reference:
         """Save reference to in-memory storage."""
@@ -1930,13 +1930,37 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         repository_id: int,
         progress_callback: Callable[[str], None] | None = None,
         branch: str | None = None,
+        head_commit: str | None = None,
     ) -> None:
-        """Record the branch whose head files are resolution targets.
+        """Record the scope whose files are resolution targets.
 
         Mirrors the Postgres adapter, which builds its lookup tables for
-        (repository_id, branch); later resolve_references_batch calls reuse it.
+        (repository_id, branch, head_commit); later resolve_references_batch
+        calls reuse it.
         """
-        self._resolution_branch[repository_id] = branch
+        self._resolution_scope[repository_id] = (branch, head_commit)
+
+    def _target_file_ids(
+        self, repository_id: int, branch: str | None, head_commit: str | None
+    ) -> set[int] | None:
+        """File IDs whose symbols are resolution targets (None = no filter).
+
+        The files of ``head_commit`` when given, else the head of ``branch``
+        (the default branch when None).
+        """
+        if self._file_repo is None:
+            return None
+        if head_commit is not None and self._commit_repo is not None:
+            commit_ids = {
+                cid
+                for cid, c in self._commit_repo._commits.items()
+                if c.repository_id == repository_id
+                and c.commit_hash.value == head_commit
+            }
+            return {
+                fid for cid, fid in self._file_repo._commit_files if cid in commit_ids
+            }
+        return self._file_repo._compute_latest_file_ids(repository_id, branch=branch)
 
     async def resolve_references_batch(
         self,
@@ -1946,17 +1970,15 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         """Resolve a batch of unlinked references.
 
         Processes up to ``batch_size`` unresolved references for the
-        repository. Candidate symbols come from files at the head of the
-        branch recorded by prepare_resolution (the default branch if none).
+        repository. Candidate symbols come from the scope recorded by
+        prepare_resolution (its head_commit, else its branch's head; the
+        default branch head if nothing was prepared).
         """
         if self._symbol_repo is None:
             return 0
 
-        symbols_file_ids: set[int] | None = None
-        if self._file_repo is not None:
-            symbols_file_ids = self._file_repo._compute_latest_file_ids(
-                repository_id, branch=self._resolution_branch.get(repository_id)
-            )
+        branch, head_commit = self._resolution_scope.get(repository_id, (None, None))
+        symbols_file_ids = self._target_file_ids(repository_id, branch, head_commit)
 
         resolved_count = 0
         updated_refs: dict[int, Reference] = {}
@@ -2051,21 +2073,21 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         return candidates[0]
 
     async def resolve_unlinked_references(
-        self, repository_id: int, branch: str | None = None
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        head_commit: str | None = None,
     ) -> int:
         """Resolve references to their target symbols.
 
-        Candidate symbols come from files at the head of ``branch`` (the
-        default branch when None), matching the Postgres adapter.
+        Candidate symbols come from the files of ``head_commit``, or at the
+        head of ``branch`` (the default branch when None), matching the
+        Postgres adapter.
         """
         if self._symbol_repo is None:
             return 0
 
-        symbols_file_ids: set[int] | None = None
-        if self._file_repo is not None:
-            symbols_file_ids = self._file_repo._compute_latest_file_ids(
-                repository_id, branch=branch
-            )
+        symbols_file_ids = self._target_file_ids(repository_id, branch, head_commit)
 
         resolved_count = 0
         updated_refs: dict[int, Reference] = {}

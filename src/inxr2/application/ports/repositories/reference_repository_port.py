@@ -137,7 +137,10 @@ class ReferenceRepositoryPort(ABC):
 
     @abstractmethod
     async def resolve_unlinked_references(
-        self, repository_id: int, branch: str | None = None
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        head_commit: str | None = None,
     ) -> int:
         """Resolve references to their target symbols.
 
@@ -152,6 +155,10 @@ class ReferenceRepositoryPort(ABC):
             branch: Branch whose head files provide the resolution targets
                 (the repository's default branch when None). Symbols in files
                 deleted before that head are never targets.
+            head_commit: Hash of the commit whose files provide the targets.
+                Takes precedence over looking up ``branch``'s head. The
+                indexer passes the commit it just indexed, because the head
+                recorded in index_status is still the previous run's.
 
         Returns:
             Number of references resolved
@@ -164,6 +171,7 @@ class ReferenceRepositoryPort(ABC):
         repository_id: int,
         progress_callback: Callable[[str], None] | None = None,
         branch: str | None = None,
+        head_commit: str | None = None,
     ) -> None:
         """Pre-compute lookup tables for reference resolution.
 
@@ -177,6 +185,9 @@ class ReferenceRepositoryPort(ABC):
                 (e.g. "Building same-file index...")
             branch: Branch whose head files provide the resolution targets
                 (the repository's default branch when None).
+            head_commit: Hash of the commit whose files provide the targets;
+                takes precedence over ``branch`` (see
+                resolve_unlinked_references).
         """
         pass
 
@@ -189,7 +200,9 @@ class ReferenceRepositoryPort(ABC):
         """Resolve a batch of unlinked references.
 
         Processes up to batch_size references at a time. Call repeatedly
-        until it returns 0 to resolve all references.
+        until it returns 0 to resolve all references. Uses the target pool
+        from the last prepare_resolution call for this repository (its
+        branch / head_commit); without one, the default branch head.
 
         Args:
             repository_id: The repository ID to resolve references for

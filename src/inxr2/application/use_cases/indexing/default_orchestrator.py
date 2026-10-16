@@ -283,15 +283,23 @@ class DefaultIndexingOrchestrator(IndexingOrchestratorPort):
                 )
             db_stats.updates += 1
 
+        # The branch HEAD this run indexed. Resolution targets its files
+        # explicitly: index_status still names the previous run's HEAD until
+        # Step 7, so a head lookup here would see the old snapshot.
+        last_indexed_commit = commits_data[0].hash if commits_data else current_head
+
         resolve_start = time.monotonic()
         resolve_response = await self._resolve_refs_use_case.execute_with_progress(
-            ResolveReferencesRequest(repository_id=repo_id, branch=branch),
+            ResolveReferencesRequest(
+                repository_id=repo_id,
+                branch=branch,
+                head_commit=last_indexed_commit,
+            ),
             progress_callback=on_resolution_progress,
         )
         resolving_seconds = time.monotonic() - resolve_start
 
         # Step 7: Update index status
-        last_indexed_commit = commits_data[0].hash if commits_data else current_head
         # Preserve the globally oldest indexed commit on forward-fill runs
         # (request.days is None); only recompute from this run's commits
         # on fresh/auto-reset/backfill runs.

@@ -408,6 +408,105 @@ class TestResolutionFollowsIndexedBranch:
         assert ref is not None and ref.target_symbol_id is None
 
 
+class TestResolutionTargetsAnExactCommit:
+    """Resolution's target pool when index_status is stale or ties exist.
+
+    During an indexing run, resolution happens before index_status records
+    the new HEAD, so the indexer passes the commit it just indexed as
+    ``head_commit`` (PR #551 review).
+    """
+
+    async def _setup(self, repos: Repos) -> dict[str, int]:
+        """A (old head, has old_helper) then B (new head, has new_helper).
+
+        index_status still names A, as it does mid-run. app.py at B
+        references both helpers.
+        """
+        repo_id = await create_test_repo(repos)
+        commit_a = await create_test_commit(
+            repos, repo_id, "a" * 40, date_offset_days=0, branch="main"
+        )
+        commit_b = await create_test_commit(
+            repos, repo_id, "b" * 40, date_offset_days=1, branch="main"
+        )
+        lib_old = await create_test_file(
+            repos, repo_id, commit_a, "lib_old.py", "1" * 40
+        )
+        lib_new = await create_test_file(
+            repos, repo_id, commit_b, "lib_new.py", "2" * 40
+        )
+        app_b = await create_test_file(repos, repo_id, commit_b, "app.py", "3" * 40)
+        old_sym = await create_test_symbol(
+            repos, lib_old, repo_id, commit_a, "old_helper", "lib_old.old_helper"
+        )
+        new_sym = await create_test_symbol(
+            repos, lib_new, repo_id, commit_b, "new_helper", "lib_new.new_helper"
+        )
+        ref_new = await create_test_reference(
+            repos, repo_id, commit_b, app_b, "new_helper"
+        )
+        ref_old = await create_test_reference(
+            repos, repo_id, commit_b, app_b, "old_helper"
+        )
+        await repos.index_status.save(
+            IndexStatus(
+                repository_id=repo_id,
+                branch="main",
+                indexing_status="in_progress",
+                last_indexed_commit="a" * 40,  # previous run's HEAD
+            )
+        )
+        return {
+            "repo_id": repo_id,
+            "old_sym": old_sym,
+            "new_sym": new_sym,
+            "ref_new": ref_new,
+            "ref_old": ref_old,
+        }
+
+    async def _targets(self, repos: Repos, data: dict[str, int]) -> tuple:
+        new = await repos.reference.find_by_id(data["ref_new"])
+        old = await repos.reference.find_by_id(data["ref_old"])
+        assert new is not None and old is not None
+        return new.target_symbol_id, old.target_symbol_id
+
+    async def test_batch_resolution_uses_explicit_head_commit(
+        self, repos: Repos
+    ) -> None:
+        data = await self._setup(repos)
+
+        await repos.reference.prepare_resolution(
+            data["repo_id"], branch="main", head_commit="b" * 40
+        )
+        await repos.reference.resolve_references_batch(data["repo_id"])
+
+        assert await self._targets(repos, data) == (data["new_sym"], None)
+
+    async def test_unlinked_resolution_uses_explicit_head_commit(
+        self, repos: Repos
+    ) -> None:
+        data = await self._setup(repos)
+
+        await repos.reference.resolve_unlinked_references(
+            data["repo_id"], branch="main", head_commit="b" * 40
+        )
+
+        assert await self._targets(repos, data) == (data["new_sym"], None)
+
+    async def test_without_head_commit_uses_indexed_head(self, repos: Repos) -> None:
+        """Covers the indexed-head ordering in LATEST_FILE_IDS_SQL.
+
+        With no explicit commit, the pool is the branch's indexed head (A
+        here, although B is newer by date).
+        """
+        data = await self._setup(repos)
+
+        await repos.reference.prepare_resolution(data["repo_id"], branch="main")
+        await repos.reference.resolve_references_batch(data["repo_id"])
+
+        assert await self._targets(repos, data) == (None, data["old_sym"])
+
+
 class TestHeadIsLastIndexedCommit:
     """Issue #549: the head is index_status.last_indexed_commit, not a date tie-break.
 

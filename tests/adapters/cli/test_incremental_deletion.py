@@ -24,6 +24,7 @@ from inxr2.adapters.persistence.repositories import (
     PostgresCommitRepository,
     PostgresFileRepository,
     PostgresFileVersionRepository,
+    PostgresReferenceRepository,
     PostgresRepositoryAdapter,
     PostgresSymbolRepository,
     PostgresTextSearchRepository,
@@ -263,3 +264,128 @@ class TestIncrementalIndexingDropsDeletedFiles:
         assert out["b_has_lower_id"]  # the ordering that defeats an id tie-break
         assert out["head"] == hash_b
         assert out["gone"] == []
+
+
+async def _app_reference_targets(
+    session: AsyncSession, head_hash: str, source_path: str
+) -> dict[str, str | None]:
+    """Map reference text -> target symbol's file path, for one file at a commit."""
+    repo_entity = await PostgresRepositoryAdapter(session).find_by_name(REPO_NAME)
+    assert repo_entity is not None and repo_entity.id is not None
+    commit = await PostgresCommitRepository(session).find_by_hash(
+        repo_entity.id, head_hash
+    )
+    assert commit is not None and commit.id is not None
+    file_repo = PostgresFileRepository(session)
+    source = await file_repo.find_by_path(repo_entity.id, commit.id, source_path)
+    assert source is not None and source.id is not None
+    symbol_repo = PostgresSymbolRepository(session)
+    targets: dict[str, str | None] = {}
+    for ref in await PostgresReferenceRepository(session).list_by_file(source.id):
+        target_path: str | None = None
+        if ref.target_symbol_id is not None:
+            symbol = await symbol_repo.find_by_id(ref.target_symbol_id)
+            assert symbol is not None
+            target_file = await file_repo.find_by_id(symbol.file_id)
+            target_path = target_file.path if target_file else None
+        targets[ref.reference_text] = target_path
+    return targets
+
+
+class TestIncrementalResolutionTargetsNewHead:
+    """References resolve against the commit just indexed, not the previous head.
+
+    Resolution runs before index_status records the new HEAD, so a head
+    lookup by index_status during the run would still see the previous
+    run's HEAD (PR #551 review).
+    """
+
+    def test_new_symbols_are_targets_and_deleted_ones_are_not(
+        self,
+        isolated_cli_runner: CliRunner,
+        cli_test_db: str,
+        tmp_path: Path,
+    ) -> None:
+        from inxr2.cli import main
+
+        repo_path = tmp_path / REPO_NAME
+        repo_path.mkdir()
+        repo = Repo.init(repo_path, initial_branch="main")
+        repo.config_writer().set_value("user", "name", "Test User").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+        # Commit A: lib_old.py and app.py calling old_helper
+        (repo_path / "lib_old.py").write_text("def old_helper():\n    return 1\n")
+        (repo_path / "app.py").write_text(
+            "from lib_old import old_helper\n\n\ndef main():\n    return old_helper()\n"
+        )
+        repo.index.add(["lib_old.py", "app.py"])
+        _commit(repo, "A", "2024-01-01T10:00:00")
+        result = isolated_cli_runner.invoke(
+            main, ["index", "--path", str(repo_path), "--branch", "main"]
+        )
+        assert result.exit_code == 0, result.output
+
+        # Commit B: add lib_new.py, call new_helper (and still old_helper),
+        # delete lib_old.py; index incrementally
+        (repo_path / "lib_new.py").write_text("def new_helper():\n    return 2\n")
+        (repo_path / "app.py").write_text(
+            "from lib_new import new_helper\n\n\n"
+            "def main():\n    return new_helper() + old_helper()\n"
+        )
+        repo.index.add(["lib_new.py", "app.py"])
+        repo.index.remove(["lib_old.py"], working_tree=True)
+        hash_b = _commit(repo, "B", "2024-01-02T10:00:00")
+        result = isolated_cli_runner.invoke(
+            main, ["index", "--path", str(repo_path), "--branch", "main"]
+        )
+        assert result.exit_code == 0, result.output
+
+        targets = _run(
+            cli_test_db, lambda s: _app_reference_targets(s, hash_b, "app.py")
+        )
+
+        # Added in this run: resolved to the new file
+        assert targets.get("new_helper") == "lib_new.py"
+        # Deleted in this run: not a target any more
+        assert targets.get("old_helper") is None
+
+    def test_first_run_with_same_second_commits_resolves_at_head(
+        self,
+        isolated_cli_runner: CliRunner,
+        cli_test_db: str,
+        tmp_path: Path,
+    ) -> None:
+        """No index_status exists yet on a first run; the date tie-break
+        would pick the older of two same-second commits (#549)."""
+        from inxr2.cli import main
+
+        repo_path = tmp_path / REPO_NAME
+        repo_path.mkdir()
+        repo = Repo.init(repo_path, initial_branch="main")
+        repo.config_writer().set_value("user", "name", "Test User").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+        now = (datetime.now(UTC) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+
+        (repo_path / "app.py").write_text("def main():\n    return 0\n")
+        repo.index.add(["app.py"])
+        _commit(repo, "A", now)
+        # B (same second): add fresh.py and call fresh_func from app.py
+        (repo_path / "fresh.py").write_text("def fresh_func():\n    return 3\n")
+        (repo_path / "app.py").write_text(
+            "from fresh import fresh_func\n\n\ndef main():\n    return fresh_func()\n"
+        )
+        repo.index.add(["fresh.py", "app.py"])
+        hash_b = _commit(repo, "B", now)
+
+        result = isolated_cli_runner.invoke(
+            main,
+            ["index", "--path", str(repo_path), "--branch", "main", "--days", "1"],
+        )
+        assert result.exit_code == 0, result.output
+
+        targets = _run(
+            cli_test_db, lambda s: _app_reference_targets(s, hash_b, "app.py")
+        )
+
+        assert targets.get("fresh_func") == "fresh.py"

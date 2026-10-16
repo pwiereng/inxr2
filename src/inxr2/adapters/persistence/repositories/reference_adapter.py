@@ -16,6 +16,7 @@ from ..models.reference import ReferenceModel
 from .base_repository import BaseSQLAlchemyRepository
 from .query_utils import build_text_match_filter, split_extension_filter
 from .shared_queries import (
+    COMMIT_FILE_IDS_SQL,
     LATEST_FILE_IDS_SQL,
     head_file_ids_subquery,
     latest_file_ids_subquery,
@@ -47,8 +48,9 @@ class PostgresReferenceRepository(
     def __init__(self, session: AsyncSession):
         super().__init__(session)
         self.mapper = ReferenceMapper()
-        # (repository_id, branch) the resolution temp tables were built for
-        self._resolution_tables_for: tuple[int, str | None] | None = None
+        # (repository_id, branch, head_commit) the resolution temp tables
+        # were built for
+        self._resolution_tables_for: tuple[int, str | None, str | None] | None = None
 
     async def find_references_to_symbol(
         self,
@@ -278,6 +280,7 @@ class PostgresReferenceRepository(
         repository_id: int,
         progress_callback: Callable[[str], None] | None = None,
         branch: str | None = None,
+        head_commit: str | None = None,
     ) -> None:
         """Create temp tables for symbol resolution, restricted to head files.
 
@@ -287,12 +290,14 @@ class PostgresReferenceRepository(
         3. Any-match: (name) -> min symbol ID
 
         Tables are created once and reused across batch calls within the same
-        session. Only symbols from files at the head of ``branch`` (the
-        repository's default branch when None) are included, so references
-        never resolve to symbols in files deleted before the head (#547), and
-        the O(commits x symbols) scan of historical file versions is avoided.
+        session. Only symbols from the files of ``head_commit`` — or, when it
+        is None, of the head of ``branch`` (the repository's default branch
+        when None) — are included, so references never resolve to symbols in
+        files deleted before the head (#547), and the O(commits x symbols)
+        scan of historical file versions is avoided.
         """
-        if self._resolution_tables_for == (repository_id, branch):
+        scope = (repository_id, branch, head_commit)
+        if self._resolution_tables_for == scope:
             return
 
         def _report(msg: str) -> None:
@@ -310,14 +315,24 @@ class PostgresReferenceRepository(
                 text(f"DROP TABLE IF EXISTS {table}")  # noqa: S608
             )
 
-        # Step 0: Compute latest file IDs once (expensive window function)
+        # Step 0: Compute the target file IDs once
         _report("Finding files at branch head...")
+        if head_commit is not None:
+            pool_sql, pool_params = COMMIT_FILE_IDS_SQL, {
+                "repo_id": repository_id,
+                "head_commit": head_commit,
+            }
+        else:
+            pool_sql, pool_params = LATEST_FILE_IDS_SQL, {
+                "repo_id": repository_id,
+                "branch": branch,
+            }
         await self.session.execute(
             text(f"""
                 CREATE TEMP TABLE _resolve_latest_files AS
-                {LATEST_FILE_IDS_SQL}
+                {pool_sql}
             """),
-            {"repo_id": repository_id, "branch": branch},
+            pool_params,
         )
         await self.session.execute(
             text("CREATE INDEX ON _resolve_latest_files (file_id)")
@@ -379,7 +394,7 @@ class PostgresReferenceRepository(
         )
         await self.session.execute(text("CREATE INDEX ON _resolve_pass3 (name)"))
 
-        self._resolution_tables_for = (repository_id, branch)
+        self._resolution_tables_for = scope
 
     async def _drop_resolution_tables(self) -> None:
         """Drop resolution temp tables."""
@@ -399,14 +414,18 @@ class PostgresReferenceRepository(
         repository_id: int,
         progress_callback: Callable[[str], None] | None = None,
         branch: str | None = None,
+        head_commit: str | None = None,
     ) -> None:
         """Pre-compute temp tables for reference resolution.
 
-        Resolution targets are the symbols in files at the head of ``branch``
-        (the repository's default branch when None). Subsequent
-        resolve_references_batch calls reuse these tables.
+        Resolution targets are the symbols in the files of ``head_commit``,
+        or, when it is None, at the head of ``branch`` (the repository's
+        default branch when None). Subsequent resolve_references_batch calls
+        reuse these tables.
         """
-        await self._ensure_resolution_tables(repository_id, progress_callback, branch)
+        await self._ensure_resolution_tables(
+            repository_id, progress_callback, branch, head_commit
+        )
 
     async def _execute_resolution_pass(
         self,
@@ -492,16 +511,21 @@ class PostgresReferenceRepository(
         return total_resolved
 
     async def resolve_unlinked_references(
-        self, repository_id: int, branch: str | None = None
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        head_commit: str | None = None,
     ) -> int:
         """Resolve references to their target symbols.
 
         Uses the same 3-pass priority as resolve_references_batch
         (same-file > same-language > lowest-id) but without batching.
-        Only symbols in files at the head of ``branch`` (the repository's
-        default branch when None) are targets.
+        Only symbols in the files of ``head_commit``, or at the head of
+        ``branch`` (the repository's default branch when None), are targets.
         """
-        await self._ensure_resolution_tables(repository_id, branch=branch)
+        await self._ensure_resolution_tables(
+            repository_id, branch=branch, head_commit=head_commit
+        )
 
         total_resolved = 0
         total_resolved += await self._execute_resolution_pass(
