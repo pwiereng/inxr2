@@ -122,13 +122,21 @@ describe('Home', () => {
 
   it('should show loading state initially', async () => {
     const api = await import('@/lib/api')
+    let resolveRepos: (repos: typeof mockRepositories) => void = () => {}
     vi.mocked(api.getRepositories).mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(mockRepositories), 1000))
+      () => new Promise((resolve) => (resolveRepos = resolve))
     )
 
     render(<Home />)
 
     expect(screen.getByRole('progressbar')).toBeInTheDocument()
+
+    // Settle the load inside the test: a fetch left pending would resolve
+    // after jsdom is torn down and call setLoading without a window.
+    resolveRepos(mockRepositories)
+    await waitFor(() => {
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    })
   })
 
   it('should display repositories when loaded', async () => {
