@@ -58,6 +58,9 @@ class TestResolveReferencesBatch:
         )
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
 
         return saved_repo, saved_commit
 
@@ -741,6 +744,9 @@ class TestResolveReferencesBatch:
             )
         )
         assert commit2.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit2.repository_id, commit2.id, "main"
+        )
 
         new_file = await file_adapter.save(
             File(

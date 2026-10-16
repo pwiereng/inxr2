@@ -24,8 +24,8 @@ class ResolveFileRequest:
 
     Resolution priority:
     1. If commit_hash provided, get file at that exact commit
-    2. If branch provided, get latest file version on that branch
-    3. Otherwise, get latest file version across all branches
+    2. If branch provided, get the file at that branch's HEAD commit
+    3. Otherwise, get the file at the default branch's HEAD commit
     """
 
     repository_name: str
@@ -57,8 +57,8 @@ class ResolveFileUseCase:
 
     Resolution priority:
     1. If commit_hash provided, get file at that exact commit
-    2. If branch provided, get latest file version on that branch
-    3. Otherwise, get latest file version across all branches
+    2. If branch provided, get the file at that branch's HEAD commit
+    3. Otherwise, get the file at the default branch's HEAD commit
 
     Raises domain exceptions for not-found cases, which controllers
     can translate to appropriate HTTP responses.
@@ -175,26 +175,21 @@ class ResolveFileUseCase:
             if not commit:
                 raise CommitNotFound(commit_hash=f"(no commits on branch {branch})")
 
-            # Find file at this commit (guaranteed to be linked)
+            # Each indexed commit is a full snapshot, so the file exists on
+            # the branch iff it is linked to the branch HEAD commit. A path
+            # missing there was deleted — don't fall back to an older version
+            # of it (issue #547).
+            file = None
             if commit.id is not None:
                 file = await self._file_repo.find_by_path(
                     repository_id, commit.id, path
                 )
-                if file:
-                    return file, commit
-
-            # Fallback: use list_versions_by_path + find linked commit
-            versions = await self._file_version_repo.list_versions_by_path(
-                repository_id, path, branch
-            )
-            if not versions:
+            if not file:
                 raise FileNotFound(
                     path=path,
                     repository_name=repository.name,
                     branch=branch,
                 )
-            file = versions[0]
-            commit = await self._find_linked_commit(file, commit)
             return file, commit
 
         # Default: resolve HEAD commit on default branch first
@@ -203,13 +198,16 @@ class ResolveFileUseCase:
             repository_id, default_branch
         )
 
-        # Primary: find file at HEAD commit (correct regardless of ID ordering)
+        # Find file at HEAD commit. As in branch mode, a path missing from
+        # the HEAD snapshot was deleted, so it is not found (issue #547).
         if commit and commit.id is not None:
             file = await self._file_repo.find_by_path(repository_id, commit.id, path)
-            if file:
-                return file, commit
+            if not file:
+                raise FileNotFound(path=path, repository_name=repository.name)
+            return file, commit
 
-        # Fallback: find by repository and path + find linked commit
+        # No commits on the default branch: find by repository and path +
+        # find linked commit
         file = await self._file_repo.find_by_repository_and_path(repository_id, path)
         if not file:
             raise FileNotFound(path=path, repository_name=repository.name)

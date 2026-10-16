@@ -147,7 +147,13 @@ class TestFileSearchAPI:
         saved_commit1 = await commit_adapter.save(commit1)
         saved_commit2 = await commit_adapter.save(commit2)
         assert saved_commit1.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit1.repository_id, saved_commit1.id, "main"
+        )
         assert saved_commit2.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit2.repository_id, saved_commit2.id, "main"
+        )
 
         file_adapter = PostgresFileRepository(db_session)
         file1 = await file_adapter.save(
@@ -357,6 +363,9 @@ class TestFileSearchAPI:
         )
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
 
         file_adapter = PostgresFileRepository(db_session)
         await file_adapter.save(

@@ -119,6 +119,7 @@ class TestGetFileContentUseCase:
                 language="Python",
             )
         )
+        repo._commit_files.add((1, 1))  # Link file 1 to commit 1 (main HEAD)
 
         return repo
 

@@ -48,6 +48,16 @@ async def setup_test_schema(conn: AsyncConnection) -> None:
     """
     await conn.run_sync(Base.metadata.drop_all)
     await conn.run_sync(Base.metadata.create_all)
+    await ensure_text_search_schema(conn)
+
+
+async def ensure_text_search_schema(conn: AsyncConnection) -> None:
+    """Add the tsvector column, GIN index and trigger to text_contents.
+
+    Idempotent and non-destructive, so fixtures that only ``create_all``
+    (e.g. the CLI tests) can call it without depending on another fixture
+    having set up the schema earlier in the session.
+    """
     await conn.execute(
         text(
             "ALTER TABLE text_contents "

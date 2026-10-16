@@ -1,0 +1,234 @@
+"""Regression tests for issue #547: deleted files served at a branch head.
+
+Each indexed commit is a full snapshot: commit_files links every file version
+present in that commit's tree. A path deleted in a later commit is therefore
+simply absent from the later commit's commit_files rows.
+
+The bug was on the read side. "Latest file version" was computed per path over
+every commit that ever contained the path, so a deleted path's last surviving
+version (from the older commit) still ranked first in its own partition and
+came back from symbol search, reference lookup, code search and resolution.
+
+"Latest" now means "present at the head commit of the branch" (or, with no
+branch, at the head of any indexed branch, deduplicated per path).
+
+Scenario:
+  - commit A (day 0, main): src/keep.py and src/gone.py
+  - commit B (day 1, main): src/keep.py only (gone.py deleted)
+"""
+
+import pytest
+
+from inxr2.domain.entities import Reference
+from inxr2.domain.value_objects import ReferenceType
+
+from .conftest import (
+    Repos,
+    create_test_commit,
+    create_test_file,
+    create_test_reference,
+    create_test_repo,
+    create_test_symbol,
+)
+
+pytestmark = pytest.mark.contract
+
+
+async def _setup_deleted_file(repos: Repos) -> dict[str, int]:
+    """Index commit A with keep.py + gone.py, then commit B without gone.py."""
+    repo_id = await create_test_repo(repos)
+
+    commit_a = await create_test_commit(
+        repos, repo_id, "a" * 40, date_offset_days=0, branch="main"
+    )
+    keep_id = await create_test_file(repos, repo_id, commit_a, "src/keep.py", "k" * 40)
+    gone_id = await create_test_file(repos, repo_id, commit_a, "src/gone.py", "g" * 40)
+
+    # Commit B: keep.py unchanged (same file version re-linked), gone.py deleted
+    commit_b = await create_test_commit(
+        repos, repo_id, "b" * 40, date_offset_days=1, branch="main"
+    )
+    await repos.file.link_file_to_commit(keep_id, commit_b)
+
+    kept_sym = await create_test_symbol(
+        repos, keep_id, repo_id, commit_a, "kept_func", "keep.kept_func"
+    )
+    gone_sym = await create_test_symbol(
+        repos, gone_id, repo_id, commit_a, "GoneThing", "gone.GoneThing"
+    )
+    # The only reference to kept_func lived in the deleted file
+    await create_test_reference(repos, repo_id, commit_a, gone_id, "kept_func")
+
+    return {
+        "repo_id": repo_id,
+        "commit_a": commit_a,
+        "commit_b": commit_b,
+        "keep_id": keep_id,
+        "gone_id": gone_id,
+        "kept_sym": kept_sym,
+        "gone_sym": gone_sym,
+    }
+
+
+@pytest.mark.parametrize("branch", ["main", None])
+class TestDeletedFileHiddenAtHead:
+    """A path deleted between two indexed commits is absent at the newer head."""
+
+    async def test_symbol_search_excludes_deleted_file(
+        self, repos: Repos, branch: str | None
+    ) -> None:
+        data = await _setup_deleted_file(repos)
+
+        gone, gone_total = await repos.symbol.search_by_name(
+            "GoneThing", repository_id=data["repo_id"], branch=branch
+        )
+        kept, _ = await repos.symbol.search_by_name(
+            "kept_func", repository_id=data["repo_id"], branch=branch
+        )
+
+        assert gone == [] and gone_total == 0
+        assert [s.id for s in kept] == [data["kept_sym"]]
+
+    async def test_regex_symbol_scan_excludes_deleted_file(
+        self, repos: Repos, branch: str | None
+    ) -> None:
+        """find_dead_code scans symbols with regex '.'; deleted files must not appear."""
+        data = await _setup_deleted_file(repos)
+
+        results, total = await repos.symbol.search_by_name(
+            ".", repository_id=data["repo_id"], branch=branch, mode="regex"
+        )
+
+        assert {s.id for s in results} == {data["kept_sym"]}
+        assert total == 1
+
+    async def test_references_by_text_exclude_deleted_file(
+        self, repos: Repos, branch: str | None
+    ) -> None:
+        data = await _setup_deleted_file(repos)
+
+        refs = await repos.reference.find_references_by_text(
+            "kept_func", data["repo_id"], branch=branch
+        )
+
+        assert refs == []
+
+    async def test_reference_text_search_excludes_deleted_file(
+        self, repos: Repos, branch: str | None
+    ) -> None:
+        data = await _setup_deleted_file(repos)
+
+        refs, total = await repos.reference.search_by_text(
+            "kept_func", repository_id=data["repo_id"], branch=branch
+        )
+
+        assert refs == [] and total == 0
+
+
+class TestDeletedFileUnscopedQueries:
+    """Queries without a branch parameter also drop deleted paths."""
+
+    async def test_find_by_qualified_name_excludes_deleted_file(
+        self, repos: Repos
+    ) -> None:
+        data = await _setup_deleted_file(repos)
+
+        assert (
+            await repos.symbol.find_by_qualified_name(data["repo_id"], "gone.GoneThing")
+            == []
+        )
+        kept = await repos.symbol.find_by_qualified_name(
+            data["repo_id"], "keep.kept_func"
+        )
+        assert [s.id for s in kept] == [data["kept_sym"]]
+
+    async def test_file_name_search_excludes_deleted_file(self, repos: Repos) -> None:
+        data = await _setup_deleted_file(repos)
+
+        files, total = await repos.file_search.search_by_name(
+            "gone", repository_id=data["repo_id"]
+        )
+
+        assert files == [] and total == 0
+
+    async def test_resolution_does_not_target_deleted_file_symbols(
+        self, repos: Repos
+    ) -> None:
+        """A dangling reference must not be linked to a symbol in a deleted file."""
+        data = await _setup_deleted_file(repos)
+        ref = await repos.reference.save(
+            Reference(
+                repository_id=data["repo_id"],
+                source_file_id=data["keep_id"],
+                source_line=3,
+                source_column=0,
+                source_end_column=9,
+                reference_text="GoneThing",
+                reference_type=ReferenceType.CALL,
+            )
+        )
+        assert ref.id is not None
+
+        await repos.reference.resolve_unlinked_references(data["repo_id"])
+
+        saved = await repos.reference.find_by_id(ref.id)
+        assert saved is not None
+        assert saved.target_symbol_id is None
+
+
+class TestDeletedFileStillVisibleElsewhere:
+    """The fix must not hide files that legitimately exist."""
+
+    async def test_time_travel_to_older_commit_still_shows_file(
+        self, repos: Repos
+    ) -> None:
+        data = await _setup_deleted_file(repos)
+
+        results, _ = await repos.symbol.search_by_name(
+            "GoneThing", repository_id=data["repo_id"], commit_id=data["commit_a"]
+        )
+
+        assert [s.id for s in results] == [data["gone_sym"]]
+
+    async def test_path_deleted_on_main_but_present_on_feature_head(
+        self, repos: Repos
+    ) -> None:
+        """Unscoped queries cover every branch head; branch-scoped ones don't."""
+        data = await _setup_deleted_file(repos)
+        # feature branches off A and keeps gone.py
+        await repos.commit.link_commit_to_branch(
+            data["repo_id"], data["commit_a"], "feature"
+        )
+
+        on_feature, _ = await repos.symbol.search_by_name(
+            "GoneThing", repository_id=data["repo_id"], branch="feature"
+        )
+        on_main, _ = await repos.symbol.search_by_name(
+            "GoneThing", repository_id=data["repo_id"], branch="main"
+        )
+        unscoped = await repos.symbol.find_by_qualified_name(
+            data["repo_id"], "gone.GoneThing"
+        )
+
+        assert [s.id for s in on_feature] == [data["gone_sym"]]
+        assert on_main == []
+        assert [s.id for s in unscoped] == [data["gone_sym"]]
+
+    async def test_modified_file_returns_only_head_version(self, repos: Repos) -> None:
+        """A path changed (not deleted) at head resolves to the head version."""
+        data = await _setup_deleted_file(repos)
+        commit_c = await create_test_commit(
+            repos, data["repo_id"], "c" * 40, date_offset_days=2, branch="main"
+        )
+        keep_v2 = await create_test_file(
+            repos, data["repo_id"], commit_c, "src/keep.py", "m" * 40
+        )
+        v2_sym = await create_test_symbol(
+            repos, keep_v2, data["repo_id"], commit_c, "kept_func", "keep.kept_func"
+        )
+
+        results, _ = await repos.symbol.search_by_name(
+            "kept_func", repository_id=data["repo_id"], branch="main"
+        )
+
+        assert [s.id for s in results] == [v2_sym]

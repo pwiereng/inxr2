@@ -376,14 +376,12 @@ class TestResolveFileUseCaseEdgeCases:
         with pytest.raises(CommitNotFound):
             await use_case.execute(request)
 
-    @pytest.mark.asyncio
-    async def test_default_resolution_returns_linked_commit(self) -> None:
-        """Default resolution should return a commit actually linked to the file.
+    @staticmethod
+    def _deleted_at_head_use_case() -> ResolveFileUseCase:
+        """src/old_file.py exists at commit 1 and is deleted at main's HEAD (commit 2).
 
-        Regression test: with HEAD-first indexing, the latest commit on the
-        default branch might not be the commit that contains the resolved file
-        version. The use case should find a commit linked to the file via
-        commit_files, not just the latest on the branch.
+        Each indexed commit is a full snapshot, so a file missing from the
+        HEAD commit's commit_files was deleted (issue #547).
         """
         repository_repo = InMemoryRepositoryRepository()
         repository_repo.add(
@@ -407,7 +405,7 @@ class TestResolveFileUseCaseEdgeCases:
         commit_repo.add(commit1)
         commit_repo._branch_commits[(1, "main", 1)] = True
 
-        # Newer commit on main (HEAD) that does NOT have the file
+        # Newer commit on main (HEAD) that deleted the file
         commit2 = Commit(
             id=2,
             repository_id=1,
@@ -432,22 +430,56 @@ class TestResolveFileUseCaseEdgeCases:
         file_repo._commit_files.add((1, 1))  # Only linked to commit 1
 
         file_version_repo = InMemoryFileVersionRepository(file_repo)
-        use_case = ResolveFileUseCase(
+        return ResolveFileUseCase(
             repository_repo=repository_repo,
             file_repo=file_repo,
             file_version_repo=file_version_repo,
             commit_repo=commit_repo,
         )
 
-        request = ResolveFileRequest(
-            repository_name="test-repo",
-            file_path="src/old_file.py",
+    @pytest.mark.asyncio
+    async def test_default_resolution_of_file_deleted_at_head_raises(self) -> None:
+        """A file deleted before the default branch HEAD is not found (#547).
+
+        Previously the use case fell back to the last version of the path
+        and returned the deleted file from the older commit.
+        """
+        use_case = self._deleted_at_head_use_case()
+
+        with pytest.raises(FileNotFound):
+            await use_case.execute(
+                ResolveFileRequest(
+                    repository_name="test-repo", file_path="src/old_file.py"
+                )
+            )
+
+    @pytest.mark.asyncio
+    async def test_branch_resolution_of_file_deleted_at_head_raises(self) -> None:
+        """A file deleted before the branch HEAD is not found on that branch (#547)."""
+        use_case = self._deleted_at_head_use_case()
+
+        with pytest.raises(FileNotFound):
+            await use_case.execute(
+                ResolveFileRequest(
+                    repository_name="test-repo",
+                    file_path="src/old_file.py",
+                    branch="main",
+                )
+            )
+
+    @pytest.mark.asyncio
+    async def test_file_deleted_at_head_still_resolves_at_older_commit(self) -> None:
+        """Time travel to a commit that still had the file keeps working."""
+        use_case = self._deleted_at_head_use_case()
+
+        response = await use_case.execute(
+            ResolveFileRequest(
+                repository_name="test-repo",
+                file_path="src/old_file.py",
+                commit_hash="aaa111",
+            )
         )
 
-        response = await use_case.execute(request)
-
-        # Should return commit 1 (which is actually linked to this file),
-        # not commit 2 (latest on main, but unlinked)
         assert response.commit.id == 1
         assert response.file.path == "src/old_file.py"
 

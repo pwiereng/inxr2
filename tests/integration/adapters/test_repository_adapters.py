@@ -143,6 +143,9 @@ class TestPostgresCommitRepository:
         # Act
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
         found_commit = await commit_adapter.find_by_id(saved_commit.id)
 
         # Assert
@@ -258,6 +261,9 @@ class TestPostgresFileRepository:
         )
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -298,6 +304,9 @@ class TestPostgresFileRepository:
         )
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
 
         file_adapter = PostgresFileRepository(db_session)
         files = [
@@ -337,6 +346,9 @@ class TestPostgresFileRepository:
         )
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
 
         file_adapter = PostgresFileRepository(db_session)
         files = [
@@ -376,6 +388,9 @@ class TestPostgresFileRepository:
         )
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -416,6 +431,9 @@ class TestPostgresFileRepository:
         )
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
 
         file_adapter = PostgresFileRepository(db_session)
         files = [
@@ -457,6 +475,9 @@ class TestPostgresFileRepository:
         )
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
 
         file_adapter = PostgresFileRepository(db_session)
 
@@ -497,6 +518,9 @@ class TestPostgresFileRepository:
         )
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -599,6 +623,9 @@ class TestPostgresSymbolRepository:
         )
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
 
         file_adapter = PostgresFileRepository(db_session)
         file1 = File(
@@ -734,6 +761,9 @@ class TestPostgresReferenceRepository:
         )
         saved_commit = await commit_adapter.save(commit)
         assert saved_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_commit.repository_id, saved_commit.id, "main"
+        )
 
         file_adapter = PostgresFileRepository(db_session)
         file = File(
@@ -861,6 +891,9 @@ class TestPostgresReferenceRepository:
         )
         saved_old_commit = await commit_adapter.save(old_commit)
         assert saved_old_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_old_commit.repository_id, saved_old_commit.id, "main"
+        )
 
         # Create file for old commit
         old_file = File(
@@ -896,6 +929,9 @@ class TestPostgresReferenceRepository:
         )
         saved_new_commit = await commit_adapter.save(new_commit)
         assert saved_new_commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            saved_new_commit.repository_id, saved_new_commit.id, "main"
+        )
 
         # Create file for new commit (same path, newer version)
         new_file = File(

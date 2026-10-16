@@ -786,59 +786,63 @@ class InMemoryFileRepository(FileRepositoryPort):
     def _compute_latest_file_ids(
         self, repository_id: int, branch: str | None = None
     ) -> set[int]:
-        """Compute the latest file IDs for a repository.
+        """Compute the file IDs present at the branch head(s) of a repository.
 
-        Returns the latest version of each unique (repository_id, path) pair,
-        determined by the newest commit date (not file ID). This handles
-        HEAD-first indexing where newer commits may have lower file IDs.
+        Mirrors ``latest_file_ids_subquery``: each commit is a full snapshot,
+        so the files linked to a branch's head commit (newest by commit date,
+        then id) are the files that exist on that branch. Paths deleted before
+        the head are excluded (issue #547).
 
-        When branch is provided, only considers files from commits on that
-        branch, so "latest" is scoped to the branch rather than global.
+        When branch is provided, returns the files at that branch's head.
+        When branch is None, returns the files at every branch head,
+        deduplicated per path by the newest head.
         """
-        # When branch is set, restrict to commit_files from branch commits
-        branch_commit_ids: set[int] | None = None
-        if branch is not None and self._commit_repo is not None:
-            branch_commit_ids = set()
-            for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
-                if repo_id == repository_id and b == branch:
-                    branch_commit_ids.add(cid)
+        if self._commit_repo is None:
+            # No commit context: every file version counts as latest
+            return {
+                f.id
+                for f in self._files.values()
+                if f.repository_id == repository_id and f.id is not None
+            }
 
-        # Build file_id → max commit date mapping
-        file_max_date: dict[int, tuple] = {}  # file_id → (commit_date, commit_id)
-        if self._commit_repo is not None:
-            for cid, fid in self._commit_files:
-                # Skip commits not on the requested branch
-                if branch_commit_ids is not None and cid not in branch_commit_ids:
-                    continue
-                commit = self._commit_repo._commits.get(cid)
-                if commit is not None and commit.commit_date is not None:
-                    existing = file_max_date.get(fid)
-                    key = (commit.commit_date, cid)
-                    if existing is None or key > existing:
-                        file_max_date[fid] = key
+        # Head commit per branch: newest (commit_date, commit_id)
+        heads: dict[str, tuple[datetime, int]] = {}
+        for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
+            if repo_id != repository_id or (branch is not None and b != branch):
+                continue
+            commit = self._commit_repo._commits.get(cid)
+            if commit is None or commit.commit_date is None:
+                continue
+            key = (commit.commit_date, cid)
+            if b not in heads or key > heads[b]:
+                heads[b] = key
+        head_keys = {key[1]: key for key in heads.values()}
 
-        # Among linked files for this repo, keep latest per path by commit date
-        latest_by_path: dict[str, tuple[int, tuple]] = {}  # path → (file_id, date_key)
-        for file in self._files.values():
-            if (
-                file.repository_id == repository_id
-                and file.id is not None
-                and file.id in file_max_date
-            ):
-                date_key = file_max_date[file.id]
-                existing = latest_by_path.get(file.path)
-                if existing is None or date_key > existing[1]:
-                    latest_by_path[file.path] = (file.id, date_key)
+        # Files at those heads, keeping the newest head per path
+        latest_by_path: dict[str, tuple[int, tuple[datetime, int]]] = {}
+        for cid, fid in self._commit_files:
+            head_key = head_keys.get(cid)
+            if head_key is None:
+                continue
+            file = self._files.get(fid)
+            if file is None or file.repository_id != repository_id:
+                continue
+            existing = latest_by_path.get(file.path)
+            if existing is None or head_key > existing[1]:
+                latest_by_path[file.path] = (fid, head_key)
 
-        if latest_by_path:
+        if latest_by_path or branch is not None:
             return {fid for fid, _ in latest_by_path.values()}
 
-        # When branch is specified but no files found, return empty set
-        # (don't fall back to all files — the branch simply has no files)
-        if branch is not None:
+        # Legacy test setups that never link files to commits: treat every
+        # file version as latest. A repo whose files ARE linked but which has
+        # none at any head (everything deleted) correctly returns empty.
+        repo_has_links = any(
+            (f := self._files.get(fid)) is not None and f.repository_id == repository_id
+            for _, fid in self._commit_files
+        )
+        if repo_has_links:
             return set()
-
-        # Fallback: return all file_ids for this repository
         return {
             f.id
             for f in self._files.values()
@@ -1020,15 +1024,17 @@ class InMemoryFileSearchRepository(FileSearchPort):
                 head_file_ids = self._file_repo._compute_head_file_ids()
                 results = [f for f in results if f.id in head_file_ids]
             else:
-                latest_by_repo_path: dict[tuple[int | None, str], File] = {}
-                for f in results:
-                    key = (f.repository_id, f.path)
-                    existing = latest_by_repo_path.get(key)
-                    if existing is None or (
-                        f.id is not None and (existing.id is None or f.id > existing.id)
-                    ):
-                        latest_by_repo_path[key] = f
-                results = list(latest_by_repo_path.values())
+                # Mirror latest_file_ids_subquery(repository_id): files at the
+                # branch head(s) of the repo (or of every repo when unscoped).
+                repo_ids = (
+                    {repository_id}
+                    if repository_id is not None
+                    else {f.repository_id for f in results}
+                )
+                latest_ids: set[int] = set()
+                for rid in repo_ids:
+                    latest_ids |= self._file_repo._compute_latest_file_ids(rid)
+                results = [f for f in results if f.id in latest_ids]
 
         # Sort by relevance
         def relevance_key(f: File) -> tuple[int, str]:

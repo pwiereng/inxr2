@@ -17,7 +17,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from inxr2.adapters.persistence.models import Base
-from tests.db_helpers import assert_test_database, normalize_asyncpg_url
+from tests.db_helpers import (
+    assert_test_database,
+    ensure_text_search_schema,
+    normalize_asyncpg_url,
+)
 
 # PostgreSQL test database URL — use non-asyncpg prefix since
 # DatabaseConnection auto-converts postgresql:// → postgresql+asyncpg://
@@ -44,6 +48,7 @@ def cli_test_db() -> Generator[str, None, None]:
         engine = create_async_engine(_ASYNC_URL, echo=False)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await ensure_text_search_schema(conn)
         await engine.dispose()
 
     async def teardown_db() -> None:
