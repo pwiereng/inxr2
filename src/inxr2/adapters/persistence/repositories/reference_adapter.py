@@ -469,8 +469,10 @@ class PostgresReferenceRepository(
     ) -> int:
         """Resolve a batch of unlinked references.
 
-        Uses pre-computed temp tables with symbols from branch-head files
-        only, avoiding the O(commits x symbols) scan of all historical
+        Uses pre-computed temp tables whose target symbols come from the
+        scope prepared by prepare_resolution: the files of its
+        ``head_commit`` (what indexing always passes), else its branch's
+        head. This avoids the O(commits x symbols) scan of all historical
         versions. The GROUP BY aggregations run once (at table creation)
         rather than per batch.
 
@@ -479,9 +481,8 @@ class PostgresReferenceRepository(
         2. Same language - cross-file but same language preferred
         3. Lowest symbol ID - deterministic tiebreaker for consistency
 
-        Reuses the tables built by prepare_resolution for this repository
-        (whatever branch they were prepared for); otherwise builds them for
-        the default branch.
+        If prepare_resolution was not called for this repository, builds the
+        tables for the default branch's head.
         """
         prepared = self._resolution_tables_for
         if prepared is None or prepared[0] != repository_id:

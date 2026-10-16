@@ -347,8 +347,9 @@ class TestIncrementalResolutionTargetsNewHead:
 
         # Added in this run: resolved to the new file
         assert targets.get("new_helper") == "lib_new.py"
-        # Deleted in this run: not a target any more
-        assert targets.get("old_helper") is None
+        # Deleted in this run: the reference is recorded but has no target
+        assert "old_helper" in targets
+        assert targets["old_helper"] is None
 
     def test_first_run_with_same_second_commits_resolves_at_head(
         self,
