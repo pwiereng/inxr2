@@ -100,10 +100,10 @@ class ResolveReferencesUseCase:
         batch_size to balance memory usage against the O(N²/batch_size)
         scanning cost of small batches.
 
-        Resolution is always repo-wide: prepare_resolution builds
-        repo-scoped symbol lookup tables, then resolve_references_batch
-        uses them to match references to symbols. The prepare step runs
-        before the batch loop.
+        prepare_resolution builds symbol lookup tables from the files at the
+        head of request.branch (the repository's default branch when None),
+        then resolve_references_batch uses them to match references to
+        symbols. The prepare step runs before the batch loop.
         """
         # Pre-compute symbol lookup tables before counting/resolving.
         total_resolved = 0

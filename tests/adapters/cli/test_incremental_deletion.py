@@ -11,6 +11,7 @@ adapters and use cases the API uses.
 
 import asyncio
 from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -204,3 +205,61 @@ class TestIncrementalIndexingDropsDeletedFiles:
         # Code search
         assert out["gone_text"] == [] and out["gone_text_total"] == 0
         assert out["keep_text_count"] >= 1
+
+    def test_same_second_commits_indexed_in_one_run(
+        self,
+        isolated_cli_runner: CliRunner,
+        cli_test_db: str,
+        git_repo: tuple[Path, str],
+    ) -> None:
+        """Issue #549: the head is git's HEAD even when commits tie on date.
+
+        Commits A and B share a timestamp and are indexed newest-first in one
+        run, so B (the HEAD, which deletes gone.py) gets the lower id. A date
+        and id tie-break would pick A and serve the deleted file again.
+        """
+        from inxr2.cli import main
+
+        repo_path, _ = git_repo
+        repo = Repo(repo_path)
+        # Re-date A to the last hour so --days picks it up; B gets the same date
+        now = (datetime.now(UTC) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+        repo.git.commit(
+            "--amend", "--no-edit", f"--date={now}", env={"GIT_COMMITTER_DATE": now}
+        )
+        repo.index.remove(["gone.py"], working_tree=True)
+        hash_b = _commit(repo, "B: delete gone.py", now)
+        hash_a = repo.head.commit.parents[0].hexsha
+        assert repo.head.commit.committed_date == repo.commit(hash_a).committed_date
+
+        result = isolated_cli_runner.invoke(
+            main,
+            ["index", "--path", str(repo_path), "--branch", "main", "--days", "1"],
+        )
+        assert result.exit_code == 0, result.output
+
+        async def query(session: AsyncSession) -> dict[str, Any]:
+            repo_entity = await PostgresRepositoryAdapter(session).find_by_name(
+                REPO_NAME
+            )
+            assert repo_entity is not None and repo_entity.id is not None
+            commit_repo = PostgresCommitRepository(session)
+            commit_a = await commit_repo.find_by_hash(repo_entity.id, hash_a)
+            commit_b = await commit_repo.find_by_hash(repo_entity.id, hash_b)
+            assert commit_a is not None and commit_a.id is not None
+            assert commit_b is not None and commit_b.id is not None
+            head = await commit_repo.find_latest_by_branch(repo_entity.id, "main")
+            gone, _ = await PostgresSymbolRepository(session).search_by_name(
+                "GoneThing", repository_id=repo_entity.id, branch="main"
+            )
+            return {
+                "b_has_lower_id": commit_b.id < commit_a.id,
+                "head": head.commit_hash.value if head else None,
+                "gone": gone,
+            }
+
+        out = _run(cli_test_db, query)
+
+        assert out["b_has_lower_id"]  # the ordering that defeats an id tie-break
+        assert out["head"] == hash_b
+        assert out["gone"] == []

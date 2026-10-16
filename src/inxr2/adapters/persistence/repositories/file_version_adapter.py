@@ -10,6 +10,7 @@ from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
+from .shared_queries import branch_head_commits_subquery
 
 
 class PostgresFileVersionRepository(FileVersionPort):
@@ -142,28 +143,19 @@ class PostgresFileVersionRepository(FileVersionPort):
     async def list_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> list[File]:
-        """List files at the latest commit on a branch.
+        """List files at the head commit of a branch.
 
-        Gets the latest commit on the branch, then returns all files
-        linked to it via commit_files.
+        Uses the shared head definition (``branch_head_commits_subquery``),
+        so the tree shows the same commit as search and file lookup.
         """
-        # Get latest commit on branch
-        latest_commit_result = await self.session.execute(
-            select(CommitModel)
-            .join(BranchCommitModel, BranchCommitModel.commit_id == CommitModel.id)
-            .where(
-                CommitModel.repository_id == repository_id,
-                BranchCommitModel.branch == branch,
-                BranchCommitModel.repository_id == repository_id,
-            )
-            .order_by(CommitModel.commit_date.desc(), CommitModel.id.desc())
-            .limit(1)
-        )
-        latest_commit = latest_commit_result.scalar_one_or_none()
-        if latest_commit is None:
+        heads = branch_head_commits_subquery(repository_id, branch)
+        head_id = (
+            await self.session.execute(select(heads.c.commit_id))
+        ).scalar_one_or_none()
+        if head_id is None:
             return []
 
-        return await self.list_by_commit(latest_commit.id)
+        return await self.list_by_commit(head_id)
 
     async def list_changed_at_commit(
         self, repository_id: int, commit_id: int

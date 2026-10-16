@@ -191,7 +191,7 @@ class FileSearchPort(ABC):
             query: The search pattern to match against file names/paths
             repository_id: Filter by repository (optional)
             commit_id: Filter by specific commit for time travel (optional).
-                When None, returns latest version per (repo, path).
+                When None, returns files at the head of each repository's default branch.
             language: Filter by programming language (optional)
             extensions: Filter by file extensions (e.g., [".py", ".ts"]) (optional)
             limit: Maximum number of results (default 50)
@@ -290,17 +290,18 @@ class FileVersionPort(ABC):
     async def list_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> list[File]:
-        """List the latest version of each file on a branch.
+        """List the files at the head commit of a branch.
 
-        Gets the latest commit on the branch, then returns all files
-        linked to that commit via commit_files.
+        The head is the branch's last indexed commit (falling back to the
+        newest by commit date); returns all files linked to it via
+        commit_files.
 
         Args:
             repository_id: The repository ID
             branch: The branch name
 
         Returns:
-            List of files (latest version of each unique path on the branch)
+            List of files present at the branch head
         """
         pass
 

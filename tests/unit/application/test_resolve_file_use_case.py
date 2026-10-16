@@ -484,6 +484,85 @@ class TestResolveFileUseCaseEdgeCases:
         assert response.file.path == "src/old_file.py"
 
 
+class TestResolveFileFeatureOnlyPath:
+    """A path that exists only on a non-default branch (PR #551 review).
+
+    File search without a branch lists only default-branch files, so browse
+    without a branch must agree: not found there, found on its branch.
+    """
+
+    @staticmethod
+    def _use_case() -> ResolveFileUseCase:
+        repository_repo = InMemoryRepositoryRepository()
+        repository_repo.add(
+            Repository(id=1, name="test-repo", url="/path", default_branch="main")
+        )
+        commit_repo = InMemoryCommitRepository()
+        commit_repo.add(
+            Commit(
+                id=1,
+                repository_id=1,
+                commit_hash=CommitHash("aaa111"),
+                author_date=datetime(2025, 1, 1),
+                commit_date=datetime(2025, 1, 1),
+            )
+        )
+        commit_repo._branch_commits[(1, "main", 1)] = True
+        commit_repo.add(
+            Commit(
+                id=2,
+                repository_id=1,
+                commit_hash=CommitHash("fff222"),
+                author_date=datetime(2025, 1, 5),
+                commit_date=datetime(2025, 1, 5),
+            )
+        )
+        commit_repo._branch_commits[(1, "feature", 2)] = True
+
+        file_repo = InMemoryFileRepository(
+            commit_repo=commit_repo, repository_repo=repository_repo
+        )
+        file_repo.add(
+            File(
+                id=1,
+                repository_id=1,
+                path="src/new_feature.py",
+                content_hash="hash_feature",
+                size_bytes=10,
+            )
+        )
+        file_repo._commit_files.add((2, 1))  # only on feature's head
+
+        return ResolveFileUseCase(
+            repository_repo=repository_repo,
+            file_repo=file_repo,
+            file_version_repo=InMemoryFileVersionRepository(file_repo),
+            commit_repo=commit_repo,
+        )
+
+    @pytest.mark.asyncio
+    async def test_not_found_without_branch(self) -> None:
+        with pytest.raises(FileNotFound):
+            await self._use_case().execute(
+                ResolveFileRequest(
+                    repository_name="test-repo", file_path="src/new_feature.py"
+                )
+            )
+
+    @pytest.mark.asyncio
+    async def test_found_on_its_branch(self) -> None:
+        response = await self._use_case().execute(
+            ResolveFileRequest(
+                repository_name="test-repo",
+                file_path="src/new_feature.py",
+                branch="feature",
+            )
+        )
+
+        assert response.commit.id == 2
+        assert response.file.path == "src/new_feature.py"
+
+
 class TestResolveFileBranchModeEdges:
     """Branch coverage for branch-mode resolution paths."""
 

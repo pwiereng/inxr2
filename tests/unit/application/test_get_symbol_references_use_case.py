@@ -386,16 +386,20 @@ class TestGetSymbolReferencesWithBranchFiltering:
         )
 
     @pytest.mark.asyncio
-    async def test_get_references_without_branch_filter(
+    async def test_get_references_without_branch_uses_default_branch(
         self, use_case: GetSymbolReferencesUseCase
     ) -> None:
-        """Should return references from all branches when no branch specified."""
+        """No branch means the default branch (main): only its references.
+
+        Matches symbol search, code search and browse, which also use the
+        default branch head when no branch is given.
+        """
         request = GetSymbolReferencesRequest(symbol_id=1, by_name=False)
 
         result = await use_case.execute(request)
 
-        # Should find references from both branches
-        assert result.total == 2
+        assert result.total == 1
+        assert result.references[0].source_file_path == "src/main.py"
 
     @pytest.mark.asyncio
     async def test_get_references_filtered_by_main_branch(

@@ -40,9 +40,9 @@ class ReferenceRepositoryPort(ABC):
             symbol_id: The target symbol ID
             limit: Maximum number of results
             commit_id: Filter by specific commit via commit_files (optional).
-                       If None, returns from latest version of each file.
+                       If None, returns references from files at the branch head.
             branch: Filter by branch name (only show refs from files on this branch).
-            repository_id: Filter by repository (scopes the latest-file dedup).
+            repository_id: Filter by repository (scopes the branch-head lookup).
         """
         pass
 
@@ -67,7 +67,7 @@ class ReferenceRepositoryPort(ABC):
             repository_id: Filter by repository
             limit: Maximum number of results
             commit_id: Filter by specific commit via commit_files (optional).
-                       If None, returns from latest version of each file.
+                       If None, returns references from files at the branch head.
             branch: Filter by branch name (only show refs from files on this branch).
         """
         pass
@@ -149,9 +149,9 @@ class ReferenceRepositoryPort(ABC):
 
         Args:
             repository_id: The repository ID to resolve references for
-            branch: Accepted for API compatibility but does not affect
-                resolution. All references are resolved using repo-wide
-                latest symbols.
+            branch: Branch whose head files provide the resolution targets
+                (the repository's default branch when None). Symbols in files
+                deleted before that head are never targets.
 
         Returns:
             Number of references resolved
@@ -175,8 +175,8 @@ class ReferenceRepositoryPort(ABC):
             repository_id: The repository ID to prepare for
             progress_callback: Optional callback receiving stage descriptions
                 (e.g. "Building same-file index...")
-            branch: Accepted for API compatibility but does not affect
-                resolution.
+            branch: Branch whose head files provide the resolution targets
+                (the repository's default branch when None).
         """
         pass
 

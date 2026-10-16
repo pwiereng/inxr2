@@ -157,10 +157,11 @@ class CommitRepositoryPort(ABC):
     async def find_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> Commit | None:
-        """Find the latest indexed commit for a specific branch.
+        """Find the head commit of a branch.
 
-        Queries via the branch_commits junction table to find commits
-        on the specified branch, returning the most recent by commit_date.
+        The head is the branch's last indexed commit (index_status), which is
+        the commit git reported as HEAD. When there is no index status, falls
+        back to the branch's newest commit by commit_date, then id.
 
         Args:
             repository_id: The repository ID

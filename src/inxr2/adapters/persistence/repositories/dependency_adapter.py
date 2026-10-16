@@ -120,7 +120,7 @@ class PostgresDependencyRepository(
         if is_direct is not None:
             base = base.where(DependencyModel.is_direct == is_direct)
 
-        # Scope to latest file versions to avoid stale/duplicate results
+        # Scope to files at the default branch head to avoid stale/duplicate results
         if branch is not None or repository_id is not None:
             latest_fids = latest_file_ids_subquery(
                 repository_id=repository_id, branch=branch
