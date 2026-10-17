@@ -11,7 +11,7 @@ import type { CommitInfo } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
 import { MENU_PROPS } from '@/lib/menuProps'
 import { CopyButton } from '@/components/CopyButton/CopyButton'
-import { hashMatches } from '@/lib/commitHash'
+import { findByHash } from '@/lib/commitHash'
 
 interface CommitSelectProps {
   commits: CommitInfo[]
@@ -38,9 +38,10 @@ export function CommitSelect({
   }
 
   // The URL may carry an abbreviated hash (#555): resolve it to the full hash of
-  // the matching option. If it's not in the list of indexed commits (e.g. HEAD),
+  // the matching option. If it's not in the list of indexed commits (e.g. HEAD)
+  // or is ambiguous,
   // use '' to avoid MUI's out-of-range warning and show the value as given.
-  const matchedCommit = commits.find((c) => hashMatches(c.hash, commitDisplayValue))
+  const matchedCommit = findByHash(commits, commitDisplayValue, (c) => c.hash)
   const selectValue = matchedCommit?.hash ?? ''
 
   return (

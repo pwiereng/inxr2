@@ -87,6 +87,27 @@ describe('CommitSelect', () => {
     expect(selected).toHaveTextContent('Second commit')
   })
 
+  it('should show an ambiguous abbreviated hash as given without selecting a commit', () => {
+    const ambiguousCommits: CommitInfo[] = [
+      { ...mockCommits[0]!, hash: 'abcd1111aaaa', short_hash: 'abcd111' },
+      { ...mockCommits[1]!, hash: 'abcd2222bbbb', short_hash: 'abcd222' },
+    ]
+    render(
+      <CommitSelect
+        commits={ambiguousCommits}
+        loading={false}
+        commitDisplayValue="abcd"
+        onCommitChange={vi.fn()}
+      />
+    )
+
+    const combobox = screen.getByRole('combobox')
+    expect(combobox).toHaveTextContent('abcd')
+    expect(combobox).not.toHaveTextContent('abcd111')
+    fireEvent.mouseDown(combobox)
+    expect(screen.queryByRole('option', { selected: true })).not.toBeInTheDocument()
+  })
+
   it('should not match a prefix shorter than 4 characters', () => {
     render(
       <CommitSelect

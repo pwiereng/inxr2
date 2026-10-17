@@ -8,7 +8,7 @@ import {
   type CommitInfo,
 } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
-import { hashMatches } from '@/lib/commitHash'
+import { findByHash } from '@/lib/commitHash'
 
 interface UseRepositorySelectorParams {
   repoName: string | null
@@ -119,7 +119,7 @@ export function useRepositorySelector({
   const currentRepo = repositories.find((r) => r.name === repoName)
   const defaultBranch = currentRepo?.default_branch || 'main'
   const commitDisplayValue = commit || (commits[0]?.hash ?? '')
-  const currentCommitObj = commit ? commits.find((c) => hashMatches(c.hash, commit)) : commits[0]
+  const currentCommitObj = commit ? findByHash(commits, commit, (c) => c.hash) : commits[0]
   const currentCommitDate = currentCommitObj?.commit_date
     ? formatDateTimeUTC(currentCommitObj.commit_date)
     : ''

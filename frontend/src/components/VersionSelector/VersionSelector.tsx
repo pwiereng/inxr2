@@ -14,7 +14,7 @@ import { CopyButton } from '@/components/CopyButton/CopyButton'
 import { getCommits, getFileHistory, type CommitInfo } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
 import { MENU_PROPS } from '@/lib/menuProps'
-import { hashMatches } from '@/lib/commitHash'
+import { findByHash } from '@/lib/commitHash'
 
 interface VersionSelectorProps {
   repoName: string
@@ -135,7 +135,7 @@ export function VersionSelector({
 
   // Use selected commit if it exists in the list (matching abbreviated hashes, #555);
   // otherwise fall back to latest
-  const selectedHash = commits.find((c) => hashMatches(c.hash, selectedCommit))?.hash
+  const selectedHash = findByHash(commits, selectedCommit, (c) => c.hash)?.hash
   const effectiveValue = (selectedHash ?? latestHash) || ''
 
   return (

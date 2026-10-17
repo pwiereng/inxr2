@@ -12,7 +12,7 @@ import {
 } from '@mui/material'
 import { CodeHeader, type TabValue } from '@/components/CodeHeader'
 import { getCommits, type CommitInfo } from '@/lib/api'
-import { hashMatches } from '@/lib/commitHash'
+import { findByHash } from '@/lib/commitHash'
 import {
   splitCommitMessage,
   makeLoadKey,
@@ -151,6 +151,9 @@ export function History(): React.ReactElement {
   // Format date for display (always UTC)
   const formatDate = (dateStr: string) => formatDateTimeUTC(dateStr)
 
+  // The URL's commit may be abbreviated (#555); resolve it to the full hash
+  const focusedHash = findByHash(commits, commit, (c) => c.hash)?.hash
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <CodeHeader
@@ -187,7 +190,7 @@ export function History(): React.ReactElement {
           <Paper>
             <List disablePadding>
               {commits.map((commitInfo, index) => {
-                const isFocused = hashMatches(commitInfo.hash, commit)
+                const isFocused = commitInfo.hash === focusedHash
                 const { summary, body } = splitCommitMessage(commitInfo.message)
                 return (
                   <ListItem

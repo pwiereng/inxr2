@@ -3,7 +3,7 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import LastPageIcon from '@mui/icons-material/LastPage'
 import type { CommitInfo } from '@/lib/api'
-import { hashMatches } from '@/lib/commitHash'
+import { findByHash } from '@/lib/commitHash'
 
 interface CommitNavButtonsProps {
   commits: CommitInfo[]
@@ -20,7 +20,8 @@ export function CommitNavButtons({
     return null
   }
 
-  const currentIndex = commits.findIndex((c) => hashMatches(c.hash, commitDisplayValue))
+  const currentCommit = findByHash(commits, commitDisplayValue, (c) => c.hash)
+  const currentIndex = currentCommit ? commits.indexOf(currentCommit) : -1
   // If commit not found in list, treat as HEAD (index 0)
   const effectiveIndex = currentIndex === -1 ? 0 : currentIndex
 
