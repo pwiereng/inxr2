@@ -116,7 +116,7 @@ class GetRepositoryTreeUseCase:
         # Get files based on request parameters:
         # 1. Explicit commit_hash with changed_only: get only files changed at that commit
         # 2. Explicit commit_hash: get full tree state at that commit
-        # 3. Branch specified: get latest version of each file on that branch
+        # 3. Branch specified: get the tree at that branch's head commit
         # 4. Default: get latest snapshot from default branch, else all files
         if request.commit_hash:
             # Time travel to specific commit
@@ -179,8 +179,7 @@ class GetRepositoryTreeUseCase:
             else:
                 files = all_files
         elif request.branch:
-            # Get latest version of each file on the branch
-            # This aggregates across all commits on the branch
+            # Get the files at the branch's head commit
             files = await self._file_version_repo.list_latest_by_branch(
                 repository_id, request.branch
             )

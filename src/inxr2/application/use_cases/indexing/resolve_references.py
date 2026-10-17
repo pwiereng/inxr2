@@ -41,12 +41,17 @@ class ResolveReferencesRequest:
 
     Args:
         repository_id: The repository ID to resolve references for
-        branch: Optional branch hint passed to prepare_resolution
-            for API compatibility. Resolution is repo-wide.
+        branch: Branch whose head files provide the resolution targets
+            (the repository's default branch when None)
+        head_commit: Hash of the commit whose files provide the targets;
+            takes precedence over ``branch``. The indexer passes the commit
+            it just indexed, because index_status still names the previous
+            run's HEAD until the run finishes.
     """
 
     repository_id: int
     branch: str | None = None
+    head_commit: str | None = None
 
 
 @dataclass
@@ -83,6 +88,7 @@ class ResolveReferencesUseCase:
         resolved_count = await self._reference_repository.resolve_unlinked_references(
             repository_id=request.repository_id,
             branch=request.branch,
+            head_commit=request.head_commit,
         )
 
         return ResolveReferencesResponse(resolved_count=resolved_count)
@@ -100,8 +106,9 @@ class ResolveReferencesUseCase:
         batch_size to balance memory usage against the O(N²/batch_size)
         scanning cost of small batches.
 
-        Resolution is always repo-wide: prepare_resolution builds
-        repo-scoped symbol lookup tables, then resolve_references_batch
+        prepare_resolution builds symbol lookup tables from the files of
+        request.head_commit, or at the head of request.branch (the
+        repository's default branch when None), then resolve_references_batch
         uses them to match references to symbols. The prepare step runs
         before the batch loop.
         """
@@ -125,6 +132,7 @@ class ResolveReferencesUseCase:
             repository_id=request.repository_id,
             progress_callback=on_prepare_stage,
             branch=request.branch,
+            head_commit=request.head_commit,
         )
 
         # Count unresolved references for progress reporting

@@ -19,6 +19,7 @@ from inxr2.adapters.persistence.repositories import (
     PostgresFileRepository,
     PostgresFileSearchRepository,
     PostgresFileVersionRepository,
+    PostgresIndexStatusRepository,
     PostgresReferenceRepository,
     PostgresRepositoryAdapter,
     PostgresSymbolRepository,
@@ -29,6 +30,7 @@ from inxr2.application.ports.repositories import (
     FileRepositoryPort,
     FileSearchPort,
     FileVersionPort,
+    IndexStatusRepositoryPort,
     ReferenceRepositoryPort,
     RepositoryPort,
     SymbolRepositoryPort,
@@ -44,6 +46,7 @@ from tests.fixtures.test_doubles import (
     InMemoryFileRepository,
     InMemoryFileSearchRepository,
     InMemoryFileVersionRepository,
+    InMemoryIndexStatusRepository,
     InMemoryReferenceRepository,
     InMemoryRepositoryRepository,
     InMemorySymbolRepository,
@@ -64,6 +67,7 @@ class Repos:
     symbol: SymbolRepositoryPort
     reference: ReferenceRepositoryPort
     dependency: DependencyRepositoryPort
+    index_status: IndexStatusRepositoryPort
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -114,8 +118,12 @@ def impl(request: pytest.FixtureRequest) -> str:
 async def repos(impl: str, db_session: AsyncSession) -> Repos:
     """Create all repository implementations, wired together."""
     if impl == "fake":
-        commit_repo = InMemoryCommitRepository()
-        file_repo = InMemoryFileRepository(commit_repo=commit_repo)
+        index_status_repo = InMemoryIndexStatusRepository()
+        commit_repo = InMemoryCommitRepository(index_status_repo=index_status_repo)
+        repo_repo = InMemoryRepositoryRepository()
+        file_repo = InMemoryFileRepository(
+            commit_repo=commit_repo, repository_repo=repo_repo
+        )
         file_search_repo = InMemoryFileSearchRepository(file_repo)
         file_version_repo = InMemoryFileVersionRepository(file_repo)
         symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
@@ -125,7 +133,6 @@ async def repos(impl: str, db_session: AsyncSession) -> Repos:
             commit_repo=commit_repo,
         )
         dep_repo = InMemoryDependencyRepository(file_repo=file_repo)
-        repo_repo = InMemoryRepositoryRepository()
         return Repos(
             repository=repo_repo,
             commit=commit_repo,
@@ -135,6 +142,7 @@ async def repos(impl: str, db_session: AsyncSession) -> Repos:
             symbol=symbol_repo,
             reference=ref_repo,
             dependency=dep_repo,
+            index_status=index_status_repo,
         )
     else:
         return Repos(
@@ -146,6 +154,7 @@ async def repos(impl: str, db_session: AsyncSession) -> Repos:
             symbol=PostgresSymbolRepository(db_session),
             reference=PostgresReferenceRepository(db_session),
             dependency=PostgresDependencyRepository(db_session),
+            index_status=PostgresIndexStatusRepository(db_session),
         )
 
 
@@ -195,6 +204,7 @@ async def create_test_file(
     commit_id: int,
     path: str,
     content_hash: str,
+    extension: str | None = None,
 ) -> int:
     """Create (or reuse) a test file version, link it to the commit, and return its ID.
 
@@ -207,6 +217,7 @@ async def create_test_file(
         content_hash=content_hash,
         size_bytes=100,
         language="python",
+        extension=extension,
     )
     assert file.id is not None
     await repos.file.link_file_to_commit(file.id, commit_id)

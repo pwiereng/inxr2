@@ -13,6 +13,7 @@ from ..mappers import CommitMapper
 from ..models.branch_commit import BranchCommitModel
 from ..models.commit import CommitModel
 from .base_repository import BaseSQLAlchemyRepository
+from .shared_queries import branch_head_commits_subquery
 
 
 class PostgresCommitRepository(
@@ -278,20 +279,15 @@ class PostgresCommitRepository(
     async def find_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> Commit | None:
-        """Find the latest indexed commit for a specific branch.
+        """Find the head commit of a branch.
 
-        Queries via the branch_commits junction table.
+        Uses the same head definition as the "latest files" queries
+        (``branch_head_commits_subquery``): the branch's last indexed commit
+        from index_status, falling back to the newest by commit date.
         """
+        heads = branch_head_commits_subquery(repository_id, branch)
         result = await self.session.execute(
-            select(CommitModel)
-            .join(BranchCommitModel, BranchCommitModel.commit_id == CommitModel.id)
-            .where(
-                CommitModel.repository_id == repository_id,
-                BranchCommitModel.branch == branch,
-                BranchCommitModel.repository_id == repository_id,
-            )
-            .order_by(CommitModel.commit_date.desc())
-            .limit(1)
+            select(CommitModel).where(CommitModel.id.in_(select(heads.c.commit_id)))
         )
         model = result.scalar_one_or_none()
         return self.mapper.to_domain(model) if model else None

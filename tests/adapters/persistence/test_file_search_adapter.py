@@ -39,6 +39,9 @@ class TestPostgresFileSearchRepositorySearchByName:
             CommitFactory.create(repository_id=repo.id, commit_hash="a" * 40)
         )
         assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit.repository_id, commit.id, "main"
+        )
 
         # Create various files and link to commit
         for path, chash in [
@@ -80,6 +83,9 @@ class TestPostgresFileSearchRepositorySearchByName:
             CommitFactory.create(repository_id=repo.id, commit_hash="b" * 40)
         )
         assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit.repository_id, commit.id, "main"
+        )
 
         f = await file_adapter.save(
             FileFactory.create(
@@ -121,7 +127,13 @@ class TestPostgresFileSearchRepositorySearchByName:
             CommitFactory.create(repository_id=repo2.id, commit_hash="d" * 40)
         )
         assert commit1.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit1.repository_id, commit1.id, "main"
+        )
         assert commit2.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit2.repository_id, commit2.id, "main"
+        )
 
         f1 = await file_adapter.save(
             FileFactory.create(
@@ -173,7 +185,13 @@ class TestPostgresFileSearchRepositorySearchByName:
             CommitFactory.create(repository_id=repo.id, commit_hash="f" * 40)
         )
         assert commit1.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit1.repository_id, commit1.id, "main"
+        )
         assert commit2.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit2.repository_id, commit2.id, "main"
+        )
 
         f1 = await file_adapter.save(
             FileFactory.create(
@@ -222,6 +240,9 @@ class TestPostgresFileSearchRepositorySearchByName:
             CommitFactory.create(repository_id=repo.id, commit_hash="g" * 40)
         )
         assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit.repository_id, commit.id, "main"
+        )
 
         f_py = await file_adapter.save(
             FileFactory.create(
@@ -269,6 +290,9 @@ class TestPostgresFileSearchRepositorySearchByName:
             CommitFactory.create(repository_id=repo.id, commit_hash="h" * 40)
         )
         assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit.repository_id, commit.id, "main"
+        )
 
         # Create many files
         for i in range(10):
@@ -306,6 +330,9 @@ class TestPostgresFileSearchRepositorySearchByName:
             CommitFactory.create(repository_id=repo.id, commit_hash="o" * 40)
         )
         assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit.repository_id, commit.id, "main"
+        )
 
         for i in range(10):
             f = await file_adapter.save(
@@ -348,6 +375,9 @@ class TestPostgresFileSearchRepositorySearchByName:
             CommitFactory.create(repository_id=repo.id, commit_hash="i" * 40)
         )
         assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit.repository_id, commit.id, "main"
+        )
 
         # Create files with different matching patterns
         # Relevance scoring uses PostgreSQL regex (func.substring with pattern).
@@ -392,6 +422,9 @@ class TestPostgresFileSearchRepositorySearchByName:
             CommitFactory.create(repository_id=repo.id, commit_hash="j" * 40)
         )
         assert commit.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit.repository_id, commit.id, "main"
+        )
 
         f = await file_adapter.save(
             FileFactory.create(
@@ -429,7 +462,13 @@ class TestPostgresFileSearchRepositorySearchByName:
             CommitFactory.create(repository_id=repo.id, commit_hash="l" * 40)
         )
         assert commit1.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit1.repository_id, commit1.id, "main"
+        )
         assert commit2.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit2.repository_id, commit2.id, "main"
+        )
 
         # Same file in two commits (different content versions)
         f1 = await file_adapter.save(
@@ -493,7 +532,13 @@ class TestPostgresFileSearchRepositorySearchByName:
             CommitFactory.create(repository_id=repo2.id, commit_hash="n" * 40)
         )
         assert commit1.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit1.repository_id, commit1.id, "main"
+        )
         assert commit2.id is not None
+        await commit_adapter.link_commit_to_branch(
+            commit2.repository_id, commit2.id, "main"
+        )
 
         # Create files with identical paths in both repos
         f1 = await file_adapter.save(

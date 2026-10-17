@@ -277,7 +277,7 @@ class TestSearchFilesGlobalScope:
         repository_repo: InMemoryRepositoryRepository,
     ) -> InMemoryFileRepository:
         repo = InMemoryFileRepository(commit_repo=commit_repo)
-        repo._repository_repo = repository_repo  # type: ignore[attr-defined]
+        repo._repository_repo = repository_repo
         f1 = await repo.save(
             File(
                 repository_id=1,
@@ -385,7 +385,7 @@ class TestSearchFilesExtensionFilter:
         repository_repo: InMemoryRepositoryRepository,
     ) -> InMemoryFileRepository:
         repo = InMemoryFileRepository(commit_repo=commit_repo)
-        repo._repository_repo = repository_repo  # type: ignore[attr-defined]
+        repo._repository_repo = repository_repo
         f1 = await repo.save(
             File(
                 repository_id=1,
@@ -538,7 +538,7 @@ class TestExtensionlessFileFilter:
         repository_repo: InMemoryRepositoryRepository,
     ) -> InMemoryFileRepository:
         repo = InMemoryFileRepository(commit_repo=commit_repo)
-        repo._repository_repo = repository_repo  # type: ignore[attr-defined]
+        repo._repository_repo = repository_repo
         f1 = await repo.save(
             File(
                 repository_id=1,

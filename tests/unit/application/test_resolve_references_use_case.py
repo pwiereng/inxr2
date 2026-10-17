@@ -583,8 +583,13 @@ class TestBranchScopedResolution:
     """Tests for branch-scoped reference resolution via use case."""
 
     @pytest.mark.asyncio
-    async def test_branch_param_does_not_restrict_resolution(self) -> None:
-        """Branch parameter is accepted but all refs are resolved regardless."""
+    async def test_branch_param_scopes_targets_to_branch_head(self) -> None:
+        """Targets come from the head of the branch being resolved.
+
+        A reference to a symbol that exists only on ``feature`` stays
+        unresolved when ``main`` is resolved, and links once ``feature``
+        (the branch that has the symbol) is resolved.
+        """
         commit_repo = InMemoryCommitRepository()
         file_repo = InMemoryFileRepository(commit_repo=commit_repo)
         symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
@@ -700,26 +705,32 @@ class TestBranchScopedResolution:
             )
         )
 
-        # Resolve with branch="main" via use case — all refs resolved
         use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
+
+        # Resolving main: MainFunc links; FeatFunc doesn't exist on main
         response = await use_case.execute(
             ResolveReferencesRequest(repository_id=1, branch="main")
         )
-
-        # Both refs resolved (no source-file filter, repo-wide symbol pool)
-        assert response.resolved_count == 2
-
+        assert response.resolved_count == 1
         main_ref = await ref_repo.find_by_id(1)
         assert main_ref is not None
         assert main_ref.target_symbol_id == 1
+        feat_ref = await ref_repo.find_by_id(2)
+        assert feat_ref is not None
+        assert feat_ref.target_symbol_id is None
 
+        # Resolving feature (as indexing feature does): FeatFunc links
+        response = await use_case.execute(
+            ResolveReferencesRequest(repository_id=1, branch="feature")
+        )
+        assert response.resolved_count == 1
         feat_ref = await ref_repo.find_by_id(2)
         assert feat_ref is not None
         assert feat_ref.target_symbol_id == 2
 
     @pytest.mark.asyncio
-    async def test_branch_none_resolves_all_refs(self) -> None:
-        """When branch is None, all refs are resolved (backward compat)."""
+    async def test_branch_none_resolves_against_default_branch(self) -> None:
+        """When branch is None, targets come from the default branch head."""
         commit_repo = InMemoryCommitRepository()
         file_repo = InMemoryFileRepository(commit_repo=commit_repo)
         symbol_repo = InMemorySymbolRepository(file_repo=file_repo)
@@ -830,14 +841,17 @@ class TestBranchScopedResolution:
             )
         )
 
-        # Resolve with branch=None (default)
+        # Resolve with branch=None (default branch: main)
         use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
         response = await use_case.execute(
             ResolveReferencesRequest(repository_id=1, branch=None)
         )
 
-        # Both refs resolved
-        assert response.resolved_count == 2
+        # Only MainFunc links; FeatFunc exists only on feature
+        assert response.resolved_count == 1
+        feat_ref = await ref_repo.find_by_id(2)
+        assert feat_ref is not None
+        assert feat_ref.target_symbol_id is None
 
     @pytest.mark.asyncio
     async def test_execute_with_progress_accepts_branch(self) -> None:
@@ -912,11 +926,14 @@ class TestBranchScopedResolution:
         assert response.resolved_count == 1
 
     @pytest.mark.asyncio
-    async def test_branch_param_uses_repo_wide_symbols(self) -> None:
-        """References on a branch resolve to symbols from files outside that branch.
+    async def test_refs_outside_branch_head_still_resolve(self) -> None:
+        """Source references are not filtered to the branch head.
 
-        Regression test for issue #98: symbol pool must be repo-wide, not
-        branch-scoped, when resolving branch-scoped references.
+        Regression test for issue #98: PR #96 restricted the *source*
+        references to the branch's latest files, so references in every
+        other file version were never resolved (42.7% -> 4.7%). Only the
+        *target* pool is scoped to the branch head; a reference in an older
+        version of a file still resolves against the head's symbols.
         """
         commit_repo = InMemoryCommitRepository()
         file_repo = InMemoryFileRepository(commit_repo=commit_repo)
@@ -927,61 +944,53 @@ class TestBranchScopedResolution:
             commit_repo=commit_repo,
         )
 
-        # Main branch commit
-        commit_repo.add(
-            Commit(
-                id=1,
-                repository_id=1,
-                commit_hash=CommitHash("main" + "0" * 36),
-                author_date=datetime(2025, 1, 2),
-                commit_date=datetime(2025, 1, 2),
+        # Two commits on main; commit 2 is the head
+        for cid, day in ((1, 1), (2, 2)):
+            commit_repo.add(
+                Commit(
+                    id=cid,
+                    repository_id=1,
+                    commit_hash=CommitHash(f"{cid}" * 40),
+                    author_date=datetime(2025, 1, day),
+                    commit_date=datetime(2025, 1, day),
+                )
             )
-        )
-        await commit_repo.link_commit_to_branch(1, 1, "main")
+            await commit_repo.link_commit_to_branch(1, cid, "main")
 
-        # Feature branch commit (NOT on main)
-        commit_repo.add(
-            Commit(
-                id=2,
-                repository_id=1,
-                commit_hash=CommitHash("feat" + "0" * 36),
-                author_date=datetime(2025, 1, 1),
-                commit_date=datetime(2025, 1, 1),
-            )
-        )
-        await commit_repo.link_commit_to_branch(1, 2, "feature")
-
-        # File on main with a reference to "HTTPException"
+        # Old version of src/api.py (commit 1 only) holds the reference
         file_repo.add(
             File(
                 id=1,
                 repository_id=1,
                 path="src/api.py",
-                content_hash="hash_api",
+                content_hash="hash_api_v1",
                 size_bytes=200,
                 language="python",
             )
         )
         await file_repo.link_file_to_commit(1, 1)
-
-        # File on feature with the target symbol (NOT on main)
-        file_repo.add(
-            File(
-                id=2,
-                repository_id=1,
-                path="lib/exceptions.py",
-                content_hash="hash_exc",
-                size_bytes=100,
-                language="python",
+        # The head has a newer src/api.py and lib/exceptions.py
+        for fid, path, content_hash in (
+            (2, "src/api.py", "hash_api_v2"),
+            (3, "lib/exceptions.py", "hash_exc"),
+        ):
+            file_repo.add(
+                File(
+                    id=fid,
+                    repository_id=1,
+                    path=path,
+                    content_hash=content_hash,
+                    size_bytes=100,
+                    language="python",
+                )
             )
-        )
-        await file_repo.link_file_to_commit(2, 2)
+            await file_repo.link_file_to_commit(fid, 2)
+        await file_repo.link_file_to_commit(3, 1)
 
-        # Symbol only on the feature branch's file
         symbol_repo.add(
             Symbol(
                 id=1,
-                file_id=2,
+                file_id=3,
                 repository_id=1,
                 name="HTTPException",
                 kind=SymbolKind.CLASS,
@@ -991,13 +1000,11 @@ class TestBranchScopedResolution:
                 end_column=0,
             )
         )
-
-        # Reference on main to HTTPException
         ref_repo.add(
             Reference(
                 id=1,
                 repository_id=1,
-                source_file_id=1,
+                source_file_id=1,  # not at the head
                 source_line=5,
                 source_column=10,
                 source_end_column=23,
@@ -1007,7 +1014,6 @@ class TestBranchScopedResolution:
             )
         )
 
-        # Resolve scoped to "main" — should find HTTPException from repo-wide pool
         use_case = ResolveReferencesUseCase(reference_repository=ref_repo)
         response = await use_case.execute(
             ResolveReferencesRequest(repository_id=1, branch="main")

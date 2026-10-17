@@ -632,18 +632,25 @@ class InMemoryFileRepository(FileRepositoryPort):
         file_repo = InMemoryFileRepository(commit_repo=commit_repo)
     """
 
-    def __init__(self, commit_repo: "InMemoryCommitRepository | None" = None) -> None:
+    def __init__(
+        self,
+        commit_repo: "InMemoryCommitRepository | None" = None,
+        repository_repo: "InMemoryRepositoryRepository | None" = None,
+    ) -> None:
         """Initialize with empty storage.
 
         Args:
-            commit_repo: Optional commit repository for commit-date lookups
+            commit_repo: Optional commit repository for branch-head lookups
                          (used by _compute_latest_file_ids and related helpers).
+            repository_repo: Optional repository repository, used to look up
+                         each repository's default branch.
         """
         self._files: dict[int, File] = {}
         # Junction table: set of (commit_id, file_id) pairs
         self._commit_files: set[tuple[int, int]] = set()
         self._next_id = 1
         self._commit_repo = commit_repo
+        self._repository_repo = repository_repo
 
     async def save(self, file: File) -> File:
         """Save file to in-memory storage."""
@@ -786,59 +793,46 @@ class InMemoryFileRepository(FileRepositoryPort):
     def _compute_latest_file_ids(
         self, repository_id: int, branch: str | None = None
     ) -> set[int]:
-        """Compute the latest file IDs for a repository.
+        """Compute the file IDs present at a branch head of a repository.
 
-        Returns the latest version of each unique (repository_id, path) pair,
-        determined by the newest commit date (not file ID). This handles
-        HEAD-first indexing where newer commits may have lower file IDs.
+        Mirrors ``latest_file_ids_subquery``: each commit is a full snapshot,
+        so the files linked to a branch's head commit are the files that exist
+        on that branch. Paths deleted before the head are excluded (#547).
+        The head comes from ``InMemoryCommitRepository._branch_head_id``.
 
-        When branch is provided, only considers files from commits on that
-        branch, so "latest" is scoped to the branch rather than global.
+        When branch is None, uses the repository's default branch.
         """
-        # When branch is set, restrict to commit_files from branch commits
-        branch_commit_ids: set[int] | None = None
-        if branch is not None and self._commit_repo is not None:
-            branch_commit_ids = set()
-            for (repo_id, b, cid), _ in self._commit_repo._branch_commits.items():
-                if repo_id == repository_id and b == branch:
-                    branch_commit_ids.add(cid)
+        if self._commit_repo is None:
+            # No commit context: every file version counts as latest
+            return self._all_file_ids(repository_id)
 
-        # Build file_id → max commit date mapping
-        file_max_date: dict[int, tuple] = {}  # file_id → (commit_date, commit_id)
-        if self._commit_repo is not None:
-            for cid, fid in self._commit_files:
-                # Skip commits not on the requested branch
-                if branch_commit_ids is not None and cid not in branch_commit_ids:
-                    continue
-                commit = self._commit_repo._commits.get(cid)
-                if commit is not None and commit.commit_date is not None:
-                    existing = file_max_date.get(fid)
-                    key = (commit.commit_date, cid)
-                    if existing is None or key > existing:
-                        file_max_date[fid] = key
+        effective_branch = branch or self._get_default_branch_for_repo(repository_id)
+        head_id = (
+            self._commit_repo._branch_head_id(repository_id, effective_branch)
+            if effective_branch is not None
+            else None
+        )
+        if head_id is not None:
+            return {
+                fid
+                for cid, fid in self._commit_files
+                if cid == head_id
+                and (f := self._files.get(fid)) is not None
+                and f.repository_id == repository_id
+            }
 
-        # Among linked files for this repo, keep latest per path by commit date
-        latest_by_path: dict[str, tuple[int, tuple]] = {}  # path → (file_id, date_key)
-        for file in self._files.values():
-            if (
-                file.repository_id == repository_id
-                and file.id is not None
-                and file.id in file_max_date
-            ):
-                date_key = file_max_date[file.id]
-                existing = latest_by_path.get(file.path)
-                if existing is None or date_key > existing[1]:
-                    latest_by_path[file.path] = (file.id, date_key)
-
-        if latest_by_path:
-            return {fid for fid, _ in latest_by_path.values()}
-
-        # When branch is specified but no files found, return empty set
-        # (don't fall back to all files — the branch simply has no files)
-        if branch is not None:
+        # Legacy test setups that never link files to commits: treat every
+        # file version as latest. A repo whose files ARE linked but which has
+        # no head on the requested branch correctly returns empty.
+        repo_has_links = any(
+            (f := self._files.get(fid)) is not None and f.repository_id == repository_id
+            for _, fid in self._commit_files
+        )
+        if branch is not None or repo_has_links:
             return set()
+        return self._all_file_ids(repository_id)
 
-        # Fallback: return all file_ids for this repository
+    def _all_file_ids(self, repository_id: int) -> set[int]:
         return {
             f.id
             for f in self._files.values()
@@ -846,53 +840,23 @@ class InMemoryFileRepository(FileRepositoryPort):
         }
 
     def _compute_head_file_ids(self) -> set[int]:
-        """Compute file IDs at HEAD of each repo's default branch.
+        """Compute file IDs at the head of each repo's default branch.
 
-        For global search: finds the latest commit on each repo's default
-        branch and returns file IDs linked to those commits.
+        Mirrors ``head_file_ids_subquery`` (global search).
         """
         if self._commit_repo is None:
             # No commit repo, can't determine HEAD - return all file IDs
             return {f.id for f in self._files.values() if f.id is not None}
 
-        # We need repository info to know default branches.
-        # Look up via the commit_repo's repository links.
-        # Build repo_id → default_branch from the repository_repo if available.
-        # For simplicity, we scan branch_commits to find HEAD per repo.
-
-        # Step 1: Find all repo IDs from files
-        repo_ids = {f.repository_id for f in self._files.values() if f.repository_id}
-
-        # Step 2: For each repo, find the default branch and HEAD commit
         head_commit_ids: set[int] = set()
-        for repo_id in repo_ids:
-            # Find the default branch for this repo
-            # We need to look up from a repository repository, but the file repo
-            # doesn't have one. Instead, look for branch "main" or "master" as common defaults.
-            # However, the proper way is to get the repo's default_branch.
-            # For the test double, we'll look at the repository repo if available
-            # through the commit repo, or fall back to finding the latest commit
-            # on any branch.
+        for repo_id in {f.repository_id for f in self._files.values()}:
             default_branch = self._get_default_branch_for_repo(repo_id)
             if default_branch is None:
                 continue
+            head_id = self._commit_repo._branch_head_id(repo_id, default_branch)
+            if head_id is not None:
+                head_commit_ids.add(head_id)
 
-            # Find the latest commit on the default branch for this repo
-            latest_commit_id = None
-            latest_date: tuple[datetime, int] | None = None
-            for (r_id, branch, c_id), _ in self._commit_repo._branch_commits.items():
-                if r_id == repo_id and branch == default_branch:
-                    commit = self._commit_repo._commits.get(c_id)
-                    if commit is not None:
-                        key = (commit.commit_date, c_id)
-                        if latest_date is None or key > latest_date:
-                            latest_date = key
-                            latest_commit_id = c_id
-
-            if latest_commit_id is not None:
-                head_commit_ids.add(latest_commit_id)
-
-        # Step 3: Collect file IDs at those HEAD commits
         return {fid for cid, fid in self._commit_files if cid in head_commit_ids}
 
     def _get_default_branch_for_repo(self, repo_id: int) -> str | None:
@@ -905,12 +869,8 @@ class InMemoryFileRepository(FileRepositoryPort):
         if self._commit_repo is None:
             return None
 
-        # Check if we have a _repository_repo attached (set by tests)
-        repository_repo: InMemoryRepositoryRepository | None = getattr(
-            self, "_repository_repo", None
-        )
-        if repository_repo is not None:
-            repo = repository_repo._repositories.get(repo_id)
+        if self._repository_repo is not None:
+            repo = self._repository_repo._repositories.get(repo_id)
             if repo is not None and repo.default_branch:
                 return repo.default_branch
 
@@ -1020,15 +980,17 @@ class InMemoryFileSearchRepository(FileSearchPort):
                 head_file_ids = self._file_repo._compute_head_file_ids()
                 results = [f for f in results if f.id in head_file_ids]
             else:
-                latest_by_repo_path: dict[tuple[int | None, str], File] = {}
-                for f in results:
-                    key = (f.repository_id, f.path)
-                    existing = latest_by_repo_path.get(key)
-                    if existing is None or (
-                        f.id is not None and (existing.id is None or f.id > existing.id)
-                    ):
-                        latest_by_repo_path[key] = f
-                results = list(latest_by_repo_path.values())
+                # Mirror latest_file_ids_subquery(repository_id): files at the
+                # branch head(s) of the repo (or of every repo when unscoped).
+                repo_ids = (
+                    {repository_id}
+                    if repository_id is not None
+                    else {f.repository_id for f in results}
+                )
+                latest_ids: set[int] = set()
+                for rid in repo_ids:
+                    latest_ids |= self._file_repo._compute_latest_file_ids(rid)
+                results = [f for f in results if f.id in latest_ids]
 
         # Sort by relevance
         def relevance_key(f: File) -> tuple[int, str]:
@@ -1066,10 +1028,11 @@ class InMemoryFileSearchRepository(FileSearchPort):
                 f for f in self._file_repo._files.values() if f.id in head_file_ids
             ]
         elif repository_id is not None:
+            latest_ids = self._file_repo._compute_latest_file_ids(repository_id, branch)
             candidate_files = [
                 f
                 for f in self._file_repo._files.values()
-                if f.repository_id == repository_id
+                if f.repository_id == repository_id and f.id in latest_ids
             ]
         else:
             candidate_files = list(self._file_repo._files.values())
@@ -1463,12 +1426,51 @@ class InMemoryCommitRepository(CommitRepositoryPort):
     matching the production junction table approach.
     """
 
-    def __init__(self) -> None:
-        """Initialize with empty storage."""
+    def __init__(
+        self, index_status_repo: "InMemoryIndexStatusRepository | None" = None
+    ) -> None:
+        """Initialize with empty storage.
+
+        Args:
+            index_status_repo: Optional index status repository. When given,
+                a branch's head is its last indexed commit (see _branch_head_id).
+        """
         self._commits: dict[int, Commit] = {}
         # branch_commits: maps (repository_id, branch, commit_id) -> True
         self._branch_commits: dict[tuple[int, str, int], bool] = {}
         self._next_id = 1
+        self._index_status_repo = index_status_repo
+
+    def _branch_head_id(self, repository_id: int, branch: str) -> int | None:
+        """Return the head commit ID of a branch.
+
+        Mirrors ``branch_head_commits_subquery``: the branch's last indexed
+        commit from index_status when it is linked to the branch, otherwise
+        the newest commit by (commit_date, id).
+        """
+        branch_commits = [
+            c
+            for (repo_id, b, cid), _ in self._branch_commits.items()
+            if repo_id == repository_id
+            and b == branch
+            and (c := self._commits.get(cid)) is not None
+            and c.id is not None
+        ]
+        if not branch_commits:
+            return None
+
+        indexed_head: str | None = None
+        if self._index_status_repo is not None:
+            for status in self._index_status_repo._statuses.values():
+                if status.repository_id == repository_id and status.branch == branch:
+                    indexed_head = status.last_indexed_commit
+
+        def rank(c: Commit) -> tuple[bool, datetime, int]:
+            assert c.id is not None
+            return (c.commit_hash.value == indexed_head, c.commit_date, c.id)
+
+        head = max(branch_commits, key=rank)
+        return head.id
 
     async def save(self, commit: Commit) -> Commit:
         """Save commit to in-memory storage."""
@@ -1643,24 +1645,9 @@ class InMemoryCommitRepository(CommitRepositoryPort):
     async def find_latest_by_branch(
         self, repository_id: int, branch: str
     ) -> Commit | None:
-        """Find the latest indexed commit for a specific branch."""
-        # Get commit IDs on this branch
-        branch_commit_ids = {
-            cid
-            for (repo_id, b, cid), _ in self._branch_commits.items()
-            if repo_id == repository_id and b == branch
-        }
-
-        commits = [
-            c
-            for c in self._commits.values()
-            if c.repository_id == repository_id and c.id in branch_commit_ids
-        ]
-        if not commits:
-            return None
-        # Sort by commit date descending and return the first (latest)
-        commits.sort(key=lambda c: c.commit_date, reverse=True)
-        return commits[0]
+        """Find the head commit of a branch (see _branch_head_id)."""
+        head_id = self._branch_head_id(repository_id, branch)
+        return self._commits.get(head_id) if head_id is not None else None
 
     def clear(self) -> None:
         """Clear all commits and branch links."""
@@ -1714,6 +1701,8 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         self._symbol_repo = symbol_repo
         self._file_repo = file_repo
         self._commit_repo = commit_repo
+        # repository_id -> (branch, head_commit) recorded by prepare_resolution
+        self._resolution_scope: dict[int, tuple[str | None, str | None]] = {}
 
     async def save(self, reference: Reference) -> Reference:
         """Save reference to in-memory storage."""
@@ -1942,8 +1931,37 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         repository_id: int,
         progress_callback: Callable[[str], None] | None = None,
         branch: str | None = None,
+        head_commit: str | None = None,
     ) -> None:
-        """No-op; branch accepted for API compatibility."""
+        """Record the scope whose files are resolution targets.
+
+        Mirrors the Postgres adapter, which builds its lookup tables for
+        (repository_id, branch, head_commit); later resolve_references_batch
+        calls reuse it.
+        """
+        self._resolution_scope[repository_id] = (branch, head_commit)
+
+    def _target_file_ids(
+        self, repository_id: int, branch: str | None, head_commit: str | None
+    ) -> set[int] | None:
+        """File IDs whose symbols are resolution targets (None = no filter).
+
+        The files of ``head_commit`` when given, else the head of ``branch``
+        (the default branch when None).
+        """
+        if self._file_repo is None:
+            return None
+        if head_commit is not None and self._commit_repo is not None:
+            commit_ids = {
+                cid
+                for cid, c in self._commit_repo._commits.items()
+                if c.repository_id == repository_id
+                and c.commit_hash.value == head_commit
+            }
+            return {
+                fid for cid, fid in self._file_repo._commit_files if cid in commit_ids
+            }
+        return self._file_repo._compute_latest_file_ids(repository_id, branch=branch)
 
     async def resolve_references_batch(
         self,
@@ -1953,21 +1971,15 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         """Resolve a batch of unlinked references.
 
         Processes up to ``batch_size`` unresolved references for the
-        repository and uses repo-wide latest file IDs for symbol
-        candidate filtering (which symbols to match).
-
-        This ensures references can resolve to symbols in any file in the
-        repository, not just files modified on a particular branch.
+        repository. Candidate symbols come from the scope recorded by
+        prepare_resolution (its head_commit, else its branch's head; the
+        default branch head if nothing was prepared).
         """
         if self._symbol_repo is None:
             return 0
 
-        # Repo-wide file IDs for symbol candidate filtering
-        symbols_file_ids: set[int] | None = None
-        if self._file_repo is not None:
-            symbols_file_ids = self._file_repo._compute_latest_file_ids(
-                repository_id, branch=None
-            )
+        branch, head_commit = self._resolution_scope.get(repository_id, (None, None))
+        symbols_file_ids = self._target_file_ids(repository_id, branch, head_commit)
 
         resolved_count = 0
         updated_refs: dict[int, Reference] = {}
@@ -2062,23 +2074,21 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         return candidates[0]
 
     async def resolve_unlinked_references(
-        self, repository_id: int, branch: str | None = None
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        head_commit: str | None = None,
     ) -> int:
         """Resolve references to their target symbols.
 
-        Uses repo-wide file IDs for symbol candidate filtering, matching
-        the Postgres adapter behavior where all refs are resolved against
-        symbols from the latest version of each file path.
+        Candidate symbols come from the files of ``head_commit``, or at the
+        head of ``branch`` (the default branch when None), matching the
+        Postgres adapter.
         """
         if self._symbol_repo is None:
             return 0
 
-        # Repo-wide file IDs for symbol candidate filtering
-        symbols_file_ids: set[int] | None = None
-        if self._file_repo is not None:
-            symbols_file_ids = self._file_repo._compute_latest_file_ids(
-                repository_id, branch=None
-            )
+        symbols_file_ids = self._target_file_ids(repository_id, branch, head_commit)
 
         resolved_count = 0
         updated_refs: dict[int, Reference] = {}

@@ -10,7 +10,6 @@ from ....domain.entities import Symbol
 from ..mappers import SymbolMapper
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
-from ..models.repository import RepositoryModel
 from ..models.symbol import SymbolModel
 from .base_repository import BaseSQLAlchemyRepository
 from .query_utils import build_text_match_filter, split_extension_filter
@@ -28,15 +27,6 @@ class PostgresSymbolRepository(
     def __init__(self, session: AsyncSession):
         super().__init__(session)
         self.mapper = SymbolMapper()
-
-    async def _resolve_default_branch(self, repository_id: int) -> str | None:
-        """Look up a repository's default branch."""
-        result = await self.session.execute(
-            select(RepositoryModel.default_branch).where(
-                RepositoryModel.id == repository_id
-            )
-        )
-        return result.scalar_one_or_none()
 
     async def search_by_name(
         self,
@@ -59,7 +49,7 @@ class PostgresSymbolRepository(
         When commit_id is provided, filters to symbols from files at that
         specific commit (via commit_files junction).
         When repository_id is provided (without commit_id), deduplicates by
-        filtering to only the latest file version per (repository_id, path).
+        filtering to files at the branch head (the default branch when None).
         When scope is "latest" and repository_id is None, filters to
         symbols from files at HEAD of each repo's default branch.
 
@@ -91,14 +81,9 @@ class PostgresSymbolRepository(
             query = query.where(SymbolModel.file_id.in_(select(head_fids.c.file_id)))
         elif repository_id is not None:
             query = query.where(SymbolModel.repository_id == repository_id)
-            # Deduplicate: only symbols from latest file version per path.
-            # When branch is set, dedup is scoped to that branch.
-            # When branch is not set, fall back to the repo's default branch
-            # to avoid an expensive unscoped ROW_NUMBER() query.
-            effective_branch = branch
-            if effective_branch is None:
-                effective_branch = await self._resolve_default_branch(repository_id)
-            latest_sq = latest_file_ids_subquery(repository_id, branch=effective_branch)
+            # Only symbols from files at the branch head (the default
+            # branch's head when branch is not set).
+            latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
             query = query.where(SymbolModel.file_id.in_(select(latest_sq.c.max_id)))
 
         if kind is not None:
@@ -181,7 +166,7 @@ class PostgresSymbolRepository(
                 )
             )
         elif repository_id is not None:
-            # Default mode: only latest file version per path
+            # Default mode: only files at the default branch head
             latest_sq = latest_file_ids_subquery(repository_id)
             query = query.where(SymbolModel.file_id.in_(select(latest_sq.c.max_id)))
 
@@ -196,7 +181,7 @@ class PostgresSymbolRepository(
     ) -> list[Symbol]:
         """Find symbols by fully qualified name.
 
-        Deduplicates by filtering to only latest file version per path.
+        Only symbols in files at the default branch head are returned.
         """
         latest_sq = latest_file_ids_subquery(repository_id)
         result = await self.session.execute(
