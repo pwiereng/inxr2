@@ -14,6 +14,7 @@ import { CopyButton } from '@/components/CopyButton/CopyButton'
 import { getCommits, getFileHistory, type CommitInfo } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
 import { MENU_PROPS } from '@/lib/menuProps'
+import { findByHash } from '@/lib/commitHash'
 
 interface VersionSelectorProps {
   repoName: string
@@ -132,9 +133,10 @@ export function VersionSelector({
   // Precompute the first indexed commit hash for HEAD badge (avoids O(n²) in render loop)
   const headHash = commits.find((c) => c.is_indexed)?.hash
 
-  // Use selected commit if it exists in the list; otherwise fall back to latest
-  const hasSelectedCommit = !!selectedCommit && commits.some((c) => c.hash === selectedCommit)
-  const effectiveValue = (hasSelectedCommit ? selectedCommit : latestHash) || ''
+  // Use selected commit if it exists in the list (matching abbreviated hashes, #555);
+  // otherwise fall back to latest
+  const selectedHash = findByHash(commits, selectedCommit, (c) => c.hash)?.hash
+  const effectiveValue = (selectedHash ?? latestHash) || ''
 
   return (
     <FormControl size="small">
@@ -169,7 +171,7 @@ export function VersionSelector({
           const hasChange = showFileChanges && fileChangeHashes.has(commit.hash)
           // Check if this commit is selected
           const isSelected =
-            commit.hash === selectedCommit || (!selectedCommit && commit.hash === latestHash)
+            commit.hash === selectedHash || (!selectedCommit && commit.hash === latestHash)
 
           return (
             <MenuItem

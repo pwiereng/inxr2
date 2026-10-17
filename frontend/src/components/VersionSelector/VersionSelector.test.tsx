@@ -203,6 +203,23 @@ describe('VersionSelector', () => {
 
       expect(onVersionChange).toHaveBeenCalledWith('ccc1234567890abcdef1234567890abcdef123456')
     })
+
+    it('should select the matching commit when selectedCommit is an abbreviated hash (#555)', async () => {
+      mockGetCommits.mockResolvedValue(threeCommits)
+
+      render(<VersionSelector {...defaultProps} selectedCommit="bbb1234" />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('combobox')).toBeInTheDocument()
+      })
+      expect(screen.getByRole('combobox')).toHaveTextContent('bbb1234')
+
+      fireEvent.mouseDown(screen.getByRole('combobox'))
+      await waitFor(() => {
+        expect(screen.getByRole('listbox')).toBeInTheDocument()
+      })
+      expect(screen.getByRole('option', { selected: true })).toHaveTextContent('bbb1234')
+    })
   })
 
   describe('showFileChanges prop', () => {

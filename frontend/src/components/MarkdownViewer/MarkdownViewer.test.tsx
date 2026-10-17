@@ -279,6 +279,53 @@ describe('MarkdownViewer', () => {
     expect(svg).toBeInTheDocument()
   })
 
+  describe('YAML front matter (#553)', () => {
+    const skillMd =
+      '---\nname: close\ndescription: "Closes a worktree"\nuser-invocable: true\n---\n# Close Skill\n'
+
+    it('renders front matter as a key/value table, not as markdown', () => {
+      renderWithTheme(<MarkdownViewer content={skillMd} />)
+
+      const table = screen.getByTestId('front-matter')
+      expect(table.tagName).toBe('TABLE')
+      expect(screen.getByRole('columnheader', { name: 'name' })).toBeInTheDocument()
+      expect(screen.getByRole('cell', { name: 'close' })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: 'description' })).toBeInTheDocument()
+      expect(screen.getByRole('cell', { name: 'Closes a worktree' })).toBeInTheDocument()
+
+      // The delimiters and raw YAML must not reach the markdown renderer
+      expect(screen.queryByText('---')).not.toBeInTheDocument()
+      expect(screen.queryByText(/name: close/)).not.toBeInTheDocument()
+    })
+
+    it('keeps the real first heading as the first heading', () => {
+      renderWithTheme(<MarkdownViewer content={skillMd} />)
+      const headings = screen.getAllByRole('heading')
+      expect(headings[0]).toHaveTextContent('Close Skill')
+      expect(headings[0]?.tagName).toBe('H1')
+    })
+
+    it('renders nothing extra for an empty front-matter block', () => {
+      renderWithTheme(<MarkdownViewer content={'---\n---\n# Title'} />)
+      expect(screen.queryByTestId('front-matter')).not.toBeInTheDocument()
+      expect(screen.queryByText('---')).not.toBeInTheDocument()
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Title')
+    })
+
+    it('falls back to a YAML code block when the block is not a simple mapping', () => {
+      renderWithTheme(<MarkdownViewer content={'---\njust some text\n---\nBody'} />)
+      const block = screen.getByTestId('front-matter')
+      expect(block).toHaveTextContent('just some text')
+      expect(block.querySelector('code.language-yaml')).not.toBeNull()
+      expect(screen.getByText('Body')).toBeInTheDocument()
+    })
+
+    it('does not render a front-matter table when there is none', () => {
+      renderWithTheme(<MarkdownViewer content={'# Title\n\nText'} />)
+      expect(screen.queryByTestId('front-matter')).not.toBeInTheDocument()
+    })
+  })
+
   it('does not render mermaid code as plain text', async () => {
     const md = '```mermaid\ngraph TD\n  A --> B\n```'
     renderWithTheme(<MarkdownViewer content={md} />)

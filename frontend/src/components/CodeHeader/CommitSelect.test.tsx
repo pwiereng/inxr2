@@ -43,8 +43,9 @@ describe('CommitSelect', () => {
       />
     )
 
-    // Should show "latest" as the rendered value since commit is not in list
-    expect(screen.getByText('latest')).toBeInTheDocument()
+    // Unknown commit: show the hash as given (abbreviated), never "latest" (#555)
+    expect(screen.getByText('e20da5f')).toBeInTheDocument()
+    expect(screen.queryByText('latest')).not.toBeInTheDocument()
 
     // Should NOT have any MUI out-of-range warnings. The suite-wide console
     // guard (consoleGuard.ts) already fails this test on any console output;
@@ -64,6 +65,63 @@ describe('CommitSelect', () => {
     )
 
     expect(screen.getByText('abc123d')).toBeInTheDocument()
+  })
+
+  it('should display the matching commit when commitDisplayValue is an abbreviated hash (#555)', () => {
+    render(
+      <CommitSelect
+        commits={mockCommits}
+        loading={false}
+        commitDisplayValue="def456g"
+        onCommitChange={vi.fn()}
+      />
+    )
+
+    const combobox = screen.getByRole('combobox')
+    expect(combobox).toHaveTextContent('def456g')
+    expect(combobox).not.toHaveTextContent('latest')
+
+    // The matching option is the selected one in the menu
+    fireEvent.mouseDown(combobox)
+    const selected = screen.getByRole('option', { selected: true })
+    expect(selected).toHaveTextContent('Second commit')
+  })
+
+  it('should show an ambiguous abbreviated hash as given without selecting a commit', () => {
+    const ambiguousCommits: CommitInfo[] = [
+      { ...mockCommits[0]!, hash: 'abcd1111aaaa', short_hash: 'abcd111' },
+      { ...mockCommits[1]!, hash: 'abcd2222bbbb', short_hash: 'abcd222' },
+    ]
+    render(
+      <CommitSelect
+        commits={ambiguousCommits}
+        loading={false}
+        commitDisplayValue="abcd"
+        onCommitChange={vi.fn()}
+      />
+    )
+
+    const combobox = screen.getByRole('combobox')
+    expect(combobox).toHaveTextContent('abcd')
+    expect(combobox).not.toHaveTextContent('abcd111')
+    fireEvent.mouseDown(combobox)
+    expect(screen.queryByRole('option', { selected: true })).not.toBeInTheDocument()
+  })
+
+  it('should not match a prefix shorter than 4 characters', () => {
+    render(
+      <CommitSelect
+        commits={mockCommits}
+        loading={false}
+        commitDisplayValue="def"
+        onCommitChange={vi.fn()}
+      />
+    )
+
+    const combobox = screen.getByRole('combobox')
+    expect(combobox).toHaveTextContent('def')
+    fireEvent.mouseDown(combobox)
+    expect(screen.queryByRole('option', { selected: true })).not.toBeInTheDocument()
   })
 
   it('should display "latest" when commitDisplayValue is empty', () => {
