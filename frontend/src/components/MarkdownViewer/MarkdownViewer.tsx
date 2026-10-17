@@ -7,6 +7,7 @@ import mermaid from 'mermaid'
 import DOMPurify from 'dompurify'
 import Prism from 'prismjs'
 import { getPrismLanguage } from '@/lib/prismLanguages'
+import { splitFrontMatter, type FrontMatter } from '@/lib/frontMatter'
 
 // Initialize mermaid once at module level (startOnLoad only — theme is set per-render
 // via the %%{init}%% directive to avoid global-state races when multiple diagrams mount).
@@ -71,9 +72,48 @@ export function MermaidDiagram({ code, isDark }: MermaidDiagramProps): React.Rea
   )
 }
 
+/**
+ * Front matter shown GitHub-style: a one-row table with keys as headers, or the
+ * raw YAML in a code block when it isn't a simple mapping. Empty blocks render nothing.
+ */
+function FrontMatterBlock({
+  frontMatter,
+}: {
+  frontMatter: FrontMatter
+}): React.ReactElement | null {
+  const { raw, entries } = frontMatter
+  if (entries === null) {
+    return (
+      <pre data-testid="front-matter">
+        <code className="language-yaml">{raw}</code>
+      </pre>
+    )
+  }
+  if (entries.length === 0) return null
+  return (
+    <table className="front-matter" data-testid="front-matter">
+      <thead>
+        <tr>
+          {entries.map((entry, i) => (
+            <th key={i}>{entry.key}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {entries.map((entry, i) => (
+            <td key={i}>{entry.value}</td>
+          ))}
+        </tr>
+      </tbody>
+    </table>
+  )
+}
+
 export function MarkdownViewer({ content }: MarkdownViewerProps): React.ReactElement {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
+  const { frontMatter, body } = useMemo(() => splitFrontMatter(content), [content])
 
   const markdownStyles = useMemo(
     () => ({
@@ -143,6 +183,10 @@ export function MarkdownViewer({ content }: MarkdownViewerProps): React.ReactEle
         fontWeight: 600,
         bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
       },
+      '& table.front-matter td': {
+        whiteSpace: 'pre-wrap',
+        verticalAlign: 'top',
+      },
       '& hr': {
         border: 'none',
         borderTop: `1px solid ${theme.palette.divider}`,
@@ -161,6 +205,7 @@ export function MarkdownViewer({ content }: MarkdownViewerProps): React.ReactEle
 
   return (
     <Box sx={markdownStyles}>
+      {frontMatter && <FrontMatterBlock frontMatter={frontMatter} />}
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -196,7 +241,7 @@ export function MarkdownViewer({ content }: MarkdownViewerProps): React.ReactEle
           },
         }}
       >
-        {content}
+        {body}
       </ReactMarkdown>
     </Box>
   )

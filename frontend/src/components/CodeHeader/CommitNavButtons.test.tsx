@@ -105,6 +105,36 @@ describe('CommitNavButtons', () => {
     expect(onCommitChange).toHaveBeenCalledWith('bbbb222')
   })
 
+  it('should resolve an abbreviated hash to its position in the list (#555)', () => {
+    const onCommitChange = vi.fn()
+    const fullHashCommits: CommitInfo[] = [
+      makeCommit('aaaa1111111111111111111111111111111111aa', 'HEAD commit'),
+      makeCommit('bbbb2222222222222222222222222222222222bb', 'Middle commit'),
+      makeCommit('cccc3333333333333333333333333333333333cc', 'Oldest commit'),
+    ]
+    render(
+      <CommitNavButtons
+        commits={fullHashCommits}
+        commitDisplayValue="bbbb222"
+        onCommitChange={onCommitChange}
+      />
+    )
+    expect(screen.getByRole('button', { name: /newer commit/i })).not.toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /older commit/i }))
+    expect(onCommitChange).toHaveBeenCalledWith('cccc3333333333333333333333333333333333cc')
+  })
+
+  it('should disable "Go to latest" when an abbreviated hash names HEAD (#555)', () => {
+    render(
+      <CommitNavButtons
+        commits={[makeCommit('aaaa1111111111111111111111111111111111aa', 'HEAD commit')]}
+        commitDisplayValue="aaaa111"
+        onCommitChange={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('button', { name: /go to latest/i })).toBeDisabled()
+  })
+
   it('should treat unknown commit as HEAD (index 0)', () => {
     const onCommitChange = vi.fn()
     render(

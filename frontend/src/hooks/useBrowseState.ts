@@ -14,6 +14,7 @@
 
 import { useRef, useMemo, useEffect } from 'react'
 import type { FileVersion } from '@/lib/api'
+import { getByHash, hashMatches } from '@/lib/commitHash'
 import { useBrowseUrlState } from './useBrowseUrlState'
 import { useBrowseDiffState } from './useBrowseDiffState'
 import { useBrowseData } from './useBrowseData'
@@ -106,7 +107,9 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
     const fileChangedInCommit = urlResult.urlState.changedOnly
       ? true
       : urlResult.urlState.selectedCommit
-        ? dataResult.fileVersions.some((v) => v.commit_hash === urlResult.urlState.selectedCommit)
+        ? dataResult.fileVersions.some((v) =>
+            hashMatches(v.commit_hash, urlResult.urlState.selectedCommit)
+          )
         : true
 
     // Determine temporal ordering of comparison vs reference commits by comparing dates.
@@ -116,12 +119,14 @@ export function useBrowseState(repoNameProp?: string): UseBrowseStateResult {
     let temporalOrderKnown = false
     if (globalReferenceCommit && comparisonCommit) {
       const referenceDate =
-        dataResult.fileVersions.find((v) => v.commit_hash === globalReferenceCommit)?.commit_date ??
-        dataResult.commitDateMap.get(globalReferenceCommit)
+        dataResult.fileVersions.find((v) => hashMatches(v.commit_hash, globalReferenceCommit))
+          ?.commit_date ?? getByHash(dataResult.commitDateMap, globalReferenceCommit)
       const comparisonDate =
-        diffResult.diffFileVersions.find((v) => v.commit_hash === comparisonCommit)?.commit_date ??
-        dataResult.fileVersions.find((v) => v.commit_hash === comparisonCommit)?.commit_date ??
-        dataResult.commitDateMap.get(comparisonCommit)
+        diffResult.diffFileVersions.find((v) => hashMatches(v.commit_hash, comparisonCommit))
+          ?.commit_date ??
+        dataResult.fileVersions.find((v) => hashMatches(v.commit_hash, comparisonCommit))
+          ?.commit_date ??
+        getByHash(dataResult.commitDateMap, comparisonCommit)
       if (referenceDate && comparisonDate) {
         const refDate = new Date(referenceDate)
         const compDate = new Date(comparisonDate)

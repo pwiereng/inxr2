@@ -11,6 +11,7 @@ import type { CommitInfo } from '@/lib/api'
 import { formatDateTimeUTC } from '@/lib/dateUtils'
 import { MENU_PROPS } from '@/lib/menuProps'
 import { CopyButton } from '@/components/CopyButton/CopyButton'
+import { hashMatches } from '@/lib/commitHash'
 
 interface CommitSelectProps {
   commits: CommitInfo[]
@@ -36,10 +37,11 @@ export function CommitSelect({
     return null
   }
 
-  // Guard against out-of-range value warning when the commit hash
-  // (e.g. HEAD) is not in the list of indexed commits
-  const isValueInOptions = commits.some((c) => c.hash === commitDisplayValue)
-  const selectValue = isValueInOptions ? commitDisplayValue : ''
+  // The URL may carry an abbreviated hash (#555): resolve it to the full hash of
+  // the matching option. If it's not in the list of indexed commits (e.g. HEAD),
+  // use '' to avoid MUI's out-of-range warning and show the value as given.
+  const matchedCommit = commits.find((c) => hashMatches(c.hash, commitDisplayValue))
+  const selectValue = matchedCommit?.hash ?? ''
 
   return (
     <FormControl size="small" sx={{ minWidth: 140 }}>
@@ -59,9 +61,8 @@ export function CommitSelect({
           },
         }}
         renderValue={(selected) => {
-          if (!selected) return 'latest'
-          const selectedCommitObj = commits.find((c) => c.hash === selected)
-          return selectedCommitObj ? getShortHash(selectedCommitObj.hash) : 'latest'
+          if (selected) return getShortHash(selected)
+          return commitDisplayValue ? getShortHash(commitDisplayValue) : 'latest'
         }}
       >
         {commits.map((commitInfo, index) => {

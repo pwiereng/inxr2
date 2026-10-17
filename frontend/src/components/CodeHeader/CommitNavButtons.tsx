@@ -3,6 +3,7 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import LastPageIcon from '@mui/icons-material/LastPage'
 import type { CommitInfo } from '@/lib/api'
+import { hashMatches } from '@/lib/commitHash'
 
 interface CommitNavButtonsProps {
   commits: CommitInfo[]
@@ -19,7 +20,7 @@ export function CommitNavButtons({
     return null
   }
 
-  const currentIndex = commits.findIndex((c) => c.hash === commitDisplayValue)
+  const currentIndex = commits.findIndex((c) => hashMatches(c.hash, commitDisplayValue))
   // If commit not found in list, treat as HEAD (index 0)
   const effectiveIndex = currentIndex === -1 ? 0 : currentIndex
 
@@ -84,7 +85,7 @@ export function CommitNavButtons({
           <IconButton
             size="small"
             onClick={handleLatest}
-            disabled={commitDisplayValue === commits[0]?.hash}
+            disabled={currentIndex === 0}
             aria-label="Go to latest"
             sx={{ p: 0.25, color: 'text.secondary' }}
           >

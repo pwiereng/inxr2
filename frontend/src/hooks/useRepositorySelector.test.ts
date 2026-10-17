@@ -336,6 +336,16 @@ describe('useRepositorySelector', () => {
       expect(result.current.currentCommitDate).toBe('2024-01-02 14:45 UTC')
     })
 
+    it('should compute currentCommitDate when commit prop is an abbreviated hash (#555)', async () => {
+      const { result } = await renderRepositorySelectorHook({
+        repoName: 'test-repo',
+        branch: 'main',
+        commit: 'def456g',
+      })
+
+      expect(result.current.currentCommitDate).toBe('2024-01-02 14:45 UTC')
+    })
+
     it('should compute currentCommitDate for latest commit when no commit selected', async () => {
       const { result } = await renderRepositorySelectorHook()
 

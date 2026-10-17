@@ -1808,6 +1808,24 @@ describe('useBrowseState', () => {
       expect(result.current.computedState.fileChangedInCommit).toBe(false)
     })
 
+    it('should be true when selectedCommit is an abbreviated hash in fileVersions (#555)', async () => {
+      mockSearchParams = new URLSearchParams('commit=def4')
+      mockGetFileHistory.mockResolvedValue({
+        versions: mockVersions,
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 2,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.dataState.fileVersions.length).toBe(2)
+      })
+
+      expect(result.current.computedState.fileChangedInCommit).toBe(true)
+    })
+
     it('should be true when no selectedCommit (viewing latest)', async () => {
       mockSearchParams = new URLSearchParams('')
       mockGetFileHistory.mockResolvedValue({
@@ -2487,6 +2505,42 @@ describe('useBrowseState', () => {
 
       expect(result.current.computedState.referenceIsNewer).toBe(true)
       expect(result.current.computedState.temporalOrderKnown).toBe(true)
+    })
+
+    it('should determine temporal order when commit and diff are abbreviated hashes (#555)', async () => {
+      mockSearchParams = new URLSearchParams('commit=newer-a&diff=older-x')
+
+      mockGetFileHistory.mockResolvedValue({
+        versions: [
+          {
+            commit_id: 2,
+            commit_hash: 'newer-abc',
+            short_hash: 'newer',
+            commit_date: '2024-02-01T00:00:00Z',
+            message: 'Newer commit',
+            content_hash: 'hash2',
+          },
+          {
+            commit_id: 1,
+            commit_hash: 'older-xyz',
+            short_hash: 'older',
+            commit_date: '2024-01-01T00:00:00Z',
+            message: 'Older commit',
+            content_hash: 'hash1',
+          },
+        ],
+        path: 'src/main.py',
+        repository_name: 'test-repo',
+        total: 2,
+      })
+
+      const { result } = await renderBrowseStateHook()
+
+      await vi.waitFor(() => {
+        expect(result.current.computedState.temporalOrderKnown).toBe(true)
+      })
+
+      expect(result.current.computedState.referenceIsNewer).toBe(true)
     })
 
     it('should set referenceIsNewer=false when reference commit is chronologically older', async () => {

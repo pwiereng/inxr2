@@ -162,6 +162,24 @@ describe('History', () => {
     )
   })
 
+  it('focuses the matching commit when the commit param is an abbreviated hash (#555)', async () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    mockGetCommits.mockResolvedValue({
+      commits: [
+        makeCommit({ hash: 'f'.repeat(40), short_hash: 'fffffff' }),
+        makeCommit({ hash: 'e'.repeat(40), short_hash: 'eeeeeee', message: 'Focused commit' }),
+      ],
+      total: 2,
+    })
+    renderHistory('/history?repo=myrepo&commit=eeeeeee')
+
+    await waitFor(() => expect(screen.getByText('Focused commit')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+    )
+  })
+
   it('navigates to the browse view when an indexed commit hash is clicked', async () => {
     const user = userEvent.setup()
     mockGetCommits.mockResolvedValue({
