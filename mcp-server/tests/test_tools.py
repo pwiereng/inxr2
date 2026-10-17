@@ -1052,6 +1052,20 @@ class TestStalenessWarning:
         assert "stale" in result
         assert "Blast radius" in result
 
+    async def test_unknown_repository_is_named(self) -> None:
+        """The API's 404 says only "Repository not found"; name the one asked for."""
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+
+        with pytest.raises(McpToolError) as exc_info:
+            await get_file_structure.handle(
+                client, {"file_path": "src/models.py", "repository": "no-such-repo"}
+            )
+
+        message = str(exc_info.value)
+        assert "Repository `no-such-repo` not found" in message
+        assert "list_repositories" in message
+
 
 # --- review_helper ---
 

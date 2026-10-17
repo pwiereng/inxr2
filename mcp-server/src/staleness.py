@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.client import Inxr2Client
+from src.errors import ApiNotFoundError, McpToolError
 
 
 class StalenessResult:
@@ -19,7 +20,14 @@ class StalenessResult:
 
 async def check_staleness(client: Inxr2Client, repository_name: str) -> StalenessResult:
     """Check staleness and return both the warning (if any) and the repo data."""
-    repo = await client.get(f"/api/repositories/by-name/{repository_name}")
+    try:
+        repo = await client.get(f"/api/repositories/by-name/{repository_name}")
+    except ApiNotFoundError as exc:
+        # The API's detail doesn't name the repository, so name it here
+        raise McpToolError(
+            f"Repository `{repository_name}` not found. "
+            "Call `list_repositories` to see the indexed repositories."
+        ) from exc
     stats = await client.get(f"/api/repositories/{repo['id']}/stats")
     warning = None
     if stats.get("is_stale"):

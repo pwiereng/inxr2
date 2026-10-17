@@ -356,7 +356,8 @@ class FakeInxr2Client(Inxr2Client):
             for repo in self._repositories:
                 if repo["name"] == name:
                     return repo
-            raise ApiNotFoundError(f"Repository not found: {name}")
+            # Same 404 detail as the API, which doesn't name the repository
+            raise ApiNotFoundError("Repository not found")
 
         # GET /api/symbols/by-name/{name}
         if path.startswith("/api/symbols/by-name/"):
