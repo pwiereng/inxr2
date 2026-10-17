@@ -1015,3 +1015,29 @@ const (
         assert "Monday" in const_names
         assert "Tuesday" in const_names
         assert "Wednesday" in const_names
+
+
+class TestGoQualifiedTypeReferences:
+    """Package-qualified types (`pkg.T`) are type references (#548)."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        return TreeSitterService()
+
+    async def test_qualified_types_are_referenced(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """package p
+
+func f(x interface{}) {
+	a := models.Widget{}
+	var b models.Gadget
+	if _, ok := x.(models.Part); ok {}
+	var r http.Request
+}
+"""
+        _, refs = await parser_service.parse_file(code, "go", "p.go")
+        texts = {r.reference_text for r in refs}
+        assert {"Widget", "Gadget", "Part"} <= texts
+        # Standard library types are not repository symbols
+        assert "Request" not in texts

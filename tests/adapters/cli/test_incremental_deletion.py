@@ -165,14 +165,14 @@ class TestIncrementalIndexingDropsDeletedFiles:
             gone_symbols, _ = await symbol_repo.search_by_name(
                 "GoneThing", repository_id=repo_id, branch="main"
             )
-            # find_dead_code scans every symbol with regex "."
-            scan, _ = await symbol_repo.search_by_name(
-                ".", repository_id=repo_id, branch="main", mode="regex", limit=500
+            # find_dead_code's whole-head scan (#548)
+            dead = await PostgresReferenceRepository(session).find_unreferenced_symbols(
+                repo_id, branch="main"
             )
             scan_files = {
                 f.path
                 for f in (
-                    await file_repo.find_by_ids(list({s.file_id for s in scan}))
+                    await file_repo.find_by_ids(list({s.file_id for s in dead.symbols}))
                 ).values()
             }
 

@@ -751,8 +751,10 @@ class TestFindDeadCode:
             client, {"repository": "my-repo", "limit": 3}
         )
 
-        assert "showing 3" in result
         assert "10 symbols with no references" in result
+        assert "showing 1-3" in result
+        assert "offset=3" in result
+        assert result.count("[function] dead_") == 3
 
     async def test_pluralizes_property_correctly(self) -> None:
         client = FakeInxr2Client()
@@ -766,31 +768,86 @@ class TestFindDeadCode:
         assert "properties with no references" in result
         assert "propertys" not in result
 
-    async def test_warns_when_scan_incomplete(self) -> None:
-        """When total symbols exceeds fetched count, warn the user."""
+    async def test_scans_every_symbol_not_a_sample(self) -> None:
+        """Regression for #548: only the first 200 symbols were checked."""
         client = FakeInxr2Client()
         client.add_repository(1, "my-repo")
-        # Add 3 symbols but fake the total as higher
-        for i in range(3):
-            client.add_symbol(i, f"dead_{i}", kind="function", repository_id=1)
-
-        # Monkey-patch to return inflated total
-        original_get = client.get
-
-        async def patched_get(
-            path: str, params: dict[str, Any] | None = None
-        ) -> dict[str, Any]:
-            result = await original_get(path, params)
-            if path == "/api/symbols" and isinstance(result, dict):
-                result["total"] = 500
-            return dict(result)
-
-        client.get = patched_get  # type: ignore[method-assign]
+        for i in range(2573):
+            client.add_symbol(i, f"used_{i}", kind="function", repository_id=1)
+            client.add_reference(i, "src/app.py", 1, "call", f"used_{i}()")
+        client.add_symbol(9999, "really_dead", kind="function", repository_id=1)
 
         result = await find_dead_code.handle(client, {"repository": "my-repo"})
 
-        assert "scanned 3 of 500 symbols" in result
-        assert "results may be incomplete" in result
+        assert "really_dead" in result
+        assert "1 symbols with no references" in result
+        assert "Scanned all 2574 symbols" in result
+        assert "may be incomplete" not in result
+
+    async def test_one_backend_call_not_one_per_symbol(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        for i in range(50):
+            client.add_symbol(i, f"dead_{i}", kind="function", repository_id=1)
+
+        await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        assert not any("/references" in path for path in client.requested_paths)
+        assert client.requested_paths.count("/api/symbols/unreferenced") == 1
+
+    async def test_pages_with_offset(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        for i in range(5):
+            client.add_symbol(i, f"dead_{i}", kind="function", repository_id=1)
+
+        result = await find_dead_code.handle(
+            client, {"repository": "my-repo", "limit": 2, "offset": 4}
+        )
+
+        assert "dead_4" in result
+        assert "dead_0" not in result
+        assert "showing 5-5" in result
+        assert "offset=" not in result.split("\n")[0].split("showing")[1]
+
+    async def test_offset_past_end(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "dead_func", kind="function", repository_id=1)
+
+        result = await find_dead_code.handle(
+            client, {"repository": "my-repo", "offset": 10}
+        )
+
+        assert "No results at offset 10" in result
+        assert "1 symbols with no references" in result
+
+    async def test_reports_excluded_entry_points(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "CarbingoApp", kind="struct", repository_id=1)
+        client.mark_entry_point(1)
+        client.add_symbol(2, "dead_func", kind="function", repository_id=1)
+
+        result = await find_dead_code.handle(client, {"repository": "my-repo"})
+
+        assert "CarbingoApp" not in result
+        assert "dead_func" in result
+        assert "1 entry points excluded" in result
+
+    async def test_passes_branch_and_commit(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.add_symbol(1, "dead_func", kind="function", repository_id=1)
+
+        await find_dead_code.handle(
+            client, {"repository": "my-repo", "branch": "dev", "commit": "abc1234"}
+        )
+
+        params = client.last_params["/api/symbols/unreferenced"]
+        assert params["branch"] == "dev"
+        assert params["commit"] == "abc1234"
+        assert params["repository_id"] == 1
 
 
 # --- staleness warning ---

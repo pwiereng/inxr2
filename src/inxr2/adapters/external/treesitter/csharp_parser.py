@@ -721,6 +721,10 @@ class CSharpParser(BaseLanguageParser):
             if node.type == "invocation_expression":
                 process_invocation(node, scope)
 
+            # Member reads (Color.Red, Util.Limit) — callees are handled above
+            if node.type == "member_access_expression":
+                process_member_access(node, scope)
+
             # Object creation (new Foo())
             if node.type == "object_creation_expression":
                 for child in node.children:
@@ -948,6 +952,42 @@ class CSharpParser(BaseLanguageParser):
                         is_static=is_static,
                     )
                 )
+
+        def process_member_access(node: Node, scope: str | None = None) -> None:
+            """Reference a type or member read as a value (#548).
+
+            Emits capitalized identifiers only: the receiver when it names a
+            type (`Color` in `Color.Red`), and the member (`Red`). Lowercase
+            receivers are locals and parameters, which never resolve.
+            """
+            parent = node.parent
+            if (
+                parent is not None
+                and parent.type == "invocation_expression"
+                and parent.child_by_field_name("function") == node
+            ):
+                return  # obj.Method() — process_invocation handles it
+            # `Util.X = 5` writes X; `Util.X += 1` also reads it
+            operator = (
+                parent.child_by_field_name("operator")
+                if parent is not None
+                and parent.type == "assignment_expression"
+                and parent.child_by_field_name("left") == node
+                else None
+            )
+            is_write_target = operator is not None and operator.type == "="
+            fields = ("expression",) if is_write_target else ("expression", "name")
+            for field in fields:
+                child = node.child_by_field_name(field)
+                if child is None or child.type != "identifier":
+                    continue
+                name = get_text(child)
+                if (
+                    name[0:1].isupper()
+                    and name not in CSHARP_BUILTINS
+                    and name not in CSHARP_PRIMITIVE_TYPES
+                ):
+                    add_reference(self._make_reference(name, "usage", child, scope))
 
         def process_invocation(node: Node, scope: str | None = None) -> None:
             """Process a method invocation expression."""

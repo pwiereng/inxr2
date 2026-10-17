@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from src.client import Inxr2Client
@@ -13,7 +12,13 @@ TOOL_NAME = "find_dead_code"
 
 TOOL_DESCRIPTION = (
     "Find symbols with zero references (dead code) in a repository. "
-    "Useful for identifying unused functions, classes, and methods. "
+    "Scans every symbol at the branch head (or at a given commit) and pages "
+    "through the results. "
+    "A symbol counts as referenced when any reference uses its name. "
+    "Entry points run by the runtime or a test runner are excluded for Swift "
+    "(@main, @Suite/@Test, XCTestCase) and Python (test_* functions, Test* "
+    "classes, unittest.TestCase, pytest fixtures) only; in other languages "
+    "main functions and tests are still listed. "
     "Requires a repository name. Optionally filter by symbol kind."
 )
 
@@ -42,6 +47,11 @@ TOOL_SCHEMA: dict[str, Any] = {
             "type": "integer",
             "description": "Max results to return (default 20, max 100)",
             "default": 20,
+        },
+        "offset": {
+            "type": "integer",
+            "description": "Skip this many results, to page through (default 0)",
+            "default": 0,
         },
         "branch": {
             "type": "string",
@@ -75,6 +85,7 @@ async def handle(
     repository = arguments["repository"]
     kind = arguments.get("kind")
     limit = min(arguments.get("limit", 20), 100)
+    offset = max(arguments.get("offset", 0), 0)
     branch = arguments.get("branch")
     commit = arguments.get("commit")
 
@@ -83,13 +94,11 @@ async def handle(
     staleness_warning = staleness.warning
     repository_id = staleness.repo_data["id"]
 
-    # Fetch symbols (get a large batch to check for dead code)
-    # Use regex mode with "." to match all symbol names
+    # The backend scans every symbol in scope in one query
     params: dict[str, Any] = {
-        "q": ".",
-        "mode": "regex",
-        "limit": 200,
         "repository_id": repository_id,
+        "limit": limit,
+        "offset": offset,
     }
     if kind:
         params["kind"] = kind
@@ -97,69 +106,49 @@ async def handle(
         params["branch"] = branch
     if commit:
         params["commit"] = commit
-    symbols_data = await client.get("/api/symbols", params=params)
+    data = await client.get("/api/symbols/unreferenced", params=params)
 
-    items = symbols_data.get("items", [])
-    symbols_total = symbols_data.get("total", len(items))
-    scan_incomplete = symbols_total > len(items)
+    items: list[dict[str, Any]] = data.get("items", [])
+    total: int = data.get("total", len(items))
+    scanned: int = data.get("scanned", 0)
+    entry_points: int = data.get("entry_points_excluded", 0)
+    kind_str = f" {_pluralize(kind)}" if kind else " symbols"
 
-    if not items:
-        kind_str = f" {_pluralize(kind)}" if kind else " symbols"
+    if scanned == 0:
         return prepend_warning(
             f"No{kind_str} found in '{repository}'.", staleness_warning
         )
 
-    # Check references for each symbol (N+1 calls — acceptable for v1)
-    async def has_references(symbol: dict[str, Any]) -> bool:
-        ref_params: dict[str, Any] = {"by_name": "true", "limit": 1}
-        if branch:
-            ref_params["branch"] = branch
-        if commit:
-            ref_params["commit"] = commit
-        refs_data = await client.get(
-            f"/api/symbols/{symbol['id']}/references",
-            params=ref_params,
+    coverage = f"Scanned all {scanned}{kind_str}"
+    if entry_points:
+        coverage += (
+            f"; {entry_points} entry points excluded"
+            " (Swift @main, @Suite/@Test, XCTestCase; Python tests and fixtures)"
         )
-        return len(refs_data.get("items", [])) > 0
+    coverage += "."
 
-    results = await asyncio.gather(*[has_references(s) for s in items])
-    dead_symbols = [
-        s for s, has_refs in zip(items, results, strict=True) if not has_refs
-    ]
-
-    # Deduplicate by name — header declarations may appear alongside implementations
-    seen_names: set[str] = set()
-    unique_dead: list[dict[str, Any]] = []
-    for symbol in dead_symbols:
-        name = symbol.get("name", "")
-        if name not in seen_names:
-            seen_names.add(name)
-            unique_dead.append(symbol)
-
-    if not unique_dead:
-        kind_str = f" {_pluralize(kind)}" if kind else " symbols"
+    if total == 0:
         return prepend_warning(
-            f"No dead code found in '{repository}' — all{kind_str} have references.",
+            f"No dead code found in '{repository}' — all{kind_str} have references."
+            f"\n{coverage}",
             staleness_warning,
         )
 
-    # Apply limit after dedup
-    total = len(unique_dead)
-    unique_dead = unique_dead[:limit]
-
-    # Format output
-    kind_str = f" {_pluralize(kind)}" if kind else " symbols"
-    header = f"Dead code in '{repository}': {total}{kind_str} with no references" + (
-        f" (showing {limit})" if total > limit else ""
-    )
-    if scan_incomplete:
-        header += (
-            f"\nNote: scanned {len(items)} of {symbols_total} symbols"
-            " — results may be incomplete."
+    header = f"Dead code in '{repository}': {total}{kind_str} with no references"
+    if not items:
+        return prepend_warning(
+            f"{header}\nNo results at offset {offset}.\n{coverage}",
+            staleness_warning,
         )
-    lines = [header]
+    end = offset + len(items)
+    if offset > 0 or end < total:
+        header += f" (showing {offset + 1}-{end}"
+        if end < total:
+            header += f"; pass offset={end} for more"
+        header += ")"
+    lines = [header, coverage]
 
-    for symbol in unique_dead:
+    for symbol in items:
         file_path = symbol.get("file_path", "unknown")
         line = symbol.get("start_line", "?")
         kind_label = symbol.get("kind", "unknown")

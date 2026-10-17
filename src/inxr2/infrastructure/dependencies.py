@@ -107,6 +107,7 @@ from ..application.use_cases.repositories.list_repositories import (
 )
 from ..application.use_cases.search import SearchFilesUseCase, SearchTextUseCase
 from ..application.use_cases.symbols import (
+    FindDeadCodeUseCase,
     GetSymbolReferencesUseCase,
     GetSymbolTreeUseCase,
     SearchSymbolsUseCase,
@@ -440,6 +441,19 @@ def get_search_symbols_use_case(
     )
 
 
+def get_find_dead_code_use_case(
+    reference_adapter: ReferenceAdapter,
+    file_adapter: FileAdapter,
+    commit_adapter: CommitAdapter,
+) -> FindDeadCodeUseCase:
+    """Provide FindDeadCodeUseCase with dependencies."""
+    return FindDeadCodeUseCase(
+        reference_repo=reference_adapter,
+        file_repo=file_adapter,
+        commit_repo=commit_adapter,
+    )
+
+
 def get_symbol_references_use_case(
     symbol_adapter: SymbolAdapter,
     reference_adapter: ReferenceAdapter,
@@ -474,6 +488,9 @@ def get_symbol_tree_use_case(
 
 SearchSymbolsUseCaseDep = Annotated[
     SearchSymbolsUseCase, Depends(get_search_symbols_use_case)
+]
+FindDeadCodeUseCaseDep = Annotated[
+    FindDeadCodeUseCase, Depends(get_find_dead_code_use_case)
 ]
 GetSymbolReferencesUseCaseDep = Annotated[
     GetSymbolReferencesUseCase, Depends(get_symbol_references_use_case)

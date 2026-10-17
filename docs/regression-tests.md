@@ -1934,8 +1934,10 @@ async def main():
     result = await find_dead_code.handle(client, {'repository': '$REPO', 'limit': 10})
     print(result)
     # Verify output structure. The header reads:
-    #   "Dead code in '<repo>': N symbols with no references (showing M)"
-    assert 'symbols with no references' in result or 'No unreferenced symbols' in result
+    #   "Dead code in '<repo>': N symbols with no references (showing 1-10; pass offset=10 for more)"
+    # followed by a coverage line: "Scanned all S symbols; E entry points excluded (...)."
+    assert 'symbols with no references' in result or 'No dead code found' in result
+    assert 'Scanned all ' in result
     await client.close()
 asyncio.run(main())
 "
@@ -1945,9 +1947,11 @@ asyncio.run(main())
 - Tool returns symbols with zero references
 - Each symbol entry includes kind, name, file path, and line number
 - Output header shows count of unreferenced symbols found
-- Results are limited to the requested `limit`
-- The tool declares its sampling cap rather than truncating silently — expect a line like
-  `Note: scanned 200 of 9021 symbols — results may be incomplete.`
+- Results are limited to the requested `limit`, and the header names the next `offset`
+  when more results exist
+- Every symbol is scanned (no sampling cap, #548): expect a coverage line like
+  `Scanned all 9021 symbols; 140 entry points excluded (...)` — `S` should match the
+  repository's symbol count at the branch head, and there is no "may be incomplete" note
 
 ---
 

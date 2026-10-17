@@ -460,3 +460,23 @@ class TestPhpRobustness:
         code = "<html><body><?php class Widget {} ?></body></html>\n"
         symbols, _ = await parse(parser_service, code)
         assert any(s.kind == "class" and s.name == "Widget" for s in symbols)
+
+
+class TestPhpTypePositionReferences:
+    """`instanceof T` is a type reference (#548)."""
+
+    async def test_instanceof_operand_is_referenced(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = (
+            "<?php\nfunction f($x) {\n"
+            "  if ($x instanceof Widget) {}\n"
+            "  if ($x instanceof \\App\\Gadget) {}\n"
+            "  if ($x instanceof self) {}\n"
+            "}\n"
+        )
+        _, refs = await parse(parser_service, code)
+        texts = {r.reference_text for r in refs}
+        assert "Widget" in texts
+        assert "Gadget" in texts
+        assert "self" not in texts

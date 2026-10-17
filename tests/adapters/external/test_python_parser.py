@@ -1,5 +1,7 @@
 """Tests for Python language parser symbol extraction."""
 
+from typing import Any
+
 import pytest
 
 from inxr2.adapters.external.treesitter import TreeSitterService
@@ -388,3 +390,143 @@ def my_func():
             "This docstring should appear in comments too."
             in docstring_comments[0].content
         )
+
+
+class TestTypePositionReferences:
+    """Class names used as values (isinstance, except, raise, arguments) are refs (#548)."""
+
+    async def _ref_texts(self, service: TreeSitterService, code: str) -> list[str]:
+        _, refs = await service.parse_file(code, "python", "test.py")
+        return [r.reference_text for r in refs]
+
+    async def test_isinstance_and_issubclass_arguments(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = (
+            "def f(x):\n    return isinstance(x, Widget) or issubclass(x, BaseWidget)\n"
+        )
+        texts = await self._ref_texts(parser_service, code)
+        assert "Widget" in texts
+        assert "BaseWidget" in texts
+
+    async def test_except_clauses(self, parser_service: TreeSitterService) -> None:
+        code = (
+            "def f():\n"
+            "    try:\n"
+            "        pass\n"
+            "    except ParseError:\n"
+            "        pass\n"
+            "    except (TimeoutError, NetworkError) as e:\n"
+            "        pass\n"
+        )
+        texts = await self._ref_texts(parser_service, code)
+        assert "ParseError" in texts
+        assert "NetworkError" in texts
+
+    async def test_bare_raise_of_class(self, parser_service: TreeSitterService) -> None:
+        code = "def f():\n    raise StopProcessing\n"
+        assert "StopProcessing" in await self._ref_texts(parser_service, code)
+
+    async def test_class_passed_as_argument(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = "def f(c):\n    return c.register(Handler, key=KeyType)\n"
+        texts = await self._ref_texts(parser_service, code)
+        assert "Handler" in texts
+        assert "KeyType" in texts
+
+    async def test_base_class_is_not_double_counted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = "class Child(Parent):\n    pass\n"
+        assert (await self._ref_texts(parser_service, code)).count("Parent") == 1
+
+    async def test_lowercase_locals_still_not_emitted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = "def f(x):\n    y = x\n    return helper(y)\n"
+        texts = await self._ref_texts(parser_service, code)
+        assert "y" not in texts
+        assert "x" not in texts
+
+    async def test_builtin_exceptions_not_emitted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        # Builtins never resolve to a project symbol (PR #558 review)
+        code = (
+            "def f(x):\n"
+            "    try:\n"
+            "        pass\n"
+            "    except (ValueError, KeyError, ParseError):\n"
+            "        raise\n"
+            "    return isinstance(x, Exception)\n"
+        )
+        texts = await self._ref_texts(parser_service, code)
+        assert "ValueError" not in texts
+        assert "KeyError" not in texts
+        assert "Exception" not in texts
+        assert "ParseError" in texts
+
+
+class TestPytestEntryPoints:
+    """pytest-discovered functions are marked as entry points (#548)."""
+
+    async def _symbols(self, service: TreeSitterService, code: str) -> dict[str, Any]:
+        symbols, _ = await service.parse_file(code, "python", "test_mod.py")
+        return {s.name: s for s in symbols}
+
+    async def test_test_functions_and_methods(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = (
+            "def test_adds():\n    pass\n\n"
+            "def helper():\n    pass\n\n"
+            "class TestMath:\n"
+            "    def test_mul(self):\n        pass\n"
+            "    def setup_data(self):\n        pass\n"
+        )
+        syms = await self._symbols(parser_service, code)
+        assert syms["test_adds"].metadata["entry_point"] == "pytest"
+        assert syms["test_mul"].metadata["entry_point"] == "pytest"
+        assert syms["TestMath"].metadata["entry_point"] == "pytest"
+        assert "entry_point" not in syms["helper"].metadata
+        assert "entry_point" not in syms["setup_data"].metadata
+
+    async def test_fixtures(self, parser_service: TreeSitterService) -> None:
+        code = (
+            "import pytest\n\n"
+            "@pytest.fixture\n"
+            "def db():\n    pass\n\n"
+            "@pytest.fixture(scope='session')\n"
+            "def engine():\n    pass\n\n"
+            "@fixture\n"
+            "def bare():\n    pass\n\n"
+            "@functools.cache\n"
+            "def cached():\n    pass\n"
+        )
+        syms = await self._symbols(parser_service, code)
+        assert syms["db"].metadata["decorators"] == ["pytest.fixture"]
+        assert syms["db"].metadata["entry_point"] == "pytest fixture"
+        assert syms["engine"].metadata["entry_point"] == "pytest fixture"
+        assert syms["bare"].metadata["entry_point"] == "pytest fixture"
+        assert syms["cached"].metadata["decorators"] == ["functools.cache"]
+        assert "entry_point" not in syms["cached"].metadata
+
+    async def test_decorated_test_function(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = "@pytest.mark.parametrize('x', [1])\n" "def test_param(x):\n    pass\n"
+        syms = await self._symbols(parser_service, code)
+        assert syms["test_param"].metadata["entry_point"] == "pytest"
+
+    async def test_unittest_testcase_subclass(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = (
+            "import unittest\n\n"
+            "class ParserCase(unittest.TestCase):\n"
+            "    def test_parse(self):\n        pass\n"
+        )
+        syms = await self._symbols(parser_service, code)
+        assert syms["ParserCase"].metadata["entry_point"] == "unittest"
+        assert syms["test_parse"].metadata["entry_point"] == "pytest"

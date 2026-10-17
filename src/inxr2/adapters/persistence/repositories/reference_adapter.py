@@ -3,16 +3,20 @@
 from collections.abc import Callable
 from typing import Any
 
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import and_, delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....application.ports.repositories import ReferenceRepositoryPort
-from ....domain.constants import QueryDefaults
+from ....application.ports.repositories import (
+    ReferenceRepositoryPort,
+    UnreferencedSymbolsPage,
+)
+from ....domain.constants import KIND_ALIASES, QueryDefaults
 from ....domain.entities import Reference
-from ..mappers import ReferenceMapper
+from ..mappers import ReferenceMapper, SymbolMapper
 from ..models.commit_file import CommitFileModel
 from ..models.file import FileModel
 from ..models.reference import ReferenceModel
+from ..models.symbol import SymbolModel
 from .base_repository import BaseSQLAlchemyRepository
 from .query_utils import build_text_match_filter, split_extension_filter
 from .shared_queries import (
@@ -162,6 +166,114 @@ class PostgresReferenceRepository(
         )
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
+
+    async def find_unreferenced_symbols(
+        self,
+        repository_id: int,
+        kind: str | None = None,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        limit: int = QueryDefaults.SYMBOL_SEARCH_LIMIT,
+        offset: int = 0,
+    ) -> UnreferencedSymbolsPage:
+        """Find symbols whose name no reference in the same scope uses.
+
+        Set-based, with no per-symbol lookups: one statement for the coverage
+        counts and one for the page.
+        """
+        if commit_id is not None:
+            scope_files = (
+                select(CommitFileModel.file_id.label("file_id"))
+                .where(CommitFileModel.commit_id == commit_id)
+                .cte("dead_code_scope_files")
+            )
+        else:
+            latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+            scope_files = select(latest_sq.c.max_id.label("file_id")).cte(
+                "dead_code_scope_files"
+            )
+        scope_file_ids = select(scope_files.c.file_id)
+
+        in_scope = [
+            SymbolModel.repository_id == repository_id,
+            SymbolModel.file_id.in_(scope_file_ids),
+        ]
+        if kind is not None:
+            in_scope.append(SymbolModel.kind.in_(KIND_ALIASES.get(kind, [kind])))
+
+        # Names referenced in scope, computed once and probed through NOT IN,
+        # which Postgres runs as a hashed subplan. A correlated NOT EXISTS is
+        # planned as a nested loop (the JSON entry-point filter defeats row
+        # estimates) and is 10-100x slower on large repositories.
+        # reference_text is NOT NULL, so NOT IN has no NULL pitfall.
+        referenced_names = (
+            select(ReferenceModel.reference_text.label("name"))
+            .where(
+                ReferenceModel.repository_id == repository_id,
+                ReferenceModel.source_file_id.in_(scope_file_ids),
+            )
+            .distinct()
+            .cte("dead_code_referenced_names")
+        )
+        unreferenced = and_(
+            *in_scope, SymbolModel.name.not_in(select(referenced_names.c.name))
+        )
+        is_entry_point = (
+            SymbolModel.extra_metadata["entry_point"].as_string().is_not(None)
+        )
+
+        # One representative per name: its first location by path, then line
+        dead = (
+            select(SymbolModel.id)
+            .join(FileModel, FileModel.id == SymbolModel.file_id)
+            .where(unreferenced, ~is_entry_point)
+            .distinct(SymbolModel.name)
+            .order_by(
+                SymbolModel.name,
+                FileModel.path,
+                SymbolModel.start_line,
+                SymbolModel.id,
+            )
+            .subquery()
+        )
+
+        counts = (
+            await self.session.execute(
+                select(
+                    select(func.count())
+                    .select_from(SymbolModel)
+                    .where(*in_scope)
+                    .scalar_subquery(),
+                    select(func.count())
+                    .select_from(SymbolModel)
+                    .where(unreferenced, is_entry_point)
+                    .scalar_subquery(),
+                    select(func.count()).select_from(dead).scalar_subquery(),
+                )
+            )
+        ).one()
+        scanned, entry_points, total = counts
+
+        result = await self.session.execute(
+            select(SymbolModel)
+            .join(FileModel, FileModel.id == SymbolModel.file_id)
+            .where(SymbolModel.id.in_(select(dead.c.id)))
+            .order_by(
+                FileModel.path,
+                SymbolModel.start_line,
+                SymbolModel.name,
+                SymbolModel.id,
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        symbol_mapper = SymbolMapper()
+        return UnreferencedSymbolsPage(
+            symbols=[symbol_mapper.to_domain(m) for m in result.scalars().all()],
+            total=total,
+            scanned=scanned,
+            entry_points=entry_points,
+        )
 
     async def search_by_text(
         self,

@@ -1288,3 +1288,78 @@ public class App {
         assert len(methods) == 1
         assert methods[0].signature is not None and "void" in methods[0].signature
         assert methods[0].signature is not None and "DoWork" in methods[0].signature
+
+
+class TestCSharpTypePositionReferences:
+    """A type or static member used as a value is referenced (#548)."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        return TreeSitterService()
+
+    async def _ref_texts(self, service: TreeSitterService, code: str) -> set[str]:
+        _, refs = await service.parse_file(code, "csharp", "App.cs")
+        return {r.reference_text for r in refs}
+
+    @pytest.mark.asyncio
+    async def test_enum_case_and_static_field_reads(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+class App {
+    void Run() {
+        var c = Color.Red;
+        var a = Util.Limit;
+        Use(Outer.Inner.Value);
+    }
+}
+"""
+        texts = await self._ref_texts(parser_service, code)
+        for name in ("Color", "Red", "Util", "Limit", "Outer", "Inner", "Value"):
+            assert name in texts
+
+    @pytest.mark.asyncio
+    async def test_lowercase_receivers_are_not_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+class App {
+    void Run(Person person) {
+        var n = person.Name;
+        var m = this.Mode;
+    }
+}
+"""
+        texts = await self._ref_texts(parser_service, code)
+        assert "person" not in texts
+        assert "Name" in texts
+        assert "Mode" in texts
+
+    @pytest.mark.asyncio
+    async def test_method_call_is_not_also_a_member_read(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = "class App { void Run() { Util.Go(); } }"
+        _, refs = await parser_service.parse_file(code, "csharp", "App.cs")
+        texts = [r.reference_text for r in refs]
+        assert texts.count("Util") == 1
+        assert texts.count("Go") == 1
+
+    @pytest.mark.asyncio
+    async def test_assigned_member_is_not_a_read(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        # A field that is only ever written must still look unreferenced
+        code = """
+class App {
+    void Run() {
+        Util.Written = 5;
+        Util.Counter += 1;
+    }
+}
+"""
+        texts = await self._ref_texts(parser_service, code)
+        assert "Written" not in texts
+        assert "Util" in texts
+        # Compound assignment reads the old value
+        assert "Counter" in texts
