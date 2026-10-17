@@ -834,11 +834,14 @@ func f(decoder: Decoder, vm: ViewModel, items: [Item]) {
     vm.load()
     let names = items.map { $0.name }
     let t = trip.id
+    let k = Keys.self
 }
 """
         texts = await self._ref_texts(parser_service, code)
         for local in ("decoder", "vm", "items", "$0", "trip"):
             assert local not in texts
+        # Type heads in the same function are still referenced
+        assert "Keys" in texts
 
 
 class TestSwiftEntryPoints:

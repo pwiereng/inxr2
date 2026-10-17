@@ -967,7 +967,17 @@ class CSharpParser(BaseLanguageParser):
                 and parent.child_by_field_name("function") == node
             ):
                 return  # obj.Method() — process_invocation handles it
-            for field in ("expression", "name"):
+            # `Util.X = 5` writes X; `Util.X += 1` also reads it
+            operator = (
+                parent.child_by_field_name("operator")
+                if parent is not None
+                and parent.type == "assignment_expression"
+                and parent.child_by_field_name("left") == node
+                else None
+            )
+            is_write_target = operator is not None and operator.type == "="
+            fields = ("expression",) if is_write_target else ("expression", "name")
+            for field in fields:
                 child = node.child_by_field_name(field)
                 if child is None or child.type != "identifier":
                     continue

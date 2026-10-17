@@ -1334,3 +1334,32 @@ class App {
         assert "person" not in texts
         assert "Name" in texts
         assert "Mode" in texts
+
+    @pytest.mark.asyncio
+    async def test_method_call_is_not_also_a_member_read(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = "class App { void Run() { Util.Go(); } }"
+        _, refs = await parser_service.parse_file(code, "csharp", "App.cs")
+        texts = [r.reference_text for r in refs]
+        assert texts.count("Util") == 1
+        assert texts.count("Go") == 1
+
+    @pytest.mark.asyncio
+    async def test_assigned_member_is_not_a_read(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        # A field that is only ever written must still look unreferenced
+        code = """
+class App {
+    void Run() {
+        Util.Written = 5;
+        Util.Counter += 1;
+    }
+}
+"""
+        texts = await self._ref_texts(parser_service, code)
+        assert "Written" not in texts
+        assert "Util" in texts
+        # Compound assignment reads the old value
+        assert "Counter" in texts
