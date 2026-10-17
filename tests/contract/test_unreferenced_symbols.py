@@ -99,29 +99,64 @@ class TestUnreferencedSymbolsAtHead:
         assert page.entry_points == 1
         assert page.scanned == 2
 
+    async def test_entry_point_with_a_caller_is_not_counted(self, repos: Repos) -> None:
+        repo_id = await create_test_repo(repos)
+        commit = await create_test_commit(repos, repo_id, "a" * 40)
+        f = await create_test_file(repos, repo_id, commit, "test_x.py", "t" * 40)
+        await _symbol(repos, repo_id, f, "test_x", metadata={"entry_point": "pytest"})
+        await _symbol(
+            repos, repo_id, f, "db", line=5, metadata={"entry_point": "pytest fixture"}
+        )
+        await create_test_reference(repos, repo_id, commit, f, "db")
+
+        page = await repos.reference.find_unreferenced_symbols(repo_id)
+
+        assert page.symbols == []
+        # db is referenced, so only the unreferenced test_x was excluded
+        assert page.entry_points == 1
+        assert page.scanned == 2
+
+    async def test_empty_entry_point_label_still_marks_an_entry_point(
+        self, repos: Repos
+    ) -> None:
+        repo_id = await create_test_repo(repos)
+        commit = await create_test_commit(repos, repo_id, "a" * 40)
+        f = await create_test_file(repos, repo_id, commit, "m.py", "m" * 40)
+        await _symbol(repos, repo_id, f, "run", metadata={"entry_point": ""})
+
+        page = await repos.reference.find_unreferenced_symbols(repo_id)
+
+        assert page.symbols == []
+        assert page.entry_points == 1
+
     async def test_one_entry_per_name(self, repos: Repos) -> None:
         """A header declaration and its implementation are reported once."""
         repo_id = await create_test_repo(repos)
         commit = await create_test_commit(repos, repo_id, "a" * 40)
         header = await create_test_file(repos, repo_id, commit, "src/a.h", "h" * 40)
         impl = await create_test_file(repos, repo_id, commit, "src/a.c", "c" * 40)
-        impl_sym = await _symbol(repos, repo_id, impl, "dup")
+        # Saved first so the header has the lower id: path must decide, not id
         await _symbol(repos, repo_id, header, "dup")
+        impl_sym = await _symbol(repos, repo_id, impl, "dup")
+        # Within one file the earlier line wins, again against id order
+        await _symbol(repos, repo_id, impl, "twice", line=50)
+        early = await _symbol(repos, repo_id, impl, "twice", line=3)
 
         page = await repos.reference.find_unreferenced_symbols(repo_id)
 
-        # The representative is the first location by path (a.c < a.h)
-        assert [s.id for s in page.symbols] == [impl_sym]
-        assert page.total == 1
+        # The representative is the first location by path (a.c < a.h), then line
+        assert [s.id for s in page.symbols] == [impl_sym, early]
+        assert page.total == 2
 
     async def test_orders_by_path_and_line_and_pages(self, repos: Repos) -> None:
         repo_id = await create_test_repo(repos)
         commit = await create_test_commit(repos, repo_id, "a" * 40)
         b = await create_test_file(repos, repo_id, commit, "b.py", "b" * 40)
         a = await create_test_file(repos, repo_id, commit, "a.py", "a" * 40)
-        b_late = await _symbol(repos, repo_id, b, "b_late", line=20)
-        b_early = await _symbol(repos, repo_id, b, "b_early", line=2)
-        a_only = await _symbol(repos, repo_id, a, "a_only", line=9)
+        # Names sort the opposite way to (path, line), so name order would fail
+        b_late = await _symbol(repos, repo_id, b, "aaa_late", line=20)
+        b_early = await _symbol(repos, repo_id, b, "mmm_early", line=2)
+        a_only = await _symbol(repos, repo_id, a, "zzz_only", line=9)
 
         first = await repos.reference.find_unreferenced_symbols(repo_id, limit=2)
         rest = await repos.reference.find_unreferenced_symbols(
@@ -174,6 +209,36 @@ class TestUnreferencedSymbolsAtHead:
         page = await repos.reference.find_unreferenced_symbols(repo_id)
 
         assert [s.id for s in page.symbols] == [sym]
+
+    async def test_branch_scopes_symbols_and_references(self, repos: Repos) -> None:
+        """main and feature heads differ: each branch sees only its own files."""
+        repo_id = await create_test_repo(repos)
+        main = await create_test_commit(repos, repo_id, "a" * 40, 0, branch="main")
+        lib = await create_test_file(repos, repo_id, main, "lib.py", "l" * 40)
+        app_main = await create_test_file(repos, repo_id, main, "app.py", "1" * 40)
+        helper = await _symbol(repos, repo_id, lib, "helper")
+        await create_test_reference(repos, repo_id, main, app_main, "helper")
+
+        feature = await create_test_commit(
+            repos, repo_id, "b" * 40, 1, branch="feature"
+        )
+        await repos.file.link_file_to_commit(lib, feature)
+        app_feature = await create_test_file(
+            repos, repo_id, feature, "app.py", "2" * 40
+        )
+        new_func = await _symbol(repos, repo_id, app_feature, "new_func")
+
+        on_main = await repos.reference.find_unreferenced_symbols(
+            repo_id, branch="main"
+        )
+        on_feature = await repos.reference.find_unreferenced_symbols(
+            repo_id, branch="feature"
+        )
+
+        # helper is called on main only; new_func exists on feature only
+        assert on_main.symbols == [] and on_main.scanned == 1
+        assert [s.id for s in on_feature.symbols] == [new_func, helper]
+        assert on_feature.scanned == 2
 
     async def test_empty_repository(self, repos: Repos) -> None:
         repo_id = await create_test_repo(repos)

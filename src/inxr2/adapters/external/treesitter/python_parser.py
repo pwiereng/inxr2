@@ -17,6 +17,9 @@ PYTHON_BUILTINS = _load("python.json", "builtins")
 # Python type builtins to exclude from type references
 PYTHON_TYPE_BUILTINS = _load("python.json", "type_builtins")
 
+# Builtin exception classes (ValueError, Exception) never resolve to a symbol
+PYTHON_EXCEPTION_BUILTINS = _load("python.json", "exceptions")
+
 # Decorators that register a pytest fixture (called by pytest, never by name)
 _FIXTURE_DECORATORS = frozenset({"pytest.fixture", "fixture", "pytest_asyncio.fixture"})
 
@@ -713,6 +716,7 @@ class PythonParser(BaseLanguageParser):
                     if (
                         ident_name not in PYTHON_BUILTINS
                         and ident_name not in PYTHON_TYPE_BUILTINS
+                        and ident_name not in PYTHON_EXCEPTION_BUILTINS
                         and ident_name not in ("self", "cls")
                         # Only emit usage refs for capitalized names: constants
                         # (MAX_RETRIES) and classes used as values (Widget in

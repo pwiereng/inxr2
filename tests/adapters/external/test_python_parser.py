@@ -449,6 +449,24 @@ class TestTypePositionReferences:
         assert "y" not in texts
         assert "x" not in texts
 
+    async def test_builtin_exceptions_not_emitted(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        # Builtins never resolve to a project symbol (PR #558 review)
+        code = (
+            "def f(x):\n"
+            "    try:\n"
+            "        pass\n"
+            "    except (ValueError, KeyError, ParseError):\n"
+            "        raise\n"
+            "    return isinstance(x, Exception)\n"
+        )
+        texts = await self._ref_texts(parser_service, code)
+        assert "ValueError" not in texts
+        assert "KeyError" not in texts
+        assert "Exception" not in texts
+        assert "ParseError" in texts
+
 
 class TestPytestEntryPoints:
     """pytest-discovered functions are marked as entry points (#548)."""

@@ -1872,16 +1872,19 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
             if r.repository_id == repository_id and r.source_file_id in scope
         }
         unreferenced = [s for s in in_scope if s.name not in referenced_names]
-        entry_points = [
-            s for s in unreferenced if (s.metadata or {}).get("entry_point")
-        ]
+
+        # Any non-null entry_point marks one, as in Postgres (->> IS NOT NULL)
+        def is_entry_point(s: Symbol) -> bool:
+            return (s.metadata or {}).get("entry_point") is not None
+
+        entry_points = [s for s in unreferenced if is_entry_point(s)]
 
         def location(s: Symbol) -> tuple[str, int]:
             return (files[s.file_id].path, s.start_line)
 
         first_by_name: dict[str, Symbol] = {}
         for s in unreferenced:
-            if (s.metadata or {}).get("entry_point"):
+            if is_entry_point(s):
                 continue
             current = first_by_name.get(s.name)
             if current is None or (location(s), s.id or 0) < (

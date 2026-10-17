@@ -716,13 +716,17 @@ class SwiftParser(BaseLanguageParser):
             The head is how a type is used in value position: `T.self`,
             `T.staticMember`, `throw T.someCase(...)`. Applies whether or not
             the chain is a call's callee. `self`/`super`/`Self` are builtins.
+            Only capitalized heads are types: lowercase heads are locals and
+            parameters (`decoder.container`, `vm.load()`), which never resolve.
             """
             head = node.children[0] if node.children else None
             if head is None or head.type != "simple_identifier":
                 return
             head_name = get_text(head)
-            if not is_builtin_or_primitive(head_name) and not is_std_lib_module(
-                head_name
+            if (
+                head_name[:1].isupper()
+                and not is_builtin_or_primitive(head_name)
+                and not is_std_lib_module(head_name)
             ):
                 add_reference(self._make_reference(head_name, "usage", head, scope))
 

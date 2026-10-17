@@ -823,6 +823,23 @@ class A: B {
         assert "super" not in texts
         assert "Self" not in texts
 
+    async def test_lowercase_receivers_are_not_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        # Locals and parameters never resolve, and by-name dead-code matching
+        # would let them keep same-name symbols alive (PR #558 review)
+        code = """
+func f(decoder: Decoder, vm: ViewModel, items: [Item]) {
+    let c = decoder.container
+    vm.load()
+    let names = items.map { $0.name }
+    let t = trip.id
+}
+"""
+        texts = await self._ref_texts(parser_service, code)
+        for local in ("decoder", "vm", "items", "$0", "trip"):
+            assert local not in texts
+
 
 class TestSwiftEntryPoints:
     """Runtime- and test-runner-discovered declarations are marked (#548)."""

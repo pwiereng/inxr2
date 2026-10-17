@@ -12,10 +12,13 @@ TOOL_NAME = "find_dead_code"
 
 TOOL_DESCRIPTION = (
     "Find symbols with zero references (dead code) in a repository. "
-    "Scans every symbol at the branch head and pages through the results. "
+    "Scans every symbol at the branch head (or at a given commit) and pages "
+    "through the results. "
     "A symbol counts as referenced when any reference uses its name. "
-    "Entry points run by the runtime or a test runner (@main, @Suite/@Test, "
-    "XCTestCase, test_* functions, pytest fixtures) are excluded. "
+    "Entry points run by the runtime or a test runner are excluded for Swift "
+    "(@main, @Suite/@Test, XCTestCase) and Python (test_* functions, Test* "
+    "classes, unittest.TestCase, pytest fixtures) only; in other languages "
+    "main functions and tests are still listed. "
     "Requires a repository name. Optionally filter by symbol kind."
 )
 
@@ -120,7 +123,7 @@ async def handle(
     if entry_points:
         coverage += (
             f"; {entry_points} entry points excluded"
-            " (@main, @Suite/@Test, XCTestCase, test_*, pytest fixtures)"
+            " (Swift @main, @Suite/@Test, XCTestCase; Python tests and fixtures)"
         )
     coverage += "."
 
