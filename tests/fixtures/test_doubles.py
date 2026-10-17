@@ -51,6 +51,7 @@ from inxr2.application.ports.repositories import (
     RepositoryPort,
     SymbolRepositoryPort,
     TextContentRepositoryPort,
+    UnreferencedSymbolsPage,
 )
 from inxr2.application.ports.repositories.query_log_port import QueryLogEntry
 from inxr2.application.ports.services import (
@@ -1826,6 +1827,78 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
 
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
         return refs[:limit]
+
+    async def find_unreferenced_symbols(
+        self,
+        repository_id: int,
+        kind: str | None = None,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> UnreferencedSymbolsPage:
+        """Find symbols whose name no reference in the same scope uses.
+
+        Mirrors the Postgres adapter: the scope is the files at commit_id, or
+        at the branch head; matching is by name; entry points are excluded
+        and counted; one symbol per name, ordered by (path, line, name).
+        """
+        if self._symbol_repo is None or self._file_repo is None:
+            raise RuntimeError(
+                "find_unreferenced_symbols needs symbol_repo and file_repo "
+                "in the test double."
+            )
+        files = self._file_repo._files
+        if commit_id is not None:
+            scope = {
+                fid for cid, fid in self._file_repo._commit_files if cid == commit_id
+            }
+        else:
+            scope = self._file_repo._compute_latest_file_ids(
+                repository_id, branch=branch
+            )
+
+        kinds = set(KIND_ALIASES.get(kind, [kind])) if kind is not None else None
+        in_scope = [
+            s
+            for s in self._symbol_repo._symbols.values()
+            if s.repository_id == repository_id
+            and s.file_id in scope
+            and (kinds is None or s.kind.value in kinds)
+        ]
+        referenced_names = {
+            r.reference_text
+            for r in self._references.values()
+            if r.repository_id == repository_id and r.source_file_id in scope
+        }
+        unreferenced = [s for s in in_scope if s.name not in referenced_names]
+        entry_points = [
+            s for s in unreferenced if (s.metadata or {}).get("entry_point")
+        ]
+
+        def location(s: Symbol) -> tuple[str, int]:
+            return (files[s.file_id].path, s.start_line)
+
+        first_by_name: dict[str, Symbol] = {}
+        for s in unreferenced:
+            if (s.metadata or {}).get("entry_point"):
+                continue
+            current = first_by_name.get(s.name)
+            if current is None or (location(s), s.id or 0) < (
+                location(current),
+                current.id or 0,
+            ):
+                first_by_name[s.name] = s
+        dead = sorted(
+            first_by_name.values(),
+            key=lambda s: (*location(s), s.name, s.id or 0),
+        )
+        return UnreferencedSymbolsPage(
+            symbols=dead[offset : offset + limit],
+            total=len(dead),
+            scanned=len(in_scope),
+            entry_points=len(entry_points),
+        )
 
     async def search_by_text(
         self,

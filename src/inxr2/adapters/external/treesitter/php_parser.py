@@ -448,6 +448,8 @@ class PhpParser(BaseLanguageParser):
                         break
             elif node_type == "class_constant_access_expression":
                 _emit_scope_class(node, scope)
+            elif node_type == "binary_expression":
+                _emit_instanceof_class(node, scope)
             elif node_type == "named_type":
                 resolved = simple_name(node.children[0]) if node.children else None
                 if resolved is not None:
@@ -482,6 +484,21 @@ class PhpParser(BaseLanguageParser):
                     add_reference(
                         self._make_reference(cls_name, "usage", cls_node, scope)
                     )
+
+        def _emit_instanceof_class(node: Node, scope: str | None) -> None:
+            """Emit a usage ref for the class in ``$x instanceof Class``."""
+            children = node.children
+            for i, child in enumerate(children[:-1]):
+                if not child.is_named and child.type == "instanceof":
+                    resolved = simple_name(children[i + 1])
+                    if resolved is not None:
+                        cls_name, cls_node = resolved
+                        # self/static/parent are pseudo-classes (case-insensitive)
+                        if cls_name.lower() not in PHP_PRIMITIVE_TYPES:
+                            add_reference(
+                                self._make_reference(cls_name, "usage", cls_node, scope)
+                            )
+                    return
 
         def _scope_for_children(
             node: Node, scope: str | None, namespace: str | None

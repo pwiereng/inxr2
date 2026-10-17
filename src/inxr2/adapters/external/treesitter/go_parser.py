@@ -466,6 +466,25 @@ class GoParser(BaseLanguageParser):
             if node.type == "selector_expression":
                 process_selector_reference(node, scope)
 
+            # Package-qualified types (pkg.Type) used as references. The
+            # package's own types are repository symbols; standard library
+            # types are not.
+            if node.type == "qualified_type":
+                pkg_node = node.child_by_field_name("package")
+                name_node = node.child_by_field_name("name")
+                if (
+                    pkg_node is not None
+                    and name_node is not None
+                    and not is_std_lib_prefix(get_text(pkg_node))
+                ):
+                    type_name = get_text(name_node)
+                    if not is_builtin_or_primitive(type_name):
+                        add_reference(
+                            self._make_reference(
+                                type_name, "type_annotation", name_node, scope
+                            )
+                        )
+
             # Type identifiers used as references
             if node.type == "type_identifier":
                 parent = node.parent

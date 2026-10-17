@@ -1,5 +1,7 @@
 """Tests for Swift language parser using Tree-sitter."""
 
+from typing import Any
+
 import pytest
 
 from inxr2.adapters.external.treesitter import TreeSitterService
@@ -734,3 +736,168 @@ protocol LLMPort {
         symbols, _ = await parser_service.parse_file(code, "swift", "test.swift")
         methods = [s for s in symbols if s.kind == "method"]
         assert any(s.name == "complete" for s in methods)
+
+
+class TestSwiftTypePositionReferences:
+    """A type used as `T.self`, `T.member` or `throw T.case(...)` is referenced (#548)."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        return TreeSitterService()
+
+    async def _ref_texts(self, service: TreeSitterService, code: str) -> set[str]:
+        _, refs = await service.parse_file(code, "swift", "test.swift")
+        return {r.reference_text for r in refs}
+
+    async def test_metatype_argument_is_referenced(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+func decode(decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: AnyCodingKey.self)
+}
+"""
+        assert "AnyCodingKey" in await self._ref_texts(parser_service, code)
+
+    async def test_nested_container_key_types_are_referenced(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+func decode(c: Container) throws {
+    let a = try c.nestedContainer(keyedBy: GazetteerAreaKeys.self, forKey: .areas)
+    let r = try a.decode(Range.self, besides: GazetteerRangeKeys.self)
+}
+"""
+        texts = await self._ref_texts(parser_service, code)
+        assert "GazetteerAreaKeys" in texts
+        assert "GazetteerRangeKeys" in texts
+
+    async def test_thrown_enum_case_references_its_type(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+func act() throws {
+    throw GameActionError.unknownItem("x")
+}
+"""
+        texts = await self._ref_texts(parser_service, code)
+        assert "GameActionError" in texts
+        assert "unknownItem" in texts
+
+    async def test_expect_throws_metatype_is_referenced(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+func check() {
+    #expect(throws: GameActionError.self) { try act() }
+}
+"""
+        assert "GameActionError" in await self._ref_texts(parser_service, code)
+
+    async def test_static_member_access_references_its_type(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+func f() {
+    let v = Palette.accent
+}
+"""
+        texts = await self._ref_texts(parser_service, code)
+        assert "Palette" in texts
+        assert "accent" in texts
+
+    async def test_self_and_super_receivers_are_not_references(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+class A: B {
+    func f() {
+        self.g()
+        super.h()
+        let t = Self.self
+    }
+}
+"""
+        texts = await self._ref_texts(parser_service, code)
+        assert "self" not in texts
+        assert "super" not in texts
+        assert "Self" not in texts
+
+
+class TestSwiftEntryPoints:
+    """Runtime- and test-runner-discovered declarations are marked (#548)."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        return TreeSitterService()
+
+    async def _symbols(self, service: TreeSitterService, code: str) -> dict[str, Any]:
+        symbols, _ = await service.parse_file(code, "swift", "test.swift")
+        return {s.name: s for s in symbols}
+
+    async def test_main_attribute_marks_entry_point(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+@main
+struct CarbingoApp: App {
+    var body: some Scene { WindowGroup {} }
+}
+"""
+        app = (await self._symbols(parser_service, code))["CarbingoApp"]
+        assert app.metadata["attributes"] == ["main"]
+        assert app.metadata["entry_point"] == "@main"
+
+    async def test_suite_and_test_attributes_mark_entry_points(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+@Suite("Game actions")
+struct GameActionsTests {
+    @Test func movesPiece() {}
+    func helper() {}
+}
+"""
+        syms = await self._symbols(parser_service, code)
+        assert syms["GameActionsTests"].metadata["entry_point"] == "@Suite"
+        assert syms["movesPiece"].metadata["entry_point"] == "@Test"
+        assert "entry_point" not in syms["helper"].metadata
+
+    async def test_type_with_test_methods_is_implicit_suite(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+struct AppDependenciesTests {
+    @Test func resolves() {}
+}
+"""
+        syms = await self._symbols(parser_service, code)
+        assert syms["AppDependenciesTests"].metadata["entry_point"] == "@Suite"
+
+    async def test_xctestcase_subclass_and_test_methods_are_entry_points(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+final class CarbingoUITests: XCTestCase {
+    func testLaunch() {}
+    func makeApp() {}
+}
+"""
+        syms = await self._symbols(parser_service, code)
+        assert syms["CarbingoUITests"].metadata["entry_point"] == "XCTestCase"
+        assert syms["testLaunch"].metadata["entry_point"] == "XCTestCase"
+        assert "entry_point" not in syms["makeApp"].metadata
+
+    async def test_plain_types_are_not_entry_points(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+@MainActor
+final class Store: ObservableObject {
+    func testable() {}
+}
+"""
+        syms = await self._symbols(parser_service, code)
+        assert syms["Store"].metadata["attributes"] == ["MainActor"]
+        assert "entry_point" not in syms["Store"].metadata
+        assert "entry_point" not in syms["testable"].metadata

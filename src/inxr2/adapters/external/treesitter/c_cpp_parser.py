@@ -798,6 +798,22 @@ class CppParser(BaseLanguageParser):
                             add_reference(
                                 self._make_reference(qual_text, "usage", node, scope)
                             )
+                        # The qualifier itself (Factory in Factory::create())
+                        # is a use of that class or namespace. Nested
+                        # qualifiers (Outer::Inner::x) are reached as the
+                        # recursion visits each inner qualified_identifier.
+                        qualifier = node.child_by_field_name("scope")
+                        if (
+                            qualifier is not None
+                            and qualifier.type == "namespace_identifier"
+                        ):
+                            qualifier_name = get_text(qualifier)
+                            if not is_builtin_or_primitive(qualifier_name):
+                                add_reference(
+                                    self._make_reference(
+                                        qualifier_name, "usage", qualifier, scope
+                                    )
+                                )
 
             # using declarations (C++)
             if node.type == "using_declaration":

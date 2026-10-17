@@ -16,6 +16,13 @@ SWIFT_PRIMITIVE_TYPES = _load("swift.json", "primitive_types")
 # Swift standard library module names to exclude from references
 SWIFT_STD_LIB_MODULES = _load("swift.json", "standard_library_modules")
 
+# Attributes whose declarations are invoked by the runtime or a test runner,
+# never by a call site, mapped to the symbol's ``entry_point`` marker.
+_ENTRY_POINT_ATTRIBUTES = {"main": "@main", "Suite": "@Suite", "Test": "@Test"}
+
+# Superclass whose subclasses (and their test* methods) XCTest discovers
+_XCTEST_BASE = "XCTestCase"
+
 
 class SwiftParser(BaseLanguageParser):
     """Parser for Swift source code using Tree-sitter."""
@@ -95,6 +102,72 @@ class SwiftParser(BaseLanguageParser):
                             types.append((get_text(spec_child), spec_child))
             return types
 
+        def get_attributes(node: Node) -> list[str]:
+            """Return attribute names (`@main` → "main") from a declaration's modifiers."""
+            names: list[str] = []
+            for child in node.children:
+                if child.type != "modifiers":
+                    continue
+                for modifier in child.children:
+                    if modifier.type != "attribute":
+                        continue
+                    for part in modifier.children:
+                        if part.type == "user_type":
+                            names.append(get_text(part))
+                            break
+            return names
+
+        def make_declaration_symbol(
+            name: str,
+            kind: str,
+            name_node: Node,
+            node: Node,
+            scope: str | None,
+            **extra: Any,
+        ) -> dict[str, Any]:
+            """Build a symbol for a declaration, recording its attributes.
+
+            Declarations carrying an entry-point attribute (`@main`, `@Suite`,
+            `@Test`) are marked with ``entry_point``.
+            """
+            attributes = get_attributes(node)
+            if attributes:
+                extra["attributes"] = attributes
+            for attribute in attributes:
+                if attribute in _ENTRY_POINT_ATTRIBUTES:
+                    extra["entry_point"] = _ENTRY_POINT_ATTRIBUTES[attribute]
+                    break
+            return self._make_symbol(
+                name,
+                kind,
+                name_node,
+                scope,
+                end_line=node.end_point[0] + 1,
+                end_column=node.end_point[1],
+                **extra,
+            )
+
+        def mark_test_container(
+            type_symbol: dict[str, Any], body_start: int, is_xctest: bool
+        ) -> None:
+            """Mark a type as an entry point when a test runner discovers it.
+
+            An XCTestCase subclass is discovered by XCTest. A type with `@Test`
+            members (symbols appended from ``body_start``) is an implicit
+            Swift Testing suite.
+            """
+            if "entry_point" in type_symbol:
+                return
+            if is_xctest:
+                type_symbol["entry_point"] = _XCTEST_BASE
+                return
+            qualified = type_symbol.get("qualified_name")
+            if any(
+                s.get("entry_point") == "@Test" and s.get("scope") == qualified
+                for s in symbols[body_start:]
+            ):
+                type_symbol["entry_point"] = "@Suite"
+
         def process_import_declaration(node: Node) -> None:
             """Process import statements."""
             for child in node.children:
@@ -126,23 +199,26 @@ class SwiftParser(BaseLanguageParser):
                 type_name, name_node = result
 
                 qualified_name = f"{scope}.{type_name}" if scope else type_name
-                symbols.append(
-                    self._make_symbol(
-                        type_name,
-                        kind,
-                        name_node,
-                        scope,
-                        end_line=node.end_point[0] + 1,
-                        end_column=node.end_point[1],
-                        qualified_name=qualified_name,
-                    )
+                type_symbol = make_declaration_symbol(
+                    type_name,
+                    kind,
+                    name_node,
+                    node,
+                    scope,
+                    qualified_name=qualified_name,
                 )
+                symbols.append(type_symbol)
 
                 # Add inheritance/conformance references.
                 # For `class`, the first entry is a superclass (inheritance);
                 # subsequent entries are protocols. Structs/actors/enums have
                 # no superclass — all entries are protocol conformances.
                 inherited_types = get_inheritance_types(node)
+                is_xctest = (
+                    kind == "class"
+                    and bool(inherited_types)
+                    and inherited_types[0][0] == _XCTEST_BASE
+                )
                 for i, (inherited, inherited_node) in enumerate(inherited_types):
                     if inherited in SWIFT_BUILTINS:
                         continue
@@ -161,10 +237,12 @@ class SwiftParser(BaseLanguageParser):
                     )
 
                 # Process body
+                body_start = len(symbols)
                 for child in node.children:
                     if child.type == "class_body":
-                        process_class_body(child, qualified_name)
+                        process_class_body(child, qualified_name, is_xctest)
                         break
+                mark_test_container(type_symbol, body_start, is_xctest)
 
                 return qualified_name
 
@@ -225,17 +303,15 @@ class SwiftParser(BaseLanguageParser):
             type_name, name_node = result
 
             qualified_name = f"{scope}.{type_name}" if scope else type_name
-            symbols.append(
-                self._make_symbol(
-                    type_name,
-                    "enum",
-                    name_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    qualified_name=qualified_name,
-                )
+            type_symbol = make_declaration_symbol(
+                type_name,
+                "enum",
+                name_node,
+                node,
+                scope,
+                qualified_name=qualified_name,
             )
+            symbols.append(type_symbol)
 
             # Add protocol conformance references (enums cannot inherit classes)
             for inherited, inherited_node in get_inheritance_types(node):
@@ -250,10 +326,12 @@ class SwiftParser(BaseLanguageParser):
                     )
 
             # Process enum body
+            body_start = len(symbols)
             for child in node.children:
                 if child.type == "enum_class_body":
                     process_enum_body(child, qualified_name)
                     break
+            mark_test_container(type_symbol, body_start, is_xctest=False)
 
             return qualified_name
 
@@ -393,11 +471,15 @@ class SwiftParser(BaseLanguageParser):
                     symbols.append(self._make_symbol(type_name, "type", child, scope))
                     return
 
-        def process_class_body(node: Node, scope: str) -> None:
-            """Process class/struct/extension body — extract methods, properties, nested types."""
+        def process_class_body(node: Node, scope: str, is_xctest: bool = False) -> None:
+            """Process class/struct/extension body — extract methods, properties, nested types.
+
+            ``is_xctest`` marks the body of an XCTestCase subclass, whose
+            ``test*`` methods XCTest discovers and runs.
+            """
             for child in node.children:
                 if child.type == "function_declaration":
-                    process_function_declaration(child, scope)
+                    process_function_declaration(child, scope, is_xctest)
                 elif child.type == "init_declaration":
                     process_init_declaration(child, scope)
                 elif child.type == "property_declaration":
@@ -432,7 +514,9 @@ class SwiftParser(BaseLanguageParser):
                 sig += f" -> {return_type}"
             return sig
 
-        def process_function_declaration(node: Node, scope: str | None = None) -> None:
+        def process_function_declaration(
+            node: Node, scope: str | None = None, is_xctest: bool = False
+        ) -> None:
             """Process a function/method declaration."""
             func_name = None
             name_node = None
@@ -450,17 +534,12 @@ class SwiftParser(BaseLanguageParser):
             kind = "method" if scope else "function"
 
             loc_node = name_node or node
-            symbols.append(
-                self._make_symbol(
-                    func_name,
-                    kind,
-                    loc_node,
-                    scope,
-                    end_line=node.end_point[0] + 1,
-                    end_column=node.end_point[1],
-                    signature=signature,
-                )
+            func_symbol = make_declaration_symbol(
+                func_name, kind, loc_node, node, scope, signature=signature
             )
+            if is_xctest and func_name.startswith("test"):
+                func_symbol.setdefault("entry_point", _XCTEST_BASE)
+            symbols.append(func_symbol)
 
         def process_init_declaration(node: Node, scope: str | None = None) -> None:
             """Process an init declaration."""
@@ -538,6 +617,7 @@ class SwiftParser(BaseLanguageParser):
 
             if node.type == "navigation_expression":
                 process_navigation_reference(node, scope)
+                process_navigation_head(node, scope)
 
             if node.type == "user_type":
                 process_type_reference(node, scope)
@@ -629,6 +709,22 @@ class SwiftParser(BaseLanguageParser):
                                 add_reference(
                                     self._make_reference(field_name, "usage", gc, scope)
                                 )
+
+        def process_navigation_head(node: Node, scope: str | None) -> None:
+            """Reference the receiver at the head of a navigation chain.
+
+            The head is how a type is used in value position: `T.self`,
+            `T.staticMember`, `throw T.someCase(...)`. Applies whether or not
+            the chain is a call's callee. `self`/`super`/`Self` are builtins.
+            """
+            head = node.children[0] if node.children else None
+            if head is None or head.type != "simple_identifier":
+                return
+            head_name = get_text(head)
+            if not is_builtin_or_primitive(head_name) and not is_std_lib_module(
+                head_name
+            ):
+                add_reference(self._make_reference(head_name, "usage", head, scope))
 
         def process_type_reference(node: Node, scope: str | None) -> None:
             """Process a user_type node — extract type references."""

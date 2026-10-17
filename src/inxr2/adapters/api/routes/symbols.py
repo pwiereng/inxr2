@@ -7,12 +7,14 @@ from pydantic import BaseModel, ConfigDict
 
 from ....application.use_cases.files import ResolveFileRequest
 from ....application.use_cases.symbols import (
+    FindDeadCodeRequest,
     GetSymbolReferencesRequest,
     SearchSymbolsRequest,
 )
 from ....application.use_cases.symbols.search_symbols import SymbolWithFilePath
 from ....infrastructure.dependencies import (
     FileAdapter,
+    FindDeadCodeUseCaseDep,
     GetSymbolReferencesUseCaseDep,
     ResolveFileUseCaseDep,
     SearchSymbolsUseCaseDep,
@@ -50,6 +52,17 @@ class SymbolListResponse(BaseModel):
 
     items: list[SymbolResponse]
     total: int
+    limit: int
+    offset: int
+
+
+class UnreferencedSymbolsResponse(BaseModel):
+    """Paginated unreferenced (dead code) symbols with scan coverage."""
+
+    items: list[SymbolResponse]
+    total: int
+    scanned: int
+    entry_points_excluded: int
     limit: int
     offset: int
 
@@ -286,6 +299,54 @@ async def get_file_structure(
             )
             for s in symbols
         ],
+    )
+
+
+# Registered before /{symbol_id} so "unreferenced" isn't parsed as an ID
+@router.get("/unreferenced", response_model=UnreferencedSymbolsResponse)
+async def find_unreferenced_symbols(
+    use_case: FindDeadCodeUseCaseDep,
+    repository_id: int = Query(description="Repository to scan"),
+    kind: str | None = Query(default=None, description="Filter by symbol kind"),
+    branch: str | None = Query(
+        default=None, description="Branch to scan (default branch when omitted)"
+    ),
+    commit: str | None = Query(
+        default=None, description="Commit hash to scan instead of a branch head"
+    ),
+    limit: int = Query(default=50, ge=1, le=500, description="Max results"),
+    offset: int = Query(default=0, ge=0, description="Offset for pagination"),
+) -> UnreferencedSymbolsResponse:
+    """
+    Find symbols that no reference uses (dead code candidates).
+
+    Scans every symbol at the branch head (or commit), not a sample.
+    A symbol counts as referenced when any reference in scope has its name.
+    Entry points the runtime or a test runner invokes (@main, @Test, test_*
+    functions, pytest fixtures, ...) are excluded and counted separately.
+    Symbols sharing a name are listed once.
+    """
+    try:
+        result = await use_case.execute(
+            FindDeadCodeRequest(
+                repository_id=repository_id,
+                kind=kind,
+                branch=branch,
+                commit_hash=commit,
+                limit=limit,
+                offset=offset,
+            )
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+
+    return UnreferencedSymbolsResponse(
+        items=[_symbol_with_path_to_response(s) for s in result.symbols],
+        total=result.total,
+        scanned=result.scanned,
+        entry_points_excluded=result.entry_points_excluded,
+        limit=result.limit,
+        offset=result.offset,
     )
 
 

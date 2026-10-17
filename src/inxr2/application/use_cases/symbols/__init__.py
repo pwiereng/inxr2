@@ -1,5 +1,10 @@
 """Symbol-related use cases."""
 
+from .find_dead_code import (
+    FindDeadCodeRequest,
+    FindDeadCodeResponse,
+    FindDeadCodeUseCase,
+)
 from .get_symbol_references import (
     GetSymbolReferencesRequest,
     GetSymbolReferencesResponse,
@@ -23,6 +28,9 @@ from .search_symbols import (
 )
 
 __all__ = [
+    "FindDeadCodeRequest",
+    "FindDeadCodeResponse",
+    "FindDeadCodeUseCase",
     "GetSymbolReferencesRequest",
     "GetSymbolReferencesResponse",
     "GetSymbolReferencesUseCase",

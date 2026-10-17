@@ -2110,3 +2110,26 @@ void test() {
         usage_refs = [r for r in make_refs if r.reference_type == "usage"]
         assert len(call_refs) == 1
         assert len(usage_refs) == 0
+
+
+class TestCppQualifierReferences:
+    """The class/namespace qualifier in `T::member` is a reference (#548)."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        return TreeSitterService()
+
+    async def test_scope_qualifiers_are_referenced(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+void f() {
+    auto a = Factory::create();
+    auto b = Outer::Inner::VALUE;
+    std::vector<int> v;
+}
+"""
+        _, refs = await parser_service.parse_file(code, "cpp", "f.cpp")
+        texts = {r.reference_text for r in refs}
+        assert {"Factory", "Outer", "Inner"} <= texts
+        assert "std" not in texts

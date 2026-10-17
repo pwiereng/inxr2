@@ -20,7 +20,10 @@ from .file_rename_repository_port import FileRenameRepositoryPort
 from .file_repository_port import FileRepositoryPort, FileSearchPort, FileVersionPort
 from .index_status_repository_port import IndexStatusRepositoryPort
 from .query_log_port import QueryLogEntry, QueryLogPort
-from .reference_repository_port import ReferenceRepositoryPort
+from .reference_repository_port import (
+    ReferenceRepositoryPort,
+    UnreferencedSymbolsPage,
+)
 from .repository_port import RepositoryPort
 from .symbol_repository_port import SymbolRepositoryPort
 from .text_content_repository_port import TextContentRepositoryPort
@@ -39,4 +42,5 @@ __all__ = [
     "RepositoryPort",
     "SymbolRepositoryPort",
     "TextContentRepositoryPort",
+    "UnreferencedSymbolsPage",
 ]

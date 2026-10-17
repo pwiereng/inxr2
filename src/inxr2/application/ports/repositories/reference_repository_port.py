@@ -2,9 +2,28 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from ....domain.constants import QueryDefaults
-from ....domain.entities import Reference
+from ....domain.entities import Reference, Symbol
+
+
+@dataclass(frozen=True)
+class UnreferencedSymbolsPage:
+    """One page of symbols that no reference names.
+
+    Attributes:
+        symbols: The page, one symbol per name, ordered by file path then line
+        total: Unreferenced names across all pages (entry points excluded)
+        scanned: Symbols checked (every symbol in scope matching the kind)
+        entry_points: Unreferenced symbols left out because the runtime or a
+            test runner invokes them (symbol metadata ``entry_point``)
+    """
+
+    symbols: list[Symbol]
+    total: int
+    scanned: int
+    entry_points: int
 
 
 class ReferenceRepositoryPort(ABC):
@@ -69,6 +88,40 @@ class ReferenceRepositoryPort(ABC):
             commit_id: Filter by specific commit via commit_files (optional).
                        If None, returns references from files at the branch head.
             branch: Filter by branch name (only show refs from files on this branch).
+        """
+        pass
+
+    @abstractmethod
+    async def find_unreferenced_symbols(
+        self,
+        repository_id: int,
+        kind: str | None = None,
+        branch: str | None = None,
+        commit_id: int | None = None,
+        limit: int = QueryDefaults.SYMBOL_SEARCH_LIMIT,
+        offset: int = 0,
+    ) -> UnreferencedSymbolsPage:
+        """Find symbols whose name no reference in the same scope uses.
+
+        Scans every symbol in scope in one set-based query (dead code
+        detection). A symbol is referenced when any reference in the
+        repository, in a file in the same scope, has its name as
+        reference_text. Matching by name needs no resolved
+        target_symbol_id, so results stay correct when an incremental index
+        reuses unchanged file versions.
+
+        Symbols marked as entry points (metadata ``entry_point``) are
+        excluded. Symbols sharing a name are reported once, by their first
+        location (file path, then line).
+
+        Args:
+            repository_id: Repository to scan
+            kind: Filter by symbol kind (KIND_ALIASES apply) (optional)
+            branch: Branch whose head files are the scope (the default
+                branch when None)
+            commit_id: Files at this commit are the scope; overrides branch
+            limit: Page size
+            offset: Page offset into the ordered unreferenced symbols
         """
         pass
 

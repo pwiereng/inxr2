@@ -31,6 +31,10 @@ class FakeInxr2Client(Inxr2Client):
         )  # commit_hash -> files
         # (repo_name, file_path) -> file structure response
         self._file_structures: dict[tuple[str, str], dict[str, Any]] = {}
+        self._entry_points: set[int] = set()  # symbol_ids marked as entry points
+        # Request log, for asserting call patterns
+        self.requested_paths: list[str] = []
+        self.last_params: dict[str, dict[str, Any]] = {}
 
     # --- Data population helpers ---
 
@@ -99,6 +103,10 @@ class FakeInxr2Client(Inxr2Client):
                 "reference_type": ref_type,
             }
         )
+
+    def mark_entry_point(self, symbol_id: int) -> None:
+        """Mark a symbol as an entry point (excluded from dead code)."""
+        self._entry_points.add(symbol_id)
 
     def set_stats(
         self,
@@ -217,6 +225,33 @@ class FakeInxr2Client(Inxr2Client):
 
     async def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         params = params or {}
+        self.requested_paths.append(path)
+        self.last_params[path] = params
+
+        # GET /api/symbols/unreferenced — referenced means "has any reference"
+        if path == "/api/symbols/unreferenced":
+            unref_repo_id = int(params["repository_id"])
+            unref_kind = params.get("kind")
+            in_scope = [s for s in self._symbols if s["repository_id"] == unref_repo_id]
+            if unref_kind:
+                kinds = set(KIND_ALIASES.get(unref_kind, [unref_kind]))
+                in_scope = [s for s in in_scope if s["kind"] in kinds]
+            unreferenced = [s for s in in_scope if not self._references.get(s["id"])]
+            live = [s for s in unreferenced if s["id"] not in self._entry_points]
+            first_by_name: dict[str, dict[str, Any]] = {}
+            for sym in live:
+                first_by_name.setdefault(sym["name"], sym)
+            dead = list(first_by_name.values())
+            unref_limit = int(params.get("limit", 50))
+            unref_offset = int(params.get("offset", 0))
+            return {
+                "items": dead[unref_offset : unref_offset + unref_limit],
+                "total": len(dead),
+                "scanned": len(in_scope),
+                "entry_points_excluded": len(unreferenced) - len(live),
+                "limit": unref_limit,
+                "offset": unref_offset,
+            }
 
         # GET /api/commits
         if path == "/api/commits":

@@ -17,6 +17,26 @@ PYTHON_BUILTINS = _load("python.json", "builtins")
 # Python type builtins to exclude from type references
 PYTHON_TYPE_BUILTINS = _load("python.json", "type_builtins")
 
+# Decorators that register a pytest fixture (called by pytest, never by name)
+_FIXTURE_DECORATORS = frozenset({"pytest.fixture", "fixture", "pytest_asyncio.fixture"})
+
+# Plain identifier reads emitted as usages: constants (MAX_RETRIES,
+# _STD_LIB_PREFIXES) and class names (Widget, _Base) used as values, e.g.
+# isinstance(x, Widget), except Widget, raise Widget, register(Widget).
+_USAGE_IDENTIFIER = re.compile(r"^_?[A-Z][A-Za-z0-9_]*$")
+
+# pytest collects classes named Test* (TestFoo, Test_foo — not Testing)
+_PYTEST_CLASS = re.compile(r"^Test[A-Z0-9_]")
+
+
+def _function_entry_point(name: str, decorators: list[str]) -> str | None:
+    """Return the entry-point marker for a function pytest calls, else None."""
+    if any(d in _FIXTURE_DECORATORS for d in decorators):
+        return "pytest fixture"
+    if name.startswith("test_"):
+        return "pytest"
+    return None
+
 
 def _is_write_target(node: Node) -> bool:
     """Check if a node is in a write-target position.
@@ -119,14 +139,18 @@ class PythonParser(BaseLanguageParser):
 
             class_name = get_text(name_node)
             docstring = self._get_docstring_for_node(node, content)
-            symbols.append(
-                self._make_symbol(class_name, "class", node, scope, docstring=docstring)
+            class_symbol = self._make_symbol(
+                class_name, "class", node, scope, docstring=docstring
             )
+            symbols.append(class_symbol)
 
             # Extract superclass references (inheritance)
+            base_names: list[str] = []
             for child in node.children:
                 if child.type == "argument_list":
                     for arg in child.children:
+                        if arg.type in ("identifier", "attribute"):
+                            base_names.append(get_text(arg).rsplit(".", 1)[-1])
                         if arg.type == "identifier":
                             base_name = get_text(arg)
                             if base_name not in PYTHON_TYPE_BUILTINS:
@@ -146,6 +170,12 @@ class PythonParser(BaseLanguageParser):
                         elif arg.type == "keyword_argument":
                             # e.g., metaclass=ABCMeta — skip
                             pass
+
+            # Test classes are collected by the test runner, never referenced
+            if "TestCase" in base_names:
+                class_symbol["entry_point"] = "unittest"
+            elif _PYTEST_CLASS.match(class_name):
+                class_symbol["entry_point"] = "pytest"
 
             # Process class body
             for child in node.children:
@@ -178,11 +208,13 @@ class PythonParser(BaseLanguageParser):
 
             method_name = get_text(name_node)
             docstring = self._get_docstring_for_node(node, content)
-            symbols.append(
-                self._make_symbol(
-                    method_name, "method", node, class_name, docstring=docstring
-                )
+            method_symbol = self._make_symbol(
+                method_name, "method", node, class_name, docstring=docstring
             )
+            entry_point = _function_entry_point(method_name, [])
+            if entry_point:
+                method_symbol["entry_point"] = entry_point
+            symbols.append(method_symbol)
 
             # Look for instance variable assignments and nested functions
             for child in node.children:
@@ -315,6 +347,10 @@ class PythonParser(BaseLanguageParser):
             # Use func_def start point (the actual def line), not node
             qualified = f"{class_name}.{func_name}" if class_name else func_name
             docstring = self._get_docstring_for_node(func_def, content)
+            extra: dict[str, Any] = {"decorators": decorators}
+            entry_point = _function_entry_point(func_name, decorators)
+            if entry_point:
+                extra["entry_point"] = entry_point
             symbols.append(
                 self._make_symbol(
                     func_name,
@@ -325,6 +361,7 @@ class PythonParser(BaseLanguageParser):
                     end_column=node.end_point[1],
                     qualified_name=qualified,
                     docstring=docstring,
+                    **extra,
                 )
             )
 
@@ -350,11 +387,13 @@ class PythonParser(BaseLanguageParser):
 
             func_name = get_text(name_node)
             docstring = self._get_docstring_for_node(node, content)
-            symbols.append(
-                self._make_symbol(
-                    func_name, "function", node, scope, docstring=docstring
-                )
+            func_symbol = self._make_symbol(
+                func_name, "function", node, scope, docstring=docstring
             )
+            entry_point = _function_entry_point(func_name, [])
+            if entry_point:
+                func_symbol["entry_point"] = entry_point
+            symbols.append(func_symbol)
 
             # Extract nested functions
             parent_qualified = f"{scope}.{func_name}" if scope else func_name
@@ -655,6 +694,13 @@ class PythonParser(BaseLanguageParser):
                     # Attribute children — handled by attribute handler
                     elif parent.type == "attribute":
                         skip = True
+                    # Base classes — emitted as inheritance by process_class
+                    elif (
+                        parent.type == "argument_list"
+                        and parent.parent is not None
+                        and parent.parent.type == "class_definition"
+                    ):
+                        skip = True
                     # Call function target — handled by call handler
                     elif parent.type == "call" and node == parent.child_by_field_name(
                         "function"
@@ -668,13 +714,13 @@ class PythonParser(BaseLanguageParser):
                         ident_name not in PYTHON_BUILTINS
                         and ident_name not in PYTHON_TYPE_BUILTINS
                         and ident_name not in ("self", "cls")
-                        # Only emit usage refs for constant-pattern names
-                        # (UPPER_CASE or _UPPER_CASE). Local variables, imported
-                        # modules, and camelCase names flood the ref table with
-                        # unresolvable entries that drag down resolution rates.
-                        # The intended use case is capturing usages of module-level
-                        # constants like _STD_LIB_PREFIXES or MAX_RETRIES.
-                        and re.match(r"^_?[A-Z][A-Z0-9_]*$", ident_name)
+                        # Only emit usage refs for capitalized names: constants
+                        # (MAX_RETRIES) and classes used as values (Widget in
+                        # isinstance/except/raise/arguments). Local variables,
+                        # imported modules, and lowercase names flood the ref
+                        # table with unresolvable entries that drag down
+                        # resolution rates.
+                        and _USAGE_IDENTIFIER.match(ident_name)
                     ):
                         add_reference(
                             self._make_reference(ident_name, "usage", node, scope)
