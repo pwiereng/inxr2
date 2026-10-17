@@ -53,7 +53,7 @@ class GetSymbolReferencesResponse:
 
     Args:
         references: List of references with file paths
-        total: Total number of references
+        total: Total number of matching references, independent of limit
         symbol_name: Name of the symbol being referenced
     """
 
@@ -142,11 +142,23 @@ class GetSymbolReferencesUseCase:
                 commit_id=commit_id,
                 branch=request.branch,
             )
+            total = await self._reference_repo.count_references_by_text(
+                symbol.name,
+                symbol.repository_id,
+                commit_id=commit_id,
+                branch=request.branch,
+            )
         else:
             # Find only references pointing to this specific symbol
             references = await self._reference_repo.find_references_to_symbol(
                 request.symbol_id,
                 limit=request.limit,
+                commit_id=commit_id,
+                branch=request.branch,
+                repository_id=symbol.repository_id,
+            )
+            total = await self._reference_repo.count_references_to_symbol(
+                request.symbol_id,
                 commit_id=commit_id,
                 branch=request.branch,
                 repository_id=symbol.repository_id,
@@ -157,7 +169,7 @@ class GetSymbolReferencesUseCase:
 
         return GetSymbolReferencesResponse(
             references=enriched_references,
-            total=len(enriched_references),
+            total=total,
             symbol_name=symbol.name,
         )
 

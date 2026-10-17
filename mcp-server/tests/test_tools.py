@@ -2,9 +2,10 @@
 
 from typing import Any
 
+import httpx
 import pytest
 
-from src.errors import McpToolError
+from src.errors import ApiNotFoundError, McpToolError
 from src.tools import (
     explain_symbol,
     find_dead_code,
@@ -1843,6 +1844,97 @@ class TestGetFileStructure:
         assert "future_kind_symbol" in result  # unknown kinds pass through
         assert "noise_" not in result  # all variable-like kinds excluded
 
+    async def test_missing_path_at_default_head_is_actionable(self) -> None:
+        """Regression #557: a 404 for the path names the head and suggests commit."""
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo", default_branch="main")
+
+        with pytest.raises(McpToolError) as exc_info:
+            await get_file_structure.handle(
+                client, {"file_path": "src/gone.py", "repository": "my-repo"}
+            )
+
+        message = str(exc_info.value)
+        assert "`src/gone.py` is not present at the head of `main`" in message
+        assert "deleted or renamed" in message
+        assert "Pass `commit`" in message
+        assert "404" not in message
+
+    async def test_missing_path_at_branch_head_names_branch(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo", default_branch="main")
+
+        with pytest.raises(McpToolError, match="at the head of `feature-x`"):
+            await get_file_structure.handle(
+                client,
+                {
+                    "file_path": "src/gone.py",
+                    "repository": "my-repo",
+                    "branch": "feature-x",
+                },
+            )
+
+    async def test_missing_path_at_commit_names_commit(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+
+        with pytest.raises(McpToolError) as exc_info:
+            await get_file_structure.handle(
+                client,
+                {
+                    "file_path": "src/gone.py",
+                    "repository": "my-repo",
+                    "commit": "abc1234",
+                },
+            )
+
+        message = str(exc_info.value)
+        assert "`src/gone.py` is not present at commit `abc1234`" in message
+        assert "Pass `commit`" not in message
+
+    async def test_other_not_found_keeps_api_detail(self) -> None:
+        """A 404 that isn't about the path (e.g. unknown branch) isn't blamed on it."""
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        client.set_file_structure_error(
+            "my-repo",
+            "src/models.py",
+            ApiNotFoundError("Commit not found: (no commits on branch nope)"),
+        )
+
+        with pytest.raises(McpToolError) as exc_info:
+            await get_file_structure.handle(
+                client,
+                {
+                    "file_path": "src/models.py",
+                    "repository": "my-repo",
+                    "branch": "nope",
+                },
+            )
+
+        message = str(exc_info.value)
+        assert "no commits on branch nope" in message
+        assert "is not present" not in message
+
+    async def test_other_http_errors_surface(self) -> None:
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo")
+        request = httpx.Request("GET", "http://test/api/symbols/file-structure")
+        client.set_file_structure_error(
+            "my-repo",
+            "src/models.py",
+            httpx.HTTPStatusError(
+                "Server error '500 Internal Server Error'",
+                request=request,
+                response=httpx.Response(500, request=request),
+            ),
+        )
+
+        with pytest.raises(httpx.HTTPStatusError, match="500"):
+            await get_file_structure.handle(
+                client, {"file_path": "src/models.py", "repository": "my-repo"}
+            )
+
     async def test_no_symbols(self) -> None:
         client = FakeInxr2Client()
         client.add_repository(1, "my-repo")
@@ -2216,6 +2308,39 @@ class TestServerCreation:
         assert result.root.isError is True
         assert result.root.content, "expected non-empty content in error result"
         assert "'commit' requires 'repository'" in result.root.content[0].text
+
+    async def test_missing_path_sets_is_error_with_actionable_text(self) -> None:
+        """Regression #557: the client sees the actionable text, not httpx's 404."""
+        from mcp.types import (
+            CallToolRequest,
+            CallToolRequestParams,
+            CallToolResult,
+            TextContent,
+        )
+
+        from src.server import create_server
+
+        client = FakeInxr2Client()
+        client.add_repository(1, "my-repo", default_branch="main")
+        server = create_server(client)
+
+        req = CallToolRequest(
+            method="tools/call",
+            params=CallToolRequestParams(
+                name="get_file_structure",
+                arguments={"file_path": "src/gone.py", "repository": "my-repo"},
+            ),
+        )
+        # NOTE: see test_unknown_tool_sets_is_error for why we use request_handlers.
+        handler = server.request_handlers[type(req)]
+        result = await handler(req)
+
+        assert isinstance(result.root, CallToolResult)
+        assert result.root.isError is True
+        assert result.root.content, "expected non-empty content in error result"
+        content = result.root.content[0]
+        assert isinstance(content, TextContent)
+        assert "is not present at the head of `main`" in content.text
 
 
 # ============================================================

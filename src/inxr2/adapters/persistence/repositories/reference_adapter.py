@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from sqlalchemy import and_, delete, func, or_, select, text
+from sqlalchemy import Select, and_, delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....application.ports.repositories import (
@@ -56,6 +56,82 @@ class PostgresReferenceRepository(
         # were built for
         self._resolution_tables_for: tuple[int, str | None, str | None] | None = None
 
+    def _references_to_symbol_query(
+        self,
+        symbol_id: int,
+        commit_id: int | None,
+        branch: str | None,
+        repository_id: int | None,
+    ) -> Select[tuple[ReferenceModel]]:
+        """References TO a symbol, in scope, unordered and unlimited.
+
+        With commit_id, the scope is the files at that commit (via
+        commit_files). Without it, the scope is the files at the head of
+        ``branch`` (the default branch when None); ``repository_id`` scopes
+        that head lookup to the correct repository.
+        """
+        if commit_id is not None:
+            query = (
+                select(ReferenceModel)
+                .join(
+                    CommitFileModel,
+                    CommitFileModel.file_id == ReferenceModel.source_file_id,
+                )
+                .where(
+                    ReferenceModel.target_symbol_id == symbol_id,
+                    CommitFileModel.commit_id == commit_id,
+                )
+            )
+            if repository_id is not None:
+                query = query.where(ReferenceModel.repository_id == repository_id)
+            return query
+
+        latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+        return select(ReferenceModel).where(
+            ReferenceModel.target_symbol_id == symbol_id,
+            ReferenceModel.source_file_id.in_(select(latest_sq.c.max_id)),
+        )
+
+    def _references_by_text_query(
+        self,
+        text: str,
+        repository_id: int,
+        commit_id: int | None,
+        branch: str | None,
+    ) -> Select[tuple[ReferenceModel]]:
+        """References matching text, in scope, unordered and unlimited.
+
+        With commit_id, the scope is the files at that commit (via
+        commit_files). Without it, the scope is the files at the head of
+        ``branch`` (the default branch when None).
+        """
+        if commit_id is not None:
+            return (
+                select(ReferenceModel)
+                .join(
+                    CommitFileModel,
+                    CommitFileModel.file_id == ReferenceModel.source_file_id,
+                )
+                .where(
+                    ReferenceModel.reference_text == text,
+                    ReferenceModel.repository_id == repository_id,
+                    CommitFileModel.commit_id == commit_id,
+                )
+            )
+
+        latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+        return select(ReferenceModel).where(
+            ReferenceModel.reference_text == text,
+            ReferenceModel.repository_id == repository_id,
+            ReferenceModel.source_file_id.in_(select(latest_sq.c.max_id)),
+        )
+
+    async def _count(self, query: Select[tuple[ReferenceModel]]) -> int:
+        result = await self.session.execute(
+            select(func.count()).select_from(query.subquery())
+        )
+        return int(result.scalar_one())
+
     async def find_references_to_symbol(
         self,
         symbol_id: int,
@@ -75,42 +151,28 @@ class PostgresReferenceRepository(
         ``repository_id`` ensures the head lookup is scoped to the
         correct repository.
         """
-        if commit_id is not None:
-            # Time travel mode: filter via commit_files junction
-            query = (
-                select(ReferenceModel)
-                .join(
-                    CommitFileModel,
-                    CommitFileModel.file_id == ReferenceModel.source_file_id,
-                )
-                .where(
-                    ReferenceModel.target_symbol_id == symbol_id,
-                    CommitFileModel.commit_id == commit_id,
-                )
-            )
-            if repository_id is not None:
-                query = query.where(ReferenceModel.repository_id == repository_id)
-
-            result = await self.session.execute(
-                query.order_by(ReferenceModel.source_line).limit(limit)
-            )
-            models = result.scalars().all()
-            return [self.mapper.to_domain(model) for model in models]
-
-        # Default: only references from files at the branch head (the
-        # default branch's head when branch is None).
-        latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+        query = self._references_to_symbol_query(
+            symbol_id, commit_id, branch, repository_id
+        )
         result = await self.session.execute(
-            select(ReferenceModel)
-            .where(
-                ReferenceModel.target_symbol_id == symbol_id,
-                ReferenceModel.source_file_id.in_(select(latest_sq.c.max_id)),
-            )
-            .order_by(ReferenceModel.source_line)
-            .limit(limit)
+            query.order_by(ReferenceModel.source_line).limit(limit)
         )
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
+
+    async def count_references_to_symbol(
+        self,
+        symbol_id: int,
+        commit_id: int | None = None,
+        branch: str | None = None,
+        repository_id: int | None = None,
+    ) -> int:
+        """Count references TO a symbol in find_references_to_symbol's scope."""
+        return await self._count(
+            self._references_to_symbol_query(
+                symbol_id, commit_id, branch, repository_id
+            )
+        )
 
     async def find_references_by_text(
         self,
@@ -128,44 +190,26 @@ class PostgresReferenceRepository(
         Note: without commit_id, only references from files at the head of
         ``branch`` (the default branch when None) are returned.
         """
-        if commit_id is not None:
-            # Time travel mode: filter via commit_files junction
-            query = (
-                select(ReferenceModel)
-                .join(
-                    CommitFileModel,
-                    CommitFileModel.file_id == ReferenceModel.source_file_id,
-                )
-                .where(
-                    ReferenceModel.reference_text == text,
-                    ReferenceModel.repository_id == repository_id,
-                    CommitFileModel.commit_id == commit_id,
-                )
-            )
-
-            result = await self.session.execute(
-                query.order_by(
-                    ReferenceModel.source_file_id, ReferenceModel.source_line
-                ).limit(limit)
-            )
-            models = result.scalars().all()
-            return [self.mapper.to_domain(model) for model in models]
-
-        # Default: only references from files at the branch head (the
-        # default branch's head when branch is None).
-        latest_sq = latest_file_ids_subquery(repository_id, branch=branch)
+        query = self._references_by_text_query(text, repository_id, commit_id, branch)
         result = await self.session.execute(
-            select(ReferenceModel)
-            .where(
-                ReferenceModel.reference_text == text,
-                ReferenceModel.repository_id == repository_id,
-                ReferenceModel.source_file_id.in_(select(latest_sq.c.max_id)),
-            )
-            .order_by(ReferenceModel.source_file_id, ReferenceModel.source_line)
-            .limit(limit)
+            query.order_by(
+                ReferenceModel.source_file_id, ReferenceModel.source_line
+            ).limit(limit)
         )
         models = result.scalars().all()
         return [self.mapper.to_domain(model) for model in models]
+
+    async def count_references_by_text(
+        self,
+        text: str,
+        repository_id: int,
+        commit_id: int | None = None,
+        branch: str | None = None,
+    ) -> int:
+        """Count references matching text in find_references_by_text's scope."""
+        return await self._count(
+            self._references_by_text_query(text, repository_id, commit_id, branch)
+        )
 
     async def find_unreferenced_symbols(
         self,

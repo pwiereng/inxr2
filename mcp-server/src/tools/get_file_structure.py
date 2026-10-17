@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.client import Inxr2Client
+from src.errors import ApiNotFoundError, path_not_found_error
 from src.staleness import check_staleness, prepend_warning
 from src.urls import build_browse_url
 
@@ -99,7 +100,13 @@ async def handle(
     if commit:
         params["commit"] = commit
 
-    data = await client.get("/api/symbols/file-structure", params=params)
+    try:
+        data = await client.get("/api/symbols/file-structure", params=params)
+    except ApiNotFoundError as exc:
+        head_branch = branch or staleness.repo_data.get("default_branch") or "main"
+        raise path_not_found_error(
+            exc, file_path, branch=head_branch, commit=commit
+        ) from exc
 
     actual_path = data["file_path"]
     language = data.get("language") or "unknown"

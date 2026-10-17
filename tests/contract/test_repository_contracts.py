@@ -214,6 +214,72 @@ class TestFindReferencesByTextContract:
         assert results[0].source_file_id == data["file2_id"]
 
 
+class TestCountReferencesContract:
+    """count_* matches the find_* scope but ignores limit (issue #523)."""
+
+    async def _setup_refs(self, repos: Repos) -> dict[str, int]:
+        """One "foo" ref in the old file version, two in the latest one."""
+        data = await _setup_two_commits(repos)
+        for commit_key, file_key in (
+            ("commit1_id", "file1_id"),
+            ("commit2_id", "file2_id"),
+            ("commit2_id", "file2_id"),
+        ):
+            await create_test_reference(
+                repos,
+                data["repo_id"],
+                data[commit_key],
+                data[file_key],
+                "foo",
+                target_symbol_id=data["symbol2_id"],
+            )
+        return data
+
+    async def test_count_to_symbol_ignores_limit(self, repos: Repos) -> None:
+        data = await self._setup_refs(repos)
+
+        page = await repos.reference.find_references_to_symbol(
+            data["symbol2_id"], limit=1, repository_id=data["repo_id"]
+        )
+        count = await repos.reference.count_references_to_symbol(
+            data["symbol2_id"], repository_id=data["repo_id"]
+        )
+
+        assert len(page) == 1
+        assert count == 2
+
+    async def test_count_to_symbol_at_commit(self, repos: Repos) -> None:
+        data = await self._setup_refs(repos)
+
+        count = await repos.reference.count_references_to_symbol(
+            data["symbol2_id"],
+            commit_id=data["commit1_id"],
+            repository_id=data["repo_id"],
+        )
+
+        assert count == 1
+
+    async def test_count_by_text_ignores_limit(self, repos: Repos) -> None:
+        data = await self._setup_refs(repos)
+
+        page = await repos.reference.find_references_by_text(
+            "foo", data["repo_id"], limit=1
+        )
+        count = await repos.reference.count_references_by_text("foo", data["repo_id"])
+
+        assert len(page) == 1
+        assert count == 2
+
+    async def test_count_by_text_at_commit(self, repos: Repos) -> None:
+        data = await self._setup_refs(repos)
+
+        count = await repos.reference.count_references_by_text(
+            "foo", data["repo_id"], commit_id=data["commit1_id"]
+        )
+
+        assert count == 1
+
+
 class TestSearchReferencesByTextContract:
     async def test_commit_filter_scopes_to_that_commit(self, repos: Repos) -> None:
         """search_by_text with commit_id returns only refs from files at that commit."""

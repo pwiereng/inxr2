@@ -34,7 +34,6 @@ Open bugs found by previous runs. Where a test's stated criterion currently fail
 | [#520](https://github.com/pwiereng/inxr2/issues/520) | RT-12a | Diff colours are positional, so they invert when the newer commit is on the left. Case A passes, Case B inverts. |
 | [#521](https://github.com/pwiereng/inxr2/issues/521) | IX-05 | `index.log` header lists 15 columns but rows carry 18 — parse positionally, never by header name. |
 | [#522](https://github.com/pwiereng/inxr2/issues/522) | RT-12a, RT-12b, RT-33 | `?branch=X&diff=Y` drops `diff`. Always pass **both** `commit=` and `branch=` alongside `diff=`. |
-| [#523](https://github.com/pwiereng/inxr2/issues/523) | MCP-06, MCP-20 | `/api/symbols/{id}/references` returns `total` == page size. Query with `limit=500` before comparing counts. |
 | [#524](https://github.com/pwiereng/inxr2/issues/524) | RT-33 | Diff header shows only the post-rename path. |
 | [#525](https://github.com/pwiereng/inxr2/issues/525) | Phase 3 setup | MCP SSE server may not be running; start it manually before MCP-21. |
 
@@ -1644,13 +1643,8 @@ asyncio.run(main())
 "
 ```
 
-> ⚠️ **The API's `total` here is the page size, not the true count (issue #523).**
-> `/api/symbols/{id}/references` computes `total` *after* applying `limit`, so `limit=5` reports
-> `total: 5` even when there are 46 references. Do **not** treat a larger MCP count as a mismatch —
-> re-query with `limit=500` to get the real total before comparing.
-
 **Pass criteria:**
-- MCP reference count matches the API total **fetched with a limit above the real count**
+- MCP reference count matches the API `total` (the true count, independent of `limit`)
 - Reference types (import, call, usage, type_annotation) are shown
 - File paths and line numbers match the API data
 
@@ -2255,8 +2249,7 @@ items = json.load(sys.stdin)[\"items\"]
 for s in items:
     print(f\"{s[\"name\"]} [{s[\"kind\"]}] id={s[\"id\"]}\")
 '"
-# Get reference count for the symbol from API.
-# ⚠️ Use a limit ABOVE the real count — `total` is the page size, not the true total (issue #523).
+# Get reference count for the symbol from API (`total` is the true count, independent of `limit`).
 docker exec inxr2-dev bash -c "
 SID=\$(curl -s 'http://localhost:8000/api/symbols?q=$SYMBOL&repository_id=$REPO_ID&limit=1' | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"items\"][0][\"id\"])')
 curl -s \"http://localhost:8000/api/symbols/\$SID/references?by_name=true&limit=500\" | python3 -c '

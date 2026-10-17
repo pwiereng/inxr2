@@ -1742,15 +1742,14 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         """Find reference by ID."""
         return self._references.get(reference_id)
 
-    async def find_references_to_symbol(
+    def _references_to_symbol(
         self,
         symbol_id: int,
-        limit: int = 100,
-        commit_id: int | None = None,
-        branch: str | None = None,
-        repository_id: int | None = None,
+        commit_id: int | None,
+        branch: str | None,
+        repository_id: int | None,
     ) -> list[Reference]:
-        """Find all references to a symbol.
+        """References to a symbol, in scope, unsorted and unlimited.
 
         When commit_id is provided, filters via commit_files junction table.
         When branch is provided, filters to files on that branch via commit_files.
@@ -1782,9 +1781,32 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                     effective_repo_id, branch=branch
                 )
                 refs = [r for r in refs if r.source_file_id in latest_ids]
+        return refs
 
+    async def find_references_to_symbol(
+        self,
+        symbol_id: int,
+        limit: int = 100,
+        commit_id: int | None = None,
+        branch: str | None = None,
+        repository_id: int | None = None,
+    ) -> list[Reference]:
+        """Find all references to a symbol."""
+        refs = self._references_to_symbol(symbol_id, commit_id, branch, repository_id)
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
         return refs[:limit]
+
+    async def count_references_to_symbol(
+        self,
+        symbol_id: int,
+        commit_id: int | None = None,
+        branch: str | None = None,
+        repository_id: int | None = None,
+    ) -> int:
+        """Count references to a symbol in find_references_to_symbol's scope."""
+        return len(
+            self._references_to_symbol(symbol_id, commit_id, branch, repository_id)
+        )
 
     async def list_by_file(self, file_id: int) -> list[Reference]:
         """List all references in a file."""
@@ -1792,15 +1814,14 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
         refs.sort(key=lambda r: (r.source_line, r.source_column))
         return refs
 
-    async def find_references_by_text(
+    def _references_by_text(
         self,
         text: str,
         repository_id: int,
-        limit: int = 100,
-        commit_id: int | None = None,
-        branch: str | None = None,
+        commit_id: int | None,
+        branch: str | None,
     ) -> list[Reference]:
-        """Find references by text.
+        """References matching text, in scope, unsorted and unlimited.
 
         When commit_id is provided, filters via commit_files junction table.
         When branch is provided, filters to files on that branch via commit_files.
@@ -1824,9 +1845,30 @@ class InMemoryReferenceRepository(ReferenceRepositoryPort):
                 repository_id, branch=branch
             )
             refs = [r for r in refs if r.source_file_id in latest_ids]
+        return refs
 
+    async def find_references_by_text(
+        self,
+        text: str,
+        repository_id: int,
+        limit: int = 100,
+        commit_id: int | None = None,
+        branch: str | None = None,
+    ) -> list[Reference]:
+        """Find references by text."""
+        refs = self._references_by_text(text, repository_id, commit_id, branch)
         refs.sort(key=lambda r: (r.source_file_id, r.source_line))
         return refs[:limit]
+
+    async def count_references_by_text(
+        self,
+        text: str,
+        repository_id: int,
+        commit_id: int | None = None,
+        branch: str | None = None,
+    ) -> int:
+        """Count references matching text in find_references_by_text's scope."""
+        return len(self._references_by_text(text, repository_id, commit_id, branch))
 
     async def find_unreferenced_symbols(
         self,

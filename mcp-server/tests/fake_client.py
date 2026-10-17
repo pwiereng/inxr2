@@ -7,6 +7,7 @@ from urllib.parse import unquote
 
 from inxr2.domain.constants import KIND_ALIASES
 from src.client import Inxr2Client
+from src.errors import ApiNotFoundError
 
 
 class FakeInxr2Client(Inxr2Client):
@@ -31,6 +32,8 @@ class FakeInxr2Client(Inxr2Client):
         )  # commit_hash -> files
         # (repo_name, file_path) -> file structure response
         self._file_structures: dict[tuple[str, str], dict[str, Any]] = {}
+        # (repo_name, file_path) -> error the file-structure fetch raises
+        self._file_structure_errors: dict[tuple[str, str], Exception] = {}
         self._entry_points: set[int] = set()  # symbol_ids marked as entry points
         # Request log, for asserting call patterns
         self.requested_paths: list[str] = []
@@ -183,6 +186,12 @@ class FakeInxr2Client(Inxr2Client):
             "line_count": line_count,
             "symbols": symbols or [],
         }
+
+    def set_file_structure_error(
+        self, repo_name: str, file_path: str, error: Exception
+    ) -> None:
+        """Make the file-structure fetch for this path raise ``error``."""
+        self._file_structure_errors[(repo_name, file_path)] = error
 
     def add_raw_result(self, result: dict[str, Any]) -> None:
         """Append a raw search result dict directly (e.g. commit-message entries)."""
@@ -347,7 +356,7 @@ class FakeInxr2Client(Inxr2Client):
             for repo in self._repositories:
                 if repo["name"] == name:
                     return repo
-            raise Exception(f"Repository not found: {name}")
+            raise ApiNotFoundError(f"Repository not found: {name}")
 
         # GET /api/symbols/by-name/{name}
         if path.startswith("/api/symbols/by-name/"):
@@ -426,8 +435,23 @@ class FakeInxr2Client(Inxr2Client):
             repo_name = params.get("repo", "")
             file_path = params.get("path", "")
             key = (repo_name, file_path)
+            if key in self._file_structure_errors:
+                raise self._file_structure_errors[key]
             if key not in self._file_structures:
-                raise Exception(f"File structure not found: {repo_name}/{file_path}")
+                # Same 404 detail messages as the API's FileNotFound
+                if params.get("commit"):
+                    detail = (
+                        f"File '{file_path}' not found at commit {params['commit']}"
+                    )
+                elif params.get("branch"):
+                    detail = (
+                        f"File '{file_path}' not found on branch "
+                        f"'{params['branch']}'. "
+                        "This branch may not have indexed data for this file."
+                    )
+                else:
+                    detail = f"File not found: {file_path}"
+                raise ApiNotFoundError(detail)
             return self._file_structures[key]
 
         raise Exception(f"Unhandled path in FakeInxr2Client: {path}")

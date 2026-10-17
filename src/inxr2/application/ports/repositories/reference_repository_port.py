@@ -92,6 +92,36 @@ class ReferenceRepositoryPort(ABC):
         pass
 
     @abstractmethod
+    async def count_references_to_symbol(
+        self,
+        symbol_id: int,
+        commit_id: int | None = None,
+        branch: str | None = None,
+        repository_id: int | None = None,
+    ) -> int:
+        """Count references TO a symbol, with no limit.
+
+        Same scope as find_references_to_symbol, so it gives the true total
+        behind a limited page.
+        """
+        pass
+
+    @abstractmethod
+    async def count_references_by_text(
+        self,
+        text: str,
+        repository_id: int,
+        commit_id: int | None = None,
+        branch: str | None = None,
+    ) -> int:
+        """Count references matching the given text, with no limit.
+
+        Same scope as find_references_by_text, so it gives the true total
+        behind a limited page.
+        """
+        pass
+
+    @abstractmethod
     async def find_unreferenced_symbols(
         self,
         repository_id: int,
