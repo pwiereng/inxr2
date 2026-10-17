@@ -591,3 +591,16 @@ class TestSymbolsAPI:
         data = response.json()
         assert data["total"] == 2
         assert all(r["reference_text"] == "save" for r in data["items"])
+
+        # Regression #523: total is the true count, not the page size
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            response = await client.get(
+                f"/api/symbols/{saved_symbol.id}/references?limit=1"
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["total"] == 2

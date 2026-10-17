@@ -7,6 +7,8 @@ from typing import Any
 
 import httpx
 
+from src.errors import ApiNotFoundError
+
 
 class Inxr2Client(ABC):
     """Abstract interface for INXR2 API communication."""
@@ -25,15 +27,21 @@ class Inxr2Client(ABC):
 class HttpInxr2Client(Inxr2Client):
     """Real HTTP client that calls the INXR2 API."""
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(
+        self, base_url: str, transport: httpx.AsyncBaseTransport | None = None
+    ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._client = httpx.AsyncClient(base_url=self._base_url, timeout=30.0)
+        self._client = httpx.AsyncClient(
+            base_url=self._base_url, timeout=30.0, transport=transport
+        )
 
     async def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         # Filter out None values from params
         if params:
             params = {k: v for k, v in params.items() if v is not None}
         response = await self._client.get(path, params=params)
+        if response.status_code == 404:
+            raise ApiNotFoundError(_not_found_detail(response, path))
         response.raise_for_status()
         return response.json()
 
@@ -46,3 +54,12 @@ class HttpInxr2Client(Inxr2Client):
 
     async def close(self) -> None:
         await self._client.aclose()
+
+
+def _not_found_detail(response: httpx.Response, path: str) -> str:
+    """The API's 404 ``detail`` message, or a plain one naming ``path``."""
+    try:
+        detail = response.json().get("detail")
+    except (ValueError, AttributeError):
+        detail = None
+    return detail if isinstance(detail, str) else f"Not found: {path}"

@@ -217,12 +217,30 @@ class TestGetSymbolReferencesUseCase:
     # === Limit Tests ===
 
     @pytest.mark.asyncio
-    async def test_respects_limit(self, use_case: GetSymbolReferencesUseCase) -> None:
-        """Should respect limit parameter."""
+    async def test_respects_limit_and_total_is_true_count_by_name(
+        self, use_case: GetSymbolReferencesUseCase
+    ) -> None:
+        """Should return at most `limit` references; total counts every match.
+
+        Regression #523: total used to be the page size.
+        """
         request = GetSymbolReferencesRequest(symbol_id=1, by_name=True, limit=2)
 
         result = await use_case.execute(request)
 
+        assert len(result.references) == 2
+        assert result.total == 3
+
+    @pytest.mark.asyncio
+    async def test_total_is_true_count_when_limited_by_id(
+        self, use_case: GetSymbolReferencesUseCase
+    ) -> None:
+        """Regression #523: total counts every match in by-id mode too."""
+        request = GetSymbolReferencesRequest(symbol_id=1, by_name=False, limit=1)
+
+        result = await use_case.execute(request)
+
+        assert len(result.references) == 1
         assert result.total == 2
 
     # === Batch File Fetching Tests ===
