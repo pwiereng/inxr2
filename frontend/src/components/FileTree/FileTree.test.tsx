@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@/test/utils'
+import userEvent from '@testing-library/user-event'
 import { FileTree } from './FileTree'
 import type { TreeNode } from '@/lib/api'
 
@@ -230,6 +231,144 @@ describe('FileTree', () => {
       // README.md should have selected class
       const readmeItem = screen.getByText('README.md').closest('div[role="button"]')
       expect(readmeItem).toHaveClass('Mui-selected')
+    })
+  })
+
+  describe('chevron vs. directory row (#572)', () => {
+    it('chevron click toggles expansion without selecting the directory', async () => {
+      const onDirectorySelect = vi.fn()
+      render(<FileTree nodes={sampleTree} onDirectorySelect={onDirectorySelect} />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Expand src' }))
+      expect(screen.getByText('components')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse src' }))
+      await waitFor(() => {
+        expect(screen.queryByText('components')).not.toBeInTheDocument()
+      })
+
+      expect(onDirectorySelect).not.toHaveBeenCalled()
+    })
+
+    it('name click selects the directory and expands it', () => {
+      const onDirectorySelect = vi.fn()
+      render(<FileTree nodes={sampleTree} onDirectorySelect={onDirectorySelect} />)
+
+      fireEvent.click(screen.getByText('src'))
+
+      expect(onDirectorySelect).toHaveBeenCalledWith('src')
+      expect(screen.getByText('components')).toBeInTheDocument()
+    })
+
+    it('folder icon click selects the directory', () => {
+      const onDirectorySelect = vi.fn()
+      render(<FileTree nodes={sampleTree} onDirectorySelect={onDirectorySelect} />)
+
+      fireEvent.click(screen.getByTestId('FolderIcon'))
+
+      expect(onDirectorySelect).toHaveBeenCalledWith('src')
+    })
+
+    it('name click on an expanded directory collapses it even as it becomes selected', async () => {
+      const onDirectorySelect = vi.fn()
+      const { rerender } = render(
+        <FileTree nodes={sampleTree} onDirectorySelect={onDirectorySelect} />
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Expand src' }))
+      expect(screen.getByText('components')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByText('src'))
+      expect(onDirectorySelect).toHaveBeenCalledWith('src')
+      // The parent navigates in response; the auto-expand for the new
+      // selectedDirectoryPath must not undo the collapse the click asked for.
+      rerender(
+        <FileTree
+          nodes={sampleTree}
+          selectedDirectoryPath="src"
+          onDirectorySelect={onDirectorySelect}
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.queryByText('components')).not.toBeInTheDocument()
+      })
+    })
+
+    it('name click on the already-selected, expanded directory collapses it without re-selecting', async () => {
+      const onDirectorySelect = vi.fn()
+      render(
+        <FileTree
+          nodes={sampleTree}
+          selectedDirectoryPath="src"
+          onDirectorySelect={onDirectorySelect}
+        />
+      )
+      await waitFor(() => {
+        expect(screen.getByText('components')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByText('src'))
+
+      await waitFor(() => {
+        expect(screen.queryByText('components')).not.toBeInTheDocument()
+      })
+      expect(onDirectorySelect).not.toHaveBeenCalled()
+    })
+
+    it('files have no chevron and still call onFileSelect', () => {
+      const onFileSelect = vi.fn()
+      const onDirectorySelect = vi.fn()
+      render(
+        <FileTree
+          nodes={sampleTree}
+          onFileSelect={onFileSelect}
+          onDirectorySelect={onDirectorySelect}
+        />
+      )
+
+      expect(screen.queryByRole('button', { name: 'Expand README.md' })).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByText('README.md'))
+      expect(onFileSelect).toHaveBeenCalledWith('README.md')
+      expect(onDirectorySelect).not.toHaveBeenCalled()
+    })
+
+    it('chevron is a focusable button exposing aria-expanded and toggles from the keyboard', async () => {
+      const user = userEvent.setup()
+      const onDirectorySelect = vi.fn()
+      render(<FileTree nodes={sampleTree} onDirectorySelect={onDirectorySelect} />)
+
+      const chevron = screen.getByRole('button', { name: 'Expand src' })
+      expect(chevron.tagName).toBe('BUTTON')
+      expect(chevron).toHaveAttribute('aria-expanded', 'false')
+
+      chevron.focus()
+      expect(chevron).toHaveFocus()
+      await user.keyboard('{Enter}')
+
+      const collapse = screen.getByRole('button', { name: 'Collapse src' })
+      expect(collapse).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByText('components')).toBeInTheDocument()
+
+      await user.keyboard(' ')
+      expect(screen.getByRole('button', { name: 'Expand src' })).toHaveAttribute(
+        'aria-expanded',
+        'false'
+      )
+      expect(onDirectorySelect).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('selected directory highlighting', () => {
+    it('highlights the row of the directory shown in the main pane', async () => {
+      render(<FileTree nodes={sampleTree} selectedDirectoryPath="src/utils" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('utils')).toBeInTheDocument()
+      })
+      expect(screen.getByText('utils').closest('div[role="button"]')).toHaveClass('Mui-selected')
+      expect(screen.getByText('src').closest('div[role="button"]')).not.toHaveClass('Mui-selected')
     })
   })
 
