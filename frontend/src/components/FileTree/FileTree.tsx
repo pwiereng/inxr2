@@ -4,6 +4,7 @@ import {
   Box,
   Typography,
   List,
+  IconButton,
   ListItemButton,
   ListItemIcon,
   ListItemText,
@@ -50,6 +51,8 @@ interface FileTreeProps {
   /** When set, the tree auto-expands to reveal this directory */
   selectedDirectoryPath?: string | null
   onFileSelect?: (path: string) => void
+  /** Called when a directory row (folder icon or name, not the chevron) is clicked */
+  onDirectorySelect?: (path: string) => void
   loading?: boolean
 }
 
@@ -59,6 +62,7 @@ interface TreeNodeItemProps {
   selectedFileId?: number | null
   selectedDirectoryPath?: string | null
   onFileSelect?: (path: string) => void
+  onDirectoryClick: (path: string) => void
   expandedPaths: Set<string>
   toggleExpanded: (path: string) => void
   selectedFileRef?: React.RefObject<HTMLDivElement>
@@ -71,6 +75,7 @@ function TreeNodeItem({
   selectedFileId,
   selectedDirectoryPath,
   onFileSelect,
+  onDirectoryClick,
   expandedPaths,
   toggleExpanded,
   selectedFileRef,
@@ -81,86 +86,115 @@ function TreeNodeItem({
   const isDirectory = node.type === 'directory'
   const isSelected = node.file_id != null && node.file_id === selectedFileId
   const isSelectedDirectory = isDirectory && node.path === selectedDirectoryPath
+  const isRowSelected = isSelected || isSelectedDirectory
+  const indent = 1 + level * 2
 
   const handleClick = () => {
     if (isDirectory) {
-      toggleExpanded(node.path)
+      onDirectoryClick(node.path)
     } else if (onFileSelect) {
       onFileSelect(node.path)
     }
   }
 
+  // The chevron only expands/collapses; it is a sibling of the row button
+  // (not nested in it) so it can be focused and activated on its own.
+  const handleChevronClick = (event: React.MouseEvent) => {
+    event.stopPropagation()
+    toggleExpanded(node.path)
+  }
+
   return (
     <>
-      <ListItemButton
-        ref={isSelected ? selectedFileRef : isSelectedDirectory ? selectedDirRef : undefined}
-        onClick={handleClick}
-        selected={isSelected}
+      <Box
         sx={{
-          pl: 1 + level * 2,
-          py: 0.5,
-          minHeight: 32,
-          '&.Mui-selected': {
-            bgcolor: 'primary.main',
-            color: 'primary.contrastText',
-            '&:hover': {
-              bgcolor: 'primary.dark',
-            },
-            '& .MuiListItemIcon-root': {
-              color: 'primary.contrastText',
-            },
-          },
+          display: 'flex',
+          alignItems: 'center',
+          bgcolor: isRowSelected ? 'primary.main' : undefined,
         }}
       >
-        {/* Expand/collapse icon for directories */}
+        {/* Expand/collapse control for directories */}
         {isDirectory && (
-          <ListItemIcon sx={{ minWidth: 24 }}>
+          <IconButton
+            size="small"
+            onClick={handleChevronClick}
+            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${node.name}`}
+            aria-expanded={isExpanded}
+            sx={{
+              ml: indent,
+              p: 0,
+              width: 24,
+              height: 24,
+              borderRadius: 1,
+              color: isRowSelected ? 'primary.contrastText' : 'text.secondary',
+            }}
+          >
             {isExpanded ? (
-              <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+              <ExpandMoreIcon fontSize="small" />
             ) : (
-              <ChevronRightIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+              <ChevronRightIcon fontSize="small" />
             )}
-          </ListItemIcon>
+          </IconButton>
         )}
-
-        {/* File/folder icon */}
-        <ListItemIcon sx={{ minWidth: 28 }}>
-          {isDirectory ? (
-            isExpanded ? (
-              <FolderOpenIcon fontSize="small" sx={{ color: theme.palette.fileTree.folder }} />
-            ) : (
-              <FolderIcon fontSize="small" sx={{ color: theme.palette.fileTree.folder }} />
-            )
-          ) : (
-            <FileTypeIcon
-              filename={node.name}
-              language={node.language}
-              fontSize="small"
-              fallback={
-                <InsertDriveFileIcon
-                  fontSize="small"
-                  sx={{ color: theme.palette.fileTree.defaultFile }}
-                />
-              }
-            />
-          )}
-        </ListItemIcon>
-
-        {/* Name */}
-        <ListItemText
-          primary={node.name}
-          primaryTypographyProps={{
-            variant: 'body2',
-            sx: {
-              fontFamily: 'monospace',
-              fontSize: '13px',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+        <ListItemButton
+          ref={isSelected ? selectedFileRef : isSelectedDirectory ? selectedDirRef : undefined}
+          onClick={handleClick}
+          selected={isRowSelected}
+          sx={{
+            pl: isDirectory ? 0 : indent,
+            py: 0.5,
+            minHeight: 32,
+            '&.Mui-selected': {
+              bgcolor: 'primary.main',
+              color: 'primary.contrastText',
+              '&:hover': {
+                bgcolor: 'primary.dark',
+              },
+              '& .MuiListItemIcon-root': {
+                color: 'primary.contrastText',
+              },
             },
           }}
-        />
-      </ListItemButton>
+        >
+          {/* File/folder icon */}
+          <ListItemIcon sx={{ minWidth: 28 }}>
+            {isDirectory ? (
+              isExpanded ? (
+                <FolderOpenIcon fontSize="small" sx={{ color: theme.palette.fileTree.folder }} />
+              ) : (
+                <FolderIcon fontSize="small" sx={{ color: theme.palette.fileTree.folder }} />
+              )
+            ) : (
+              <FileTypeIcon
+                filename={node.name}
+                language={node.language}
+                fontSize="small"
+                fallback={
+                  <InsertDriveFileIcon
+                    fontSize="small"
+                    sx={{ color: theme.palette.fileTree.defaultFile }}
+                  />
+                }
+              />
+            )}
+          </ListItemIcon>
+
+          {/* Name */}
+          <ListItemText
+            primary={node.name}
+            primaryTypographyProps={{
+              variant: 'body2',
+              sx: {
+                fontFamily: 'monospace',
+                fontSize: '13px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              },
+            }}
+          />
+        </ListItemButton>
+      </Box>
 
       {/* Children (for directories) */}
       {isDirectory && node.children && (
@@ -174,6 +208,7 @@ function TreeNodeItem({
                 selectedFileId={selectedFileId}
                 selectedDirectoryPath={selectedDirectoryPath}
                 onFileSelect={onFileSelect}
+                onDirectoryClick={onDirectoryClick}
                 expandedPaths={expandedPaths}
                 toggleExpanded={toggleExpanded}
                 selectedFileRef={selectedFileRef}
@@ -192,6 +227,7 @@ export function FileTree({
   selectedFileId,
   selectedDirectoryPath,
   onFileSelect,
+  onDirectorySelect,
   loading = false,
 }: FileTreeProps): React.ReactElement {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
@@ -200,6 +236,9 @@ export function FileTree({
   const selectedDirRef = useRef<HTMLDivElement>(null!)
   const fileScrollTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const dirScrollTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // Directory the tree itself just asked the parent to open. When it comes back
+  // as selectedDirectoryPath, the row click already set its expansion.
+  const treeSelectedDirRef = useRef<string | null>(null)
 
   const toggleExpanded = useCallback((path: string) => {
     setExpandedPaths((prev) => {
@@ -239,17 +278,33 @@ export function FileTree({
     return () => clearTimeout(fileScrollTimerRef.current)
   }, [selectedFileId, nodes])
 
+  // Directory row click: open it in the main pane and toggle it in the tree
+  const handleDirectoryClick = useCallback(
+    (path: string) => {
+      toggleExpanded(path)
+      if (onDirectorySelect && path !== selectedDirectoryPath) {
+        treeSelectedDirRef.current = path
+        onDirectorySelect(path)
+      }
+    },
+    [toggleExpanded, onDirectorySelect, selectedDirectoryPath]
+  )
+
   // Auto-expand to selected directory path (from breadcrumb navigation)
   useEffect(() => {
     if (selectedDirectoryPath && nodes.length > 0) {
+      const fromTreeClick = treeSelectedDirRef.current === selectedDirectoryPath
+      treeSelectedDirRef.current = null
       const parentPaths = getParentPaths(selectedDirectoryPath)
       setExpandedPaths((prev) => {
         const next = new Set(prev)
-        // Expand the directory itself and all its parents
-        next.add(selectedDirectoryPath)
+        // Expand the directory itself (unless the tree click just set it) and all its parents
+        if (!fromTreeClick) next.add(selectedDirectoryPath)
         parentPaths.forEach((p) => next.add(p))
         return next
       })
+      // The clicked row is already on screen
+      if (fromTreeClick) return
       // Scroll into view after expansion
       dirScrollTimerRef.current = setTimeout(() => {
         if (typeof selectedDirRef.current?.scrollIntoView === 'function') {
@@ -323,6 +378,7 @@ export function FileTree({
               selectedFileId={selectedFileId}
               selectedDirectoryPath={selectedDirectoryPath}
               onFileSelect={onFileSelect}
+              onDirectoryClick={handleDirectoryClick}
               expandedPaths={expandedPaths}
               toggleExpanded={toggleExpanded}
               selectedFileRef={selectedFileRef}

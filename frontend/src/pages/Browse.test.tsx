@@ -102,7 +102,14 @@ vi.mock('@/components/MarkdownViewer', () => ({
   MarkdownViewer: () => <div data-testid="markdown-viewer" />,
 }))
 vi.mock('@/components/FileTree', () => ({
-  FileTree: () => <div data-testid="stub-file-tree" />,
+  FileTree: (props: {
+    selectedDirectoryPath?: string | null
+    onDirectorySelect?: (p: string) => void
+  }) => (
+    <div data-testid="stub-file-tree" data-selected-dir={props.selectedDirectoryPath ?? ''}>
+      <button onClick={() => props.onDirectorySelect?.('src/sub')}>tree-dir</button>
+    </div>
+  ),
 }))
 vi.mock('@/components/DirectoryListing', () => ({
   DirectoryListing: (props: {
@@ -1019,6 +1026,36 @@ describe('Browse', () => {
       expect(navigateToFile).toHaveBeenCalledWith('src/x.ts')
       await user.click(screen.getByText('dir-dir'))
       expect(navigateToDirectory).toHaveBeenCalledWith('src')
+    })
+
+    it('a directory clicked in the file tree navigates like the breadcrumb (#572)', async () => {
+      const user = userEvent.setup()
+      const navigateToDirectory = vi.fn()
+      const state = makeState({
+        dataState: { fileContent: makeFileContent() },
+        urlState: { filePath: 'src/a.ts' },
+        actions: { navigateToDirectory },
+      })
+      const { rerender } = renderBrowse(state)
+      expect(screen.queryByTestId('directory-listing')).not.toBeInTheDocument()
+
+      await user.click(screen.getByText('tree-dir'))
+      expect(navigateToDirectory).toHaveBeenCalledWith('src/sub')
+
+      // navigateToDirectory (covered in useBrowseUrlState.test.ts) moves the
+      // URL to the directory, keeping branch/commit; Browse then shows the
+      // listing and tells the tree which directory to highlight.
+      mockUseBrowseState.mockReturnValue(
+        makeState({ urlState: { directoryPath: 'src/sub' }, actions: { navigateToDirectory } })
+      )
+      rerender(
+        <MemoryRouter initialEntries={['/browse/myrepo']} future={ROUTER_FUTURE_FLAGS}>
+          <Browse />
+          <LocationDisplay />
+        </MemoryRouter>
+      )
+      expect(screen.getByTestId('directory-listing')).toBeInTheDocument()
+      expect(screen.getByTestId('stub-file-tree')).toHaveAttribute('data-selected-dir', 'src/sub')
     })
 
     it('parent click navigates up one directory when nested', async () => {
