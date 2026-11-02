@@ -4,7 +4,16 @@ version = "0.1.0"
 description = "MCP server exposing INXR2 code intelligence as tools for AI assistants"
 requires-python = ">=3.11"
 dependencies = [
-    "mcp>=1.28.1",  # PYSEC-2026-3483 fixed in 1.28.1
+    # Lower bound: 4 advisories fixed in 1.30.0 (#577).
+    # Upper bound: mcp 2.x is a major API change (new mcp-types/httpx2 deps);
+    # adopting it is a separate upgrade, not a security patch.
+    "mcp>=1.30.0,<2",
+    # Security floors for mcp's indirect dependencies (#577). mcp itself only
+    # requires pyjwt[crypto]>=2.10.1 and anyio>=4.5, so it can't raise these.
+    "pyjwt[crypto]>=2.15.0",  # 15 advisories fixed across 2.14.0–2.15.0
+    "cryptography>=50.0.0",  # via pyjwt[crypto]; GHSA-g6cj-pr64-35w5
+    "anyio>=4.14.2",  # 2 advisories fixed in 4.14.2
+    "certifi>=2026.10.18",  # via httpx; advisory fixed in 2026.10.18
     "httpx>=0.27.0",
     # Upper bound: starlette 1.3.x broke FastAPI's include_router() in the main
     # app. The dev container shares one Python env between this package and
