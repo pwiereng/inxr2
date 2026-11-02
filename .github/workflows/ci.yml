@@ -230,12 +230,20 @@ jobs:
   dependency-scan:
     name: Dependency Vulnerabilities (osv-scanner)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v6
 
+      # The Python lockfiles are requirements.txt-format (uv pip compile
+      # --generate-hashes) but their `.lock` names aren't auto-detected, so
+      # they're passed explicitly with the requirements.txt parser (#581).
+      # Known, deferred advisories are ignored in osv-scanner.toml, each with a
+      # reason, a tracking issue, and an expiry.
       - uses: google/osv-scanner-action/osv-scanner-action@v2.3.8
         with:
           scan-args: |-
+            --config=./osv-scanner.toml
             --recursive
+            --lockfile=requirements.txt:requirements.lock
+            --lockfile=requirements.txt:requirements-prod.lock
+            --lockfile=requirements.txt:mcp-server/requirements-prod.lock
             ./
