@@ -1,8 +1,10 @@
 """Tests for FastAPI application factory."""
 
+from collections.abc import AsyncIterator
+
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 
 from inxr2.infrastructure.fastapi.app import create_app
 
@@ -34,9 +36,12 @@ class TestCreateApp:
         return create_app()
 
     @pytest.fixture
-    def client(self, app: FastAPI) -> TestClient:
+    async def client(self, app: FastAPI) -> AsyncIterator[AsyncClient]:
         """Create test client."""
-        return TestClient(app)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            yield c
 
     def test_creates_fastapi_app(self, app: FastAPI) -> None:
         """create_app should return a FastAPI instance."""
@@ -61,9 +66,9 @@ class TestCreateApp:
         has_cors = any("CORSMiddleware" in str(m) for m in app.user_middleware)
         assert has_cors
 
-    def test_health_endpoint(self, client: TestClient) -> None:
+    async def test_health_endpoint(self, client: AsyncClient) -> None:
         """App should have /api/health endpoint."""
-        response = client.get("/api/health")
+        response = await client.get("/api/health")
         assert response.status_code == 200
         assert response.json() == {"status": "healthy"}
 
@@ -98,14 +103,17 @@ class TestCorsConfiguration:
     """Tests for CORS configuration."""
 
     @pytest.fixture
-    def client(self) -> TestClient:
+    async def client(self) -> AsyncIterator[AsyncClient]:
         """Create test client."""
         app = create_app()
-        return TestClient(app)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            yield c
 
-    def test_cors_allows_localhost_5173(self, client: TestClient) -> None:
+    async def test_cors_allows_localhost_5173(self, client: AsyncClient) -> None:
         """CORS should allow requests from localhost:5173 (Vite dev server)."""
-        response = client.options(
+        response = await client.options(
             "/api/health",
             headers={
                 "Origin": "http://localhost:5173",
@@ -116,11 +124,11 @@ class TestCorsConfiguration:
         assert response.status_code == 200
         assert "access-control-allow-origin" in response.headers
 
-    def test_cors_allows_worktree_origins(self, client: TestClient) -> None:
+    async def test_cors_allows_worktree_origins(self, client: AsyncClient) -> None:
         """CORS should allow requests from worktree dev server ports."""
         for port in ["5183", "5193", "5203"]:
             origin = f"http://localhost:{port}"
-            response = client.options(
+            response = await client.options(
                 "/api/health",
                 headers={
                     "Origin": origin,
@@ -130,9 +138,9 @@ class TestCorsConfiguration:
             assert response.status_code == 200
             assert response.headers.get("access-control-allow-origin") == origin
 
-    def test_cors_rejects_unknown_origin(self, client: TestClient) -> None:
+    async def test_cors_rejects_unknown_origin(self, client: AsyncClient) -> None:
         """CORS should reject requests from unknown origins."""
-        response = client.options(
+        response = await client.options(
             "/api/health",
             headers={
                 "Origin": "http://localhost:9999",
@@ -142,10 +150,10 @@ class TestCorsConfiguration:
         assert response.status_code == 400
         assert response.headers.get("access-control-allow-origin") is None
 
-    def test_cors_allows_get_and_post(self, client: TestClient) -> None:
+    async def test_cors_allows_get_and_post(self, client: AsyncClient) -> None:
         """CORS should allow GET and POST methods."""
         for method in ["GET", "POST"]:
-            response = client.options(
+            response = await client.options(
                 "/api/health",
                 headers={
                     "Origin": "http://localhost:5173",
@@ -156,10 +164,10 @@ class TestCorsConfiguration:
             allowed = response.headers.get("access-control-allow-methods", "")
             assert method in allowed
 
-    def test_cors_rejects_disallowed_methods(self, client: TestClient) -> None:
+    async def test_cors_rejects_disallowed_methods(self, client: AsyncClient) -> None:
         """CORS should not allow PUT, DELETE, or PATCH methods."""
         for method in ["PUT", "DELETE", "PATCH"]:
-            response = client.options(
+            response = await client.options(
                 "/api/health",
                 headers={
                     "Origin": "http://localhost:5173",
@@ -170,9 +178,9 @@ class TestCorsConfiguration:
             allowed = response.headers.get("access-control-allow-methods", "")
             assert method not in allowed
 
-    def test_cors_does_not_allow_credentials(self, client: TestClient) -> None:
+    async def test_cors_does_not_allow_credentials(self, client: AsyncClient) -> None:
         """CORS should not allow credentials (no auth needed)."""
-        response = client.options(
+        response = await client.options(
             "/api/health",
             headers={
                 "Origin": "http://localhost:5173",
@@ -181,9 +189,9 @@ class TestCorsConfiguration:
         )
         assert response.headers.get("access-control-allow-credentials") is None
 
-    def test_cors_rejects_disallowed_headers(self, client: TestClient) -> None:
+    async def test_cors_rejects_disallowed_headers(self, client: AsyncClient) -> None:
         """CORS should not allow headers beyond Content-Type."""
-        response = client.options(
+        response = await client.options(
             "/api/health",
             headers={
                 "Origin": "http://localhost:5173",
