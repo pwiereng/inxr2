@@ -1,0 +1,72 @@
+# osv-scanner config for CI's `dependency-scan` job (.github/workflows/ci.yml).
+#
+# Every entry below is a KNOWN, DEFERRED advisory with a tracking issue. They
+# are ignored so the job stays green and fails only on NEW findings. Each one
+# has an `ignoreUntil` expiry so it resurfaces if the upgrade stalls. When an
+# entry expires, re-check the tracking issue and either fix it or renew it with
+# an updated reason. Delete entries once the fix lands.
+
+# --- PyPI: starlette 0.49.3 (fix needs starlette 1.x, BLOCKED by FastAPI) -----
+# See #518 Phase 1c: FastAPI 0.137 (starlette 1.3.x) silently drops routes
+# registered via include_router(), so we stay on starlette 0.49.x for now.
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-161" # GHSA-86qp-5c8j-p5mr, fixed in 1.0.1
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "starlette 1.x is blocked by FastAPI's include_router() regression; accepted risk tracked in #518 (Phase 1c)"
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-2280" # GHSA-x746-7m8f-x49c, fixed in 1.1.0
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "starlette 1.x is blocked by FastAPI's include_router() regression; accepted risk tracked in #518 (Phase 1c)"
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-2281" # GHSA-wqp7-x3pw-xc5r, fixed in 1.1.0
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "starlette 1.x is blocked by FastAPI's include_router() regression; accepted risk tracked in #518 (Phase 1c)"
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-248" # GHSA-jp82-jpqv-5vv3, fixed in 1.3.0
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "starlette 1.x is blocked by FastAPI's include_router() regression; accepted risk tracked in #518 (Phase 1c)"
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-249" # GHSA-82w8-qh3p-5jfq, fixed in 1.3.1
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "starlette 1.x is blocked by FastAPI's include_router() regression; accepted risk tracked in #518 (Phase 1c)"
+
+# --- PyPI: setuptools 82.0.1 (build-time only, major bump deferred) -----------
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-3447" # GHSA-h35f-9h28-mq5c, fixed in 83.0.0
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "setuptools major bump (82 -> 83) deferred to #519; build-time dependency only"
+
+[[IgnoredVulns]]
+id = "GHSA-xmj3-9gf7-h52w" # fixed in 84.1.0
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "setuptools major bump deferred to #519 (needs >=84.1.0, not just 83); build-time dependency only"
+
+# --- npm: react-router 6.30.6 (fix needs the v7 major) ------------------------
+
+[[IgnoredVulns]]
+id = "GHSA-337j-9hxr-rhxg" # fixed in 7.18.0
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "fix requires the react-router v7 major upgrade, tracked in #498"
+
+[[IgnoredVulns]]
+id = "GHSA-wrjc-x8rr-h8h6" # fixed in 7.18.0
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "fix requires the react-router v7 major upgrade, tracked in #498"
+
+# --- npm: transitive deps pinned below the fix by their parents (#585) --------
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249" # minimatch 10.2.5, fixed in 11.0.1
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "dev-only, via the eslint/typescript-eslint chain; 11.0.1 is outside the range they accept; tracked in #585 (deferred in #579)"
+
+[[IgnoredVulns]]
+id = "GHSA-238p-pmpm-9mq7" # katex 0.16.47, fixed in 0.18.2
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "transitive via mermaid; 0.18.2 is outside mermaid's accepted range; tracked in #585 (deferred in #579)"
