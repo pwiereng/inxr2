@@ -99,7 +99,7 @@ The fastest way to get started is using the Docker development environment:
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/pwiereng/inxr2.git
 cd inxr2
 
 # The project includes a .env.dev file with development defaults

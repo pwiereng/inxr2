@@ -15,7 +15,7 @@ This is the easiest way to get started:
 
 1. **Open in Cursor/VS Code**:
    ```bash
-   git clone <repo-url>
+   git clone https://github.com/pwiereng/inxr2.git
    cd inxr2
    code .  # or: cursor .
    ```
@@ -113,7 +113,7 @@ If you prefer to develop without Docker:
 
 ```bash
 # Setup
-git clone <repo-url>
+git clone https://github.com/pwiereng/inxr2.git
 cd inxr2
 
 # Install PostgreSQL locally (required)
