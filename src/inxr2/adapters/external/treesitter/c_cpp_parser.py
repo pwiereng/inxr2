@@ -21,6 +21,25 @@ _PRIMITIVE_TYPES = _load("c_cpp.json", "primitive_types")
 # C++ standard library prefixes (std::, boost::, etc.)
 _STD_LIB_PREFIXES = _load("c_cpp.json", "standard_library_prefixes")
 
+# Declarator nodes that wrap the declared name (``*f()``, ``&f()``, ``(f)``).
+_WRAPPER_DECLARATORS = (
+    "function_declarator",
+    "pointer_declarator",
+    "reference_declarator",
+    "parenthesized_declarator",
+)
+
+# Declarator leaves that carry a function/variable name.
+_NAME_DECLARATORS = (
+    "identifier",
+    "field_identifier",
+    "qualified_identifier",
+    "destructor_name",
+    "operator_name",
+    "operator_cast",
+    "template_function",
+)
+
 
 class CppParser(BaseLanguageParser):
     """Unified parser for C and C++ source code using Tree-sitter.
@@ -254,27 +273,15 @@ class CppParser(BaseLanguageParser):
             if not declarator:
                 return
 
-            func_name, name_node = extract_function_name_and_node(declarator)
-            if not func_name:
+            resolved = resolve_declarator_name(declarator)
+            if resolved is None:
                 return
+            func_name, name_node, qual_scope = resolved
 
-            # Determine kind and scope
-            if self._language == "cpp":
-                in_class = parent_is_class_body(node)
-                qual_scope = extract_qualified_scope(declarator)
-                if in_class:
-                    kind = "method"
-                    method_scope = scope
-                elif qual_scope:
-                    full_qual = make_scope(scope, qual_scope) if scope else qual_scope
-                    kind = "function" if full_qual in known_namespaces else "method"
-                    method_scope = full_qual
-                else:
-                    kind = "function"
-                    method_scope = scope
+            if self._language == "cpp" and parent_is_class_body(node):
+                kind, method_scope = "method", scope
             else:
-                kind = "function"
-                method_scope = scope
+                kind, method_scope = out_of_line_kind_and_scope(scope, qual_scope)
 
             # Build signature
             return_type = _extract_return_type(node)
@@ -297,6 +304,19 @@ class CppParser(BaseLanguageParser):
                 )
             )
 
+        def out_of_line_kind_and_scope(
+            scope: str | None, qual_scope: str | None
+        ) -> tuple[str, str | None]:
+            """Kind and scope of a function defined outside any class body.
+
+            ``ns::f`` is a function; ``Class::m`` is a method.
+            """
+            if self._language != "cpp" or not qual_scope:
+                return "function", scope
+            full_qual = make_scope(scope, qual_scope)
+            kind = "function" if full_qual in known_namespaces else "method"
+            return kind, full_qual
+
         def parent_is_class_body(node: Node) -> bool:
             parent = node.parent
             while parent:
@@ -312,68 +332,191 @@ class CppParser(BaseLanguageParser):
                 break
             return False
 
-        def extract_qualified_scope(declarator: Node) -> str | None:
-            if declarator.type == "function_declarator":
-                inner = declarator.child_by_field_name("declarator")
-                if inner and inner.type == "qualified_identifier":
-                    full_text = get_text(inner)
-                    last_sep = full_text.rfind("::")
-                    if last_sep >= 0:
-                        scope_text = full_text[:last_sep]
-                        if scope_text:
-                            return scope_text.replace("::", ".")
+        # ── Declarator names ────────────────────────────────────────
+        #
+        # Names are built from the structured parse, never by slicing the
+        # raw declarator text.  Unexpanded macros (``SPDLOG_INLINE``) and
+        # qualified return types (``std::shared_ptr<T> Foo::bar``) make
+        # tree-sitter fold the return type into the declarator as one long
+        # ``qualified_identifier`` chain.  The junk always sits in front of a
+        # zero-width MISSING ``::`` or an ERROR node, so the walk below drops
+        # every segment collected before either marker (#591).
+
+        def innermost_declarator(declarator: Node) -> tuple[Node | None, bool]:
+            """Strip function/pointer/reference/paren wrappers.
+
+            Returns the name-bearing leaf and whether a function_declarator
+            was among the wrappers.
+            """
+            current = declarator
+            is_function = False
+            while current.type in _WRAPPER_DECLARATORS:
+                is_function = is_function or current.type == "function_declarator"
+                inner = current.child_by_field_name("declarator")
+                if inner is None:
+                    # reference_ and parenthesized_declarator have no field.
+                    inner = next(
+                        (
+                            c
+                            for c in current.named_children
+                            if c.type in _WRAPPER_DECLARATORS
+                            or c.type in _NAME_DECLARATORS
+                        ),
+                        None,
+                    )
+                if inner is None:
+                    return None, is_function
+                if (
+                    current.type == "function_declarator"
+                    and inner.type == "function_declarator"
+                ):
+                    # `f(...)(...)` is never a valid name; it is a misparsed
+                    # statement such as `strlen ((const char *) name);`.
+                    return None, is_function
+                current = inner
+            return current, is_function
+
+        def scope_segment(node: Node) -> str | None:
+            """Bare name of one scope segment (template args stripped)."""
+            if node.type in ("namespace_identifier", "type_identifier", "identifier"):
+                return get_text(node)
+            if node.type == "template_type":
+                name = node.child_by_field_name("name")
+                return get_text(name) if name else None
             return None
+
+        def resolve_qualified_identifier(
+            node: Node,
+        ) -> tuple[list[str], Node] | None:
+            """Walk a ``qualified_identifier`` chain.
+
+            Returns the clean scope segments and the terminal name node, or
+            None when error recovery swallowed unrelated code (a scope part
+            containing braces or semicolons, e.g. a whole class body).
+            """
+            segments: list[str] = []
+            current = node
+            while current.type == "qualified_identifier":
+                name_node: Node | None = None
+                for i, child in enumerate(current.children):
+                    field = current.field_name_for_child(i)
+                    if field == "name":
+                        name_node = child
+                        break
+                    if child.type == "::":
+                        if child.is_missing:
+                            # `RetType <missing ::> name`: all so far is junk.
+                            segments = []
+                        continue
+                    if child.type == "comment":
+                        continue
+                    if any(ch in get_text(child) for ch in "{};"):
+                        return None
+                    if child.type == "ERROR":
+                        # `JUNK ERROR(... Real) :: name`: the identifier right
+                        # before `::` is the real scope; the rest is junk.
+                        last = (
+                            child.named_children[-1] if child.named_children else None
+                        )
+                        is_name = last is not None and last.type in (
+                            "identifier",
+                            "namespace_identifier",
+                            "type_identifier",
+                        )
+                        segments = [get_text(last)] if last and is_name else []
+                    elif field == "scope":
+                        segment = scope_segment(child)
+                        segments = [*segments, segment] if segment else []
+                if name_node is None:
+                    return None
+                current = name_node
+            return segments, current
+
+        def operator_cast_name(node: Node) -> str:
+            """``operator char*() const`` → ``operator char*``."""
+            end = node.end_byte
+            inner = node.child_by_field_name("declarator")
+            while inner is not None:
+                if inner.type == "abstract_function_declarator":
+                    end = inner.start_byte
+                    break
+                # abstract_reference_declarator has no `declarator` field.
+                inner = inner.child_by_field_name("declarator") or next(
+                    (c for c in inner.named_children if c.type.startswith("abstract_")),
+                    None,
+                )
+            node_bytes = get_text(node).encode("utf-8")
+            text = node_bytes[: end - node.start_byte].decode("utf-8")
+            return " ".join(text.split())
+
+        def terminal_name(node: Node) -> tuple[str, Node] | None:
+            """Bare name of a declarator/callee leaf (template args stripped)."""
+            if node.type in (
+                "identifier",
+                "field_identifier",
+                "type_identifier",
+                "destructor_name",
+            ):
+                return get_text(node), node
+            if node.type == "operator_name":
+                return " ".join(get_text(node).split()), node
+            if node.type == "operator_cast":
+                return operator_cast_name(node), node
+            if node.type in ("template_function", "template_method"):
+                # Only reached as the tail of a qualified chain
+                # (`Foo::bar<int>`) or a callee; a bare template_function
+                # declarator is usually a misparsed macro/base initializer.
+                name = node.child_by_field_name("name")
+                return terminal_name(name) if name else None
+            if node.type in ("dependent_name", "dependent_field_identifier"):
+                # `Factory::template create<T>` / `x.template get<T>` → name
+                for child in node.named_children:
+                    named = terminal_name(child)
+                    if named:
+                        return named
+                return None
+            if node.type == "qualified_identifier":
+                resolved = resolve_qualified_identifier(node)
+                return terminal_name(resolved[1]) if resolved else None
+            return None
+
+        def resolve_declarator_name(
+            declarator: Node,
+        ) -> tuple[str, Node, str | None] | None:
+            """Return ``(name, name_node, qualified_scope)`` for a declarator.
+
+            ``qualified_scope`` is the dotted out-of-line scope
+            (``Foo::bar`` → ``"Foo"``), or None for unqualified names.
+            """
+            leaf, is_function = innermost_declarator(declarator)
+            if leaf is None:
+                return None
+            segments: list[str] = []
+            if leaf.type == "template_function":
+                return None
+            if leaf.type == "qualified_identifier":
+                resolved = resolve_qualified_identifier(leaf)
+                if resolved is None:
+                    return None
+                segments, leaf = resolved
+                # Without a function_declarator, only `Foo::operator T()`
+                # is a real definition; anything else is a misparse such as
+                # `class API Foo : public std::exception {` (#591).
+                if not is_function and leaf.type != "operator_cast":
+                    return None
+            named = terminal_name(leaf)
+            if named is None:
+                return None
+            name, name_node = named
+            return name, name_node, ".".join(segments) or None
 
         def extract_function_name_and_node(
             declarator: Node,
         ) -> tuple[str | None, Node | None]:
-            if declarator.type == "function_declarator":
-                inner = declarator.child_by_field_name("declarator")
-                if inner:
-                    if inner.type in ("identifier", "field_identifier"):
-                        return get_text(inner), inner
-                    elif inner.type == "qualified_identifier":
-                        name_child = inner.child_by_field_name("name")
-                        if name_child:
-                            return get_text(name_child), name_child
-                        for child in reversed(inner.children):
-                            if child.type == "identifier":
-                                return get_text(child), child
-                    elif inner.type == "destructor_name":
-                        return get_text(inner), inner
-                    elif inner.type == "operator_name":
-                        return get_text(inner), inner
-                    elif inner.type in (
-                        "pointer_declarator",
-                        "reference_declarator",
-                        "parenthesized_declarator",
-                    ):
-                        return extract_function_name_and_node(inner)
-            elif declarator.type in (
-                "pointer_declarator",
-                "reference_declarator",
-            ):
-                inner = declarator.child_by_field_name("declarator")
-                if inner:
-                    return extract_function_name_and_node(inner)
-                for child in declarator.children:
-                    if child.type in (
-                        "function_declarator",
-                        "identifier",
-                        "field_identifier",
-                    ):
-                        return extract_function_name_and_node(child)
-            elif declarator.type == "parenthesized_declarator":
-                for child in declarator.children:
-                    if child.type in (
-                        "pointer_declarator",
-                        "function_declarator",
-                        "identifier",
-                    ):
-                        return extract_function_name_and_node(child)
-            elif declarator.type in ("identifier", "field_identifier"):
-                return get_text(declarator), declarator
-            return None, None
+            resolved = resolve_declarator_name(declarator)
+            if resolved is None:
+                return None, None
+            return resolved[0], resolved[1]
 
         def _extract_return_type(node: Node) -> str | None:
             type_node = node.child_by_field_name("type")
@@ -642,17 +785,22 @@ class CppParser(BaseLanguageParser):
             scope: str | None,
             type_node: Node | None,
         ) -> None:
-            func_name, name_node_inner = extract_function_name_and_node(declarator)
-            if func_name:
+            resolved = resolve_declarator_name(declarator)
+            if resolved:
+                func_name, name_node_inner, qual_scope = resolved
+                # A qualified prototype at namespace scope is an out-of-line
+                # member that tree-sitter misparsed as a declaration (e.g. a
+                # constructor whose mem-initializer list confused it).
+                kind, func_scope = out_of_line_kind_and_scope(scope, qual_scope)
                 return_type = get_text(type_node) if type_node else "void"
                 params = extract_parameter_text(declarator)
                 signature = f"{return_type} {func_name}({params})"
                 symbols.append(
                     self._make_symbol(
                         func_name,
-                        "function",
-                        name_node_inner or declarator,
-                        scope,
+                        kind,
+                        name_node_inner,
+                        func_scope,
                         signature=signature,
                         is_declaration=True,
                     )
@@ -890,19 +1038,22 @@ class CppParser(BaseLanguageParser):
                         self._make_reference(func_name, "call", func_node, scope)
                     )
             elif func_node.type == "qualified_identifier":
-                qual_text = get_text(func_node)
-                parts = qual_text.split("::")
-                if parts and is_std_lib_prefix(parts[0]):
+                resolved = resolve_qualified_identifier(func_node)
+                if resolved is None:
                     return
-                terminal_name = parts[-1] if parts else qual_text
-                if not is_builtin_or_primitive(terminal_name):
+                segments, leaf = resolved
+                if segments and is_std_lib_prefix(segments[0]):
+                    return
+                named = terminal_name(leaf)
+                if named and not is_builtin_or_primitive(named[0]):
                     add_reference(
-                        self._make_reference(terminal_name, "call", func_node, scope)
+                        self._make_reference(named[0], "call", func_node, scope)
                     )
             elif func_node.type == "field_expression":
                 field = func_node.child_by_field_name("field")
                 if field:
-                    field_name = get_text(field)
+                    named_field = terminal_name(field)
+                    field_name = named_field[0] if named_field else get_text(field)
                     if not is_builtin_or_primitive(field_name):
                         add_reference(
                             self._make_reference(field_name, "call", field, scope)
