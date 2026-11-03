@@ -46,6 +46,7 @@ import {
   filterKindSymbols,
   groupKindSymbols,
   computeSummaryStats,
+  visibleKinds,
   fileName,
   fileDir,
   type SymbolChildren,
@@ -140,12 +141,16 @@ export default function LogicalView(): React.ReactElement {
   // Kind mode state
   const [kindSymbols, setKindSymbols] = useState<ApiSymbol[]>([])
   const [kindSymbolsLoading, setKindSymbolsLoading] = useState(false)
+  const [kindSymbolsError, setKindSymbolsError] = useState<string | null>(null)
   const [kindSymbolsHasMore, setKindSymbolsHasMore] = useState(false)
   const [kindSymbolsOffset, setKindSymbolsOffset] = useState(0)
   const [kindExpandedSymbols, setKindExpandedSymbols] = useState<Set<number>>(new Set())
   const [kindSymbolChildren, setKindSymbolChildren] = useState<SymbolChildren>({})
   const [kindExpandingSymbol, setKindExpandingSymbol] = useState<number | null>(null)
 
+  // Bumped whenever the kind-mode query (kind/repo/branch/commit/language)
+  // changes, so an in-flight load-more can tell its response is stale.
+  const kindQueryGen = useRef(0)
   const symbolSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScrollTop = useRef(0)
@@ -154,16 +159,14 @@ export default function LogicalView(): React.ReactElement {
   // Derive available languages from loaded files
   const availableLanguages = useMemo(() => getAvailableLanguages(files), [files])
 
-  // Available kinds and total counts from backend (tier 1 response)
+  // Available kinds from backend (tier 1 response)
   const [availableKinds, setAvailableKinds] = useState<string[]>([])
-  const [totalKindCounts, setTotalKindCounts] = useState<Record<string, number>>({})
 
   // Load tier 1 (files) when repo/branch/commit changes
   useEffect(() => {
     if (!repoName || !branch) {
       setFiles([])
       setAvailableKinds([])
-      setTotalKindCounts({})
       return
     }
 
@@ -185,7 +188,6 @@ export default function LogicalView(): React.ReactElement {
         if (!cancelled) {
           if (result.files) setFiles(result.files)
           if (result.available_kinds) setAvailableKinds(result.available_kinds)
-          if (result.total_kind_counts) setTotalKindCounts(result.total_kind_counts)
           setRepositoryId(result.repository_id)
         }
       } catch (err) {
@@ -385,8 +387,10 @@ export default function LogicalView(): React.ReactElement {
 
   // Fetch symbols when entering kind mode
   useEffect(() => {
+    kindQueryGen.current += 1
     if (!activeKind || !repositoryId || !branch) {
       setKindSymbols([])
+      setKindSymbolsError(null)
       setKindExpandedSymbols(new Set())
       setKindSymbolChildren({})
       return
@@ -395,6 +399,7 @@ export default function LogicalView(): React.ReactElement {
     let cancelled = false
     const loadKindSymbols = async () => {
       setKindSymbolsLoading(true)
+      setKindSymbolsError(null)
       setKindSymbols([])
       setKindSymbolsHasMore(false)
       setKindSymbolsOffset(0)
@@ -416,8 +421,12 @@ export default function LogicalView(): React.ReactElement {
         setKindSymbols(result.items)
         setKindSymbolsHasMore(result.items.length === KIND_PAGE_SIZE)
         setKindSymbolsOffset(KIND_PAGE_SIZE)
-      } catch {
-        // Silently fail
+      } catch (err) {
+        if (!cancelled) {
+          setKindSymbolsError(
+            err instanceof Error ? err.message : `Failed to load ${activeKind} symbols`
+          )
+        }
       } finally {
         if (!cancelled) setKindSymbolsLoading(false)
       }
@@ -431,7 +440,9 @@ export default function LogicalView(): React.ReactElement {
   // Load more symbols in kind mode
   const loadMoreKindSymbols = useCallback(async () => {
     if (!activeKind || !repositoryId || kindSymbolsLoading) return
+    const gen = kindQueryGen.current
     setKindSymbolsLoading(true)
+    setKindSymbolsError(null)
     try {
       const result = await searchSymbols({
         kind: activeKind,
@@ -443,13 +454,19 @@ export default function LogicalView(): React.ReactElement {
         limit: KIND_PAGE_SIZE,
         offset: kindSymbolsOffset,
       })
+      // The kind/language changed while this page was in flight: drop it.
+      if (gen !== kindQueryGen.current) return
       setKindSymbols((prev) => [...prev, ...result.items])
       setKindSymbolsHasMore(result.items.length === KIND_PAGE_SIZE)
       setKindSymbolsOffset((prev) => prev + KIND_PAGE_SIZE)
-    } catch {
-      // Silently fail
+    } catch (err) {
+      if (gen !== kindQueryGen.current) return
+      setKindSymbolsError(
+        err instanceof Error ? err.message : `Failed to load more ${activeKind} symbols`
+      )
     } finally {
-      setKindSymbolsLoading(false)
+      // A newer query owns the loading flag; leave it alone.
+      if (gen === kindQueryGen.current) setKindSymbolsLoading(false)
     }
   }, [
     activeKind,
@@ -767,16 +784,16 @@ export default function LogicalView(): React.ReactElement {
     [files, selectedLanguage, filterText, excludeText, fileSymbols, symbolSearchMatchFileIds]
   )
 
-  // Filter kind-mode symbols by text, language, and symbol search
+  // Filter kind-mode symbols by text and symbol search. Language is applied
+  // server-side by the kind-mode fetch (`language=`), not re-derived here (#588).
   const filteredKindSymbols = useMemo(
     () =>
       filterKindSymbols(kindSymbols, {
-        selectedLanguage,
         filterText,
         excludeText,
         symbolSearch,
       }),
-    [kindSymbols, selectedLanguage, filterText, excludeText, symbolSearch]
+    [kindSymbols, filterText, excludeText, symbolSearch]
   )
 
   // Group kind mode symbols by parent class (from qualified_name)
@@ -790,11 +807,16 @@ export default function LogicalView(): React.ReactElement {
     () =>
       computeSummaryStats({
         activeKind,
-        filteredFilesCount: filteredFiles.length,
+        filteredFiles,
         filteredKindSymbolsCount: filteredKindSymbols.length,
-        totalKindCounts,
       }),
-    [activeKind, filteredFiles, filteredKindSymbols, totalKindCounts]
+    [activeKind, filteredFiles, filteredKindSymbols]
+  )
+
+  // Kind chips: under a language filter, only kinds that language has.
+  const shownKinds = useMemo(
+    () => visibleKinds({ availableKinds, files, selectedLanguage, activeKind }),
+    [availableKinds, files, selectedLanguage, activeKind]
   )
 
   // Restore scroll position after filter/search changes re-render the list
@@ -975,7 +997,7 @@ export default function LogicalView(): React.ReactElement {
                   }}
                   sx={{ height: 24 }}
                 />
-                {availableKinds.map((kind) => (
+                {shownKinds.map((kind) => (
                   <Chip
                     key={kind}
                     label={getKindLabel(kind)}
@@ -1129,7 +1151,12 @@ export default function LogicalView(): React.ReactElement {
                   </Typography>
                 </Box>
               )}
-              {!kindSymbolsLoading && filteredKindSymbols.length === 0 && (
+              {kindSymbolsError && (
+                <Box sx={{ p: 2 }}>
+                  <Alert severity="error">{kindSymbolsError}</Alert>
+                </Box>
+              )}
+              {!kindSymbolsLoading && !kindSymbolsError && filteredKindSymbols.length === 0 && (
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: 4 }}>
                   <Typography color="text.secondary">
                     No {getKindLabel(activeKind)} symbols found

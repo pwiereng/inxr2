@@ -30,16 +30,23 @@ export function isMarkdownFile(path: string, language: string | null): boolean {
 /**
  * Map file extension to language name for syntax highlighting.
  * Used as fallback when the API returns language: null.
+ *
+ * For every language the backend can parse, entries must match the backend's
+ * LanguageDetector (src/inxr2/domain/services/language_detector.py) —
+ * enforced by tests/unit/test_frontend_language_map_sync.py (#589).
  */
 const EXTENSION_LANGUAGE_MAP: Record<string, string> = {
   '.py': 'python',
   '.pyi': 'python',
+  '.pyx': 'python',
   '.js': 'javascript',
   '.jsx': 'javascript',
   '.mjs': 'javascript',
+  '.cjs': 'javascript',
   '.ts': 'typescript',
   '.tsx': 'typescript',
   '.mts': 'typescript',
+  '.cts': 'typescript',
   '.json': 'json',
   '.yaml': 'yaml',
   '.yml': 'yaml',
@@ -56,15 +63,21 @@ const EXTENSION_LANGUAGE_MAP: Record<string, string> = {
   '.less': 'less',
   '.sql': 'sql',
   '.c': 'c',
-  '.h': 'c',
+  '.h': 'cpp',
   '.cpp': 'cpp',
   '.cc': 'cpp',
+  '.cxx': 'cpp',
+  '.c++': 'cpp',
   '.hpp': 'cpp',
+  '.hh': 'cpp',
+  '.hxx': 'cpp',
+  '.h++': 'cpp',
   '.java': 'java',
   '.cs': 'csharp',
   '.go': 'go',
   '.rs': 'rust',
   '.rb': 'ruby',
+  '.rake': 'ruby',
   '.php': 'php',
   '.phtml': 'php',
   '.swift': 'swift',
@@ -82,6 +95,8 @@ const FILENAME_LANGUAGE_MAP: Record<string, string> = {
   Dockerfile: 'dockerfile',
   'Dockerfile.dev': 'dockerfile',
   Makefile: 'makefile',
+  Rakefile: 'ruby',
+  Gemfile: 'ruby',
 }
 
 /**

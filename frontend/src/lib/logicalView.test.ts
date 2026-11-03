@@ -5,7 +5,11 @@ import {
   getKindColor,
   getKindLabel,
   getAvailableLanguages,
-  languageFromPath,
+  CONTAINER_KINDS,
+  isContainerKind,
+  sumKindCounts,
+  visibleKinds,
+  parentQualifiedName,
   filterFiles,
   filterKindSymbols,
   groupKindSymbols,
@@ -123,21 +127,92 @@ describe('getAvailableLanguages', () => {
   })
 })
 
-describe('languageFromPath', () => {
-  it('maps known extensions to languages', () => {
-    expect(languageFromPath('a/b/c.py')).toBe('python')
-    expect(languageFromPath('x.tsx')).toBe('typescript')
-    expect(languageFromPath('main.h')).toBe('cpp')
-    expect(languageFromPath('app/Models/User.php')).toBe('php')
-    expect(languageFromPath('view.phtml')).toBe('php')
+describe('isContainerKind', () => {
+  // Parent kinds that own children in real indexes, per language (#588).
+  it.each([
+    'class',
+    'interface',
+    'struct',
+    'record',
+    'enum',
+    'trait',
+    'namespace',
+    'module',
+    'protocol',
+    'extension',
+    'actor',
+    'union',
+  ])('%s is a container kind', (kind) => {
+    expect(isContainerKind(kind)).toBe(true)
+    expect(CONTAINER_KINDS.has(kind)).toBe(true)
   })
 
-  it('returns null for unknown extensions, no extension, or missing path', () => {
-    expect(languageFromPath('file.unknownext')).toBeNull()
-    expect(languageFromPath('Makefile')).toBeNull()
-    expect(languageFromPath(null)).toBeNull()
-    expect(languageFromPath(undefined)).toBeNull()
-    expect(languageFromPath('')).toBeNull()
+  // type/typedef rarely have children; see CONTAINER_KINDS.
+  it.each(['function', 'method', 'field', 'property', 'variable', 'constant', 'type', 'typedef'])(
+    '%s is not a container kind',
+    (kind) => {
+      expect(isContainerKind(kind)).toBe(false)
+    }
+  )
+})
+
+describe('sumKindCounts', () => {
+  it('sums all_kind_counts across files', () => {
+    const files = [
+      makeFile({ file_id: 1, all_kind_counts: { class: 2, function: 1 } }),
+      makeFile({ file_id: 2, all_kind_counts: { class: 3, struct: 4 } }),
+    ]
+    expect(sumKindCounts(files)).toEqual({ class: 5, function: 1, struct: 4 })
+  })
+
+  it('returns an empty map for no files', () => {
+    expect(sumKindCounts([])).toEqual({})
+  })
+})
+
+describe('visibleKinds', () => {
+  const files = [
+    makeFile({ file_id: 1, language: 'swift', all_kind_counts: { class: 1, protocol: 2 } }),
+    makeFile({ file_id: 2, language: 'python', all_kind_counts: { class: 3, function: 5 } }),
+  ]
+  const availableKinds = ['class', 'function', 'protocol']
+
+  it('returns every available kind with no language filter', () => {
+    expect(
+      visibleKinds({ availableKinds, files, selectedLanguage: null, activeKind: null })
+    ).toEqual(availableKinds)
+  })
+
+  it("keeps only the selected language's kinds", () => {
+    expect(
+      visibleKinds({ availableKinds, files, selectedLanguage: 'swift', activeKind: null })
+    ).toEqual(['class', 'protocol'])
+    expect(
+      visibleKinds({ availableKinds, files, selectedLanguage: 'python', activeKind: null })
+    ).toEqual(['class', 'function'])
+  })
+
+  it('always keeps the active kind so it can be toggled off', () => {
+    expect(
+      visibleKinds({ availableKinds, files, selectedLanguage: 'python', activeKind: 'protocol' })
+    ).toEqual(['class', 'function', 'protocol'])
+  })
+})
+
+describe('parentQualifiedName', () => {
+  it.each([
+    ['Alpha.method', 'Alpha'],
+    ['pkg.Mod.Cls.method', 'pkg.Mod.Cls'],
+    ['App\\Contracts\\SpotRepository::snapshot', 'App\\Contracts\\SpotRepository'],
+    ['App\\Console\\Check::$signature', 'App\\Console\\Check'],
+    ['RakefileHelpers::TestFileFilter', 'RakefileHelpers'],
+    ['Outer::Inner.method', 'Outer::Inner'],
+  ])('%s → %s', (qn, parent) => {
+    expect(parentQualifiedName(qn)).toBe(parent)
+  })
+
+  it.each([null, '', 'topLevel', '.weird', '::weird'])('%s has no parent', (qn) => {
+    expect(parentQualifiedName(qn)).toBeNull()
   })
 })
 
@@ -210,15 +285,34 @@ describe('filterKindSymbols', () => {
     expect(filterKindSymbols(symbols)).toEqual(symbols)
   })
 
-  it('filters by language derived from file extension', () => {
-    expect(filterKindSymbols(symbols, { selectedLanguage: 'python' }).map((s) => s.id)).toEqual([
-      2, 3,
-    ])
-  })
-
-  it('drops symbols with no detectable language under a language filter', () => {
-    const withNullPath = [makeApiSymbol({ id: 9, name: 'x', file_path: null })]
-    expect(filterKindSymbols(withNullPath, { selectedLanguage: 'python' })).toEqual([])
+  // #588: the server already applied `language=`; the client must not drop
+  // symbols by re-deriving a language from the path. Every parser-supported
+  // extension (and extensionless shebang scripts) survives every filter that
+  // doesn't textually exclude it.
+  it.each([
+    'UI/AlphabetModel.swift',
+    'stubs/model.pyi',
+    'src/model.mjs',
+    'src/model.cjs',
+    'src/model.cc',
+    'src/model.cxx',
+    'src/model.c++',
+    'include/model.hpp',
+    'include/model.hh',
+    'include/model.hxx',
+    'include/model.h++',
+    'lib/tasks/model.rake',
+    'bin/deploy',
+  ])('keeps a server-returned symbol from %s', (path) => {
+    const syms = [makeApiSymbol({ id: 5, name: 'Target', file_path: path })]
+    expect(filterKindSymbols(syms).map((s) => s.id)).toEqual([5])
+    expect(
+      filterKindSymbols(syms, {
+        filterText: 'target',
+        excludeText: 'zzz',
+        symbolSearch: 'Tar',
+      }).map((s) => s.id)
+    ).toEqual([5])
   })
 
   it('filters by include text on name or path', () => {
@@ -250,10 +344,10 @@ describe('filterKindSymbols', () => {
     expect(filterKindSymbols(nullPath, { filterText: 'nomatch' })).toEqual([])
   })
 
-  it('composes language, include, exclude, and search', () => {
+  it('composes include, exclude, and search', () => {
     const result = filterKindSymbols(symbols, {
-      selectedLanguage: 'python',
       filterText: 'render',
+      excludeText: '.tsx',
       symbolSearch: 'render',
     })
     expect(result.map((s) => s.id)).toEqual([3])
@@ -331,6 +425,24 @@ describe('groupKindSymbols', () => {
     expect(groups[0]!.filePath).toBeNull()
   })
 
+  it('groups PHP members under their class via the :: separator', () => {
+    const groups = groupKindSymbols([
+      makeApiSymbol({
+        id: 1,
+        qualified_name: 'App\\Repo::find',
+        file_path: 'app/Repo.php',
+      }),
+      makeApiSymbol({
+        id: 2,
+        qualified_name: 'App\\Repo::save',
+        file_path: 'app/Repo.php',
+      }),
+    ])
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.className).toBe('App\\Repo')
+    expect(groups[0]!.symbols.map((s) => s.id)).toEqual([1, 2])
+  })
+
   it('treats a leading-dot qualified name (dotIdx 0) as ungrouped', () => {
     const groups = groupKindSymbols([makeApiSymbol({ id: 1, qualified_name: '.weird' })])
     expect(groups[0]!.groupKey).toBe('__ungrouped')
@@ -350,34 +462,45 @@ describe('groupKindSymbols', () => {
 })
 
 describe('computeSummaryStats', () => {
-  it('returns total kind counts in outline mode (no active kind)', () => {
+  const files = [
+    makeFile({ file_id: 1, language: 'python', all_kind_counts: { class: 3, function: 7 } }),
+    makeFile({ file_id: 2, language: 'swift', all_kind_counts: { class: 2, struct: 1 } }),
+  ]
+
+  it("sums the shown files' kind counts in outline mode (no active kind)", () => {
     const stats = computeSummaryStats({
       activeKind: null,
-      filteredFilesCount: 5,
+      filteredFiles: files,
       filteredKindSymbolsCount: 0,
-      totalKindCounts: { class: 3, function: 7 },
     })
-    expect(stats).toEqual({ files: 5, kinds: { class: 3, function: 7 } })
+    expect(stats).toEqual({ files: 2, kinds: { class: 5, function: 7, struct: 1 } })
+  })
+
+  it('narrows outline-mode counts to the filtered files (e.g. a language filter)', () => {
+    const stats = computeSummaryStats({
+      activeKind: null,
+      filteredFiles: files.filter((f) => f.language === 'swift'),
+      filteredKindSymbolsCount: 0,
+    })
+    expect(stats).toEqual({ files: 1, kinds: { class: 2, struct: 1 } })
   })
 
   it('reports only the active kind count in kind mode', () => {
     const stats = computeSummaryStats({
       activeKind: 'function',
-      filteredFilesCount: 4,
+      filteredFiles: files,
       filteredKindSymbolsCount: 12,
-      totalKindCounts: { class: 3, function: 7 },
     })
-    expect(stats).toEqual({ files: 4, kinds: { function: 12 } })
+    expect(stats).toEqual({ files: 2, kinds: { function: 12 } })
   })
 
   it('omits the kinds entry when the active kind has zero matches', () => {
     const stats = computeSummaryStats({
       activeKind: 'function',
-      filteredFilesCount: 4,
+      filteredFiles: files,
       filteredKindSymbolsCount: 0,
-      totalKindCounts: { class: 3 },
     })
-    expect(stats).toEqual({ files: 4, kinds: {} })
+    expect(stats).toEqual({ files: 2, kinds: {} })
   })
 })
 
