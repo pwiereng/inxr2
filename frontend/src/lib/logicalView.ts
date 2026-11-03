@@ -64,36 +64,64 @@ export function getAvailableLanguages(files: SymbolTreeFile[]): string[] {
   return [...langs].sort()
 }
 
-// Map a file extension to a language name. Used to filter kind-mode symbols
-// (which carry only a file path) by the selected language.
-export const EXTENSION_LANGUAGE_MAP: Record<string, string> = {
-  py: 'python',
-  ts: 'typescript',
-  tsx: 'typescript',
-  js: 'javascript',
-  jsx: 'javascript',
-  php: 'php',
-  phtml: 'php',
-  rb: 'ruby',
-  go: 'go',
-  rs: 'rust',
-  java: 'java',
-  cs: 'csharp',
-  cpp: 'cpp',
-  c: 'c',
-  h: 'cpp',
-  sh: 'bash',
-  bash: 'bash',
+/**
+ * Symbol kinds that can own child symbols (members, nested types), so a
+ * kind-mode row of that kind is expandable. Covers every parser's container
+ * kinds: Swift protocol/extension/actor, Ruby module, C/C++ union/typedef and
+ * Go named `type` declarations all carry children in real indexes (#588).
+ */
+export const CONTAINER_KINDS: ReadonlySet<string> = new Set([
+  'class',
+  'interface',
+  'struct',
+  'record',
+  'enum',
+  'trait',
+  'namespace',
+  'module',
+  'protocol',
+  'extension',
+  'actor',
+  'union',
+  'typedef',
+  'type',
+])
+
+/** Whether a symbol of this kind can have child symbols. */
+export function isContainerKind(kind: string): boolean {
+  return CONTAINER_KINDS.has(kind)
 }
 
 /**
- * Detect the language of a symbol from its file path's extension; returns null
- * when the path is missing or the extension is unknown.
+ * Sum per-file kind counts (`all_kind_counts`) across the given files. Used so
+ * the summary bar and kind chips reflect the files currently shown (e.g. under
+ * a language filter) rather than repo-wide totals.
  */
-export function languageFromPath(filePath: string | null | undefined): string | null {
-  const ext = filePath?.split('.').pop()?.toLowerCase()
-  if (!ext) return null
-  return EXTENSION_LANGUAGE_MAP[ext] ?? null
+export function sumKindCounts(files: SymbolTreeFile[]): Record<string, number> {
+  const totals: Record<string, number> = {}
+  for (const f of files) {
+    for (const [kind, count] of Object.entries(f.all_kind_counts)) {
+      totals[kind] = (totals[kind] ?? 0) + count
+    }
+  }
+  return totals
+}
+
+/**
+ * The kind chips to show: every backend-reported kind, or — under a language
+ * filter — only kinds that language's files actually contain. The active kind
+ * is always kept so the user can toggle it off.
+ */
+export function visibleKinds(options: {
+  availableKinds: string[]
+  files: SymbolTreeFile[]
+  selectedLanguage: string | null
+  activeKind: string | null
+}): string[] {
+  const { availableKinds, files, selectedLanguage, activeKind } = options
+  if (!selectedLanguage) return availableKinds
+  const counts = sumKindCounts(files.filter((f) => f.language === selectedLanguage))
+  return availableKinds.filter((k) => (counts[k] ?? 0) > 0 || k === activeKind)
 }
 
 export interface FileFilterOptions {
@@ -152,9 +180,14 @@ export function filterFiles(
   return result
 }
 
+/**
+ * Kind-mode filters applied client-side. There is deliberately no language
+ * option: the kind-mode fetch passes `language=` to the server, which filters on
+ * `files.language` as assigned at index time (extension + shebang detection).
+ * Re-deriving the language from the path here drifted from the backend and
+ * dropped every Swift symbol, among others (#588).
+ */
 export interface KindSymbolFilterOptions {
-  /** Match language derived from the symbol's file extension; null/empty matches all. */
-  selectedLanguage?: string | null
   /** Case-insensitive substring over name or file path; empty matches all. */
   filterText?: string
   /** Case-insensitive substring that excludes matching symbols; empty matches all. */
@@ -164,20 +197,16 @@ export interface KindSymbolFilterOptions {
 }
 
 /**
- * Filter kind-mode symbols by language (derived from file extension), an
- * inclusive text substring (name or path), an exclusive text substring, and a
- * name-only symbol search. Each predicate is independent; an omitted/empty/null
+ * Filter kind-mode symbols by an inclusive text substring (name or path), an
+ * exclusive text substring, and a name-only symbol search. Each predicate is independent; an omitted/empty/null
  * filter is a passthrough.
  */
 export function filterKindSymbols(
   symbols: ApiSymbol[],
   options: KindSymbolFilterOptions = {}
 ): ApiSymbol[] {
-  const { selectedLanguage, filterText, excludeText, symbolSearch } = options
+  const { filterText, excludeText, symbolSearch } = options
   let result = symbols
-  if (selectedLanguage) {
-    result = result.filter((s) => languageFromPath(s.file_path) === selectedLanguage)
-  }
   if (filterText) {
     const lower = filterText.toLowerCase()
     result = result.filter(
@@ -209,8 +238,19 @@ export interface KindSymbolGroup {
 }
 
 /**
+ * The parent portion of a qualified name, split on the last `.` or `::`
+ * separator (PHP `App\Foo::bar`, Ruby `Mod::Klass`, everything else `A.b`).
+ * Returns null when there is no parent.
+ */
+export function parentQualifiedName(qualifiedName: string | null): string | null {
+  if (!qualifiedName) return null
+  const idx = Math.max(qualifiedName.lastIndexOf('.'), qualifiedName.lastIndexOf('::'))
+  return idx > 0 ? qualifiedName.slice(0, idx) : null
+}
+
+/**
  * Group kind-mode symbols by their parent class, derived from the qualified
- * name (`"ClassName.method"` → `"ClassName"`). Symbols with no parent are
+ * name (`"ClassName.method"` / `"ClassName::method"` → `"ClassName"`). Symbols with no parent are
  * collected into a single leading `__ungrouped` group; the remaining groups are
  * sorted by their `parentName::filePath` key. The group key disambiguates
  * same-named classes living in different files.
@@ -221,9 +261,7 @@ export function groupKindSymbols(symbols: ApiSymbol[]): KindSymbolGroup[] {
   const ungrouped: ApiSymbol[] = []
 
   for (const sym of symbols) {
-    const qn = sym.qualified_name
-    const dotIdx = qn ? qn.lastIndexOf('.') : -1
-    const parentName = dotIdx > 0 ? qn!.slice(0, dotIdx) : null
+    const parentName = parentQualifiedName(sym.qualified_name)
 
     if (parentName) {
       const key = `${parentName}::${sym.file_path ?? ''}`
@@ -261,21 +299,22 @@ export interface SummaryStats {
 
 /**
  * Compute the summary-bar stats. In kind mode the kinds map holds only the
- * active kind's filtered count (omitted entirely when zero); otherwise it
- * reflects the backend's total per-kind counts.
+ * active kind's filtered count (omitted entirely when zero); otherwise it sums
+ * the per-kind counts of the files currently shown, so a language or text
+ * filter narrows the counts along with the file list.
  */
 export function computeSummaryStats(options: {
   activeKind: string | null
-  filteredFilesCount: number
+  filteredFiles: SymbolTreeFile[]
   filteredKindSymbolsCount: number
-  totalKindCounts: Record<string, number>
 }): SummaryStats {
-  const { activeKind, filteredFilesCount, filteredKindSymbolsCount, totalKindCounts } = options
+  const { activeKind, filteredFiles, filteredKindSymbolsCount } = options
+  const files = filteredFiles.length
   if (activeKind) {
     const count = filteredKindSymbolsCount
-    return { files: filteredFilesCount, kinds: count > 0 ? { [activeKind]: count } : {} }
+    return { files, kinds: count > 0 ? { [activeKind]: count } : {} }
   }
-  return { files: filteredFilesCount, kinds: totalKindCounts }
+  return { files, kinds: sumKindCounts(filteredFiles) }
 }
 
 /** The final path segment (file name); returns the input if there is no slash. */

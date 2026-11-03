@@ -637,6 +637,182 @@ describe('LogicalView', () => {
     })
   })
 
+  // Regression for #588: kind mode re-filtered the server's language-filtered
+  // results client-side via a frontend extension map that lacked .swift (and
+  // several other extensions), so every symbol in those files vanished. The
+  // server's `language=` filter (files.language, set by LanguageDetector at
+  // index time) is authoritative; every parser-supported language/extension
+  // must survive. Mirrors TreeSitterService.SUPPORTED_LANGUAGES.
+  describe('kind mode: language filter keeps every supported language (#588)', () => {
+    const cases: [string, string, string][] = [
+      ['python', 'pkg/model.py', 'class'],
+      ['python', 'stubs/model.pyi', 'class'],
+      ['typescript', 'src/model.ts', 'class'],
+      ['typescript', 'src/View.tsx', 'class'],
+      ['javascript', 'src/model.js', 'class'],
+      ['javascript', 'src/View.jsx', 'class'],
+      ['javascript', 'src/model.mjs', 'class'],
+      ['javascript', 'src/model.cjs', 'class'],
+      ['c', 'src/model.c', 'struct'],
+      ['java', 'src/Model.java', 'class'],
+      ['csharp', 'src/Model.cs', 'class'],
+      ['go', 'pkg/model.go', 'struct'],
+      ['go', 'pkg/model.go', 'interface'],
+      ['cpp', 'src/model.cpp', 'class'],
+      ['cpp', 'src/model.cc', 'class'],
+      ['cpp', 'src/model.cxx', 'class'],
+      ['cpp', 'src/model.c++', 'class'],
+      ['cpp', 'include/model.hpp', 'class'],
+      ['cpp', 'include/model.hh', 'class'],
+      ['cpp', 'include/model.hxx', 'class'],
+      ['cpp', 'include/model.h++', 'class'],
+      ['cpp', 'include/model.h', 'class'],
+      ['ruby', 'lib/model.rb', 'class'],
+      ['ruby', 'lib/tasks/model.rake', 'module'],
+      ['bash', 'scripts/model.sh', 'function'],
+      ['bash', 'scripts/model.bash', 'function'],
+      // Extensionless script detected by shebang on the backend.
+      ['bash', 'bin/deploy', 'function'],
+      ['swift', 'Spotamus/Model.swift', 'class'],
+      ['swift', 'Spotamus/Model.swift', 'struct'],
+      ['swift', 'Spotamus/Model.swift', 'protocol'],
+      ['swift', 'Spotamus/Model.swift', 'extension'],
+      ['php', 'app/Model.php', 'class'],
+      ['php', 'views/model.phtml', 'trait'],
+    ]
+
+    it.each(cases)('language=%s shows a %s symbol from %s', async (language, path, kind) => {
+      mockGetSymbolTree.mockResolvedValue(tier1([makeFile({ file_id: 1, path, language })], [kind]))
+      mockSearchSymbols.mockResolvedValue({
+        items: [
+          makeApiSymbol({
+            id: 900,
+            name: 'TargetSymbol',
+            qualified_name: 'TargetSymbol',
+            kind,
+            file_path: path,
+          }),
+        ],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      })
+      renderView(
+        `/logical-view?repo=myrepo&branch=main&commit=deadbeef&kind=${kind}&language=${language}`
+      )
+
+      await waitFor(() =>
+        expect(mockSearchSymbols).toHaveBeenCalledWith(expect.objectContaining({ kind, language }))
+      )
+      expect(await screen.findByText(/^TargetSymbol(\(\))?$/)).toBeInTheDocument()
+    })
+  })
+
+  describe('kind mode: hierarchy + chips across languages (#588)', () => {
+    // Parent kinds that own children in real indexes but were not expandable
+    // in kind mode (Swift protocol/extension/actor, Ruby module, C/C++
+    // union/typedef, Go named type).
+    it.each([
+      ['swift', 'Spotamus/Model.swift', 'protocol'],
+      ['swift', 'Spotamus/Model.swift', 'extension'],
+      ['swift', 'Spotamus/Model.swift', 'actor'],
+      ['ruby', 'lib/model.rb', 'module'],
+      ['cpp', 'src/model.cpp', 'union'],
+      ['c', 'src/model.c', 'typedef'],
+      ['go', 'pkg/model.go', 'type'],
+    ])('%s %s: a %s row expands to show its children', async (language, path, kind) => {
+      const user = userEvent.setup({ delay: null })
+      mockGetSymbolTree.mockImplementation(async (_repo, params) => {
+        if (params?.parent_symbol_id === 650) {
+          return tierSymbols([
+            makeTreeSymbol({ id: 651, name: 'childMember', kind: 'method', file_path: path }),
+          ])
+        }
+        return tier1([makeFile({ path, language })], [kind])
+      })
+      mockSearchSymbols.mockResolvedValue({
+        items: [
+          makeApiSymbol({
+            id: 650,
+            name: 'Container',
+            qualified_name: 'Container',
+            kind,
+            file_path: path,
+          }),
+        ],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      })
+      renderView(
+        `/logical-view?repo=myrepo&branch=main&commit=deadbeef&kind=${kind}&language=${language}`
+      )
+
+      await user.click(await screen.findByText('Container'))
+      expect(await screen.findByText('childMember()')).toBeInTheDocument()
+      expect(mockGetSymbolTree).toHaveBeenCalledWith(
+        'myrepo',
+        expect.objectContaining({ parent_symbol_id: 650 })
+      )
+    })
+
+    it('surfaces a failed kind-mode fetch instead of an empty list', async () => {
+      mockGetSymbolTree.mockResolvedValue(tier1([makeFile()], ['class']))
+      mockSearchSymbols.mockRejectedValue(new Error('boom: 500'))
+      renderView('/logical-view?repo=myrepo&branch=main&commit=deadbeef&kind=class')
+
+      expect(await screen.findByText('boom: 500')).toBeInTheDocument()
+      expect(screen.queryByText('No class symbols found')).not.toBeInTheDocument()
+    })
+
+    it('surfaces a failed load-more fetch', async () => {
+      const user = userEvent.setup({ delay: null })
+      mockGetSymbolTree.mockResolvedValue(tier1([makeFile()], ['function']))
+      const page1 = Array.from({ length: 100 }, (_, i) =>
+        makeApiSymbol({ id: 3000 + i, name: `fn${i}`, kind: 'function', qualified_name: `fn${i}` })
+      )
+      mockSearchSymbols
+        .mockResolvedValueOnce({ items: page1, total: 200, limit: 100, offset: 0 })
+        .mockRejectedValueOnce(new Error('page 2 failed'))
+      renderView('/logical-view?repo=myrepo&branch=main&commit=deadbeef&kind=function')
+
+      await user.click(await screen.findByText('Load more'))
+      expect(await screen.findByText('page 2 failed')).toBeInTheDocument()
+      // The already-loaded page stays visible.
+      expect(screen.getByText('fn0()')).toBeInTheDocument()
+    })
+
+    it("under a language filter, shows only that language's kind chips and counts", async () => {
+      mockGetSymbolTree.mockResolvedValue(
+        tier1(
+          [
+            makeFile({
+              file_id: 1,
+              path: 'Spotamus/Model.swift',
+              language: 'swift',
+              all_kind_counts: { class: 4, protocol: 2 },
+            }),
+            makeFile({
+              file_id: 2,
+              path: 'tools/gen.py',
+              language: 'python',
+              all_kind_counts: { class: 9, function: 6 },
+            }),
+          ],
+          ['class', 'function', 'protocol']
+        )
+      )
+      renderView('/logical-view?repo=myrepo&branch=main&commit=deadbeef&language=swift')
+
+      await waitFor(() => expect(screen.getByText('Model.swift')).toBeInTheDocument())
+      expect(screen.getByRole('button', { name: /protocol/ })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^function$/ })).not.toBeInTheDocument()
+      // Summary counts reflect only the swift file (4 classes), not 13 repo-wide.
+      expect(screen.getByText('4')).toBeInTheDocument()
+      expect(screen.queryByText('13')).not.toBeInTheDocument()
+    })
+  })
+
   describe('URL-driven auto-expand', () => {
     it('expands the file named by the ?file= param and reveals its symbols', async () => {
       mockGetSymbolTree.mockImplementation(async (_repo, params) => {

@@ -21,7 +21,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import type { Symbol as ApiSymbol, SymbolTreeSymbol, SymbolTreeInheritance } from '@/lib/api'
-import { fileName, fileDir, type SymbolChildren } from '@/lib/logicalView'
+import { fileName, fileDir, isContainerKind, type SymbolChildren } from '@/lib/logicalView'
 import { getKindIcon } from './kindIcons'
 import { SymbolNode } from './SymbolNode'
 
@@ -63,14 +63,7 @@ export function KindSymbolNode({
     symbol.kind === 'staticmethod' ||
     symbol.kind === 'classmethod'
 
-  const isContainer =
-    symbol.kind === 'class' ||
-    symbol.kind === 'interface' ||
-    symbol.kind === 'struct' ||
-    symbol.kind === 'record' ||
-    symbol.kind === 'enum' ||
-    symbol.kind === 'trait' ||
-    symbol.kind === 'namespace'
+  const isContainer = isContainerKind(symbol.kind)
 
   // Convert ApiSymbol to SymbolTreeSymbol shape for navigation
   const asTreeSymbol: SymbolTreeSymbol = useMemo(

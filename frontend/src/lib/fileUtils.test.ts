@@ -100,6 +100,47 @@ describe('detectLanguage', () => {
     expect(detectLanguage('template.phtml', null)).toBe('php')
   })
 
+  // #589: the fallback map must agree with the backend LanguageDetector for
+  // every extension of a parser-supported language (TreeSitterService
+  // SUPPORTED_LANGUAGES). tests/unit/test_frontend_language_map_sync.py guards
+  // this against future drift.
+  it.each([
+    ['m.py', 'python'],
+    ['m.pyi', 'python'],
+    ['m.ts', 'typescript'],
+    ['m.tsx', 'typescript'],
+    ['m.mts', 'typescript'],
+    ['m.cts', 'typescript'],
+    ['m.js', 'javascript'],
+    ['m.jsx', 'javascript'],
+    ['m.mjs', 'javascript'],
+    ['m.cjs', 'javascript'],
+    ['m.c', 'c'],
+    ['m.h', 'cpp'],
+    ['m.cpp', 'cpp'],
+    ['m.cc', 'cpp'],
+    ['m.cxx', 'cpp'],
+    ['m.c++', 'cpp'],
+    ['m.hpp', 'cpp'],
+    ['m.hh', 'cpp'],
+    ['m.hxx', 'cpp'],
+    ['m.h++', 'cpp'],
+    ['M.java', 'java'],
+    ['M.cs', 'csharp'],
+    ['m.go', 'go'],
+    ['m.rb', 'ruby'],
+    ['tasks/m.rake', 'ruby'],
+    ['Rakefile', 'ruby'],
+    ['Gemfile', 'ruby'],
+    ['m.sh', 'bash'],
+    ['m.bash', 'bash'],
+    ['M.swift', 'swift'],
+    ['m.php', 'php'],
+    ['m.phtml', 'php'],
+  ])('falls back to the backend language for %s → %s', (path, language) => {
+    expect(detectLanguage(path, null)).toBe(language)
+  })
+
   it('detects language from filename for special files', () => {
     expect(detectLanguage('Dockerfile', null)).toBe('dockerfile')
     expect(detectLanguage('Dockerfile.dev', null)).toBe('dockerfile')
