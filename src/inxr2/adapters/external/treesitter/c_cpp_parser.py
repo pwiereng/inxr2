@@ -898,6 +898,21 @@ class CppParser(BaseLanguageParser):
                 # A qualified prototype at namespace scope is an out-of-line
                 # member that tree-sitter misparsed as a declaration (e.g. a
                 # constructor whose mem-initializer list confused it).
+                #
+                # A qualified `declaration` is only that above a namespace:
+                # inside a class body the members are field_declaration nodes,
+                # so the qualified shape there (or beside the ERROR the grammar
+                # recovered from, e.g. a body folded away after a requires
+                # clause) is a misparse of a call statement, not a symbol (#598).
+                declaration = declarator.parent
+                if qual_scope and declaration is not None and (
+                    parent_is_class_body(declaration)
+                    or (
+                        declaration.prev_named_sibling is not None
+                        and declaration.prev_named_sibling.type == "ERROR"
+                    )
+                ):
+                    return
                 kind, func_scope = out_of_line_kind_and_scope(scope, qual_scope)
                 return_type = get_text(type_node) if type_node else "void"
                 params = extract_parameter_text(declarator)
