@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import LogicalView from './LogicalView'
@@ -709,17 +709,15 @@ describe('LogicalView', () => {
   })
 
   describe('kind mode: hierarchy + chips across languages (#588)', () => {
-    // Parent kinds that own children in real indexes but were not expandable
-    // in kind mode (Swift protocol/extension/actor, Ruby module, C/C++
-    // union/typedef, Go named type).
+    // Parent kinds that usually own children in real indexes but were not
+    // expandable in kind mode (Swift protocol/extension/actor, Ruby module,
+    // C/C++ union).
     it.each([
       ['swift', 'Spotamus/Model.swift', 'protocol'],
       ['swift', 'Spotamus/Model.swift', 'extension'],
       ['swift', 'Spotamus/Model.swift', 'actor'],
       ['ruby', 'lib/model.rb', 'module'],
       ['cpp', 'src/model.cpp', 'union'],
-      ['c', 'src/model.c', 'typedef'],
-      ['go', 'pkg/model.go', 'type'],
     ])('%s %s: a %s row expands to show its children', async (language, path, kind) => {
       const user = userEvent.setup({ delay: null })
       mockGetSymbolTree.mockImplementation(async (_repo, params) => {
@@ -780,6 +778,106 @@ describe('LogicalView', () => {
       expect(await screen.findByText('page 2 failed')).toBeInTheDocument()
       // The already-loaded page stays visible.
       expect(screen.getByText('fn0()')).toBeInTheDocument()
+    })
+
+    it('clears a load-more error once a retry succeeds', async () => {
+      const user = userEvent.setup({ delay: null })
+      mockGetSymbolTree.mockResolvedValue(tier1([makeFile()], ['function']))
+      const page = (base: number) =>
+        Array.from({ length: 100 }, (_, i) =>
+          makeApiSymbol({
+            id: base + i,
+            name: `fn${base + i}`,
+            kind: 'function',
+            qualified_name: `fn${base + i}`,
+          })
+        )
+      mockSearchSymbols
+        .mockResolvedValueOnce({ items: page(4000), total: 300, limit: 100, offset: 0 })
+        .mockRejectedValueOnce(new Error('page 2 failed'))
+        .mockResolvedValueOnce({ items: page(5000), total: 300, limit: 100, offset: 100 })
+      renderView('/logical-view?repo=myrepo&branch=main&commit=deadbeef&kind=function')
+
+      await user.click(await screen.findByText('Load more'))
+      expect(await screen.findByText('page 2 failed')).toBeInTheDocument()
+
+      await user.click(screen.getByText('Load more'))
+      expect(await screen.findByText('fn5000()')).toBeInTheDocument()
+      expect(screen.queryByText('page 2 failed')).not.toBeInTheDocument()
+    })
+
+    it('ignores a load-more that settles after the kind changed', async () => {
+      const user = userEvent.setup({ delay: null })
+      mockGetSymbolTree.mockResolvedValue(tier1([makeFile()], ['class', 'function']))
+      const page1 = Array.from({ length: 100 }, (_, i) =>
+        makeApiSymbol({ id: 6000 + i, name: `fn${i}`, kind: 'function', qualified_name: `fn${i}` })
+      )
+      let rejectStale: (e: Error) => void = () => {}
+      mockSearchSymbols.mockImplementation(async (params) => {
+        if (params.kind === 'class') {
+          return {
+            items: [makeApiSymbol({ id: 7000, name: 'FreshClass', kind: 'class' })],
+            total: 1,
+            limit: 100,
+            offset: 0,
+          }
+        }
+        if (params.offset === 100) {
+          return new Promise((_, reject) => {
+            rejectStale = reject
+          })
+        }
+        return { items: page1, total: 200, limit: 100, offset: 0 }
+      })
+      renderView('/logical-view?repo=myrepo&branch=main&commit=deadbeef&kind=function')
+
+      await user.click(await screen.findByText('Load more'))
+      // Switch kind while page 2 of `function` is still in flight.
+      await user.click(screen.getByRole('button', { name: 'class' }))
+      expect(await screen.findByText('FreshClass')).toBeInTheDocument()
+
+      await act(async () => rejectStale(new Error('stale page failed')))
+      expect(screen.queryByText('stale page failed')).not.toBeInTheDocument()
+      expect(screen.getByText('FreshClass')).toBeInTheDocument()
+    })
+
+    it('ignores an initial kind fetch that settles after the kind changed', async () => {
+      const user = userEvent.setup({ delay: null })
+      mockGetSymbolTree.mockResolvedValue(tier1([makeFile()], ['class', 'function']))
+      let resolveStale: (v: Awaited<ReturnType<typeof searchSymbols>>) => void = () => {}
+      mockSearchSymbols.mockImplementation(async (params) => {
+        if (params.kind === 'function') {
+          return new Promise((resolve) => {
+            resolveStale = resolve
+          })
+        }
+        return {
+          items: [makeApiSymbol({ id: 7100, name: 'FreshClass', kind: 'class' })],
+          total: 1,
+          limit: 100,
+          offset: 0,
+        }
+      })
+      renderView('/logical-view?repo=myrepo&branch=main&commit=deadbeef&kind=function')
+
+      await waitFor(() =>
+        expect(mockSearchSymbols).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: 'function' })
+        )
+      )
+      await user.click(await screen.findByRole('button', { name: 'class' }))
+      expect(await screen.findByText('FreshClass')).toBeInTheDocument()
+
+      await act(async () =>
+        resolveStale({
+          items: [makeApiSymbol({ id: 7101, name: 'staleFn', kind: 'function' })],
+          total: 1,
+          limit: 100,
+          offset: 0,
+        })
+      )
+      expect(screen.queryByText('staleFn()')).not.toBeInTheDocument()
+      expect(screen.getByText('FreshClass')).toBeInTheDocument()
     })
 
     it("under a language filter, shows only that language's kind chips and counts", async () => {

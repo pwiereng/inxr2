@@ -66,9 +66,13 @@ export function getAvailableLanguages(files: SymbolTreeFile[]): string[] {
 
 /**
  * Symbol kinds that can own child symbols (members, nested types), so a
- * kind-mode row of that kind is expandable. Covers every parser's container
- * kinds: Swift protocol/extension/actor, Ruby module, C/C++ union/typedef and
- * Go named `type` declarations all carry children in real indexes (#588).
+ * kind-mode row of that kind is expandable. Kind-mode symbols carry no
+ * `has_children`, so this list is the only signal: a kind belongs here only if
+ * its rows usually have children. Swift protocol/extension/actor, Ruby module
+ * and C/C++ union do (#588). `type` and `typedef` are deliberately excluded:
+ * in real indexes only ~1-3% have children (e.g. C `typedef struct {...}`), so
+ * they would mostly show a chevron that opens to nothing. Those few children
+ * stay reachable in Outline mode, which uses the API's `has_children`.
  */
 export const CONTAINER_KINDS: ReadonlySet<string> = new Set([
   'class',
@@ -83,8 +87,6 @@ export const CONTAINER_KINDS: ReadonlySet<string> = new Set([
   'extension',
   'actor',
   'union',
-  'typedef',
-  'type',
 ])
 
 /** Whether a symbol of this kind can have child symbols. */

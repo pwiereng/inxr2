@@ -148,6 +148,9 @@ export default function LogicalView(): React.ReactElement {
   const [kindSymbolChildren, setKindSymbolChildren] = useState<SymbolChildren>({})
   const [kindExpandingSymbol, setKindExpandingSymbol] = useState<number | null>(null)
 
+  // Bumped whenever the kind-mode query (kind/repo/branch/commit/language)
+  // changes, so an in-flight load-more can tell its response is stale.
+  const kindQueryGen = useRef(0)
   const symbolSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScrollTop = useRef(0)
@@ -384,6 +387,7 @@ export default function LogicalView(): React.ReactElement {
 
   // Fetch symbols when entering kind mode
   useEffect(() => {
+    kindQueryGen.current += 1
     if (!activeKind || !repositoryId || !branch) {
       setKindSymbols([])
       setKindSymbolsError(null)
@@ -436,7 +440,9 @@ export default function LogicalView(): React.ReactElement {
   // Load more symbols in kind mode
   const loadMoreKindSymbols = useCallback(async () => {
     if (!activeKind || !repositoryId || kindSymbolsLoading) return
+    const gen = kindQueryGen.current
     setKindSymbolsLoading(true)
+    setKindSymbolsError(null)
     try {
       const result = await searchSymbols({
         kind: activeKind,
@@ -448,15 +454,19 @@ export default function LogicalView(): React.ReactElement {
         limit: KIND_PAGE_SIZE,
         offset: kindSymbolsOffset,
       })
+      // The kind/language changed while this page was in flight: drop it.
+      if (gen !== kindQueryGen.current) return
       setKindSymbols((prev) => [...prev, ...result.items])
       setKindSymbolsHasMore(result.items.length === KIND_PAGE_SIZE)
       setKindSymbolsOffset((prev) => prev + KIND_PAGE_SIZE)
     } catch (err) {
+      if (gen !== kindQueryGen.current) return
       setKindSymbolsError(
         err instanceof Error ? err.message : `Failed to load more ${activeKind} symbols`
       )
     } finally {
-      setKindSymbolsLoading(false)
+      // A newer query owns the loading flag; leave it alone.
+      if (gen === kindQueryGen.current) setKindSymbolsLoading(false)
     }
   }, [
     activeKind,

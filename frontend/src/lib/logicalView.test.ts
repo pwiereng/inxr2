@@ -142,14 +142,13 @@ describe('isContainerKind', () => {
     'extension',
     'actor',
     'union',
-    'typedef',
-    'type',
   ])('%s is a container kind', (kind) => {
     expect(isContainerKind(kind)).toBe(true)
     expect(CONTAINER_KINDS.has(kind)).toBe(true)
   })
 
-  it.each(['function', 'method', 'field', 'property', 'variable', 'constant'])(
+  // type/typedef rarely have children; see CONTAINER_KINDS.
+  it.each(['function', 'method', 'field', 'property', 'variable', 'constant', 'type', 'typedef'])(
     '%s is not a container kind',
     (kind) => {
       expect(isContainerKind(kind)).toBe(false)
