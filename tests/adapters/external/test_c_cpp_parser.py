@@ -2544,3 +2544,227 @@ CJSON_PUBLIC char *dup_string(const char *s) { return 0; }
 """
         symbols, _ = await _parse(code, language="c")
         assert not [s for s in symbols if s.name == "strlen"]
+
+
+class TestCppMisparsedTemplateScopes:
+    """Template scopes damaged by macros resolve to the right class, never to
+    a dropped class or a keyword such as ``void`` (#596 review).
+
+    These assert exact names, so a rule that rejects too much fails too.
+    """
+
+    async def test_macro_line_before_template_keeps_class(self) -> None:
+        # The scope becomes dependent_name(ERROR(<...> void), basic_ios<C, T>).
+        code = """
+namespace std {
+MY_MACRO
+ template<typename C, typename T>
+ void
+ basic_ios<C, T>::clear(int s) {}
+}
+"""
+        symbols, _ = await _parse(code)
+        clear = _by_name(symbols, "clear")
+        assert (clear.kind, clear.qualified_name) == ("method", "std.basic_ios.clear")
+
+    async def test_macro_line_before_template_keeps_swallowed_qualifier(
+        self,
+    ) -> None:
+        # `outer::` ends up inside the dependent_name's ERROR node.
+        code = """
+MY_MACRO
+ template<typename C, typename T>
+ void
+ outer::basic_ios<C, T>::clear(int s) {}
+"""
+        symbols, _ = await _parse(code)
+        assert _by_name(symbols, "clear").qualified_name == "outer.basic_ios.clear"
+
+    async def test_clean_dependent_name_mid_chain_keeps_outer_scope(self) -> None:
+        code = """
+template <typename T> template <typename U>
+void ns::Outer<T>::template Inner<U>::f() {}
+"""
+        symbols, _ = await _parse(code)
+        f = _by_name(symbols, "f")
+        assert (f.kind, f.qualified_name) == ("method", "ns.Outer.Inner.f")
+
+    async def test_macro_between_template_and_return_type(self) -> None:
+        # The scope becomes template_type(name: void, ERROR(Foo), <T>).
+        code = """
+template<class T> MACRO void Foo<T>::mac() {}
+template<typename T> MACRO typename vector<T>::iterator
+vector<T>::_M_erase(iterator p) { return p; }
+"""
+        symbols, _ = await _parse(code)
+        mac = _by_name(symbols, "mac")
+        assert (mac.kind, mac.qualified_name) == ("method", "Foo.mac")
+        erase = _by_name(symbols, "_M_erase")
+        assert (erase.kind, erase.qualified_name) == ("method", "vector._M_erase")
+
+    async def test_keyword_is_never_a_scope(self) -> None:
+        # libstdc++ bits/cow_string.h: `friend void ::f()` misparses with
+        # `void` as a namespace_identifier scope.
+        code = """
+      friend const char*
+      ::_txnal_cow_string_c_str(const void *that);
+      friend void
+      ::_txnal_cow_string_D1(void *that);
+      friend void
+"""
+        symbols, _ = await _parse(code)
+        d1 = _by_name(symbols, "_txnal_cow_string_D1")
+        assert (d1.kind, d1.qualified_name) == ("function", None)
+        assert not [
+            s for s in symbols if s.qualified_name and "void." in s.qualified_name
+        ]
+
+    async def test_scope_with_parenthesised_template_args_is_kept(self) -> None:
+        # Braces/semicolons reject a scope only inside error-recovered nodes;
+        # clean template arguments may contain `{}`, `(` and `)`.
+        code = """
+template <typename T> void Foo<decltype(T{} + 1)>::m() {}
+template <typename T> void Bar<sizeof(T)>::n() {}
+"""
+        symbols, _ = await _parse(code)
+        assert _by_name(symbols, "m").qualified_name == "Foo.m"
+        assert _by_name(symbols, "n").qualified_name == "Bar.n"
+
+    async def test_qualified_prototype_gets_class_scope(self) -> None:
+        # spdlog sinks/base_sink-inl.h: the mem-initializer `formatter_{...}`
+        # makes tree-sitter parse this constructor as a declaration.
+        code = """
+template <typename Mutex>
+SPDLOG_INLINE sinks::base_sink<Mutex>::base_sink(
+    std::unique_ptr<formatter> formatter)
+    : formatter_{std::move(formatter)} {}
+"""
+        symbols, _ = await _parse(code)
+        ctor = _by_name(symbols, "base_sink")
+        assert ctor.kind == "method"
+        assert ctor.qualified_name == "sinks.base_sink.base_sink"
+
+    async def test_unqualified_prototype_stays_function(self) -> None:
+        code = """
+namespace ns {
+void helper(int x);
+}
+"""
+        symbols, _ = await _parse(code)
+        helper = _by_name(symbols, "helper")
+        assert (helper.kind, helper.qualified_name) == ("function", "ns.helper")
+
+    async def test_bare_template_declarator_is_not_a_definition(self) -> None:
+        # fmt os.h: `FMT_BEGIN_EXPORT` + doc comment + `template <typename
+        # Char>` misparses as the declarator `FMT_BEGIN_EXPORT<typename Char>`.
+        code = """
+FMT_BEGIN_NAMESPACE
+FMT_BEGIN_EXPORT
+
+/**
+ * A reference to a null-terminated string.
+ */
+template <typename Char> class basic_cstring_view {
+ private:
+  const Char* data_;
+
+ public:
+  basic_cstring_view(const Char* s) : data_(s) {}
+};
+"""
+        symbols, _ = await _parse(code)
+        assert not [s for s in symbols if s.name == "FMT_BEGIN_EXPORT"]
+
+    async def test_cast_in_preprocessor_branch_is_not_a_method(self) -> None:
+        # libstdc++ parallel/random_number.h: `return static_cast<T>(x);`
+        # under `#if` misparses as a template_method declarator.
+        code = """
+  class _RandomNumber
+  {
+  private:
+    std::tr1::mt19937   _M_mt;
+    uint64_t            _M_supremum;
+    uint64_t            _M_rand_sup;
+    double              _M_supremum_reciprocal;
+    double              _M_rand_sup_reciprocal;
+
+    // Assumed to be twice as long as the usual random number.
+    uint64_t              __cache;
+
+    // Bit results.
+    int __bits_left;
+
+    static uint32_t
+    __scale_down(uint64_t __x,
+#if _GLIBCXX_SCALE_DOWN_FPU
+               uint64_t /*_M_supremum*/, double _M_supremum_reciprocal)
+#else
+               uint64_t _M_supremum, double /*_M_supremum_reciprocal*/)
+#endif
+        {
+#if _GLIBCXX_SCALE_DOWN_FPU
+          return uint32_t(__x * _M_supremum_reciprocal);
+#else
+          return static_cast<uint32_t>(__x % _M_supremum);
+#endif
+        }
+
+  public:
+    /** @brief Default constructor. Seed with 0. */
+    _RandomNumber()
+    : _M_mt(0), _M_supremum(0x100000000ULL),
+      _M_rand_sup(1ULL << std::numeric_limits<uint32_t>::digits),
+      _M_supremum_reciprocal(double(_M_supremum) / double(_M_rand_sup)),
+      _M_rand_sup_reciprocal(1.0 / double(_M_rand_sup)),
+      __cache(0), __bits_left(0) { }
+"""
+        symbols, _ = await _parse(code)
+        assert not [s for s in symbols if s.name == "static_cast"]
+        scale = _by_name(symbols, "__scale_down")
+        assert scale.qualified_name == "_RandomNumber.__scale_down"
+
+    async def test_missing_identifier_is_not_a_name(self) -> None:
+        # libstdc++ experimental/bits/simd.h: error recovery inserts a
+        # zero-width MISSING identifier as a function name.
+        code = """
+  struct _SimdWrapper<bool, _Width,
+              void_t<typename __bool_storage_member_type<_Width>::type>>
+  {
+    using _BuiltinType = typename __bool_storage_member_type<_Width>::type;
+    using value_type = bool;
+
+    static constexpr size_t _S_full_size = sizeof(_BuiltinType) * __CHAR_BIT__;
+
+    _GLIBCXX_SIMD_INTRINSIC constexpr _SimdWrapper<bool, _S_full_size>
+    __as_full_vector() const
+    { return _M_data; }
+
+    _GLIBCXX_SIMD_INTRINSIC constexpr
+    _SimdWrapper() = default;
+
+    _GLIBCXX_SIMD_INTRINSIC constexpr
+    _SimdWrapper(_BuiltinType __k) : _M_data(__k) {};
+
+    _GLIBCXX_SIMD_INTRINSIC
+    operator const _BuiltinType&() const
+    { return _M_data; }
+
+    _GLIBCXX_SIMD_INTRINSIC
+    operator _BuiltinType&()
+    { return _M_data; }
+"""
+        symbols, _ = await _parse(code)
+        assert all(s.name.strip() for s in symbols), [
+            (s.kind, s.name, s.qualified_name) for s in symbols
+        ]
+
+    async def test_template_keyword_call_without_template_args(self) -> None:
+        code = """
+void f() {
+    X::template g(a);
+    Y::template h<int>(b);
+}
+"""
+        _, refs = await _parse(code)
+        calls = {r.reference_text for r in refs if r.reference_type == "call"}
+        assert {"g", "h"} <= calls

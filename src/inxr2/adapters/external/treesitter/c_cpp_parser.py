@@ -29,6 +29,50 @@ _WRAPPER_DECLARATORS = (
     "parenthesized_declarator",
 )
 
+# Node types that hold a bare scope name.
+_SCOPE_NAME_TYPES = ("identifier", "namespace_identifier", "type_identifier")
+
+# Keywords tree-sitter error recovery can leave in a scope position
+# (`void`, `bool`, `typename` …); a real scope is never one of these.
+_NON_SCOPE_KEYWORDS = frozenset(
+    {
+        "auto",
+        "bool",
+        "char",
+        "char8_t",
+        "char16_t",
+        "char32_t",
+        "class",
+        "const",
+        "constexpr",
+        "consteval",
+        "constinit",
+        "double",
+        "enum",
+        "explicit",
+        "extern",
+        "float",
+        "friend",
+        "inline",
+        "int",
+        "long",
+        "mutable",
+        "register",
+        "short",
+        "signed",
+        "static",
+        "struct",
+        "template",
+        "typename",
+        "union",
+        "unsigned",
+        "virtual",
+        "void",
+        "volatile",
+        "wchar_t",
+    }
+)
+
 # Declarator leaves that carry a function/variable name.
 _NAME_DECLARATORS = (
     "identifier",
@@ -38,6 +82,7 @@ _NAME_DECLARATORS = (
     "operator_name",
     "operator_cast",
     "template_function",
+    "template_method",
 )
 
 
@@ -376,14 +421,67 @@ class CppParser(BaseLanguageParser):
                 current = inner
             return current, is_function
 
-        def scope_segment(node: Node) -> str | None:
-            """Bare name of one scope segment (template args stripped)."""
-            if node.type in ("namespace_identifier", "type_identifier", "identifier"):
-                return get_text(node)
-            if node.type == "template_type":
-                name = node.child_by_field_name("name")
-                return get_text(name) if name else None
+        def error_tail_name(node: Node) -> str | None:
+            """Last identifier inside an ERROR node (the real name before it
+            is junk such as a return type or macro)."""
+            last = node.named_children[-1] if node.named_children else None
+            if last is not None and last.type in _SCOPE_NAME_TYPES:
+                return get_text(last)
             return None
+
+        def error_qualifier_tail(node: Node) -> list[str]:
+            """Trailing ``a :: b ::`` names at the end of an ERROR node.
+
+            ``ERROR(<typename C> void outer ::)`` → ``["outer"]``.
+            """
+            names: list[str] = []
+            children = node.children
+            i = len(children) - 1
+            while (
+                i >= 1
+                and children[i].type == "::"
+                and children[i - 1].type in _SCOPE_NAME_TYPES
+            ):
+                names.insert(0, get_text(children[i - 1]))
+                i -= 2
+            return names
+
+        def scope_segment(node: Node) -> tuple[list[str], bool]:
+            """Bare names contributed by one scope node (template args
+            stripped).
+
+            Returns ``(segments, restart)``.  ``restart`` means the node
+            itself shows that everything collected before it is junk:
+
+            * ``template_type`` whose ERROR child holds the class name, from
+              ``template<class T> MACRO void Foo<T>::m`` →
+              ``template_type(name: void, ERROR(Foo), <T>)`` → ``Foo``.
+
+            A ``dependent_name`` never restarts: a macro line before
+            ``template<…>`` gives
+            ``dependent_name(ERROR(<…> void outer ::), basic_ios<C, T>)``,
+            where the junk is *inside* its ERROR (→ ``outer``, ``basic_ios``),
+            and a clean one is legal mid-chain (``Outer<T>::template Inner<U>``).
+            """
+            if node.type in _SCOPE_NAME_TYPES:
+                return [get_text(node)], False
+            if node.type == "template_type":
+                for child in node.named_children:
+                    if child.type == "ERROR":
+                        tail = error_tail_name(child)
+                        return ([tail] if tail else []), True
+                name = node.child_by_field_name("name")
+                return ([get_text(name)] if name else []), False
+            if node.type == "dependent_name":
+                named = node.named_children
+                last = named[-1] if named else None
+                if last is None or last.type == "ERROR":
+                    return [], False
+                prefix: list[str] = []
+                if len(named) >= 2 and named[-2].type == "ERROR":
+                    prefix = error_qualifier_tail(named[-2])
+                return [*prefix, *scope_segment(last)[0]], False
+            return [], False
 
         def resolve_qualified_identifier(
             node: Node,
@@ -391,8 +489,8 @@ class CppParser(BaseLanguageParser):
             """Walk a ``qualified_identifier`` chain.
 
             Returns the clean scope segments and the terminal name node, or
-            None when error recovery swallowed unrelated code (a scope part
-            containing braces or semicolons, e.g. a whole class body).
+            None when error recovery swallowed unrelated code (an erroneous
+            scope part containing braces or semicolons, e.g. a class body).
             """
             segments: list[str] = []
             current = node
@@ -400,7 +498,9 @@ class CppParser(BaseLanguageParser):
                 name_node: Node | None = None
                 for i, child in enumerate(current.children):
                     field = current.field_name_for_child(i)
-                    if field == "name":
+                    if field == "name" and child.is_named:
+                        # (`X::template f` also tags the `template` keyword
+                        # token with the name field.)
                         name_node = child
                         break
                     if child.type == "::":
@@ -408,25 +508,27 @@ class CppParser(BaseLanguageParser):
                             # `RetType <missing ::> name`: all so far is junk.
                             segments = []
                         continue
-                    if child.type == "comment":
+                    if child.type == "comment" or not child.is_named:
                         continue
-                    if any(ch in get_text(child) for ch in "{};"):
+                    if child.has_error and any(ch in get_text(child) for ch in "{};"):
+                        # Error recovery swallowed a body or statement; a
+                        # clean scope may still hold braces (`Foo<T{}>`).
                         return None
                     if child.type == "ERROR":
                         # `JUNK ERROR(... Real) :: name`: the identifier right
                         # before `::` is the real scope; the rest is junk.
-                        last = (
-                            child.named_children[-1] if child.named_children else None
-                        )
-                        is_name = last is not None and last.type in (
-                            "identifier",
-                            "namespace_identifier",
-                            "type_identifier",
-                        )
-                        segments = [get_text(last)] if last and is_name else []
+                        tail = error_tail_name(child)
+                        segments = [tail] if tail else []
                     elif field == "scope":
-                        segment = scope_segment(child)
-                        segments = [*segments, segment] if segment else []
+                        names, restart = scope_segment(child)
+                        if restart:
+                            segments = []
+                        segments = [*segments, *names] if names else []
+                    # A keyword is never a scope: `friend void ::f()` misparses
+                    # with `void` as a namespace_identifier.  Everything up to
+                    # and including it is return-type junk.
+                    if segments and segments[-1] in _NON_SCOPE_KEYWORDS:
+                        segments = []
                 if name_node is None:
                     return None
                 current = name_node
@@ -451,6 +553,9 @@ class CppParser(BaseLanguageParser):
 
         def terminal_name(node: Node) -> tuple[str, Node] | None:
             """Bare name of a declarator/callee leaf (template args stripped)."""
+            if node.is_missing or not get_text(node).strip():
+                # Error recovery inserts zero-width MISSING identifiers.
+                return None
             if node.type in (
                 "identifier",
                 "field_identifier",
@@ -492,7 +597,9 @@ class CppParser(BaseLanguageParser):
             if leaf is None:
                 return None
             segments: list[str] = []
-            if leaf.type == "template_function":
+            if leaf.type in ("template_function", "template_method"):
+                # A bare `name<args>` declarator is a misparsed macro, base
+                # initializer or cast (`static_cast<T>(x)`), not a definition.
                 return None
             if leaf.type == "qualified_identifier":
                 resolved = resolve_qualified_identifier(leaf)
