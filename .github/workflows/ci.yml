@@ -199,11 +199,14 @@ jobs:
             --generate-hashes -o requirements-prod.lock
           python -m uv pip compile mcp-server/pyproject.toml requirements-build.in \
             --generate-hashes -o mcp-server/requirements-prod.lock
+          python -m uv pip compile qa-agent/pyproject.toml requirements-build.in \
+            --generate-hashes -o qa-agent/requirements.lock
 
       - name: Verify lockfiles are up to date
         run: |
           if ! git diff --exit-code -- \
-              requirements.lock requirements-prod.lock mcp-server/requirements-prod.lock; then
+              requirements.lock requirements-prod.lock mcp-server/requirements-prod.lock \
+              qa-agent/requirements.lock; then
             echo "::error::Lockfiles are out of date. Regenerate them with the uv pip compile" \
                  "commands above (also documented in the Dockerfile.dev comment) and commit the result."
             exit 1
@@ -246,4 +249,5 @@ jobs:
             --lockfile=requirements.txt:requirements.lock
             --lockfile=requirements.txt:requirements-prod.lock
             --lockfile=requirements.txt:mcp-server/requirements-prod.lock
+            --lockfile=requirements.txt:qa-agent/requirements.lock
             ./

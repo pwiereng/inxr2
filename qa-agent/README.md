@@ -34,7 +34,7 @@ The most common use case is exploratory testing during development.
 
 ```bash
 # From project root, start the playwright container
-docker-compose -f docker-compose.dev.yml --profile qa up -d inxr2-playwright
+docker compose -f docker-compose.dev.yml --profile qa up -d playwright
 
 # Verify it's running
 curl http://localhost:9222/health
@@ -136,20 +136,43 @@ The QA agent code lives in `/qa-agent/`. To modify it:
 
 ```bash
 # Edit files in qa-agent/src/
-# Then rebuild the container
-docker-compose -f docker-compose.dev.yml build inxr2-playwright
-
-# Restart to pick up changes
-docker-compose -f docker-compose.dev.yml restart inxr2-playwright
+# Then rebuild the image and recreate the container from it
+# (`restart` alone would keep running the old image)
+docker compose -f docker-compose.dev.yml --profile qa up -d --build playwright
 ```
 
-For local development without Docker:
+### Dependencies (lock file)
+
+The image installs its Python dependencies from `qa-agent/requirements.lock`, a
+hash-pinned lock (`pip install --require-hashes`). `pyproject.toml` only declares
+version floors; the lock is what actually gets built. The playwright pin also fixes
+which Chromium build `playwright install` downloads.
+
+After editing `dependencies` in `qa-agent/pyproject.toml`, regenerate the lock from
+the repo root inside the dev container, using the uv version pinned in CI's
+`lockfiles` job:
+
+```bash
+pip install "uv==0.11.21"
+python -m uv pip compile qa-agent/pyproject.toml requirements-build.in \
+    --generate-hashes -o qa-agent/requirements.lock
+```
+
+CI fails (`Lockfiles Up-to-date`) if the committed lock doesn't match, and
+osv-scanner scans it for known vulnerabilities.
+
+For local development without Docker, use a dedicated virtualenv. Don't install
+into the host's system Python, and don't install into `inxr2-dev`: its single
+shared environment pins the older fastapi/starlette the backend needs, and this
+lock would replace them.
 
 ```bash
 cd qa-agent
-pip install -e ".[dev]"
+python3.11 -m venv .venv && . .venv/bin/activate
+pip install --require-hashes -r requirements.lock
+pip install --no-deps --no-build-isolation -e .
 playwright install chromium
-pytest
+python -m src.server   # serves on http://localhost:9222
 ```
 
 ## Adding New Scenarios
@@ -165,7 +188,7 @@ pytest
 
 The playwright container isn't running:
 ```bash
-docker-compose -f docker-compose.dev.yml up -d inxr2-playwright
+docker compose -f docker-compose.dev.yml --profile qa up -d playwright
 ```
 
 ### Connection refused to localhost:5173
