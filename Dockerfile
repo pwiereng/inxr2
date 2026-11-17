@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python package files
-COPY pyproject.toml requirements-prod.lock ./
+COPY pyproject.toml requirements-prod.lock README.md LICENSE ./
 COPY src/ ./src/
 
 # Install runtime dependencies from the hash-pinned lock (reproducible), then
