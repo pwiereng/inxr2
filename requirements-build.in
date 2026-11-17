@@ -6,7 +6,7 @@
 # hashes into the outer env and build the editable packages with
 # --no-build-isolation, so the build toolchain is reproducible too (no fresh,
 # unpinned build backends fetched from PyPI per build).
-setuptools>=65.0
+setuptools>=84.1  # security floor: PYSEC-2026-3447, GHSA-xmj3-9gf7-h52w (#519)
 wheel>=0.46.2
 hatchling
 # editables is hatchling's dynamic build requirement for editable installs
