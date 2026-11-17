@@ -65,9 +65,20 @@ RUN groupadd -r inxr2 && \
 # Set working directory
 WORKDIR /app
 
-# Copy Python packages from builder
+# Copy Python packages from builder. COPY merges into the destination, so first
+# remove the base image's own site-packages (it ships its own pip, setuptools,
+# wheel, packaging). Otherwise both versions' .dist-info survive side by side,
+# and pip/scanners report the base image's older (vulnerable) setuptools
+# instead of the locked one (#519).
+RUN rm -rf /usr/local/lib/python3.11/site-packages
 COPY --from=backend-builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=backend-builder /usr/local/bin /usr/local/bin
+# Guard: fail the build if any distribution is installed more than once
+# (names compared PEP 503-normalised, e.g. typing_extensions == typing-extensions).
+RUN python -c "import collections, re, importlib.metadata as m; \
+c = collections.Counter(re.sub(r'[-_.]+', '-', d.metadata['Name']).lower() for d in m.distributions()); \
+dups = sorted(n for n, k in c.items() if k > 1); \
+assert not dups, f'duplicate distributions in site-packages: {dups}'"
 
 # Copy application source
 COPY --chown=inxr2:inxr2 src/ ./src/

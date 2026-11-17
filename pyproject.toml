@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=65.0", "wheel>=0.46.2"]
+# setuptools security floor: PYSEC-2026-3447 (83.0.0), GHSA-xmj3-9gf7-h52w (84.1.0) (#519)
+requires = ["setuptools>=84.1", "wheel>=0.46.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
