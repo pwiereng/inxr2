@@ -1,0 +1,49 @@
+name: QA Agent Image
+
+# Builds qa-agent/Dockerfile (the Playwright container used by /regression-test
+# and /qa-testing) so a broken image is caught before merge instead of at the
+# next regression run (#630). Nothing is pushed to a registry.
+#
+# A clean build takes ~100s (mostly `playwright install chromium --with-deps`),
+# so pull requests only build it when something that feeds the image changes.
+# Pushes to main always build, which also catches drift in what the lock doesn't
+# pin (the python:3.11-slim base image and its apt packages).
+# This lives in its own workflow (not ci.yml) because path filters are
+# workflow-level; it is not a required check, so skipped runs never block a PR.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "qa-agent/**"
+      - "requirements-build.in"
+      - ".github/workflows/qa-agent-image.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build QA Agent Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build image
+        run: docker build --tag inxr2-qa-agent:ci qa-agent
+
+      # The browser must actually launch, not just install: start the server
+      # and require /health to report browser: true.
+      - name: Smoke test /health
+        run: |
+          docker run --detach --name qa-agent --publish 9222:9222 inxr2-qa-agent:ci
+          for _ in $(seq 1 30); do
+            if body=$(curl --silent --fail http://localhost:9222/health); then
+              echo "$body"
+              echo "$body" | grep -q '"browser":true' && exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::qa-agent /health did not report browser: true"
+          docker logs qa-agent
+          exit 1

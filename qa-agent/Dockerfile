@@ -10,16 +10,26 @@ RUN apt-get update && apt-get install -y \
     libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY pyproject.toml .
-RUN pip install --no-cache-dir --upgrade 'pip>=26.0' 'wheel>=0.46.2' && \
-    pip install --no-cache-dir -e .
+# Install runtime dependencies from the hash-pinned lock (reproducible: the
+# playwright pin also fixes which Chromium build `playwright install` fetches).
+# requirements.lock is generated from qa-agent/pyproject.toml + the repo-root
+# requirements-build.in (same convention as mcp-server/requirements-prod.lock),
+# run from the repo root with the uv version pinned in CI's `lockfiles` job:
+#   uv pip compile qa-agent/pyproject.toml requirements-build.in \
+#       --generate-hashes -o qa-agent/requirements.lock
+COPY pyproject.toml requirements.lock ./
+RUN pip install --no-cache-dir --upgrade 'pip>=26.0' && \
+    pip install --no-cache-dir --require-hashes -r requirements.lock
 
-# Install Playwright browsers
+# Install Playwright browsers (before copying src/ so source edits don't
+# invalidate this slow layer).
 RUN playwright install chromium --with-deps
 
-# Copy source code
+# Copy source code, then install the package itself without re-resolving.
+# --no-build-isolation builds against the locked hatchling instead of fetching
+# unpinned, unhashed build backends fresh from PyPI.
 COPY src/ src/
+RUN pip install --no-cache-dir --no-deps --no-build-isolation .
 
 # Expose the server port
 EXPOSE 9222
