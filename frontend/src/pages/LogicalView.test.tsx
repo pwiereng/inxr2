@@ -1569,8 +1569,8 @@ describe('LogicalView', () => {
 
       await user.click(await screen.findByText('app.py'))
       const chip = await screen.findByText('extends Base')
-      // Expanding the file navigates, and v7_startTransition defers that router
-      // update, so the expansion's follow-up symbol fetch lands *after* the chip
+      // Expanding the file navigates, and react-router v7 wraps router updates in
+      // React.startTransition, deferring that update, so the expansion's follow-up symbol fetch lands *after* the chip
       // renders. Wait for it to settle and reset the call log, so the assertion
       // below measures only what the Cmd+click itself triggers.
       await waitFor(() => expect(mockGetSymbolTree).toHaveBeenCalledTimes(3))
