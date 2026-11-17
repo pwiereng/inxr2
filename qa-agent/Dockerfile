@@ -2,9 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for Playwright
+# Install system dependencies for Playwright.
+# libatomic1: the Node driver bundled with recent playwright releases links
+# against libatomic.so.1, which python:3.11-slim does not ship.
 RUN apt-get update && apt-get install -y \
     curl \
+    libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
