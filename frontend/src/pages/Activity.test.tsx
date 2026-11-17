@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import Activity from './Activity'
 import * as api from '@/lib/api'
 import type { Repository } from '@/lib/api'
 import { AppProvider } from '@/contexts/AppContext'
-import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 
 vi.mock('@/lib/api', () => ({
   getActivityLog: vi.fn(),
@@ -42,7 +41,7 @@ const mockEntries = [
 
 function renderActivity() {
   return render(
-    <MemoryRouter future={ROUTER_FUTURE_FLAGS}>
+    <MemoryRouter>
       <AppProvider>
         <Activity />
       </AppProvider>

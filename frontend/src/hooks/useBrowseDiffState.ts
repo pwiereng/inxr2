@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { MutableRefObject } from 'react'
-import type { NavigateFunction } from 'react-router-dom'
+import type { NavigateFunction } from 'react-router'
 import {
   getFileContentByPathAtCommit,
   getFileSymbolsByPath,

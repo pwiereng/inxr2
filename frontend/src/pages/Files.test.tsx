@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router'
 import Files from './Files'
 import * as api from '@/lib/api'
 import type { FileInfo } from '@/lib/api'
 import { AppProvider } from '@/contexts/AppContext'
-import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 
 vi.mock('@/lib/api', () => ({
   getRepositoryFiles: vi.fn(),
@@ -35,7 +34,7 @@ const mockFiles: FileInfo[] = [
 
 function renderFiles() {
   return render(
-    <MemoryRouter initialEntries={['/repositories/1/files']} future={ROUTER_FUTURE_FLAGS}>
+    <MemoryRouter initialEntries={['/repositories/1/files']}>
       <AppProvider>
         <Routes>
           <Route path="/repositories/:repositoryId/files" element={<Files />} />
@@ -131,7 +130,7 @@ describe('Files', () => {
   it('does not fetch when repositoryId is missing', async () => {
     vi.mocked(api.getRepositoryFiles).mockResolvedValue(mockFiles)
     render(
-      <MemoryRouter initialEntries={['/files']} future={ROUTER_FUTURE_FLAGS}>
+      <MemoryRouter initialEntries={['/files']}>
         <AppProvider>
           <Routes>
             <Route path="/files" element={<Files />} />

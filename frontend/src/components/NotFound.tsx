@@ -1,5 +1,5 @@
 import { Container, Typography, Box, Button } from '@mui/material'
-import { Link as RouterLink } from 'react-router-dom'
+import { Link as RouterLink } from 'react-router'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 
 /**

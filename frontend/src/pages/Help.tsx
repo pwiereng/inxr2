@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Box, CircularProgress } from '@mui/material'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router'
 import { CodeHeader } from '@/components/CodeHeader'
 import type { TabValue } from '@/components/CodeHeader'
 import { MarkdownViewer } from '@/components/MarkdownViewer'

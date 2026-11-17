@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import Repositories from './Repositories'
 import * as api from '@/lib/api'
 import type { RepositoryStats } from '@/lib/api'
-import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 
 vi.mock('@/lib/api', () => ({
   getAllRepositoryStats: vi.fn(),
@@ -35,7 +34,7 @@ function makeStats(overrides: Partial<RepositoryStats> = {}): RepositoryStats {
 
 function renderRepositories() {
   return render(
-    <MemoryRouter future={ROUTER_FUTURE_FLAGS}>
+    <MemoryRouter>
       <Repositories />
     </MemoryRouter>
   )

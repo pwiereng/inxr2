@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router'
 import History from './History'
 import type { CommitInfo } from '@/lib/api'
 
@@ -52,7 +52,6 @@ vi.mock('@/components/CopyButton/CopyButton', () => ({
 }))
 
 import { getCommits } from '@/lib/api'
-import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 const mockGetCommits = vi.mocked(getCommits)
 
 function LocationDisplay() {
@@ -62,7 +61,7 @@ function LocationDisplay() {
 
 function renderHistory(entry = '/history') {
   return render(
-    <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE_FLAGS}>
+    <MemoryRouter initialEntries={[entry]}>
       <History />
       <LocationDisplay />
     </MemoryRouter>

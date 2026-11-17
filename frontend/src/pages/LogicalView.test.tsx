@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router'
 import LogicalView from './LogicalView'
 import { consoleCalls } from '@/test/consoleGuard'
 import type { TabValue } from '@/components/CodeHeader'
@@ -84,7 +84,6 @@ vi.mock('@/hooks/useSelectionToolbar', () => ({
 }))
 
 import { getSymbolTree, searchSymbols, getRepositoryByName, getCommits } from '@/lib/api'
-import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 const mockGetSymbolTree = vi.mocked(getSymbolTree)
 const mockSearchSymbols = vi.mocked(searchSymbols)
 const mockGetRepositoryByName = vi.mocked(getRepositoryByName)
@@ -97,7 +96,7 @@ function LocationDisplay() {
 
 function renderView(entry = '/logical-view?repo=myrepo&branch=main&commit=deadbeef') {
   return render(
-    <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE_FLAGS}>
+    <MemoryRouter initialEntries={[entry]}>
       <LogicalView />
       <LocationDisplay />
     </MemoryRouter>

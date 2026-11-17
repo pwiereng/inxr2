@@ -1,10 +1,9 @@
 import { ReactElement } from 'react'
 import { render, type RenderOptions, type RenderResult } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter } from 'react-router'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { AppProvider, useApp } from '@/contexts/AppContext'
-import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 import { darkTheme, lightTheme } from '@/theme'
 
 interface AllProvidersProps {
@@ -32,7 +31,7 @@ function ThemeWrapper({ children }: { children: React.ReactNode }) {
  */
 function AllProviders({ children }: AllProvidersProps) {
   return (
-    <BrowserRouter future={ROUTER_FUTURE_FLAGS}>
+    <BrowserRouter>
       <AppProvider>
         <ThemeWrapper>{children}</ThemeWrapper>
       </AppProvider>
