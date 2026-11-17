@@ -47,6 +47,13 @@ id = "GHSA-wrjc-x8rr-h8h6" # fixed in 7.18.0
 ignoreUntil = 2027-02-01T00:00:00Z
 reason = "fix requires the react-router v7 major upgrade, tracked in #498"
 
+# --- npm: picomatch 4.0.4 (no upstream fix yet; dev/build only) ---------------
+
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf" # ReDoS via repeated extglobs; vulnerable <= 4.0.7, no fixed release
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "no patched picomatch exists; dev/build-only via vite/vitest, patterns come from our own config (not user input); tracked in #625"
+
 # --- npm: transitive deps pinned below the fix by their parents (#585) --------
 
 [[IgnoredVulns]]
