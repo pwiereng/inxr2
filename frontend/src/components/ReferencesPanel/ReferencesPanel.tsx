@@ -23,7 +23,7 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import SearchIcon from '@mui/icons-material/Search'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import {
   getSymbolReferences,

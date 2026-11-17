@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router'
 import Dependencies from './Dependencies'
 import type { TabValue } from '@/components/CodeHeader'
 import type { DependencyItem, DependenciesListResponse } from '@/lib/api'
@@ -40,7 +40,6 @@ vi.mock('@/components/SelectionToolbar', () => ({
 }))
 
 import { getRepositoryDependencies } from '@/lib/api'
-import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 
 function LocationDisplay() {
   const loc = useLocation()
@@ -75,7 +74,7 @@ function makeResponse(items: DependencyItem[]): DependenciesListResponse {
 
 function renderDeps(entry = '/dependencies?repo=myrepo') {
   return render(
-    <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE_FLAGS}>
+    <MemoryRouter initialEntries={[entry]}>
       <Dependencies />
       <LocationDisplay />
     </MemoryRouter>

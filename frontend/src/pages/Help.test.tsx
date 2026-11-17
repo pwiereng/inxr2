@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router'
 import Help from './Help'
 import type { TabValue } from '@/components/CodeHeader'
-import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 import { expectConsoleError } from '@/test/consoleGuard'
 
 // The message Help logs when the HELP.md fetch fails.
@@ -49,7 +48,7 @@ function LocationDisplay() {
 
 function renderHelp(entry = '/help') {
   return render(
-    <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE_FLAGS}>
+    <MemoryRouter initialEntries={[entry]}>
       <Help />
       <LocationDisplay />
     </MemoryRouter>

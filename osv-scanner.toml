@@ -35,18 +35,6 @@ id = "PYSEC-2026-249" # GHSA-82w8-qh3p-5jfq, fixed in 1.3.1
 ignoreUntil = 2027-02-01T00:00:00Z
 reason = "starlette 1.x is blocked by FastAPI's include_router() regression; accepted risk tracked in #518 (Phase 1c)"
 
-# --- npm: react-router 6.30.6 (fix needs the v7 major) ------------------------
-
-[[IgnoredVulns]]
-id = "GHSA-337j-9hxr-rhxg" # fixed in 7.18.0
-ignoreUntil = 2027-02-01T00:00:00Z
-reason = "fix requires the react-router v7 major upgrade, tracked in #498"
-
-[[IgnoredVulns]]
-id = "GHSA-wrjc-x8rr-h8h6" # fixed in 7.18.0
-ignoreUntil = 2027-02-01T00:00:00Z
-reason = "fix requires the react-router v7 major upgrade, tracked in #498"
-
 # --- npm: picomatch 4.0.4 (no upstream fix yet; dev/build only) ---------------
 
 [[IgnoredVulns]]

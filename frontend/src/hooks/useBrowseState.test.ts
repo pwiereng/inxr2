@@ -22,12 +22,12 @@ async function renderBrowseStateHook(): Promise<
   return result!
 }
 
-// Mock react-router-dom
+// Mock react-router
 const mockNavigate = vi.fn()
 const mockSetSearchParams = vi.fn()
 let mockSearchParams = new URLSearchParams()
 
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router', () => ({
   useParams: () => ({ repoName: 'test-repo', '*': 'src/main.py' }),
   useNavigate: () => mockNavigate,
   useSearchParams: () => [mockSearchParams, mockSetSearchParams],

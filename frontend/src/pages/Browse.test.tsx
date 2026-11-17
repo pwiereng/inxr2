@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, act, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router'
 import type { ReactNode } from 'react'
 import Browse from './Browse'
 import type { TabValue } from '@/components/CodeHeader'
@@ -145,7 +145,6 @@ vi.mock('@/components/CopyButton/CopyButton', () => ({
 
 import { useBrowseState } from '@/hooks/useBrowseState'
 import { getFileBlame } from '@/lib/api'
-import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 import { consoleCallArgs, expectConsoleError } from '@/test/consoleGuard'
 type BrowseStateResult = ReturnType<typeof useBrowseState>
 const mockUseBrowseState = vi.mocked(useBrowseState)
@@ -318,7 +317,7 @@ function makeState(o: StateOverrides = {}): BrowseStateResult {
 function renderBrowse(state: BrowseStateResult, entry = '/browse/myrepo') {
   mockUseBrowseState.mockReturnValue(state)
   return render(
-    <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE_FLAGS}>
+    <MemoryRouter initialEntries={[entry]}>
       <Browse />
       <LocationDisplay />
     </MemoryRouter>
@@ -1049,7 +1048,7 @@ describe('Browse', () => {
         makeState({ urlState: { directoryPath: 'src/sub' }, actions: { navigateToDirectory } })
       )
       rerender(
-        <MemoryRouter initialEntries={['/browse/myrepo']} future={ROUTER_FUTURE_FLAGS}>
+        <MemoryRouter initialEntries={['/browse/myrepo']}>
           <Browse />
           <LocationDisplay />
         </MemoryRouter>
@@ -1145,7 +1144,7 @@ describe('Browse', () => {
       // reference makes React bail out); the Browse instance stays mounted so
       // its internal blameEnabled state survives the transition.
       const tree = () => (
-        <MemoryRouter initialEntries={['/browse/myrepo']} future={ROUTER_FUTURE_FLAGS}>
+        <MemoryRouter initialEntries={['/browse/myrepo']}>
           <Browse />
           <LocationDisplay />
         </MemoryRouter>

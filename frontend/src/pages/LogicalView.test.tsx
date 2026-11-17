@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router'
 import LogicalView from './LogicalView'
 import { consoleCalls } from '@/test/consoleGuard'
 import type { TabValue } from '@/components/CodeHeader'
@@ -84,7 +84,6 @@ vi.mock('@/hooks/useSelectionToolbar', () => ({
 }))
 
 import { getSymbolTree, searchSymbols, getRepositoryByName, getCommits } from '@/lib/api'
-import { ROUTER_FUTURE_FLAGS } from '@/lib/routerFuture'
 const mockGetSymbolTree = vi.mocked(getSymbolTree)
 const mockSearchSymbols = vi.mocked(searchSymbols)
 const mockGetRepositoryByName = vi.mocked(getRepositoryByName)
@@ -97,7 +96,7 @@ function LocationDisplay() {
 
 function renderView(entry = '/logical-view?repo=myrepo&branch=main&commit=deadbeef') {
   return render(
-    <MemoryRouter initialEntries={[entry]} future={ROUTER_FUTURE_FLAGS}>
+    <MemoryRouter initialEntries={[entry]}>
       <LogicalView />
       <LocationDisplay />
     </MemoryRouter>
@@ -1570,8 +1569,8 @@ describe('LogicalView', () => {
 
       await user.click(await screen.findByText('app.py'))
       const chip = await screen.findByText('extends Base')
-      // Expanding the file navigates, and v7_startTransition defers that router
-      // update, so the expansion's follow-up symbol fetch lands *after* the chip
+      // Expanding the file navigates, and react-router v7 wraps router updates in
+      // React.startTransition, deferring that update, so the expansion's follow-up symbol fetch lands *after* the chip
       // renders. Wait for it to settle and reset the call log, so the assertion
       // below measures only what the Cmd+click itself triggers.
       await waitFor(() => expect(mockGetSymbolTree).toHaveBeenCalledTimes(3))

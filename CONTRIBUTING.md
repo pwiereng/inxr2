@@ -632,9 +632,13 @@ effects (data fetching, `navigate()`, refs, `useState`) in the component. Exampl
 **2. Render with `MemoryRouter` + a `LocationDisplay` probe — not `@/test/utils`.**
 `@/test/utils` wraps with `BrowserRouter`, which can't set `initialEntries` or expose the
 resulting URL. Page tests must control inbound params and assert outbound navigation, so use
-`MemoryRouter` directly:
+`MemoryRouter` directly. Import router APIs from `react-router` (v7), not the legacy
+`react-router-dom` shim. No `future` prop is needed: the v6 future flags are the v7 defaults,
+so a bare `MemoryRouter` runs the same router semantics as the app's `BrowserRouter`:
 
 ```typescript
+import { MemoryRouter, useLocation } from 'react-router';
+
 function LocationDisplay() {
   const loc = useLocation();
   return <div data-testid="location">{loc.pathname + loc.search}</div>;

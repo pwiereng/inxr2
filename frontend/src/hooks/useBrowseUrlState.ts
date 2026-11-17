@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router'
 import type { MutableRefObject } from 'react'
 import type { BrowseUrlState } from './useBrowseTypes'
 
