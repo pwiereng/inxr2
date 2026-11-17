@@ -161,10 +161,14 @@ python -m uv pip compile qa-agent/pyproject.toml requirements-build.in \
 CI fails (`Lockfiles Up-to-date`) if the committed lock doesn't match, and
 osv-scanner scans it for known vulnerabilities.
 
-For local development without Docker:
+For local development without Docker, use a dedicated virtualenv. Don't install
+into the host's system Python, and don't install into `inxr2-dev`: its single
+shared environment pins the older fastapi/starlette the backend needs, and this
+lock would replace them.
 
 ```bash
 cd qa-agent
+python3.11 -m venv .venv && . .venv/bin/activate
 pip install --require-hashes -r requirements.lock
 pip install --no-deps --no-build-isolation -e .
 playwright install chromium
