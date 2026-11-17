@@ -2768,3 +2768,45 @@ void f() {
         _, refs = await _parse(code)
         calls = {r.reference_text for r in refs if r.reference_type == "call"}
         assert {"g", "h"} <= calls
+
+
+class TestRequiresClauseBodies:
+    """A call statement after a `requires` clause used to misparse into a
+    qualified prototype declaration, emitting a phantom symbol (libstdc++
+    bits/ptr_traits.h:95-113)."""
+
+    @pytest.fixture
+    def parser_service(self) -> TreeSitterService:
+        return TreeSitterService()
+
+    @pytest.mark.asyncio
+    async def test_body_after_requires_clause_stays_a_method(
+        self, parser_service: TreeSitterService
+    ) -> None:
+        code = """
+namespace std {
+struct __ptr_traits_ptr_to
+{
+  using pointer = _Ptr;
+  static pointer
+  pointer_to(element_type& __r)
+#if __cpp_lib_concepts
+  requires requires {
+    { pointer::pointer_to(__r) } -> convertible_to<pointer>;
+  }
+#endif
+  { return pointer::pointer_to(__r); }
+};
+}
+"""
+        symbols, _ = await parser_service.parse_file(
+            content=code, language="cpp", file_path="ptr_traits.h"
+        )
+        # The real out-of-line-style method still resolves through the body.
+        real = [s for s in symbols if s.name == "pointer_to"]
+        assert len(real) == 1, [f"{s.kind} {s.scope}::{s.name}" for s in symbols]
+        assert real[0].kind == "method"
+        # No phantom class from the call's qualifier, and no second symbol.
+        assert not any(
+            s.kind in ("class", "struct") and s.name == "pointer" for s in symbols
+        )
